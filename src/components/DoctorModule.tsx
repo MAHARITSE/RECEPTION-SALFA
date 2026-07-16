@@ -63,10 +63,14 @@ export default function DoctorModule({ state, setState }: Props) {
   const handleSearchKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setArtSearchIdx(i => Math.min(i + 1, filteredArticles.length - 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setArtSearchIdx(i => Math.max(i - 1, 0)); }
-    else if (e.key === 'Enter' && filteredArticles.length > 0) {
+    else if (e.key === 'Enter') {
       e.preventDefault();
-      const a = filteredArticles[artSearchIdx];
-      if (a) handleArticleSelect(a.id);
+      if (filteredArticles.length > 0 && articleSearch) {
+        const a = filteredArticles[artSearchIdx];
+        if (a) handleArticleSelect(a.id);
+      } else if (lineForm.articleName) {
+        handleSaveLine(); // Enter = validate current line
+      }
     }
     else if (e.key === 'Escape') { setArticleSearch(''); }
   };
@@ -232,9 +236,9 @@ export default function DoctorModule({ state, setState }: Props) {
                     </div>
                   )}
                 </div>
-                <div className="w-14"><label className="block text-[9px] text-slate-500">Qté</label><input type="number" min={1} value={lineForm.quantity} onChange={(e)=>updateLineForm('quantity',parseInt(e.target.value)||1)} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono outline-none focus:border-blue-500" /></div>
-                <div className="w-28"><label className="block text-[9px] text-slate-500">Posologie</label><input type="text" value={lineForm.posology} onChange={(e)=>updateLineForm('posology',e.target.value)} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs outline-none focus:border-blue-500" placeholder="1cp 3x/j" /></div>
-                <div className="w-14"><label className="block text-[9px] text-slate-500">Remise%</label><input type="number" min={0} max={100} value={lineForm.discount} onChange={(e)=>updateLineForm('discount',parseInt(e.target.value)||0)} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono outline-none focus:border-blue-500" /></div>
+                <div className="w-14"><label className="block text-[9px] text-slate-500">Qté</label><input type="number" min={1} value={lineForm.quantity} onChange={(e)=>updateLineForm('quantity',parseInt(e.target.value)||1)} onKeyDown={(e)=>{ if(e.key==='Enter'){e.preventDefault();handleSaveLine();}}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono outline-none focus:border-blue-500" /></div>
+                <div className="w-28"><label className="block text-[9px] text-slate-500">Posologie</label><input type="text" value={lineForm.posology} onChange={(e)=>updateLineForm('posology',e.target.value)} onKeyDown={(e)=>{ if(e.key==='Enter'){e.preventDefault();handleSaveLine();}}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs outline-none focus:border-blue-500" placeholder="1cp 3x/j" /></div>
+                <div className="w-14"><label className="block text-[9px] text-slate-500">Remise%</label><input type="number" min={0} max={100} value={lineForm.discount} onChange={(e)=>updateLineForm('discount',parseInt(e.target.value)||0)} onKeyDown={(e)=>{ if(e.key==='Enter'){e.preventDefault();handleSaveLine();}}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono outline-none focus:border-blue-500" /></div>
                 <div className="w-20"><label className="block text-[9px] text-slate-500">P.U.</label><input type="text" readOnly value={formatAr(lineForm.unitPrice)} className="w-full bg-slate-200 border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono" /></div>
                 <div className="w-24"><label className="block text-[9px] text-slate-500">Montant</label><input type="text" readOnly value={formatAr(lineAmount(lineForm))} className="w-full bg-slate-200 border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono font-bold text-slate-700" /></div>
               </div>
