@@ -42,6 +42,8 @@ export default function CashierModule({ state, setState }: Props) {
   const [hbArtForm, setHbArtForm] = useState<HbLine>({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: new Date().toISOString().split('T')[0] });
   const [hbDateSort, setHbDateSort] = useState(new Date().toISOString().split('T')[0]); // persistent date
   const hbArtRef = useRef<HTMLInputElement>(null);
+  const [hbSelLineId, setHbSelLineId] = useState<string | null>(null);
+  const [hbIsNew, setHbIsNew] = useState(true);
 
   // HB Modal: edit client type
   const [hbEditClientType, setHbEditClientType] = useState<ClientType>('comptoir');
@@ -146,21 +148,54 @@ export default function CashierModule({ state, setState }: Props) {
 
   // Article modal for hospit/bloc
   const hbArtFiltered = hbArtSearch.length >= 1 ? state.articles.filter(a => a.name.toLowerCase().includes(hbArtSearch.toLowerCase())) : [];
+
+  const hbArtNew = () => {
+    setHbArtForm({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: hbDateSort });
+    setHbSelLineId(null);
+    setHbIsNew(true);
+    setHbArtSearch('');
+    setTimeout(() => hbArtRef.current?.focus(), 50);
+  };
+
+  const hbArtDelete = () => {
+    if (!hbSelRecordId || !hbSelLineId) return;
+    setHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, lines: r.lines.filter(l => l.id !== hbSelLineId) } : r));
+    hbArtNew();
+  };
+
   const hbArtSelectArticle = (articleId: string) => {
     const a = state.articles.find(x => x.id === articleId);
     if (!a) return;
     const rec = hbRecords.find(r => r.id === hbSelRecordId);
     setHbArtForm({ id: uuidv4(), articleName: a.name, quantity: 1, unitPrice: getPrice(a, rec?.clientType || 'comptoir'), discount: 0, dateSort: hbDateSort });
+    setHbIsNew(true);
+    setHbSelLineId(null);
     setHbArtSearch('');
+    setTimeout(() => {
+      const qtyInput = document.getElementById('hb-qty-input');
+      qtyInput?.focus();
+      (qtyInput as HTMLInputElement)?.select();
+    }, 50);
   };
+
   const hbArtSave = () => {
     if (!hbSelRecordId || !hbArtForm.articleName) return;
-    setHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, lines: [...r.lines, { ...hbArtForm, id: uuidv4(), dateSort: hbDateSort }] } : r));
-    // Reset article but KEEP the date (persistent)
-    setHbArtForm({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: hbDateSort });
-    setHbArtSearch('');
-    setTimeout(() => hbArtRef.current?.focus(), 50);
+    const rec = hbRecords.find(r => r.id === hbSelRecordId);
+    if (!rec) return;
+
+    const lineToSave: HbLine = {
+      ...hbArtForm,
+      dateSort: hbDateSort
+    };
+
+    if (hbIsNew || !rec.lines.some(l => l.id === hbArtForm.id)) {
+      setHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, lines: [...r.lines, { ...lineToSave, id: uuidv4() }] } : r));
+    } else {
+      setHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, lines: r.lines.map(l => l.id === hbArtForm.id ? lineToSave : l) } : r));
+    }
+    hbArtNew();
   };
+
   const hbArtKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setHbArtIdx(i => Math.min(i + 1, hbArtFiltered.length - 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setHbArtIdx(i => Math.max(i - 1, 0)); }
@@ -334,7 +369,7 @@ export default function CashierModule({ state, setState }: Props) {
                           <div className="text-xs text-slate-500 mt-0.5">Facture: <strong>{formatAr(totalFact)}</strong> | Payé: <span className="text-green-600">{formatAr(totalPaid)}</span> | Reste: <span className="text-red-600 font-bold">{formatAr(reste)}</span></div>
                         </div>
                         <div className="flex gap-1 items-center" onClick={e => e.stopPropagation()}>
-                          <button onClick={() => { setHbSelRecordId(record.id); setHbArtSearch(''); setHbArtForm({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: hbDateSort }); setHbModal('add_article'); }} className="px-2 py-1 bg-emerald-600 text-white rounded text-xs cursor-pointer">📋 Prescriptions</button>
+                          <button onClick={() => { setHbSelRecordId(record.id); setHbArtSearch(''); setHbArtForm({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: hbDateSort }); setHbSelLineId(null); setHbIsNew(true); setHbModal('add_article'); }} className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs cursor-pointer transition font-medium">📋 Prescriptions</button>
                           {reste > 0 && <>
                             <input type="number" min={1} max={reste} value={hbPayAmount || ''} onChange={e => setHbPayAmount(Math.min(parseInt(e.target.value) || 0, reste))} className="w-24 px-2 py-1 border rounded text-xs text-right outline-none" placeholder="Montant" />
                             <button onClick={() => addPartialPay(record.id)} disabled={hbPayAmount <= 0 || hbPayAmount > reste} className="px-2 py-1 bg-amber-600 text-white rounded text-xs cursor-pointer disabled:opacity-40">💰 Payer</button>
@@ -423,60 +458,193 @@ export default function CashierModule({ state, setState }: Props) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-auto">
             <div className="bg-emerald-600 px-4 py-3 flex justify-between items-center text-white rounded-t-xl">
-              <span className="font-bold">💊 Prescription — {rec?.patientName} ({rec?.type === 'hospit' ? 'Hospitalisation' : 'Bloc'})</span>
+              <span className="font-bold flex items-center gap-1">💊 Prescription (Saisie Sage) — {rec?.patientName} ({rec?.type === 'hospit' ? 'Hospitalisation' : 'Bloc'})</span>
               <button onClick={() => setHbModal('none')} className="hover:bg-white/20 rounded p-1 cursor-pointer"><X className="w-5 h-5" /></button>
             </div>
             <div className="p-4 space-y-3">
               {/* Date de sortie — persiste entre les saisies */}
               <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg p-2">
-                <label className="text-xs font-bold text-amber-800 whitespace-nowrap">📅 Date de sortie :</label>
-                <input type="date" value={hbDateSort} onChange={e => setHbDateSort(e.target.value)} className="px-2 py-1 border border-amber-400 rounded text-sm outline-none focus:border-amber-600 bg-white" />
+                <label className="text-xs font-bold text-amber-800 whitespace-nowrap">📅 Date d'acte / de sortie :</label>
+                <input type="date" value={hbDateSort} onChange={e => {
+                  setHbDateSort(e.target.value);
+                  setHbArtForm(prev => ({ ...prev, dateSort: e.target.value }));
+                }} className="px-2 py-1 border border-amber-400 rounded text-sm outline-none focus:border-amber-600 bg-white" />
                 <span className="text-[10px] text-amber-600 italic">Cette date est conservée pour les prochaines lignes</span>
               </div>
 
               {/* Sage-style input bar */}
-              <div className="bg-[#f4f4f4] border border-slate-300 rounded">
-                <div className="bg-slate-100 border-b border-slate-300 p-1.5 m-2 mb-0 rounded shadow-inner">
-                  <div className="flex flex-wrap items-end gap-1">
-                    <div className="flex-1 min-w-[140px] relative">
-                      <label className="block text-[9px] text-slate-500">Article (↑↓ Entrée)</label>
-                      <input ref={hbArtRef} type="text" value={hbArtForm.articleName && !hbArtSearch ? hbArtForm.articleName : hbArtSearch} onChange={e => { setHbArtSearch(e.target.value); setHbArtIdx(0); }} onKeyDown={hbArtKeyDown} className="w-full bg-white border border-blue-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-blue-600" placeholder="🔍 Tapez le nom..." autoFocus />
-                      {hbArtSearch.length >= 1 && hbArtFiltered.length > 0 && <div className="absolute top-full left-0 right-0 bg-white border rounded-b shadow-xl z-30 max-h-36 overflow-y-auto">{hbArtFiltered.map((a, idx) => (<div key={a.id} onClick={() => hbArtSelectArticle(a.id)} className={`px-2 py-1 cursor-pointer text-xs flex justify-between border-b ${idx === hbArtIdx ? 'bg-blue-100' : 'hover:bg-blue-50'}`}><span>[{a.family}] {a.name}</span><span className="font-mono text-blue-600">{formatAr(a.priceComptoir)}</span></div>))}</div>}
+              <div className="bg-[#f4f4f4] border border-slate-300 rounded text-xs select-none">
+                <div className="bg-slate-100 border-b border-slate-300 p-2 m-2 mb-0 rounded shadow-inner">
+                  <div className="flex flex-wrap items-end gap-1.5">
+                    <div className="w-28">
+                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Date</label>
+                      <input
+                        type="date"
+                        value={hbArtForm.dateSort || hbDateSort}
+                        onChange={e => setHbArtForm(prev => ({ ...prev, dateSort: e.target.value }))}
+                        className="w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-blue-500 text-slate-800"
+                      />
                     </div>
-                    <div className="w-14"><label className="block text-[9px] text-slate-500">Qté</label><input type="number" min={1} value={hbArtForm.quantity} onChange={e => setHbArtForm({...hbArtForm, quantity: parseInt(e.target.value)||1})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); }}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono outline-none" /></div>
-                    <div className="w-14"><label className="block text-[9px] text-slate-500">Rem%</label><input type="number" min={0} max={100} value={hbArtForm.discount} onChange={e => setHbArtForm({...hbArtForm, discount: parseInt(e.target.value)||0})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); }}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono outline-none" /></div>
-                    <div className="w-20"><label className="block text-[9px] text-slate-500">P.U.</label><input readOnly value={formatAr(hbArtForm.unitPrice)} className="w-full bg-slate-200 border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono" /></div>
-                    <div className="w-24"><label className="block text-[9px] text-slate-500">Montant</label><input readOnly value={formatAr(hbLineAmt(hbArtForm))} className="w-full bg-slate-200 border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono font-bold" /></div>
+                    <div className="flex-1 min-w-[150px] relative">
+                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Article (↑↓ Entrée)</label>
+                      <input
+                        ref={hbArtRef}
+                        type="text"
+                        value={hbArtForm.articleName && !hbArtSearch ? hbArtForm.articleName : hbArtSearch}
+                        onChange={e => {
+                          setHbArtSearch(e.target.value);
+                          setHbArtIdx(0);
+                          if (hbArtForm.articleName && e.target.value !== hbArtForm.articleName) {
+                            setHbArtForm(prev => ({ ...prev, articleName: '' }));
+                          }
+                        }}
+                        onKeyDown={hbArtKeyDown}
+                        className="w-full bg-white border border-blue-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500 text-slate-800"
+                        placeholder="🔍 Saisir article..."
+                        autoFocus
+                      />
+                      {hbArtSearch.length >= 1 && hbArtFiltered.length > 0 && (
+                        <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 rounded-b shadow-2xl z-40 max-h-40 overflow-y-auto">
+                          {hbArtFiltered.map((a, idx) => (
+                            <div
+                              key={a.id}
+                              onClick={() => hbArtSelectArticle(a.id)}
+                              className={`px-3 py-1.5 cursor-pointer text-xs flex justify-between border-b border-slate-100 ${idx === hbArtIdx ? 'bg-blue-500 text-white font-medium' : 'hover:bg-slate-50 text-slate-800'}`}
+                            >
+                              <span>[{a.family}] {a.name}</span>
+                              <span className={`font-mono ${idx === hbArtIdx ? 'text-white' : 'text-blue-600 font-medium'}`}>{formatAr(getPrice(a, rec?.clientType || 'comptoir'))}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="w-16">
+                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Qté</label>
+                      <input
+                        id="hb-qty-input"
+                        type="number"
+                        min={1}
+                        value={hbArtForm.quantity}
+                        onChange={e => setHbArtForm(prev => ({ ...prev, quantity: parseInt(e.target.value) || 1 }))}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
+                        className="w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-blue-500 text-slate-800"
+                      />
+                    </div>
+                    <div className="w-16">
+                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Rem%</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={hbArtForm.discount}
+                        onChange={e => setHbArtForm(prev => ({ ...prev, discount: parseInt(e.target.value) || 0 }))}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
+                        className="w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-blue-500 text-slate-800"
+                      />
+                    </div>
+                    <div className="w-24">
+                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">P.U.</label>
+                      <input
+                        type="number"
+                        value={hbArtForm.unitPrice}
+                        onChange={e => setHbArtForm(prev => ({ ...prev, unitPrice: parseInt(e.target.value) || 0 }))}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
+                        className="w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-blue-500 text-slate-800"
+                      />
+                    </div>
+                    <div className="w-28">
+                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Montant</label>
+                      <input
+                        readOnly
+                        value={formatAr(hbLineAmt(hbArtForm))}
+                        className="w-full bg-slate-200 border border-slate-300 rounded px-1.5 py-0.5 text-xs text-right font-mono font-bold text-slate-700"
+                      />
+                    </div>
                   </div>
-                  <div className="flex justify-end gap-1 mt-1">
-                    <button onClick={hbArtSave} disabled={!hbArtForm.articleName} className="px-3 py-0.5 bg-sky-500 text-white border border-sky-600 rounded text-[10px] font-medium disabled:opacity-40 cursor-pointer"><Save className="h-3 w-3 inline" /> Enregistrer</button>
+                  <div className="flex justify-end gap-1.5 mt-2">
+                    <button
+                      onClick={hbArtNew}
+                      className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded shadow-sm text-slate-700 transition cursor-pointer text-xs font-medium"
+                    >
+                      <Plus className="h-3.5 w-3.5 text-slate-500" /> Nouveau
+                    </button>
+                    <button
+                      onClick={hbArtDelete}
+                      disabled={!hbSelLineId}
+                      className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded shadow-sm text-slate-700 disabled:opacity-40 transition cursor-pointer text-xs font-medium"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-rose-600" /> Supprimer
+                    </button>
+                    <button
+                      onClick={hbArtSave}
+                      disabled={!hbArtForm.articleName}
+                      className="flex items-center gap-1 px-2.5 py-1 bg-sky-500 hover:bg-sky-600 text-white border border-sky-600 rounded shadow-sm font-semibold disabled:opacity-40 transition cursor-pointer text-xs"
+                    >
+                      <Save className="h-3.5 w-3.5" /> Enregistrer
+                    </button>
                   </div>
                 </div>
 
                 {/* Lines table */}
-                <div className="bg-white mx-2 mb-2 border-t border-slate-300 overflow-x-auto rounded-b">
-                  <table className="w-full text-[11px]">
-                    <thead className="bg-slate-50 border-b text-slate-600"><tr className="divide-x divide-slate-200"><th className="p-1 text-left w-20">Date</th><th className="p-1 text-left min-w-[120px]">Article</th><th className="p-1 text-right w-10">Qté</th><th className="p-1 text-center w-10">Rem%</th><th className="p-1 text-right w-20">P.U.</th><th className="p-1 text-right w-24">Montant</th><th className="p-1 w-6"></th></tr></thead>
-                    <tbody className="divide-y font-mono">
-                      {rec && rec.lines.map(l => (
-                        <tr key={l.id} className="divide-x divide-slate-200 hover:bg-slate-50">
-                          <td className="p-1 font-sans text-slate-500">{l.dateSort || '—'}</td>
-                          <td className="p-1 font-sans">{l.articleName}</td>
-                          <td className="p-1 text-right">{l.quantity}</td>
-                          <td className="p-1 text-center">{l.discount ? `${l.discount}%` : '—'}</td>
-                          <td className="p-1 text-right">{l.unitPrice.toLocaleString('fr-FR')}</td>
-                          <td className="p-1 text-right font-bold">{hbLineAmt(l).toLocaleString('fr-FR')}</td>
-                          <td className="p-1"><button onClick={() => hbRemoveLine(hbSelRecordId!, l.id)} className="text-red-500 cursor-pointer"><Trash2 className="w-3 h-3" /></button></td>
-                        </tr>
-                      ))}
-                      {rec && rec.lines.length === 0 && <tr><td colSpan={7} className="p-3 text-center text-slate-400 font-sans">Tapez un article pour commencer</td></tr>}
+                <div className="bg-white mx-2 mb-2 border-t border-slate-300 overflow-x-auto rounded-b max-h-[250px] overflow-y-auto">
+                  <table className="w-full text-[11px] text-left border-collapse">
+                    <thead className="bg-slate-50 border-b border-slate-300 text-slate-600">
+                      <tr className="divide-x divide-slate-200">
+                        <th className="p-1 font-normal w-20">Date</th>
+                        <th className="p-1 font-normal min-w-[150px]">Article</th>
+                        <th className="p-1 font-normal text-right w-12">Qté</th>
+                        <th className="p-1 font-normal text-center w-12">Rem%</th>
+                        <th className="p-1 font-normal text-right w-20">P.U.</th>
+                        <th className="p-1 font-normal text-right w-24">Montant</th>
+                        <th className="p-1 font-normal w-6"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-150 font-mono">
+                      {rec && rec.lines.map(l => {
+                        const isSel = l.id === hbSelLineId;
+                        return (
+                          <tr key={l.id} onClick={() => {
+                            setHbSelLineId(l.id);
+                            setHbArtForm({ ...l });
+                            setHbIsNew(false);
+                          }} className={`cursor-pointer divide-x divide-slate-200 transition-colors ${isSel ? 'bg-blue-500 text-white font-medium' : 'hover:bg-slate-50 text-slate-800'}`}>
+                            <td className="p-1 font-sans">{l.dateSort || '—'}</td>
+                            <td className="p-1 font-sans">{l.articleName}</td>
+                            <td className="p-1 text-right">{l.quantity}</td>
+                            <td className="p-1 text-center">{l.discount ? `${l.discount}%` : '—'}</td>
+                            <td className="p-1 text-right">{l.unitPrice.toLocaleString('fr-FR')}</td>
+                            <td className="p-1 text-right font-bold">{hbLineAmt(l).toLocaleString('fr-FR')}</td>
+                            <td className="p-1 text-center">
+                              <button onClick={(e) => {
+                                e.stopPropagation();
+                                setHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, lines: r.lines.filter(x => x.id !== l.id) } : r));
+                                if (hbSelLineId === l.id) {
+                                  hbArtNew();
+                                }
+                              }} className={`cursor-pointer ${isSel ? 'text-white hover:text-red-200' : 'text-rose-600 hover:text-rose-800'}`}>
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {rec && rec.lines.length === 0 && (
+                        <tr><td colSpan={7} className="p-4 text-center text-slate-400 font-sans">Aucun article enregistré. Tapez ou recherchez un article ci-dessus.</td></tr>
+                      )}
                     </tbody>
-                    {rec && rec.lines.length > 0 && <tfoot className="bg-emerald-50 border-t-2 border-emerald-300 font-sans"><tr><td colSpan={4} className="p-1 text-right font-bold">TOTAL:</td><td colSpan={3} className="p-1 text-right font-mono font-bold text-lg">{formatAr(recTotal)}</td></tr></tfoot>}
+                    {rec && rec.lines.length > 0 && (
+                      <tfoot className="bg-emerald-50 border-t-2 border-emerald-300 text-slate-800 font-sans">
+                        <tr className="font-bold">
+                          <td colSpan={4} className="p-1.5 text-right">TOTAL PATIENT :</td>
+                          <td colSpan={3} className="p-1.5 text-right font-mono text-lg text-emerald-700">{formatAr(recTotal)}</td>
+                        </tr>
+                      </tfoot>
+                    )}
                   </table>
                 </div>
               </div>
 
-              <button onClick={() => setHbModal('none')} className="w-full py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 cursor-pointer">✅ Terminer et fermer</button>
+              <button onClick={() => setHbModal('none')} className="w-full py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 cursor-pointer font-medium transition text-sm">✅ Terminer et fermer</button>
             </div>
           </div>
         </div>
