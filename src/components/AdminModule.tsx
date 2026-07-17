@@ -6,7 +6,9 @@ import { ARTICLE_FAMILIES, familyLabel, formatAr } from '../store';
 import { DollarSign, Save, Trash2, Plus, X, Check } from 'lucide-react';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
-type Tab = 'users' | 'articles' | 'prices' | 'companies';
+type Tab = 'users' | 'articles' | 'prices' | 'companies' | 'prompts';
+import { WINDEV_PROMPT, WEB_PROMPT } from '../data/promptsData';
+import { FileText, Copy } from 'lucide-react';
 
 const roleLabels: Record<string, string> = { doctor:'Médecin', cashier:'Caisse', pharmacy:'Pharmacie', magasinier:'Magasinier', laboratory:'Laboratoire', hospitalization:'Hospitalisation', admin:'Admin' };
 const ALL_ROLES: UserRole[] = ['doctor','cashier','pharmacy','magasinier','laboratory','hospitalization','admin'];
@@ -44,13 +46,20 @@ export default function AdminModule({ state, setState }: Props) {
   const saveCompany = () => { if (!newCompany) return; setState((prev) => ({ ...prev, companies: [...prev.companies, { id: uuidv4(), name: newCompany.toUpperCase() }] })); setNewCompany(''); setAddCompany(false); };
   const deleteCompany = (id: string) => { setState((prev) => ({ ...prev, companies: prev.companies.filter((c) => c.id !== id) })); };
 
-  const staffUsers = state.users.filter((u) => u.role !== 'receptionist');
+  const [promptView, setPromptView] = useState<'windev' | 'web'>('windev');
+  const [copied, setCopied] = useState(false);
+
+  const copyPromptText = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
         <div className="flex border-b overflow-x-auto">
-          {[{ key:'users' as Tab, l:'👥 Utilisateurs' },{ key:'articles' as Tab, l:'📦 Articles' },{ key:'prices' as Tab, l:'💰 Tarifs' },{ key:'companies' as Tab, l:'🏢 Sociétés / Clients' }].map((t) => (
+          {[{ key:'users' as Tab, l:'👥 Utilisateurs' },{ key:'articles' as Tab, l:'📦 Articles' },{ key:'prices' as Tab, l:'💰 Tarifs' },{ key:'companies' as Tab, l:'🏢 Sociétés / Clients' },{ key:'prompts' as Tab, l:'📜 Prompts & Spécifications' }].map((t) => (
             <button key={t.key} onClick={() => setTab(t.key)} className={`px-6 py-3 text-sm font-medium border-b-2 cursor-pointer whitespace-nowrap ${tab===t.key?'border-slate-800 text-slate-800 bg-slate-100':'border-transparent text-slate-500'}`}>{t.l}</button>
           ))}
         </div>
@@ -104,6 +113,25 @@ export default function AdminModule({ state, setState }: Props) {
             <button onClick={() => setAddCompany(true)} className="mb-3 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-2 cursor-pointer text-sm"><Plus className="w-4 h-4" /> Nouvelle société</button>
             {addCompany && <div className="flex gap-2 mb-3"><input type="text" value={newCompany} onChange={(e) => setNewCompany(e.target.value)} className="flex-1 px-3 py-2 border rounded-lg outline-none" placeholder="Nom de la société" /><button onClick={saveCompany} className="px-4 py-2 bg-emerald-600 text-white rounded-lg cursor-pointer"><Check className="w-4 h-4" /></button><button onClick={() => setAddCompany(false)} className="px-4 py-2 bg-slate-400 text-white rounded-lg cursor-pointer"><X className="w-4 h-4" /></button></div>}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">{state.companies.map((c) => (<div key={c.id} className="flex items-center justify-between px-3 py-2 bg-slate-50 border rounded-lg"><span className="font-medium text-sm">{c.name}</span><button onClick={() => deleteCompany(c.id)} className="text-red-500 cursor-pointer"><Trash2 className="w-4 h-4" /></button></div>))}</div>
+          </div>}
+
+          {tab === 'prompts' && <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex gap-2">
+                <button onClick={() => setPromptView('windev')} className={`px-4 py-2 rounded-lg text-sm font-medium cursor-pointer ${promptView === 'windev' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
+                  💻 Prompt WinDev (RECEPTION SALFA)
+                </button>
+                <button onClick={() => setPromptView('web')} className={`px-4 py-2 rounded-lg text-sm font-medium cursor-pointer ${promptView === 'web' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
+                  🌐 Prompt Web (MediCare HIS)
+                </button>
+              </div>
+              <button onClick={() => copyPromptText(promptView === 'windev' ? WINDEV_PROMPT : WEB_PROMPT)} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 flex items-center gap-2 cursor-pointer">
+                <Copy className="w-4 h-4" /> {copied ? 'Copié !' : 'Copier le prompt'}
+              </button>
+            </div>
+            <div className="p-4 bg-slate-900 text-slate-100 rounded-xl font-mono text-xs overflow-auto whitespace-pre-wrap" style={{ maxHeight: 'calc(100vh - 360px)' }}>
+              {promptView === 'windev' ? WINDEV_PROMPT : WEB_PROMPT}
+            </div>
           </div>}
         </div>
       </div>
