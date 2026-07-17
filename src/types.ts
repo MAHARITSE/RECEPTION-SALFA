@@ -73,6 +73,7 @@ export interface StockEntry {
   id: string; articleId: string; articleName: string; quantity: number;
   purchasePrice: number; supplier: string; invoiceRef: string;
   expiryDate?: string; date: string; enteredBy: string;
+  category?: 'central' | 'hospitalisation' | 'bloc'; // for achats hospit / bloc
 }
 
 export interface Message {
