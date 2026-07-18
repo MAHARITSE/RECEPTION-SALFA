@@ -28,10 +28,10 @@ interface DispLab {
   billable: boolean;
 }
 
-type Tab = 'awaiting' | 'completed' | 'all';
+type Tab = 'to_bill' | 'awaiting' | 'in_progress' | 'completed' | 'all';
 
 export default function LaboratoryModule({ state, setState }: Props) {
-  const [tab, setTab] = useState<Tab>('awaiting');
+  const [tab, setTab] = useState<Tab>('to_bill');
   const [search, setSearch] = useState('');
   const [filterCat, setFilterCat] = useState<string>('all');
   const [activeLab, setActiveLab] = useState<DispLab | null>(null);
@@ -110,14 +110,17 @@ export default function LaboratoryModule({ state, setState }: Props) {
       if (!d.patientName.toLowerCase().includes(q) && !(d.lr.examType.toLowerCase().includes(q))) return false;
     }
     if (filterCat !== 'all' && (d.lr.category || 'autre') !== filterCat) return false;
-    // Updated tabs: only awaiting (paid + sample) | completed | all
+    if (tab === 'to_bill') return d.lr.status === 'pending';
     if (tab === 'awaiting') return d.lr.status === 'paid' || d.lr.status === 'sample_received';
+    if (tab === 'in_progress') return d.lr.status === 'in_progress';
     if (tab === 'completed') return d.lr.status === 'completed';
     return true;
   });
 
   const counts = {
+    to_bill: allLabs.filter((d) => d.lr.status === 'pending').length,
     awaiting: allLabs.filter((d) => d.lr.status === 'paid' || d.lr.status === 'sample_received').length,
+    in_progress: allLabs.filter((d) => d.lr.status === 'in_progress').length,
     completed: allLabs.filter((d) => d.lr.status === 'completed').length,
   };
 
@@ -298,11 +301,19 @@ export default function LaboratoryModule({ state, setState }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* Stats — simplified: En attente + Terminées only (paid patients automatically go to "En attente", no "À facturer", no "En cours") */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
+      {/* Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-200">
+          <div className="flex items-center gap-3"><div className="p-2 bg-amber-100 rounded-lg"><Clock className="w-5 h-5 text-amber-600" /></div>
+            <div><div className="text-2xl font-bold text-slate-800">{counts.to_bill}</div><div className="text-sm text-slate-500">À facturer</div></div></div>
+        </div>
         <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-200">
           <div className="flex items-center gap-3"><div className="p-2 bg-cyan-100 rounded-lg"><Syringe className="w-5 h-5 text-cyan-600" /></div>
-            <div><div className="text-2xl font-bold text-slate-800">{counts.awaiting}</div><div className="text-sm text-slate-500">En attente (payé / échantillon)</div></div></div>
+            <div><div className="text-2xl font-bold text-slate-800">{counts.awaiting}</div><div className="text-sm text-slate-500">En attente / échantillon</div></div></div>
+        </div>
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-200">
+          <div className="flex items-center gap-3"><div className="p-2 bg-blue-100 rounded-lg"><Microscope className="w-5 h-5 text-blue-600" /></div>
+            <div><div className="text-2xl font-bold text-slate-800">{counts.in_progress}</div><div className="text-sm text-slate-500">En cours</div></div></div>
         </div>
         <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-200">
           <div className="flex items-center gap-3"><div className="p-2 bg-green-100 rounded-lg"><CheckCircle className="w-5 h-5 text-green-600" /></div>
@@ -332,7 +343,9 @@ export default function LaboratoryModule({ state, setState }: Props) {
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="flex border-b border-slate-200 overflow-x-auto">
           {[
+            { key: 'to_bill' as Tab, label: `À facturer (${counts.to_bill})` },
             { key: 'awaiting' as Tab, label: `En attente (${counts.awaiting})` },
+            { key: 'in_progress' as Tab, label: `En cours (${counts.in_progress})` },
             { key: 'completed' as Tab, label: `Terminées (${counts.completed})` },
             { key: 'all' as Tab, label: 'Toutes' },
           ].map((t) => (
