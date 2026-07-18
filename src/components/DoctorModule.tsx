@@ -155,12 +155,13 @@ export default function DoctorModule({ state, setState }: Props) {
     if (lines.length === 0 && labDraft.length === 0) { alert('Ajoutez au moins un médicament ou une analyse'); return; }
     const ct = clientType;
     // ---- Demandes d'analyses saisies par le médecin -> facture labo en attente + LabRequest global ----
+    const consultId = uuidv4();
     const labInvoiceId = labDraft.length > 0 ? uuidv4() : null;
     const newLabRequests: LabRequest[] = labDraft.map((d) => {
       const e = state.labCatalog.find((x) => x.id === d.examId)!;
       const price = d.urgent ? e.urgentPrice : ct === 'societe' ? e.priceSociete : ct === 'externe' ? e.priceExterne : e.priceComptoir;
       return {
-        id: uuidv4(), patientId: selectedPatientId, consultationId: '', examType: e.name, code: e.code,
+        id: uuidv4(), patientId: selectedPatientId, consultationId: consultId, examType: e.name, code: e.code,
         category: e.category, parameters: [...e.parameters], urgent: d.urgent, status: 'pending' as const,
         sampleType: e.sampleType, requestedBy: state.currentUser?.id || '', requestedAt: new Date().toISOString(),
         invoiceId: labInvoiceId || undefined, price,
@@ -168,9 +169,9 @@ export default function DoctorModule({ state, setState }: Props) {
     });
 
     const consultation: Consultation = {
-      id: uuidv4(), patientId: selectedPatientId, doctorId: state.currentUser?.id || '', doctorName: state.currentUser?.name || '',
+      id: consultId, patientId: selectedPatientId, doctorId: state.currentUser?.id || '', doctorName: state.currentUser?.name || '',
       date: new Date().toISOString(), vitalSigns: { ...vitals }, visitReason: consultForm.visitReason, diagnosis: consultForm.diagnosis, notes: consultForm.notes,
-      prescriptions: lines.map((l) => ({ ...l })), labRequests: [], hospitalizeRequested: consultForm.hospitalizeRequested, surgeryRequested: consultForm.surgeryRequested, isEmergency: consultForm.isEmergency,
+      prescriptions: lines.map((l) => ({ ...l })), labRequests: newLabRequests, hospitalizeRequested: consultForm.hospitalizeRequested, surgeryRequested: consultForm.surgeryRequested, isEmergency: consultForm.isEmergency,
     };
     setState((prev) => {
       let next: AppState = {
