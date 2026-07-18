@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Invoice, InvoiceItem, ClientType } from '../types';
 import type { AppState } from '../store';
 import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber, addJourneyEvent } from '../store';
-import { CreditCard, CheckCircle, DollarSign, Clock, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, X, UserPlus, Edit2, Plus } from 'lucide-react';
+import { CreditCard, CheckCircle, DollarSign, Clock, Trash2, Lock, Printer, Building2, Heart, Save, X, UserPlus, Edit2, Plus } from 'lucide-react';
 import { printPaymentTicket as openThermalTicket, printClosingTicket } from '../utils/printTicket';
 
 interface HbLine { id: string; articleName: string; quantity: number; unitPrice: number; discount: number; dateSort?: string; }
@@ -17,15 +17,6 @@ export default function CashierModule({ state, setState }: Props) {
   const [selConsultId, setSelConsultId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('payment');
   const [printTicket, setPrintTicket] = useState<string | null>(null);
-
-  // External sale
-  const [extSearch, setExtSearch] = useState('');
-  const [extSearchIdx, setExtSearchIdx] = useState(0);
-  const [extLines, setExtLines] = useState<HbLine[]>([]);
-  const [extSelLineId, setExtSelLineId] = useState<string | null>(null);
-  const [extLineForm, setExtLineForm] = useState<HbLine>({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: '' });
-  const [extIsNew, setExtIsNew] = useState(false);
-  const extSearchRef = useRef<HTMLInputElement>(null);
 
   // Hospit/Bloc
   const [hbRecords, setHbRecords] = useState<HbRecord[]>([]);
@@ -55,6 +46,9 @@ export default function CashierModule({ state, setState }: Props) {
   // regroupées avec les médicaments, au lieu d'être encaissées dans un onglet
   // séparé. Les anciennes factures labo restent toutefois reconnues pour la
   // compatibilité avec les données déjà enregistrées.
+
+  // === EXTERNAL (removed) ===
+
   const pendingForConsult = (consultationId: string) => {
     const consultation = state.consultations.find(c => c.id === consultationId);
     return state.invoices.filter(i => i.status === 'pending' && (
@@ -123,41 +117,6 @@ export default function CashierModule({ state, setState }: Props) {
     });
     openThermalTicket(state.ticketSettings, inv, targetPatient, state.currentUser || undefined);
     setSelConsultId(null);
-  };
-
-  // === EXTERNAL ===
-  const extFiltered = extSearch.length >= 1 ? state.articles.filter(a => a.name.toLowerCase().includes(extSearch.toLowerCase())) : [];
-  const extLineAmt = (l: HbLine) => Math.round(l.unitPrice * l.quantity * (1 - l.discount / 100));
-  const extTotal = extLines.reduce((s, l) => s + extLineAmt(l), 0);
-
-  const extSelectArticle = (articleId: string) => {
-    const a = state.articles.find(x => x.id === articleId);
-    if (!a) return;
-    const nl: HbLine = { id: uuidv4(), articleName: a.name, quantity: 1, unitPrice: getPrice(a, 'externe'), discount: 0 };
-    setExtLineForm({ ...nl }); setExtSelLineId(nl.id); setExtIsNew(true); setExtSearch('');
-  };
-  const extSaveLine = () => {
-    if (!extLineForm.articleName) return;
-    if (extIsNew || !extLines.find(l => l.id === extLineForm.id)) setExtLines([...extLines, { ...extLineForm }]);
-    else setExtLines(extLines.map(l => l.id === extLineForm.id ? { ...extLineForm } : l));
-    setExtIsNew(false); setExtLineForm({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0 }); setTimeout(() => extSearchRef.current?.focus(), 50);
-  };
-  const extKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); setExtSearchIdx(i => Math.min(i + 1, extFiltered.length - 1)); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setExtSearchIdx(i => Math.max(i - 1, 0)); }
-    else if (e.key === 'Enter') {
-      e.preventDefault();
-      if (extFiltered.length > 0 && extSearch) extSelectArticle(extFiltered[extSearchIdx].id);
-      else if (extLineForm.articleName) extSaveLine(); // Enter = validate
-    }
-    else if (e.key === 'Escape') setExtSearch('');
-  };
-  const extPay = () => {
-    if (extLines.length === 0) return;
-    const inv: Invoice = { id: uuidv4(), clientName: 'Client Externe', clientType: 'externe', items: extLines.map(l => ({ description: `${l.articleName} × ${l.quantity}`, amount: extLineAmt(l), category: 'pharmacy' as const })), totalAmount: extTotal, patientCharge: extTotal, status: 'paid', paidAt: new Date().toISOString(), paidBy: state.currentUser?.id || '', createdAt: new Date().toISOString(), isExternal: true };
-    setState(prev => { const next = { ...prev, invoices: [...prev.invoices, inv] }; addAuditLog(next, 'VENTE_EXTERNE', `Client Externe — ${formatAr(extTotal)}`); addNotification(next, 'pharmacy', `🛒 Client Externe — ${formatAr(extTotal)}`, 'info'); return next; });
-    openThermalTicket(state.ticketSettings, inv, undefined, state.currentUser || undefined);
-    setExtLines([]); setExtSearch('');
   };
 
   // === HOSPIT/BLOC ===
@@ -296,7 +255,6 @@ export default function CashierModule({ state, setState }: Props) {
   const paidInvoices = state.invoices.filter(inv => inv.status === 'paid');
   const todayInvoices = paidInvoices.filter(inv => new Date(inv.paidAt || '').toDateString() === new Date().toDateString());
   const todayTotal = todayInvoices.reduce((s, inv) => s + inv.patientCharge, 0);
-  const todayExtTotal = todayInvoices.filter(i => i.isExternal).reduce((s, i) => s + i.patientCharge, 0);
   const todayPartialTotal = hbRecords.reduce((s, h) => s + h.payments.filter(p => new Date(p.date).toDateString() === new Date().toDateString()).reduce((ss, p) => ss + p.amount, 0), 0);
   const grandTotal = todayTotal + todayPartialTotal;
 
@@ -305,11 +263,10 @@ export default function CashierModule({ state, setState }: Props) {
   return (
     <div className="space-y-4">
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="bg-white rounded-xl p-4 shadow-sm border"><div className="flex items-center gap-3"><div className="p-2 bg-amber-100 rounded-lg"><Clock className="w-5 h-5 text-amber-600" /></div><div><div className="text-2xl font-bold">{pendingPatients.length}</div><div className="text-sm text-slate-500">En attente</div></div></div></div>
         <div className="bg-white rounded-xl p-4 shadow-sm border"><div className="flex items-center gap-3"><div className="p-2 bg-green-100 rounded-lg"><CheckCircle className="w-5 h-5 text-green-600" /></div><div><div className="text-2xl font-bold">{todayInvoices.length}</div><div className="text-sm text-slate-500">Factures auj.</div></div></div></div>
         <div className="bg-white rounded-xl p-4 shadow-sm border"><div className="flex items-center gap-3"><div className="p-2 bg-emerald-100 rounded-lg"><DollarSign className="w-5 h-5 text-emerald-600" /></div><div><div className="text-lg font-bold font-mono">{formatAr(grandTotal)}</div><div className="text-sm text-slate-500">Total auj.</div></div></div></div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border"><div className="flex items-center gap-3"><div className="p-2 bg-purple-100 rounded-lg"><ShoppingCart className="w-5 h-5 text-purple-600" /></div><div><div className="text-lg font-bold font-mono">{formatAr(todayExtTotal)}</div><div className="text-sm text-slate-500">Ventes ext.</div></div></div></div>
       </div>
 
       {/* Tabs */}
@@ -351,47 +308,14 @@ export default function CashierModule({ state, setState }: Props) {
               </div>
 
               {/* Facture patient */}
-              <div className="lg:col-span-5">
+              <div className="lg:col-span-12">
                 {!selConsult || !selPatient ? <div className="p-12 text-center text-slate-400"><CreditCard className="w-16 h-16 mx-auto mb-4 opacity-30" /><p>Sélectionnez une consultation</p></div>
                   : <div>
                     <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg mb-3"><h3 className="font-bold">{selPatient.lastName} {selPatient.firstName} ({selPatient.dossier})</h3><p className="text-xs text-slate-500">{selConsult.doctorName} | {selConsult.diagnosis}</p><p className="text-xs text-cyan-700 font-medium mt-1">Facturation intégrée : médicaments et analyses sur le même reçu</p></div>
                     <div className="border rounded-lg overflow-hidden mb-3"><table className="w-full text-xs"><thead className="bg-slate-100"><tr><th className="p-2 text-left">Désignation</th><th className="p-2 text-center">Service</th><th className="p-2 text-right">Montant</th></tr></thead><tbody>{items.map((item, index) => (<tr key={`${item.description}-${index}`} className="border-t"><td className="p-2">{item.description}</td><td className="p-2 text-center"><span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${item.category === 'lab' ? 'bg-cyan-100 text-cyan-800' : 'bg-amber-100 text-amber-800'}`}>{item.category === 'lab' ? 'Laboratoire' : 'Médicament'}</span></td><td className="p-2 text-right font-mono">{formatAr(item.amount)}</td></tr>))}</tbody></table></div>
                     <div className="flex justify-between text-xl font-bold border-t-2 pt-2 mb-4"><span>À PAYER</span><span className="font-mono text-amber-600">{formatAr(totalAmount)}</span></div>
-                    <button onClick={handlePayment} className="w-full py-3 bg-amber-600 text-white rounded-xl font-semibold hover:bg-amber-700 cursor-pointer shadow-lg flex items-center justify-center gap-2"><CreditCard className="w-5 h-5" /> Encaisser {formatAr(totalAmount)}</button>
+                    <button onClick={() => handlePayment()} className="w-full py-3 bg-amber-600 text-white rounded-xl font-semibold hover:bg-amber-700 cursor-pointer shadow-lg flex items-center justify-center gap-2"><CreditCard className="w-5 h-5" /> Encaisser {formatAr(totalAmount)}</button>
                   </div>}
-              </div>
-
-              {/* VENTE EXTERNE À DROITE (même modèle Sage que l'ancien onglet supprimé) */}
-              <div className="lg:col-span-4 border border-purple-200 rounded-lg bg-purple-50 p-2 self-start lg:sticky lg:top-0 overflow-auto" style={{maxHeight: 'calc(100vh - 380px)'}}>
-                <h3 className="font-bold text-sm text-purple-800 mb-1.5 flex items-center gap-1"><ShoppingCart className="w-4 h-4" /> Vente externe</h3>
-
-                <div className="bg-[#f4f4f4] border border-slate-300 rounded text-xs select-none mb-1.5">
-                  <div className="bg-slate-100 border-b border-slate-300 p-1 m-1 mb-0 rounded shadow-inner">
-                    <div className="flex flex-wrap items-end gap-0.5">
-                      <div className="flex-1 min-w-[105px] relative">
-                        <label className="block text-[8px] text-slate-500">Article (↑↓ Entrée)</label>
-                        <input ref={extSearchRef} type="text" value={extLineForm.articleName && !extSearch ? extLineForm.articleName : extSearch} onChange={e => { setExtSearch(e.target.value); setExtSearchIdx(0); }} onKeyDown={extKeyDown} className="w-full bg-white border border-blue-400 rounded px-1 py-0.5 text-[10px] font-mono outline-none focus:border-blue-600" placeholder="🔍 Article..." />
-                        {extSearch.length >= 1 && extFiltered.length > 0 && <div className="absolute top-full left-0 right-0 bg-white border rounded-b shadow-xl z-30 max-h-28 overflow-y-auto">{extFiltered.map((a, idx) => (<div key={a.id} onClick={() => extSelectArticle(a.id)} className={`px-1 py-0.5 cursor-pointer text-[10px] flex justify-between border-b ${idx === extSearchIdx ? 'bg-blue-100' : 'hover:bg-blue-50'}`}><span>[{a.family}] {a.name}</span><span className="font-mono text-blue-600">{formatAr(getPrice(a, 'externe'))}</span></div>))}</div>}
-                      </div>
-                      <div className="w-9"><label className="block text-[8px] text-slate-500">Qté</label><input type="number" min={1} value={extLineForm.quantity} onChange={e => setExtLineForm({...extLineForm, quantity: parseInt(e.target.value)||1})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-white border border-slate-300 rounded px-0.5 py-0.5 text-[10px] text-right font-mono outline-none" /></div>
-                      <div className="w-9"><label className="block text-[8px] text-slate-500">Rem%</label><input type="number" min={0} max={100} value={extLineForm.discount} onChange={e => setExtLineForm({...extLineForm, discount: parseInt(e.target.value)||0})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-white border border-slate-300 rounded px-0.5 py-0.5 text-[10px] text-right font-mono outline-none" /></div>
-                      <div className="w-14"><label className="block text-[8px] text-slate-500">P.U.</label><input readOnly value={formatAr(extLineForm.unitPrice)} className="w-full bg-slate-200 border border-slate-300 rounded px-0.5 py-0.5 text-[10px] text-right font-mono" /></div>
-                      <div className="w-16"><label className="block text-[8px] text-slate-500">Montant</label><input readOnly value={formatAr(extLineAmt(extLineForm))} className="w-full bg-slate-200 border border-slate-300 rounded px-0.5 py-0.5 text-[10px] text-right font-mono font-bold" /></div>
-                    </div>
-                    <div className="flex justify-end gap-0.5 mt-0.5">
-                      <button onClick={() => { if (extSelLineId) { setExtLines(extLines.filter(l => l.id !== extSelLineId)); setExtSelLineId(null); }}} disabled={!extSelLineId} className="px-1 py-0.5 bg-white border border-slate-300 rounded text-[8px] disabled:opacity-40 cursor-pointer"><Trash2 className="h-2.5 w-2.5 text-rose-600 inline" /></button>
-                      <button onClick={extSaveLine} disabled={!extLineForm.articleName} className="px-1 py-0.5 bg-sky-500 text-white border border-sky-600 rounded text-[8px] disabled:opacity-40 cursor-pointer"><Save className="h-2.5 w-2.5 inline" /> Enreg.</button>
-                    </div>
-                  </div>
-                  <div className="bg-white mx-1 mb-1 border-t border-slate-300 overflow-x-auto rounded-b">
-                    <table className="w-full text-[9px]"><thead className="bg-slate-50 border-b text-slate-600"><tr className="divide-x divide-slate-200"><th className="p-0.5 min-w-[95px]">Article</th><th className="p-0.5 text-right w-7">Qté</th><th className="p-0.5 text-center w-7">Rem%</th><th className="p-0.5 text-right w-12">P.U.</th><th className="p-0.5 text-right w-14">Montant</th></tr></thead>
-                      <tbody className="divide-y font-mono">{extLines.map(l => (<tr key={l.id} onClick={() => { setExtSelLineId(l.id); setExtLineForm({...l}); setExtIsNew(false); }} className={`cursor-pointer divide-x divide-slate-200 ${l.id === extSelLineId ? 'bg-blue-500 text-white' : 'hover:bg-slate-50'}`}><td className="p-0.5 font-sans truncate text-[9px]">{l.articleName}</td><td className="p-0.5 text-right">{l.quantity}</td><td className="p-0.5 text-center">{l.discount > 0 ? `${l.discount}%` : '—'}</td><td className="p-0.5 text-right">{l.unitPrice.toLocaleString('fr-FR')}</td><td className="p-0.5 text-right font-bold">{extLineAmt(l).toLocaleString('fr-FR')}</td></tr>))}{extLines.length === 0 && <tr><td colSpan={5} className="p-1 text-center text-slate-400 font-sans text-[9px]">Tapez un article</td></tr>}</tbody>
-                      {extLines.length > 0 && <tfoot className="bg-emerald-50 border-t-2 border-emerald-300"><tr><td colSpan={3} className="p-0.5 text-right font-bold font-sans">TOTAL</td><td colSpan={2} className="p-0.5 text-right font-mono font-bold">{formatAr(extTotal)}</td></tr></tfoot>}
-                    </table>
-                  </div>
-                </div>
-
-                <button onClick={extPay} disabled={extLines.length === 0} className="w-full py-1.5 bg-purple-600 text-white rounded text-xs font-semibold hover:bg-purple-700 disabled:opacity-40 cursor-pointer flex items-center justify-center gap-1"><CreditCard className="w-3 h-3" /> Encaisser {formatAr(extTotal)}</button>
               </div>
             </div>
           )}
@@ -451,8 +375,7 @@ export default function CashierModule({ state, setState }: Props) {
                     {
                       title: '1. PAR FAMILLE',
                       rows: [
-                        { label: 'Consultations', value: formatAr(todayTotal - todayExtTotal) },
-                        { label: 'Ventes Externes', value: formatAr(todayExtTotal) },
+                        { label: 'Consultations', value: formatAr(todayTotal) },
                         { label: 'Hospit / Bloc', value: formatAr(todayPartialTotal) },
                       ],
                       total: formatAr(grandTotal),
@@ -481,7 +404,7 @@ export default function CashierModule({ state, setState }: Props) {
                   printClosingTicket(state.ticketSettings, state.currentUser || { id: 'SYS', name: 'Caissier', role: 'cashier' }, new Date(), sections, formatAr(grandTotal));
                 }} className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm cursor-pointer flex items-center gap-2"><Printer className="w-4 h-4" /> 🧾 Imprimer Z ({state.ticketSettings.paperWidth}mm)</button>
               </div>
-              <div className="bg-white border rounded-lg p-4"><h4 className="font-bold text-sm mb-2">1. Versements par famille</h4><div className="grid grid-cols-3 gap-2"><div className="p-3 bg-green-50 rounded flex justify-between"><span>Consultations</span><span className="font-mono font-bold">{formatAr(todayTotal - todayExtTotal)}</span></div><div className="p-3 bg-purple-50 rounded flex justify-between"><span>Ventes Ext.</span><span className="font-mono font-bold">{formatAr(todayExtTotal)}</span></div><div className="p-3 bg-rose-50 rounded flex justify-between"><span>Hospit/Bloc</span><span className="font-mono font-bold">{formatAr(todayPartialTotal)}</span></div></div></div>
+              <div className="bg-white border rounded-lg p-4"><h4 className="font-bold text-sm mb-2">1. Versements par famille</h4><div className="grid grid-cols-2 gap-2"><div className="p-3 bg-green-50 rounded flex justify-between"><span>Consultations</span><span className="font-mono font-bold">{formatAr(todayTotal)}</span></div><div className="p-3 bg-rose-50 rounded flex justify-between"><span>Hospit/Bloc</span><span className="font-mono font-bold">{formatAr(todayPartialTotal)}</span></div></div></div>
               {hbRecords.filter(h => h.payments.length > 0).length > 0 && <div className="bg-white border rounded-lg p-4"><h4 className="font-bold text-sm mb-2">2. Hospitalisation & Bloc</h4><table className="w-full text-xs"><thead className="bg-slate-100"><tr><th className="p-2 text-left">Patient</th><th className="p-2">Type</th><th className="p-2 text-right">Facture</th><th className="p-2 text-right">Reçu</th><th className="p-2 text-right">Reste</th><th className="p-2">Caissier</th></tr></thead><tbody>{hbRecords.filter(h => h.payments.length > 0).map(h => { const tf = h.lines.reduce((s,l) => s+hbLineAmt(l),0); const tp = h.payments.reduce((s,p) => s+p.amount,0); return (<tr key={h.id} className="border-b"><td className="p-2">{h.patientName}</td><td className="p-2 text-center"><span className={`px-1 py-0.5 rounded text-[10px] font-bold ${h.type==='hospit'?'bg-rose-100 text-rose-700':'bg-blue-100 text-blue-700'}`}>{h.type==='hospit'?'Hosp.':'Bloc'}</span></td><td className="p-2 text-right font-mono">{formatAr(tf)}</td><td className="p-2 text-right font-mono text-green-600">{formatAr(tp)}</td><td className="p-2 text-right font-mono text-red-600">{formatAr(tf-tp)}</td><td className="p-2">{h.payments.map(p => p.paidBy).filter((v,i,a) => a.indexOf(v)===i).join(', ')}</td></tr>); })}</tbody></table></div>}
               <div className="bg-gradient-to-r from-emerald-50 to-green-50 border-2 border-emerald-300 rounded-lg p-6 text-center"><div className="text-sm text-slate-600">3. TOTAL GÉNÉRAL</div><div className="text-4xl font-bold font-mono text-emerald-700">{formatAr(grandTotal)}</div></div>
               <div className="bg-white border rounded-lg p-4"><h4 className="font-bold text-sm mb-2">4. Liste clients</h4><table className="w-full text-xs"><thead className="bg-slate-100"><tr><th className="p-2 text-left">Heure</th><th className="p-2 text-left">Client</th><th className="p-2">Type</th><th className="p-2 text-right">Montant</th></tr></thead><tbody>
