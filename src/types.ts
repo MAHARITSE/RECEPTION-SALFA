@@ -5,6 +5,12 @@ export type PatientStatus = 'registered' | 'waiting_consultation' | 'in_consulta
 
 export interface User { id: string; name: string; role: UserRole; password?: string; }
 
+export interface TicketSettings {
+  facilityName: string; address: string; phone: string; nif: string;
+  logoUrl: string; receiptTitle: string; footerMessage: string;
+  paperWidth: 58 | 80; autoPrint: boolean;
+}
+
 export interface VitalSigns {
   temperature: string; bloodPressureSystolic: string; bloodPressureDiastolic: string;
   heartRate: string; oxygenSaturation: string; weight: string; height: string; tdr?: string;

@@ -4,6 +4,7 @@ import type { Invoice, InvoiceItem, ClientType } from '../types';
 import type { AppState } from '../store';
 import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber } from '../store';
 import { CreditCard, CheckCircle, DollarSign, Clock, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, X, UserPlus, Edit2, Plus } from 'lucide-react';
+import { printTicket as openThermalTicket } from '../utils/printTicket';
 
 interface HbLine { id: string; articleName: string; quantity: number; unitPrice: number; discount: number; dateSort?: string; }
 interface HbRecord { id: string; patientId?: string; patientName: string; clientType: ClientType; company?: string; type: 'hospit' | 'bloc'; lines: HbLine[]; payments: { amount: number; paidBy: string; date: string }[]; }
@@ -74,7 +75,7 @@ export default function CashierModule({ state, setState }: Props) {
       if (selConsult.prescriptions.length > 0) addNotification(next, 'pharmacy', `💊 ${selPatient.lastName} ${selPatient.firstName}`, 'info');
       return next;
     });
-    setPrintTicket(`🧾 TICKET CAISSE\n${new Date().toLocaleString('fr-FR')}\n${state.currentUser?.name}\n${'─'.repeat(32)}\n${selPatient.lastName} ${selPatient.firstName}\n${'─'.repeat(32)}\n${items.map(i => `${i.description}\n  ${formatAr(i.amount)}`).join('\n')}\n${'─'.repeat(32)}\nTOTAL: ${formatAr(totalAmount)}`);
+    openThermalTicket(state.ticketSettings, inv, selPatient, state.currentUser || undefined);
     setSelConsultId(null);
   };
 
@@ -109,6 +110,7 @@ export default function CashierModule({ state, setState }: Props) {
     if (extLines.length === 0) return;
     const inv: Invoice = { id: uuidv4(), clientName: 'Client Externe', clientType: 'externe', items: extLines.map(l => ({ description: `${l.articleName} × ${l.quantity}`, amount: extLineAmt(l), category: 'pharmacy' as const })), totalAmount: extTotal, patientCharge: extTotal, status: 'paid', paidAt: new Date().toISOString(), paidBy: state.currentUser?.id || '', createdAt: new Date().toISOString(), isExternal: true };
     setState(prev => { const next = { ...prev, invoices: [...prev.invoices, inv] }; addAuditLog(next, 'VENTE_EXTERNE', `Client Externe — ${formatAr(extTotal)}`); addNotification(next, 'pharmacy', `🛒 Client Externe — ${formatAr(extTotal)}`, 'info'); return next; });
+    openThermalTicket(state.ticketSettings, inv, undefined, state.currentUser || undefined);
     setExtLines([]); setExtSearch('');
   };
 

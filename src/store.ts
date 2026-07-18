@@ -83,7 +83,7 @@ export const SURGERY_FEE = 500000;
 export const HOSPITALIZATION_FEE = 80000;
 
 export interface AppState {
-  currentUser: User | null; patients: Patient[]; consultations: Consultation[];
+  currentUser: User | null; ticketSettings: import('./types').TicketSettings; patients: Patient[]; consultations: Consultation[];
   invoices: Invoice[]; articles: Article[]; beds: Bed[];
   hospitalizations: HospitalizationRecord[]; stockTransfers: StockTransfer[];
   stockEntries: StockEntry[]; auditLogs: AuditLog[]; notifications: Notification[];
@@ -92,7 +92,13 @@ export interface AppState {
 
 export function createInitialState(): AppState {
   return {
-    currentUser: null, patients: [...seedPatients], consultations: [], invoices: [],
+    currentUser: null,
+    ticketSettings: {
+      facilityName: 'RÉCEPTION SALFA', address: 'Madagascar', phone: '', nif: '', logoUrl: '',
+      receiptTitle: 'REÇU DE PAIEMENT', footerMessage: 'Merci de votre confiance. À bientôt !',
+      paperWidth: 80, autoPrint: true,
+    },
+    patients: [...seedPatients], consultations: [], invoices: [],
     articles: [...seedArticles], beds: [...seedBeds], hospitalizations: [],
     stockTransfers: [], stockEntries: [], auditLogs: [], notifications: [],
     messages: [], users: [...users], companies: [...seedCompanies],

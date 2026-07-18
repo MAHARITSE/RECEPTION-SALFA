@@ -6,7 +6,7 @@ import { ARTICLE_FAMILIES, familyLabel, formatAr } from '../store';
 import { DollarSign, Save, Trash2, Plus, X, Check } from 'lucide-react';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
-type Tab = 'users' | 'articles' | 'prices' | 'companies' | 'prompts';
+type Tab = 'users' | 'articles' | 'prices' | 'companies' | 'tickets' | 'prompts';
 import { WINDEV_PROMPT, WEB_PROMPT } from '../data/promptsData';
 import { Copy } from 'lucide-react';
 
@@ -59,7 +59,7 @@ export default function AdminModule({ state, setState }: Props) {
     <div className="space-y-4">
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
         <div className="flex border-b overflow-x-auto">
-          {[{ key:'users' as Tab, l:'👥 Utilisateurs' },{ key:'articles' as Tab, l:'📦 Articles' },{ key:'prices' as Tab, l:'💰 Tarifs' },{ key:'companies' as Tab, l:'🏢 Sociétés / Clients' },{ key:'prompts' as Tab, l:'📜 Prompts & Spécifications' }].map((t) => (
+          {[{ key:'users' as Tab, l:'👥 Utilisateurs' },{ key:'articles' as Tab, l:'📦 Articles' },{ key:'prices' as Tab, l:'💰 Tarifs' },{ key:'companies' as Tab, l:'🏢 Sociétés / Clients' },{ key:'tickets' as Tab, l:'🧾 Tickets & impression' },{ key:'prompts' as Tab, l:'📜 Prompts & Spécifications' }].map((t) => (
             <button key={t.key} onClick={() => setTab(t.key)} className={`px-6 py-3 text-sm font-medium border-b-2 cursor-pointer whitespace-nowrap ${tab===t.key?'border-slate-800 text-slate-800 bg-slate-100':'border-transparent text-slate-500'}`}>{t.l}</button>
           ))}
         </div>
@@ -113,6 +113,22 @@ export default function AdminModule({ state, setState }: Props) {
             <button onClick={() => setAddCompany(true)} className="mb-3 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-2 cursor-pointer text-sm"><Plus className="w-4 h-4" /> Nouvelle société</button>
             {addCompany && <div className="flex gap-2 mb-3"><input type="text" value={newCompany} onChange={(e) => setNewCompany(e.target.value)} className="flex-1 px-3 py-2 border rounded-lg outline-none" placeholder="Nom de la société" /><button onClick={saveCompany} className="px-4 py-2 bg-emerald-600 text-white rounded-lg cursor-pointer"><Check className="w-4 h-4" /></button><button onClick={() => setAddCompany(false)} className="px-4 py-2 bg-slate-400 text-white rounded-lg cursor-pointer"><X className="w-4 h-4" /></button></div>}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">{state.companies.map((c) => (<div key={c.id} className="flex items-center justify-between px-3 py-2 bg-slate-50 border rounded-lg"><span className="font-medium text-sm">{c.name}</span><button onClick={() => deleteCompany(c.id)} className="text-red-500 cursor-pointer"><Trash2 className="w-4 h-4" /></button></div>))}</div>
+          </div>}
+
+          {tab === 'tickets' && <div className="max-w-4xl space-y-5">
+            <div><h3 className="font-bold text-slate-800">Paramètres des reçus thermiques</h3><p className="text-sm text-slate-500">Ces informations apparaissent sur chaque reçu de caisse. Format POS 58 ou 80 mm.</p></div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 rounded-xl border bg-slate-50">
+              <label className="text-sm font-medium">Nom de l'établissement<input value={state.ticketSettings.facilityName} onChange={e => setState(p => ({...p, ticketSettings:{...p.ticketSettings, facilityName:e.target.value}}))} className="mt-1 w-full px-3 py-2 border rounded-lg bg-white" /></label>
+              <label className="text-sm font-medium">Titre du reçu<input value={state.ticketSettings.receiptTitle} onChange={e => setState(p => ({...p, ticketSettings:{...p.ticketSettings, receiptTitle:e.target.value}}))} className="mt-1 w-full px-3 py-2 border rounded-lg bg-white" /></label>
+              <label className="text-sm font-medium">Adresse<input value={state.ticketSettings.address} onChange={e => setState(p => ({...p, ticketSettings:{...p.ticketSettings, address:e.target.value}}))} className="mt-1 w-full px-3 py-2 border rounded-lg bg-white" /></label>
+              <label className="text-sm font-medium">Téléphone<input value={state.ticketSettings.phone} onChange={e => setState(p => ({...p, ticketSettings:{...p.ticketSettings, phone:e.target.value}}))} className="mt-1 w-full px-3 py-2 border rounded-lg bg-white" /></label>
+              <label className="text-sm font-medium">NIF<input value={state.ticketSettings.nif} onChange={e => setState(p => ({...p, ticketSettings:{...p.ticketSettings, nif:e.target.value}}))} className="mt-1 w-full px-3 py-2 border rounded-lg bg-white" /></label>
+              <label className="text-sm font-medium">URL du logo (facultatif)<input value={state.ticketSettings.logoUrl} onChange={e => setState(p => ({...p, ticketSettings:{...p.ticketSettings, logoUrl:e.target.value}}))} placeholder="https://…" className="mt-1 w-full px-3 py-2 border rounded-lg bg-white" /></label>
+              <label className="text-sm font-medium md:col-span-2">Message de pied de ticket<input value={state.ticketSettings.footerMessage} onChange={e => setState(p => ({...p, ticketSettings:{...p.ticketSettings, footerMessage:e.target.value}}))} className="mt-1 w-full px-3 py-2 border rounded-lg bg-white" /></label>
+              <label className="text-sm font-medium">Largeur papier<select value={state.ticketSettings.paperWidth} onChange={e => setState(p => ({...p, ticketSettings:{...p.ticketSettings, paperWidth:Number(e.target.value) as 58|80}}))} className="mt-1 w-full px-3 py-2 border rounded-lg bg-white"><option value={58}>58 mm</option><option value={80}>80 mm</option></select></label>
+              <label className="mt-6 flex items-center gap-2 text-sm font-medium cursor-pointer"><input type="checkbox" checked={state.ticketSettings.autoPrint} onChange={e => setState(p => ({...p, ticketSettings:{...p.ticketSettings, autoPrint:e.target.checked}}))} className="w-4 h-4" /> Lancer l'impression automatiquement</label>
+            </div>
+            <div className="rounded-xl border p-4 max-w-xs font-mono text-xs bg-white text-center"><b>{state.ticketSettings.facilityName}</b><br/>{state.ticketSettings.address}<br/>{state.ticketSettings.phone && `Tél. : ${state.ticketSettings.phone}`}<hr className="my-2 border-dashed"/><b>{state.ticketSettings.receiptTitle}</b><br/><span className="text-slate-500">N° 00000001 · 18/07/2026</span><hr className="my-2 border-dashed"/><div className="flex justify-between"><span>Prestation × 1</span><span>10 000 Ar</span></div><hr className="my-2 border-dashed"/><div className="flex justify-between font-bold text-sm"><span>TOTAL PAYÉ</span><span>10 000 Ar</span></div><hr className="my-2 border-dashed"/>{state.ticketSettings.footerMessage}</div>
           </div>}
 
           {tab === 'prompts' && <div className="space-y-4">
