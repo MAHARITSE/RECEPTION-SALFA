@@ -4,7 +4,7 @@ import type { Consultation, VitalSigns, Prescription, LabRequest, ClientType, In
 import type { AppState } from '../store';
 import { addAuditLog, addNotification, formatAr, getPrice, addJourneyEvent, labCategoryLabel } from '../store';
 import { printPrescriptionTicket, printLabRequestTicket } from '../utils/printTicket';
-import { Stethoscope, History, Trash2, AlertTriangle, Heart, FileText, Clock, CheckCircle, Send, Search, Edit2, RotateCcw, Save, Printer, FlaskConical } from 'lucide-react';
+import { Stethoscope, History, Trash2, AlertTriangle, Heart, FileText, Clock, CheckCircle, Send, Search, Edit2, RotateCcw, Save, Printer, FlaskConical, FolderOpen } from 'lucide-react';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
 type ViewMode = 'queue' | 'consultation' | 'my_consults';
@@ -13,6 +13,8 @@ export default function DoctorModule({ state, setState }: Props) {
   const [view, setView] = useState<ViewMode>('queue');
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [editingConsultId, setEditingConsultId] = useState<string | null>(null);
+  const [backupConsult, setBackupConsult] = useState<Consultation | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [articleSearch, setArticleSearch] = useState('');
   const [artSearchIdx, setArtSearchIdx] = useState(0);
@@ -27,6 +29,9 @@ export default function DoctorModule({ state, setState }: Props) {
   // ---- Demandes d'analyses (Laboratoire) saisies par le médecin ----
   const [labSearch, setLabSearch] = useState('');
   const [labDraft, setLabDraft] = useState<{ examId: string; urgent: boolean }[]>([]);
+
+  // Access to full patient history / analyses / results for doctor (from "saisie de patients")
+  const [showPatientRecord, setShowPatientRecord] = useState(false);
 
   const myWaiting = state.patients.filter((p) => (!p.assignedDoctor || p.assignedDoctor === state.currentUser?.id) && p.status === 'waiting_consultation');
   const searchResults = searchQuery.length >= 2 ? state.patients.filter((p) => { const q = searchQuery.toLowerCase(); return p.firstName.toLowerCase().includes(q) || p.lastName.toLowerCase().includes(q) || p.dossier.toLowerCase().includes(q); }) : [];
@@ -142,10 +147,38 @@ export default function DoctorModule({ state, setState }: Props) {
     setState((prev) => ({ ...prev, consultations: prev.consultations.map((x) => x.id === cid ? { ...x, prescriptions: x.prescriptions.map((p) => ({ ...p, delivered: false })) } : x), patients: prev.patients.map((p) => p.id === c.patientId ? { ...p, status: 'consulted_awaiting_payment' as const } : p), invoices: prev.invoices.filter((i) => i.consultationId !== cid) }));
   };
 
+  // SAFE RETURN — prevents data loss when clicking "Modifier" then "Retour"
+  const goBackToQueue = () => {
+    if (editingConsultId && backupConsult) {
+      // Restore the original consultation exactly as it was (data safety)
+      setState((prev) => ({
+        ...prev,
+        consultations: [...prev.consultations, { ...backupConsult }],
+        patients: prev.patients.map((p) =>
+          p.id === backupConsult.patientId
+            ? { ...p, status: 'consulted_awaiting_payment' as const }
+            : p
+        ),
+      }));
+    }
+    setEditingConsultId(null);
+    setBackupConsult(null);
+    setSelectedPatientId(null);
+    setLines([]);
+    setLabDraft([]);
+    setConsultForm({ visitReason: '', diagnosis: '', notes: '', isEmergency: false, hospitalizeRequested: false, surgeryRequested: false });
+    setVitals({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' });
+    setView('queue');
+  };
+
   const reEditConsultation = (cid: string) => {
     const c = state.consultations.find((x) => x.id === cid);
     if (!c) return;
-    setSelectedPatientId(c.patientId); setConsultForm({ visitReason: c.visitReason, diagnosis: c.diagnosis, notes: c.notes, isEmergency: c.isEmergency, hospitalizeRequested: c.hospitalizeRequested, surgeryRequested: c.surgeryRequested });
+    // BACKUP the original consult so "Retour" can restore it safely (no data loss)
+    setBackupConsult({ ...c, prescriptions: [...c.prescriptions], labRequests: [...(c.labRequests || [])] });
+    setEditingConsultId(cid);
+    setSelectedPatientId(c.patientId); 
+    setConsultForm({ visitReason: c.visitReason, diagnosis: c.diagnosis, notes: c.notes, isEmergency: c.isEmergency, hospitalizeRequested: c.hospitalizeRequested, surgeryRequested: c.surgeryRequested });
     setVitals({ ...c.vitalSigns }); setLines([...c.prescriptions]); setView('consultation');
     setState((prev) => ({ ...prev, consultations: prev.consultations.filter((x) => x.id !== cid), patients: prev.patients.map((p) => p.id === c.patientId ? { ...p, status: 'in_consultation' as const } : p) }));
   };
@@ -203,6 +236,11 @@ export default function DoctorModule({ state, setState }: Props) {
     if (state.currentUser && newLabRequests.length > 0) {
       printLabRequestTicket(state.ticketSettings, selectedPatient!, state.currentUser, new Date(), newLabRequests);
     }
+    // If we were editing, discard the backup (we submitted the new version)
+    if (editingConsultId) {
+      setEditingConsultId(null);
+      setBackupConsult(null);
+    }
     setSelectedPatientId(null); setConsultForm({ visitReason: '', diagnosis: '', notes: '', isEmergency: false, hospitalizeRequested: false, surgeryRequested: false });
     setVitals({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' });
     setLines([]); setShowHistory(false); setSearchQuery(''); setSelectedLineId(null); setIsNewLine(false); setLabDraft([]); setLabSearch(''); setView('queue');
@@ -257,7 +295,9 @@ export default function DoctorModule({ state, setState }: Props) {
           <div className="bg-white rounded-xl shadow-sm border p-3">
             <div className="flex justify-between items-start">
               <div><h3 className="font-bold text-lg">{selectedPatient.lastName} {selectedPatient.firstName} <span className="text-sm font-mono text-blue-600">({selectedPatient.dossier})</span>{selectedPatient.company && <span className="ml-2 px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700">{selectedPatient.company}</span>}</h3><div className="text-sm text-slate-500">{selectedPatient.gender === 'M' ? 'H' : 'F'} | {selectedPatient.age}</div></div>
-              <div className="flex gap-2"><button onClick={() => setShowHistory(!showHistory)} className="px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded text-xs cursor-pointer"><History className="w-3 h-3 inline" /> ({patientConsultations.length})</button><button onClick={() => setView('queue')} className="px-2 py-1 bg-slate-200 rounded text-xs cursor-pointer">← Retour</button></div>
+              <div className="flex gap-2"><button onClick={() => setShowHistory(!showHistory)} className="px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded text-xs cursor-pointer flex items-center gap-1"><History className="w-3 h-3" /> Consult. ({patientConsultations.length})</button>
+                <button onClick={() => setShowPatientRecord(true)} className="px-2 py-1 bg-cyan-100 hover:bg-cyan-200 text-cyan-800 rounded text-xs cursor-pointer flex items-center gap-1" title="Accès à l'historique du patient : analyses faites + résultats"><FolderOpen className="w-3 h-3" /> Historique patient</button>
+                <button onClick={goBackToQueue} className="px-2 py-1 bg-slate-200 rounded text-xs cursor-pointer">← Retour</button></div>
             </div>
             {selectedPatient.allergies.length > 0 && <div className="mt-1 p-1.5 bg-red-50 border border-red-200 rounded text-xs text-red-700"><AlertTriangle className="w-3 h-3 inline" /> {selectedPatient.allergies.join(', ')}</div>}
           </div>
