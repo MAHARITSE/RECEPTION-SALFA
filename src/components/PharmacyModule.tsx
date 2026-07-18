@@ -1,24 +1,16 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { AppState } from '../store';
 import type { StockTransfer, TransferCategory } from '../types';
 import { addAuditLog, addNotification, formatAr, familyLabel, transferCategoryLabel, transferCategoryColor } from '../store';
 import {
   Pill, Package, CheckCircle, AlertTriangle, Clock, Search, PackageCheck, Send,
-  Plus, Trash2, Save, X, Edit3, FileText, Filter
+  Plus, Trash2, Edit3, FileText, Filter
 } from 'lucide-react';
+import DemandeAchatForm, { type ReqLine } from './DemandeAchatForm';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
 type Tab = 'pending' | 'stock' | 'delivered' | 'request' | 'history';
-
-type ReqLine = {
-  id: string;
-  articleId: string;
-  articleName: string;
-  family: any;
-  quantity: number;
-  notes: string;
-};
 
 const CATEGORIES: TransferCategory[] = ['approvisionnement', 'hospitalisation', 'bloc', 'central'];
 
@@ -30,15 +22,9 @@ export default function PharmacyModule({ state, setState }: Props) {
   // Modal state for new/edit request
   const [modalOpen, setModalOpen] = useState(false);
   const [modalEditingId, setModalEditingId] = useState<string | null>(null);
-  const [reqLines, setReqLines] = useState<ReqLine[]>([]);
-  const [reqCategory, setReqCategory] = useState<TransferCategory>('approvisionnement');
-  const [reqGlobalNotes, setReqGlobalNotes] = useState('');
-  const [reqSelLineId, setReqSelLineId] = useState<string | null>(null);
-  const [reqLineForm, setReqLineForm] = useState<ReqLine>({ id: '', articleId: '', articleName: '', family: 'MEDIC', quantity: 10, notes: '' });
-  const [reqSearch, setReqSearch] = useState('');
-  const [reqSearchIdx, setReqSearchIdx] = useState(0);
-  const [reqLineIsNew, setReqLineIsNew] = useState(true);
-  const reqSearchRef = useRef<HTMLInputElement>(null);
+  const [editingLine, setEditingLine] = useState<ReqLine | null>(null);
+  const [editingNotes, setEditingNotes] = useState('');
+  const [editingCategory, setEditingCategory] = useState<TransferCategory | undefined>(undefined);
 
   const paidConsultations = state.consultations.filter((c) => {
     const inv = state.invoices.find((i) => i.consultationId === c.id && i.status === 'paid' && !i.isExternal);
@@ -53,125 +39,75 @@ export default function PharmacyModule({ state, setState }: Props) {
   const lowStock = state.articles.filter((a) => a.stockPharmacie <= a.minStockPharmacie).length;
   const filtered = state.articles.filter((a) => a.name.toLowerCase().includes(searchStock.toLowerCase()));
 
-  // Requests list (all sent by pharmacy, includes re-appro / hospit / bloc / achat)
-  const myRequests = state.stockTransfers.filter((t) => t.requestedBy === state.currentUser?.id || true); // show all requests; pharm only sends 'approvisionnement' but display all for visibility
+  // Requests list
+  const myRequests = state.stockTransfers;
   const myRequestsFiltered = myRequests.filter((t) => filterCat === 'all' || t.category === filterCat);
 
   // ==== Modal logic ====
   const openNewRequest = () => {
     setModalEditingId(null);
-    setReqLines([]);
-    setReqCategory('approvisionnement');
-    setReqGlobalNotes('');
-    reqLineNew();
+    setEditingLine(null);
+    setEditingNotes('');
+    setEditingCategory(undefined);
     setModalOpen(true);
-    setTimeout(() => reqSearchRef.current?.focus(), 60);
   };
 
   const openEditRequest = (transferId: string) => {
-    // Edit an existing pending request (single-line) -> load it into the modal
     const tr = state.stockTransfers.find((t) => t.id === transferId);
     if (!tr) return;
     if (tr.status !== 'requested') { alert('Impossible de modifier une demande déjà traitée.'); return; }
-    setModalEditingId(tr.id);
-    setReqCategory(tr.category);
-    setReqGlobalNotes(tr.notes || '');
     const a = state.articles.find((x) => x.id === tr.articleId);
-    const line: ReqLine = { id: uuidv4(), articleId: tr.articleId, articleName: tr.articleName, family: a?.family || 'MEDIC', quantity: tr.quantity, notes: tr.notes || '' };
-    setReqLines([line]);
-    setReqSelLineId(line.id);
-    setReqLineForm(line);
-    setReqLineIsNew(false);
-    setReqSearch('');
+    const line: ReqLine = {
+      id: uuidv4(),
+      articleId: tr.articleId,
+      articleName: tr.articleName,
+      family: a?.family || 'MEDIC',
+      quantity: tr.quantity,
+      purchasePrice: tr.purchasePrice || a?.purchasePrice || 0,
+      expiryDate: tr.expiryDate || a?.expiryDate || '',
+      notes: tr.notes || '',
+      amount: tr.quantity * (tr.purchasePrice || a?.purchasePrice || 0),
+    };
+    setModalEditingId(tr.id);
+    setEditingLine(line);
+    setEditingNotes(tr.notes || '');
+    setEditingCategory(tr.category);
     setModalOpen(true);
   };
 
-  const closeModal = () => { setModalOpen(false); setModalEditingId(null); };
-
-  // Esc closes modal
-  useEffect(() => {
-    if (!modalOpen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeModal(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [modalOpen]);
-
-  // Line filtering for search
-  const reqFiltered = reqSearch.length >= 1
-    ? state.articles.filter(a => a.name.toLowerCase().includes(reqSearch.toLowerCase()))
-    : [];
-
-  const reqSelectArticle = (articleId: string) => {
-    const a = state.articles.find(x => x.id === articleId);
-    if (!a) return;
-    setReqLineForm({
-      id: uuidv4(),
-      articleId: a.id,
-      articleName: a.name,
-      family: a.family,
-      quantity: Math.max(1, a.minStockPharmacie - a.stockPharmacie > 0 ? a.minStockPharmacie - a.stockPharmacie : 10),
-      notes: '',
-    });
-    setReqLineIsNew(true);
-    setReqSelLineId(null);
-    setReqSearch('');
-    setTimeout(() => {
-      const q = document.getElementById('req-qty-input');
-      q?.focus();
-      (q as HTMLInputElement)?.select();
-    }, 50);
+  const closeModal = () => {
+    setModalOpen(false);
+    setModalEditingId(null);
+    setEditingLine(null);
+    setEditingNotes('');
+    setEditingCategory(undefined);
   };
 
-  const reqArtKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); setReqSearchIdx(i => Math.min(i + 1, reqFiltered.length - 1)); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setReqSearchIdx(i => Math.max(i - 1, 0)); }
-    else if (e.key === 'Enter') {
-      e.preventDefault();
-      if (reqFiltered.length > 0 && reqSearch) reqSelectArticle(reqFiltered[reqSearchIdx].id);
-      else if (reqLineForm.articleName) reqSaveLine();
-    } else if (e.key === 'Escape') { setReqSearch(''); }
-  };
-
-  const reqSaveLine = () => {
-    if (!reqLineForm.articleId || !reqLineForm.articleName) return;
-    if (reqLineIsNew || !reqLines.some(l => l.id === reqLineForm.id)) {
-      setReqLines(prev => [...prev, { ...reqLineForm, id: uuidv4() }]);
-    } else {
-      setReqLines(prev => prev.map(l => l.id === reqLineForm.id ? reqLineForm : l));
-    }
-    reqLineNew();
-  };
-
-  const reqLineNew = () => {
-    setReqLineForm({ id: '', articleId: '', articleName: '', family: 'MEDIC', quantity: 10, notes: '' });
-    setReqSelLineId(null);
-    setReqLineIsNew(true);
-    setReqSearch('');
-    setTimeout(() => reqSearchRef.current?.focus(), 30);
-  };
-
-  const reqDeleteLine = () => {
-    if (!reqSelLineId) return;
-    setReqLines(prev => prev.filter(l => l.id !== reqSelLineId));
-    reqLineNew();
-  };
-
-  const submitRequest = () => {
-    if (reqLines.length === 0) { alert('Ajoutez au moins un article.'); return; }
-
+  const handleSubmit = (payload: { lines: ReqLine[]; category: TransferCategory; supplier: string; invoiceRef: string; notes: string; }) => {
     if (modalEditingId) {
-      // Update a single existing request (keep simple: replace the one we're editing, remove extras if multiple - or only take first)
-      const first = reqLines[0];
+      // Update a single existing request (take first line as the row)
+      const first = payload.lines[0];
       setState((prev) => {
         const next = {
           ...prev,
           stockTransfers: prev.stockTransfers.map((t) =>
             t.id === modalEditingId
-              ? { ...t, articleId: first.articleId, articleName: first.articleName, quantity: first.quantity, category: reqCategory, notes: reqGlobalNotes || first.notes }
+              ? {
+                  ...t,
+                  articleId: first.articleId,
+                  articleName: first.articleName,
+                  quantity: first.quantity,
+                  category: payload.category,
+                  notes: payload.notes || first.notes,
+                  purchasePrice: first.purchasePrice,
+                  expiryDate: first.expiryDate,
+                  supplier: payload.supplier || t.supplier,
+                  invoiceRef: payload.invoiceRef || t.invoiceRef,
+                }
               : t
           ),
         };
-        addAuditLog(next, 'DEMANDE_REAPPRO_MODIF', `Demande modifiée: ${first.articleName} (${first.quantity}) [${transferCategoryLabel(reqCategory)}]`);
+        addAuditLog(next, 'DEMANDE_REAPPRO_MODIF', `Demande modifiée: ${first.articleName} (${first.quantity}) [${transferCategoryLabel(payload.category)}]`);
         return next;
       });
       closeModal();
@@ -179,26 +115,27 @@ export default function PharmacyModule({ state, setState }: Props) {
     }
 
     setState((prev) => {
-      const newTransfers: StockTransfer[] = reqLines.map((l) => ({
+      const newTransfers: StockTransfer[] = payload.lines.map((l) => ({
         id: uuidv4(),
         articleId: l.articleId,
         articleName: l.articleName,
         quantity: l.quantity,
-        category: reqCategory,
+        category: payload.category,
+        purchasePrice: l.purchasePrice,
+        expiryDate: l.expiryDate,
+        supplier: payload.supplier,
+        invoiceRef: payload.invoiceRef,
         requestedBy: prev.currentUser?.id,
         requestedAt: new Date().toISOString(),
         status: 'requested',
-        notes: reqGlobalNotes || l.notes,
+        notes: payload.notes || l.notes,
       }));
       const next = { ...prev, stockTransfers: [...prev.stockTransfers, ...newTransfers] };
-      addAuditLog(next, 'DEMANDE_REAPPRO', `${reqLines.length} article(s) — ${transferCategoryLabel(reqCategory)}`);
-      addNotification(next, 'magasinier', `📩 ${transferCategoryLabel(reqCategory)}: ${reqLines.length} article(s) en demande`, 'info');
+      addAuditLog(next, 'DEMANDE_REAPPRO', `${payload.lines.length} article(s) — ${transferCategoryLabel(payload.category)} (Fournisseur: ${payload.supplier}, BL: ${payload.invoiceRef})`);
+      addNotification(next, 'magasinier', `📩 ${transferCategoryLabel(payload.category)}: ${payload.lines.length} article(s) en demande — Fournisseur: ${payload.supplier}`, 'info');
       return next;
     });
 
-    setReqLines([]);
-    setReqGlobalNotes('');
-    reqLineNew();
     closeModal();
   };
 
@@ -307,7 +244,7 @@ export default function PharmacyModule({ state, setState }: Props) {
                   <h4 className="font-bold text-purple-800 flex items-center gap-2">
                     <Send className="w-5 h-5 text-purple-600" /> Demander un réapprovisionnement au magasinier
                   </h4>
-                  <p className="text-xs text-purple-700 mt-1">Formulaire style Saisie Sage — Achat Central / Hospit / Bloc / Approvisionnement</p>
+                  <p className="text-xs text-purple-700 mt-1">Formulaire style Saisie Sage — Achat Central / Achat Bloc Hosp / Achat Approvis / Achat</p>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={openNewRequest} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium flex items-center gap-1.5 cursor-pointer shadow">
@@ -318,7 +255,7 @@ export default function PharmacyModule({ state, setState }: Props) {
 
               {/* Liste des demandes en cours avec bouton Modifier */}
               <div>
-                <div className="flex items-center gap-2 mb-2">
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
                   <Filter className="w-4 h-4 text-slate-500" />
                   <span className="text-xs font-bold text-slate-600">Filtrer :</span>
                   <button onClick={() => setFilterCat('all')} className={`px-2 py-0.5 rounded text-xs cursor-pointer ${filterCat === 'all' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Toutes</button>
@@ -339,6 +276,8 @@ export default function PharmacyModule({ state, setState }: Props) {
                           <th className="p-2 text-left">Catégorie</th>
                           <th className="p-2 text-left">Article</th>
                           <th className="p-2 text-center">Qté</th>
+                          <th className="p-2 text-left">Fournisseur</th>
+                          <th className="p-2 text-left">N° BL</th>
                           <th className="p-2 text-left">Demandeur</th>
                           <th className="p-2 text-left">Date</th>
                           <th className="p-2 text-left">Notes</th>
@@ -353,6 +292,8 @@ export default function PharmacyModule({ state, setState }: Props) {
                               <td className="p-2"><span className={`px-2 py-0.5 rounded text-[10px] font-bold ${transferCategoryColor(tr.category)}`}>{transferCategoryLabel(tr.category)}</span></td>
                               <td className="p-2 font-medium">{tr.articleName}</td>
                               <td className="p-2 text-center font-mono font-bold">{tr.quantity}</td>
+                              <td className="p-2 text-xs">{tr.supplier || '—'}</td>
+                              <td className="p-2 text-xs font-mono">{tr.invoiceRef || '—'}</td>
                               <td className="p-2 text-xs">{u?.name || '—'}</td>
                               <td className="p-2 text-xs text-slate-500">{tr.requestedAt ? new Date(tr.requestedAt).toLocaleDateString('fr-FR') : '—'}</td>
                               <td className="p-2 text-xs text-slate-500 truncate max-w-[150px]">{tr.notes || '—'}</td>
@@ -379,7 +320,7 @@ export default function PharmacyModule({ state, setState }: Props) {
 
           {tab === 'history' && (
             <div>
-              <div className="flex items-center gap-2 mb-3">
+              <div className="flex items-center gap-2 mb-3 flex-wrap">
                 <Filter className="w-4 h-4 text-slate-500" />
                 <span className="text-xs font-bold text-slate-600">Filtrer :</span>
                 <button onClick={() => setFilterCat('all')} className={`px-2 py-0.5 rounded text-xs cursor-pointer ${filterCat === 'all' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Toutes</button>
@@ -392,7 +333,7 @@ export default function PharmacyModule({ state, setState }: Props) {
                   <thead className="bg-slate-50 border-b text-slate-600">
                     <tr>
                       <th className="p-2 text-left">Date</th><th className="p-2 text-left">Catégorie</th><th className="p-2 text-left">Article</th>
-                      <th className="p-2 text-center">Qté</th><th className="p-2 text-left">Demandeur</th><th className="p-2 text-center">Statut</th>
+                      <th className="p-2 text-center">Qté</th><th className="p-2 text-left">Fournisseur</th><th className="p-2 text-left">N° BL</th><th className="p-2 text-left">Demandeur</th><th className="p-2 text-center">Statut</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -404,6 +345,8 @@ export default function PharmacyModule({ state, setState }: Props) {
                           <td className="p-2"><span className={`px-2 py-0.5 rounded text-[10px] font-bold ${transferCategoryColor(tr.category)}`}>{transferCategoryLabel(tr.category)}</span></td>
                           <td className="p-2 font-medium">{tr.articleName}</td>
                           <td className="p-2 text-center font-mono font-bold">{tr.quantity}</td>
+                          <td className="p-2 text-xs">{tr.supplier || '—'}</td>
+                          <td className="p-2 text-xs font-mono">{tr.invoiceRef || '—'}</td>
                           <td className="p-2">{u?.name || '—'}</td>
                           <td className="p-2 text-center">
                             {tr.status === 'requested' && <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] rounded-full font-bold">En attente</span>}
@@ -414,7 +357,7 @@ export default function PharmacyModule({ state, setState }: Props) {
                       );
                     })}
                     {myRequestsFiltered.length === 0 && (
-                      <tr><td colSpan={6} className="p-6 text-center text-slate-400">Aucune demande.</td></tr>
+                      <tr><td colSpan={8} className="p-6 text-center text-slate-400">Aucune demande.</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -425,197 +368,18 @@ export default function PharmacyModule({ state, setState }: Props) {
       </div>
 
       {/* === MODAL NOUVELLE FENÊTRE : Formulaire Sage-style de demande de réappro === */}
-      {modalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={closeModal}>
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="px-5 py-3 bg-purple-600 text-white flex items-center justify-between">
-              <span className="font-bold flex items-center gap-2">
-                {modalEditingId ? <Edit3 className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
-                {modalEditingId ? 'Modifier la demande' : 'Nouvelle demande de réapprovisionnement'} (Saisie Sage)
-              </span>
-              <button onClick={closeModal} className="hover:bg-white/20 rounded p-1 cursor-pointer"><X className="w-5 h-5" /></button>
-            </div>
-
-            <div className="p-4 overflow-y-auto flex-1 space-y-4">
-              {/* Header info */}
-              <div className="p-4 bg-purple-50 border border-purple-200 rounded-xl">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">🏷️ Type / Catégorie *</label>
-                    <select
-                      value={reqCategory}
-                      onChange={e => setReqCategory(e.target.value as TransferCategory)}
-                      className="w-full px-3 py-1.5 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-purple-500 bg-white text-sm text-slate-800 cursor-pointer"
-                    >
-                      {CATEGORIES.map(c => (
-                        <option key={c} value={c}>{transferCategoryLabel(c)}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">📝 Notes / Motif global</label>
-                    <input
-                      type="text"
-                      value={reqGlobalNotes}
-                      onChange={e => setReqGlobalNotes(e.target.value)}
-                      className="w-full px-3 py-1.5 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-purple-500 bg-white text-sm text-slate-800"
-                      placeholder="Ex: Stock bas, urgence bloc..."
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Sage Line Editor */}
-              <div className="bg-[#f4f4f4] border border-slate-300 rounded text-xs select-none p-1">
-                <div className="bg-slate-100 border-b border-slate-300 p-2 m-1.5 mb-0 rounded shadow-inner">
-                  <div className="flex flex-wrap items-end gap-1.5 font-sans">
-                    <div className="flex-1 min-w-[180px] relative">
-                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Article (↑↓ Entrée)</label>
-                      <input
-                        ref={reqSearchRef}
-                        type="text"
-                        value={reqLineForm.articleName && !reqSearch ? reqLineForm.articleName : reqSearch}
-                        onChange={e => {
-                          setReqSearch(e.target.value);
-                          setReqSearchIdx(0);
-                          if (reqLineForm.articleName && e.target.value !== reqLineForm.articleName) {
-                            setReqLineForm(prev => ({ ...prev, articleName: '', articleId: '' }));
-                          }
-                        }}
-                        onKeyDown={reqArtKeyDown}
-                        className="w-full bg-white border border-purple-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-500 text-slate-800"
-                        placeholder="🔍 Saisir l'article à demander..."
-                      />
-                      {reqSearch.length >= 1 && reqFiltered.length > 0 && (
-                        <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 rounded-b shadow-2xl z-40 max-h-40 overflow-y-auto">
-                          {reqFiltered.map((a, idx) => (
-                            <div
-                              key={a.id}
-                              onClick={() => reqSelectArticle(a.id)}
-                              className={`px-3 py-1.5 cursor-pointer text-xs flex justify-between border-b border-slate-100 ${idx === reqSearchIdx ? 'bg-purple-500 text-white font-medium' : 'hover:bg-slate-50 text-slate-800'}`}
-                            >
-                              <span>[{familyLabel(a.family)}] {a.name}</span>
-                              <span className={`font-mono ${idx === reqSearchIdx ? 'text-white' : 'text-slate-500'}`}>Pharma: {a.stockPharmacie} / Central: {a.stockCentral}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="w-24">
-                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Famille</label>
-                      <input readOnly value={familyLabel(reqLineForm.family as any) || ''} className="w-full bg-slate-200 border border-slate-300 rounded px-1.5 py-0.5 text-xs text-slate-600 truncate font-sans" />
-                    </div>
-
-                    <div className="w-20">
-                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Quantité</label>
-                      <input
-                        id="req-qty-input"
-                        type="number" min={1}
-                        value={reqLineForm.quantity}
-                        onChange={e => setReqLineForm(prev => ({ ...prev, quantity: parseInt(e.target.value) || 1 }))}
-                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); reqSaveLine(); } }}
-                        className="w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-purple-500 text-slate-800"
-                      />
-                    </div>
-
-                    <div className="flex-1 min-w-[150px]">
-                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Note ligne</label>
-                      <input
-                        type="text"
-                        value={reqLineForm.notes}
-                        onChange={e => setReqLineForm(prev => ({ ...prev, notes: e.target.value }))}
-                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); reqSaveLine(); } }}
-                        className="w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs outline-none focus:border-purple-500 text-slate-800"
-                        placeholder="Motif..."
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end gap-1.5 mt-2">
-                    <button onClick={reqLineNew} className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded shadow-sm text-slate-700 transition cursor-pointer text-xs font-medium">
-                      <Plus className="h-3.5 w-3.5 text-slate-500" /> Nouveau
-                    </button>
-                    <button onClick={reqDeleteLine} disabled={!reqSelLineId} className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded shadow-sm text-slate-700 disabled:opacity-40 transition cursor-pointer text-xs font-medium">
-                      <Trash2 className="h-3.5 w-3.5 text-rose-600" /> Supprimer
-                    </button>
-                    <button onClick={reqSaveLine} disabled={!reqLineForm.articleName} className="flex items-center gap-1 px-2.5 py-1 bg-purple-500 hover:bg-purple-600 text-white border border-purple-600 rounded shadow-sm font-semibold disabled:opacity-40 transition cursor-pointer text-xs">
-                      <Save className="h-3.5 w-3.5" /> Enregistrer
-                    </button>
-                  </div>
-                </div>
-
-                {/* Lignes */}
-                <div className="bg-white mx-1.5 mb-1.5 border-t border-slate-300 overflow-x-auto rounded-b max-h-[240px] overflow-y-auto">
-                  <table className="w-full text-[11px] text-left border-collapse">
-                    <thead className="bg-slate-50 border-b border-slate-300 text-slate-600">
-                      <tr className="divide-x divide-slate-200">
-                        <th className="p-1 font-normal w-24">Famille</th>
-                        <th className="p-1 font-normal min-w-[160px]">Article</th>
-                        <th className="p-1 font-normal text-right w-16">Qté</th>
-                        <th className="p-1 font-normal min-w-[140px]">Note</th>
-                        <th className="p-1 font-normal w-6"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-150 font-sans">
-                      {reqLines.map(l => {
-                        const isSel = l.id === reqSelLineId;
-                        return (
-                          <tr
-                            key={l.id}
-                            onClick={() => { setReqSelLineId(l.id); setReqLineForm(l); setReqLineIsNew(false); setReqSearch(''); }}
-                            className={`cursor-pointer divide-x divide-slate-200 transition-colors ${isSel ? 'bg-purple-500 text-white font-medium' : 'hover:bg-slate-50 text-slate-800'}`}
-                          >
-                            <td className="p-1"><span className={`px-1 rounded text-[10px] ${isSel ? 'bg-purple-600 text-white font-medium' : 'bg-slate-200 text-slate-700'}`}>{familyLabel(l.family)}</span></td>
-                            <td className="p-1">{l.articleName}</td>
-                            <td className="p-1 text-right font-mono">{l.quantity}</td>
-                            <td className="p-1 text-xs truncate">{l.notes || '—'}</td>
-                            <td className="p-1 text-center">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setReqLines(reqLines.filter(x => x.id !== l.id));
-                                  if (reqSelLineId === l.id) reqLineNew();
-                                }}
-                                className={`cursor-pointer ${isSel ? 'text-white hover:text-red-200' : 'text-rose-600 hover:text-rose-800'}`}
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                      {reqLines.length === 0 && (
-                        <tr><td colSpan={5} className="p-4 text-center text-slate-400">Aucun article dans cette demande. Saisissez un article ci-dessus.</td></tr>
-                      )}
-                    </tbody>
-                    {reqLines.length > 0 && (
-                      <tfoot className="bg-emerald-50 border-t-2 border-emerald-300 text-slate-800 font-sans font-bold">
-                        <tr>
-                          <td colSpan={2} className="p-1.5 text-right text-xs">TOTAL ARTICLES :</td>
-                          <td className="p-1.5 text-right font-mono text-lg text-emerald-700">{reqLines.reduce((s, l) => s + l.quantity, 0)}</td>
-                          <td colSpan={2} className="p-1.5 text-right text-xs text-emerald-700">{reqLines.length} ligne(s)</td>
-                        </tr>
-                      </tfoot>
-                    )}
-                  </table>
-                </div>
-              </div>
-            </div>
-
-            <div className="px-5 py-3 border-t bg-slate-50 flex justify-end gap-2">
-              <button onClick={closeModal} className="px-4 py-2 border border-slate-300 hover:bg-slate-100 text-slate-600 rounded-lg text-sm font-medium cursor-pointer">Annuler</button>
-              <button
-                onClick={submitRequest}
-                disabled={reqLines.length === 0}
-                className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold disabled:opacity-40 cursor-pointer flex items-center gap-2 shadow"
-              >
-                <Send className="w-4 h-4" /> {modalEditingId ? 'Enregistrer les modifications' : 'Envoyer la demande au magasinier'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <DemandeAchatForm
+        open={modalOpen}
+        onClose={closeModal}
+        articles={state.articles}
+        defaultCategory="approvisionnement"
+        initialLine={editingLine}
+        initialNotes={editingNotes}
+        initialCategory={editingCategory}
+        isEditMode={!!modalEditingId}
+        onSubmit={handleSubmit}
+        theme="purple"
+      />
     </div>
   );
 }

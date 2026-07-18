@@ -113,7 +113,7 @@ export function familyLabel(f: ArticleFamily): string { return { MEDIC:'Médicam
 
 export const TRANSFER_CATEGORIES: TransferCategory[] = ['central', 'hospitalisation', 'bloc', 'approvisionnement'];
 export function transferCategoryLabel(c: TransferCategory): string {
-  return { central:'Achat Central', hospitalisation:'Achat Hospit', bloc:'Achat Bloc', approvisionnement:'Approvisionnement' }[c];
+  return { central:'Achat Central', hospitalisation:'Achat Bloc Hosp', bloc:'Achat Bloc', approvisionnement:'Achat Approvis' }[c];
 }
 export function transferCategoryColor(c: TransferCategory): string {
   return { central:'bg-sky-100 text-sky-700', hospitalisation:'bg-rose-100 text-rose-700', bloc:'bg-blue-100 text-blue-700', approvisionnement:'bg-purple-100 text-purple-700' }[c];

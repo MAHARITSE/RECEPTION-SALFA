@@ -411,10 +411,12 @@ export default function MagasinierModule({ state, setState }: Props) {
                           <div className="flex items-center gap-2 flex-wrap mb-1">
                             <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${transferCategoryColor(tr.category)}`}>{transferCategoryLabel(tr.category)}</span>
                             <span className="font-semibold">{tr.articleName} × {tr.quantity}</span>
+                            {tr.purchasePrice ? <span className="text-xs text-blue-600 font-mono">@ {formatAr(tr.purchasePrice)}</span> : null}
                           </div>
                           <div className="text-xs text-slate-500">
                             Demandeur: <strong>{requester?.name || '—'}</strong> — {tr.requestedAt ? new Date(tr.requestedAt).toLocaleDateString('fr-FR') : ''}
                           </div>
+                          {tr.supplier && <div className="text-xs text-slate-500">👤 Fournisseur: <strong>{tr.supplier}</strong>{tr.invoiceRef ? <> — 📄 BL: <span className="font-mono">{tr.invoiceRef}</span></> : null}</div>}
                           {tr.notes && <div className="text-xs text-slate-500 italic">📝 {tr.notes}</div>}
                           {tr.category === 'approvisionnement' && <div className="text-xs">Stock central: <strong className={art && art.stockCentral >= tr.quantity ? 'text-green-600' : 'text-red-600'}>{art?.stockCentral || 0}</strong></div>}
                         </div>
