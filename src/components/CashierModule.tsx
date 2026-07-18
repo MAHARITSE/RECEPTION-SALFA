@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Invoice, InvoiceItem, ClientType } from '../types';
 import type { AppState } from '../store';
 import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber } from '../store';
-import { CreditCard, CheckCircle, DollarSign, Clock, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, X, UserPlus, Edit2 } from 'lucide-react';
+import { CreditCard, CheckCircle, DollarSign, Clock, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, X, UserPlus, Edit2, Plus } from 'lucide-react';
 
 interface HbLine { id: string; articleName: string; quantity: number; unitPrice: number; discount: number; dateSort?: string; }
 interface HbRecord { id: string; patientId?: string; patientName: string; clientType: ClientType; company?: string; type: 'hospit' | 'bloc'; lines: HbLine[]; payments: { amount: number; paidBy: string; date: string }[]; }
@@ -206,8 +206,6 @@ export default function CashierModule({ state, setState }: Props) {
     }
     else if (e.key === 'Escape') setHbArtSearch('');
   };
-
-  const hbRemoveLine = (recordId: string, lineId: string) => setHbRecords(hbRecords.map(r => r.id === recordId ? { ...r, lines: r.lines.filter(l => l.id !== lineId) } : r));
 
   const addPartialPay = (recordId: string) => {
     const rec = hbRecords.find(r => r.id === recordId);
