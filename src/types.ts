@@ -63,8 +63,11 @@ export interface Invoice {
   paidAt?: string; paidBy?: string; createdAt: string; isExternal: boolean;
 }
 
+export type TransferCategory = 'central' | 'hospitalisation' | 'bloc' | 'approvisionnement';
+
 export interface StockTransfer {
   id: string; articleId: string; articleName: string; quantity: number;
+  category: TransferCategory;
   requestedBy?: string; requestedAt?: string; transferredBy?: string; transferredAt?: string;
   status: 'requested' | 'transferred' | 'cancelled'; notes?: string;
 }
@@ -73,7 +76,7 @@ export interface StockEntry {
   id: string; articleId: string; articleName: string; quantity: number;
   purchasePrice: number; supplier: string; invoiceRef: string;
   expiryDate?: string; date: string; enteredBy: string;
-  category?: 'central' | 'hospitalisation' | 'bloc'; // for achats hospit / bloc
+  category?: 'central' | 'hospitalisation' | 'bloc' | 'approvisionnement';
 }
 
 export interface Message {

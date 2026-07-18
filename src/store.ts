@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type {
   Patient, Consultation, Invoice, Article, Bed, AuditLog,
   Notification, HospitalizationRecord, UserRole, User, Company,
-  Message, StockTransfer, StockEntry, ClientType, ArticleFamily
+  Message, StockTransfer, StockEntry, ClientType, ArticleFamily, TransferCategory
 } from './types';
 
 let dossierCounter = 100;
@@ -110,6 +110,14 @@ export function addNotification(s: AppState, targetRole: UserRole, message: stri
 
 export const ARTICLE_FAMILIES: ArticleFamily[] = ['MEDIC','LABO','DENT','ECHO'];
 export function familyLabel(f: ArticleFamily): string { return { MEDIC:'Médicaments', LABO:'Laboratoire', DENT:'Dentaire', ECHO:'Échographie' }[f]; }
+
+export const TRANSFER_CATEGORIES: TransferCategory[] = ['central', 'hospitalisation', 'bloc', 'approvisionnement'];
+export function transferCategoryLabel(c: TransferCategory): string {
+  return { central:'Achat Central', hospitalisation:'Achat Hospit', bloc:'Achat Bloc', approvisionnement:'Approvisionnement' }[c];
+}
+export function transferCategoryColor(c: TransferCategory): string {
+  return { central:'bg-sky-100 text-sky-700', hospitalisation:'bg-rose-100 text-rose-700', bloc:'bg-blue-100 text-blue-700', approvisionnement:'bg-purple-100 text-purple-700' }[c];
+}
 export const SPECIALTIES = ['Médecine Générale','Cardiologie','Chirurgie','Pédiatrie','Gynécologie','Neurologie','Orthopédie','Dermatologie','ORL','Ophtalmologie'];
 export const LAB_EXAMS = [
   { name: 'NFS', parameters: ['Globules Rouges','Globules Blancs','Hémoglobine','Plaquettes','Hématocrite'] },
