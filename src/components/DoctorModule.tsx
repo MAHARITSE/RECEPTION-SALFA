@@ -4,7 +4,7 @@ import type { Consultation, VitalSigns, Prescription, LabRequest, ClientType, In
 import type { AppState } from '../store';
 import { addAuditLog, addNotification, formatAr, getPrice, addJourneyEvent, labCategoryLabel } from '../store';
 import { printPrescriptionTicket, printLabRequestTicket } from '../utils/printTicket';
-import { Stethoscope, History, Trash2, AlertTriangle, Heart, FileText, Clock, CheckCircle, Send, Search, Edit2, RotateCcw, Save, Printer, FlaskConical, FolderOpen } from 'lucide-react';
+import { Stethoscope, History, Trash2, AlertTriangle, Heart, FileText, Clock, CheckCircle, Send, Search, Edit2, RotateCcw, Save, Printer, FlaskConical } from 'lucide-react';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
 type ViewMode = 'queue' | 'consultation' | 'my_consults';
@@ -29,9 +29,6 @@ export default function DoctorModule({ state, setState }: Props) {
   // ---- Demandes d'analyses (Laboratoire) saisies par le médecin ----
   const [labSearch, setLabSearch] = useState('');
   const [labDraft, setLabDraft] = useState<{ examId: string; urgent: boolean }[]>([]);
-
-  // Access to full patient history / analyses / results for doctor (from "saisie de patients")
-  const [showPatientRecord, setShowPatientRecord] = useState(false);
 
   const myWaiting = state.patients.filter((p) => (!p.assignedDoctor || p.assignedDoctor === state.currentUser?.id) && p.status === 'waiting_consultation');
   const searchResults = searchQuery.length >= 2 ? state.patients.filter((p) => { const q = searchQuery.toLowerCase(); return p.firstName.toLowerCase().includes(q) || p.lastName.toLowerCase().includes(q) || p.dossier.toLowerCase().includes(q); }) : [];
@@ -235,11 +232,6 @@ export default function DoctorModule({ state, setState }: Props) {
     }
     if (state.currentUser && newLabRequests.length > 0) {
       printLabRequestTicket(state.ticketSettings, selectedPatient!, state.currentUser, new Date(), newLabRequests);
-    }
-    // If we were editing, discard the backup (we submitted the new version)
-    if (editingConsultId) {
-      setEditingConsultId(null);
-      setBackupConsult(null);
     }
     setSelectedPatientId(null); setConsultForm({ visitReason: '', diagnosis: '', notes: '', isEmergency: false, hospitalizeRequested: false, surgeryRequested: false });
     setVitals({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' });
