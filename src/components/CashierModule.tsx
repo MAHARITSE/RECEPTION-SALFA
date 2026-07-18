@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Invoice, InvoiceItem, ClientType } from '../types';
 import type { AppState } from '../store';
-import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber } from '../store';
+import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber, addJourneyEvent } from '../store';
 import { CreditCard, CheckCircle, DollarSign, Clock, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, X, UserPlus, Edit2, Plus } from 'lucide-react';
 import { printPaymentTicket as openThermalTicket, printClosingTicket } from '../utils/printTicket';
 
@@ -51,31 +51,77 @@ export default function CashierModule({ state, setState }: Props) {
   const [hbEditCompany, setHbEditCompany] = useState('');
 
   // Data
-  const pendingPatients = state.patients.filter(p => p.status === 'consulted_awaiting_payment');
-  const getConsults = (pid: string) => state.consultations.filter(c => c.patientId === pid && !state.invoices.some(inv => inv.consultationId === c.id && inv.status === 'paid'));
+  // La caisse présente une seule facture par consultation : les analyses sont
+  // regroupées avec les médicaments, au lieu d'être encaissées dans un onglet
+  // séparé. Les anciennes factures labo restent toutefois reconnues pour la
+  // compatibilité avec les données déjà enregistrées.
+  const pendingForConsult = (consultationId: string) => {
+    const consultation = state.consultations.find(c => c.id === consultationId);
+    return state.invoices.filter(i => i.status === 'pending' && (
+      i.consultationId === consultationId || (consultation && i.patientId === consultation.patientId)
+    ));
+  };
+  const getConsults = (pid: string) => state.consultations.filter(c => {
+    const due = pendingForConsult(c.id);
+    return due.length > 0 || (state.patients.find(p => p.id === pid)?.status === 'consulted_awaiting_payment' && c.prescriptions.length > 0);
+  });
+  const pendingPatients = state.patients.filter(p => getConsults(p.id).length > 0);
   const selConsult = state.consultations.find(c => c.id === selConsultId);
   const selPatient = selConsult ? state.patients.find(p => p.id === selConsult.patientId) : null;
 
-  const calcItems = (): InvoiceItem[] => {
-    if (!selConsult) return [];
-    return selConsult.prescriptions.map(p => ({
+  const calcItems = (consult = selConsult): InvoiceItem[] => {
+    if (!consult) return [];
+    const existing = pendingForConsult(consult.id);
+    const pharmacyInvoice = existing.find(inv => inv.items.some(it => it.category === 'pharmacy'));
+    const pharmacyItems = pharmacyInvoice?.items.filter(it => it.category === 'pharmacy');
+    const hasPaidPharmacy = state.invoices.some(inv => inv.status === 'paid'
+      && inv.items.some(it => it.category === 'pharmacy')
+      && (inv.consultationId === consult.id || inv.patientId === consult.patientId));
+    const prescriptionItems: InvoiceItem[] = hasPaidPharmacy ? [] : consult.prescriptions.map(p => ({
       description: `${p.articleName} × ${p.quantity}${p.discount > 0 ? ` (-${p.discount}%)` : ''}`,
       amount: Math.round(p.unitPrice * p.quantity * (1 - p.discount / 100)), category: 'pharmacy' as const,
     }));
+    const items: InvoiceItem[] = pharmacyItems?.length ? pharmacyItems : prescriptionItems;
+    const labItems = existing.flatMap(inv => inv.items.filter(it => it.category === 'lab'));
+    return [...items, ...labItems];
   };
   const items = calcItems();
   const totalAmount = items.reduce((s, it) => s + it.amount, 0);
 
-  const handlePayment = () => {
-    if (!selConsult || !selPatient) return;
-    const inv: Invoice = { id: uuidv4(), patientId: selConsult.patientId, consultationId: selConsult.id, clientType: selPatient.clientType, items, totalAmount, patientCharge: totalAmount, status: 'paid', paidAt: new Date().toISOString(), paidBy: state.currentUser?.id || '', createdAt: new Date().toISOString(), isExternal: false };
+  const handlePayment = (consultOverride?: typeof selConsult) => {
+    const targetConsult = consultOverride || selConsult;
+    const targetPatient = targetConsult ? state.patients.find(p => p.id === targetConsult.patientId) : null;
+    const targetItems = calcItems(targetConsult);
+    const targetTotal = targetItems.reduce((s, it) => s + it.amount, 0);
+    if (!targetConsult || !targetPatient || targetTotal <= 0) return;
+    const now = new Date().toISOString();
+    const relatedPending = pendingForConsult(targetConsult.id);
+    const pharmacyInvoice = relatedPending.find(inv => inv.items.some(it => it.category === 'pharmacy'));
+    // On conserve une seule facture : la facture pharmacie existante est
+    // enrichie avec les lignes labo, sinon on en crée une nouvelle.
+    const invoiceId = pharmacyInvoice?.id || uuidv4();
+    const inv: Invoice = {
+      id: invoiceId, patientId: targetConsult.patientId, consultationId: targetConsult.id,
+      clientType: targetPatient.clientType, items: targetItems, totalAmount: targetTotal, patientCharge: targetTotal,
+      status: 'paid', paidAt: now, paidBy: state.currentUser?.id || '',
+      createdAt: pharmacyInvoice?.createdAt || now, isExternal: false,
+    };
     setState(prev => {
-      const next = { ...prev, invoices: [...prev.invoices, inv], patients: prev.patients.map(p => p.id === selConsult.patientId ? { ...p, status: 'invoice_paid' as const } : p) };
-      addAuditLog(next, 'PAIEMENT', `${formatAr(totalAmount)} — ${selPatient.lastName}`, selConsult.patientId);
-      if (selConsult.prescriptions.length > 0) addNotification(next, 'pharmacy', `💊 ${selPatient.lastName} ${selPatient.firstName}`, 'info');
+      const pendingIds = new Set(relatedPending.map(i => i.id));
+      const invoices = prev.invoices
+        .filter(i => !pendingIds.has(i.id))
+        .concat(inv);
+      const next = {
+        ...prev, invoices,
+        labRequests: prev.labRequests.map(l => pendingIds.has(l.invoiceId || '') ? { ...l, status: 'paid' as const } : l),
+        patients: prev.patients.map(p => p.id === targetConsult.patientId ? { ...p, status: 'invoice_paid' as const } : p),
+      };
+      addAuditLog(next, 'PAIEMENT', `${formatAr(targetTotal)} — médicaments + analyses — ${targetPatient.lastName}`, targetConsult.patientId);
+      addJourneyEvent(next, { patientId: targetConsult.patientId, department: 'caisse', action: 'Paiement facture intégrée', status: 'invoice_paid', details: targetItems.map(i => i.description).join(', '), actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, invoiceId });
+      if (targetConsult.prescriptions.length > 0) addNotification(next, 'pharmacy', `💊 ${targetPatient.lastName} ${targetPatient.firstName}`, 'info');
       return next;
     });
-    openThermalTicket(state.ticketSettings, inv, selPatient, state.currentUser || undefined);
+    openThermalTicket(state.ticketSettings, inv, targetPatient, state.currentUser || undefined);
     setSelConsultId(null);
   };
 
@@ -139,7 +185,7 @@ export default function CashierModule({ state, setState }: Props) {
       clientType: hbNewPat.clientType,
       company: hbNewPat.clientType === 'societe' ? hbNewPat.company : undefined,
       subCompany: hbNewPat.clientType === 'societe' ? hbNewPat.subCompany : undefined,
-      allergies: [] as string[], chronicTreatments: [] as string[],
+      allergies: [] as string[], chronicTreatments: [] as string[], antecedents: [] as string[],
       registeredAt: new Date().toISOString(), registeredBy: state.currentUser?.id || 'CAISSE', status: 'registered' as const,
     };
     setState(prev => ({ ...prev, patients: [...prev.patients, np] }));
@@ -278,21 +324,39 @@ export default function CashierModule({ state, setState }: Props) {
 
           {/* PAYMENT */}
           {tab === 'payment' && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+              {/* Vente externe toujours visible à gauche de la file d'attente caisse */}
+              <div className="border border-purple-200 rounded-lg bg-purple-50 p-3 self-start lg:sticky lg:top-0">
+                <h3 className="font-bold text-sm text-purple-800 mb-2"><ShoppingCart className="w-4 h-4 inline mr-1" />Vente externe</h3>
+                <p className="text-[11px] text-purple-700 mb-2">Ajoutez un article puis encaissez directement.</p>
+                <div className="relative">
+                  <input ref={extSearchRef} value={extLineForm.articleName && !extSearch ? extLineForm.articleName : extSearch} onChange={e => { setExtSearch(e.target.value); setExtSearchIdx(0); }} onKeyDown={extKeyDown} className="w-full bg-white border border-purple-300 rounded px-2 py-1.5 text-xs outline-none" placeholder="🔍 Rechercher un article" />
+                  {extSearch && extFiltered.length > 0 && <div className="absolute top-full left-0 right-0 bg-white border rounded shadow-xl z-30 max-h-32 overflow-y-auto">{extFiltered.map((a, idx) => <button key={a.id} onClick={() => extSelectArticle(a.id)} className={`w-full px-2 py-1 text-left text-[11px] flex justify-between ${idx === extSearchIdx ? 'bg-purple-100' : 'hover:bg-purple-50'}`}><span>{a.name}</span><span className="font-mono">{formatAr(getPrice(a, 'externe'))}</span></button>)}</div>}
+                </div>
+                <div className="flex gap-1 mt-2"><input type="number" min={1} value={extLineForm.quantity} onChange={e => setExtLineForm({...extLineForm, quantity: parseInt(e.target.value) || 1})} className="w-16 px-1 py-1 border rounded text-xs text-right" /><button onClick={extSaveLine} disabled={!extLineForm.articleName} className="flex-1 px-2 py-1 bg-purple-600 text-white rounded text-xs disabled:opacity-40 cursor-pointer">Ajouter</button></div>
+                <div className="mt-2 bg-white border rounded max-h-40 overflow-y-auto">{extLines.length === 0 ? <p className="p-3 text-center text-[11px] text-slate-400">Aucun article</p> : extLines.map(l => <div key={l.id} className="flex items-center justify-between px-2 py-1 border-b text-[11px]"><span className="truncate mr-1">{l.articleName} × {l.quantity}</span><span className="font-mono">{formatAr(extLineAmt(l))}</span></div>)}</div>
+                <div className="flex justify-between font-bold text-sm mt-2"><span>Total</span><span>{formatAr(extTotal)}</span></div>
+                <button onClick={extPay} disabled={!extLines.length} className="w-full mt-2 py-2 bg-purple-600 text-white rounded-lg text-xs font-semibold disabled:opacity-40 cursor-pointer"><CreditCard className="w-3 h-3 inline mr-1" />Encaisser vente</button>
+              </div>
               <div className="divide-y border rounded-lg max-h-[500px] overflow-y-auto">
                 {pendingPatients.length === 0 ? <div className="p-6 text-center text-slate-400">Aucune facture</div>
                   : pendingPatients.map(p => getConsults(p.id).map(c => {
-                    const cTotal = c.prescriptions.reduce((s, pr) => s + Math.round(pr.unitPrice * pr.quantity * (1 - pr.discount / 100)), 0);
+                    const cItems = calcItems(c);
+                    const cTotal = cItems.reduce((s, it) => s + it.amount, 0);
+                    const hasLab = cItems.some(it => it.category === 'lab');
                     return (
                       <div key={c.id} className={`p-3 cursor-pointer hover:bg-slate-50 ${selConsultId === c.id ? 'bg-amber-50 border-l-4 border-amber-500' : ''}`} onClick={() => setSelConsultId(c.id)}>
                         <div className="flex justify-between items-start">
                           <div>
-                            <div className="font-medium text-sm">{p.lastName} {p.firstName}</div>
+                            <div className="flex items-center gap-2">
+                              <div className="font-medium text-sm">{p.lastName} {p.firstName}</div>
+                              <button onClick={(e) => { e.stopPropagation(); handlePayment(c); }} className="px-2 py-1 bg-amber-600 text-white rounded-md text-[10px] font-semibold hover:bg-amber-700 cursor-pointer whitespace-nowrap"><CreditCard className="w-3 h-3 inline mr-1" />Encaisser</button>
+                            </div>
                             <div className="text-xs text-slate-500">{c.doctorName}</div>
                           </div>
                           <div className="font-mono font-bold text-sm text-amber-700">{formatAr(cTotal)}</div>
                         </div>
-                        <div className="flex gap-1 mt-1">{c.hospitalizeRequested && <span className="px-1 py-0.5 bg-rose-100 text-rose-700 text-[10px] rounded">🏨</span>}{c.surgeryRequested && <span className="px-1 py-0.5 bg-blue-100 text-blue-700 text-[10px] rounded">🏥</span>}</div>
+                        <div className="flex gap-1 mt-1"><span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 text-[10px] rounded">💊 Médicaments</span>{hasLab && <span className="px-1.5 py-0.5 bg-cyan-100 text-cyan-800 text-[10px] rounded">🧪 Analyses</span>}{c.hospitalizeRequested && <span className="px-1 py-0.5 bg-rose-100 text-rose-700 text-[10px] rounded">🏨</span>}{c.surgeryRequested && <span className="px-1 py-0.5 bg-blue-100 text-blue-700 text-[10px] rounded">🏥</span>}</div>
                       </div>
                     );
                   }))}
@@ -300,7 +364,8 @@ export default function CashierModule({ state, setState }: Props) {
               <div className="lg:col-span-2">
                 {!selConsult || !selPatient ? <div className="p-12 text-center text-slate-400"><CreditCard className="w-16 h-16 mx-auto mb-4 opacity-30" /><p>Sélectionnez une consultation</p></div>
                   : <div>
-                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg mb-3"><h3 className="font-bold">{selPatient.lastName} {selPatient.firstName} ({selPatient.dossier})</h3><p className="text-xs text-slate-500">{selConsult.doctorName} | {selConsult.diagnosis}</p></div>
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg mb-3"><h3 className="font-bold">{selPatient.lastName} {selPatient.firstName} ({selPatient.dossier})</h3><p className="text-xs text-slate-500">{selConsult.doctorName} | {selConsult.diagnosis}</p><p className="text-xs text-cyan-700 font-medium mt-1">Facturation intégrée : médicaments et analyses sur le même reçu</p></div>
+                    <div className="border rounded-lg overflow-hidden mb-3"><table className="w-full text-xs"><thead className="bg-slate-100"><tr><th className="p-2 text-left">Désignation</th><th className="p-2 text-center">Service</th><th className="p-2 text-right">Montant</th></tr></thead><tbody>{items.map((item, index) => (<tr key={`${item.description}-${index}`} className="border-t"><td className="p-2">{item.description}</td><td className="p-2 text-center"><span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${item.category === 'lab' ? 'bg-cyan-100 text-cyan-800' : 'bg-amber-100 text-amber-800'}`}>{item.category === 'lab' ? 'Laboratoire' : 'Médicament'}</span></td><td className="p-2 text-right font-mono">{formatAr(item.amount)}</td></tr>))}</tbody></table></div>
                     <div className="flex justify-between text-xl font-bold border-t-2 pt-2 mb-4"><span>À PAYER</span><span className="font-mono text-amber-600">{formatAr(totalAmount)}</span></div>
                     <button onClick={handlePayment} className="w-full py-3 bg-amber-600 text-white rounded-xl font-semibold hover:bg-amber-700 cursor-pointer shadow-lg flex items-center justify-center gap-2"><CreditCard className="w-5 h-5" /> Encaisser {formatAr(totalAmount)}</button>
                   </div>}

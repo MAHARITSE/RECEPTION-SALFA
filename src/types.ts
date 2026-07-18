@@ -30,7 +30,8 @@ export interface Patient {
   id: string; dossier: string; matricule?: string; firstName: string; lastName: string;
   dateOfBirth: string; age: string; gender: 'M' | 'F'; address: string; contact: string; ssn: string;
   insureName?: string; clientType: ClientType; company?: string; subCompany?: string;
-  allergies: string[]; chronicTreatments: string[]; vitalSigns?: VitalSigns;
+  allergies: string[]; chronicTreatments: string[]; antecedents: string[];
+  bloodGroup?: string; vitalSigns?: VitalSigns;
   registeredAt: string; registeredBy: string; status: PatientStatus;
   assignedDoctor?: string; assignedSpecialty?: string; blacklisted?: boolean;
 }
@@ -52,15 +53,75 @@ export interface Prescription {
   delivered: boolean;
 }
 
-export interface LabRequest {
-  id: string; examType: string; parameters: string[]; urgent: boolean;
-  status: 'pending' | 'paid' | 'in_progress' | 'completed';
-  results?: LabResult[]; completedAt?: string; completedBy?: string;
-}
-
 export interface LabResult {
   parameter: string; value: number; unit: string;
   normalMin: number; normalMax: number; isAbnormal: boolean;
+}
+
+/* ====== LABORATOIRE — catalogue & demandes autonomes ====== */
+export type LabCategory =
+  | 'hematologie' | 'biochimie' | 'serologie' | 'bacteriologie'
+  | 'parasitologie' | 'immunologie' | 'hemostase' | 'autre';
+
+/** Un examen du catalogue laboratoire (avec grille tarifaire). */
+export interface LabExamCatalog {
+  id: string;
+  code: string;
+  name: string;
+  category: LabCategory;
+  parameters: string[];
+  sampleType: string;        // Sang veineux, Urines, Selles, Sérum...
+  priceComptoir: number;
+  priceSociete: number;
+  priceExterne: number;
+  urgentPrice: number;
+  durationHours: number;     // délai de rendu (heures)
+  defaultUrgent?: boolean;
+}
+
+/** Demande d'analyse — peut être liée à une consultation OU autonome (state.labRequests). */
+export interface LabRequest {
+  id: string;
+  patientId?: string;
+  consultationId?: string;
+  examType: string;
+  code?: string;
+  category?: LabCategory;
+  parameters: string[];
+  urgent: boolean;
+  status: 'pending' | 'paid' | 'sample_received' | 'in_progress' | 'completed';
+  sampleType?: string;
+  sampleReceived?: boolean;
+  sampleReceivedAt?: string;
+  requestedBy?: string;       // id du demandeur
+  requestedAt?: string;
+  invoiceId?: string;         // facture liée (pour les demandes autonomes)
+  price?: number;
+  results?: LabResult[];
+  completedAt?: string;
+  completedBy?: string;
+  validatedBy?: string;
+}
+
+/* ====== PARCOURS PATIENT (timeline) ====== */
+export type JourneyDepartment =
+  | 'reception' | 'consultation' | 'laboratoire' | 'pharmacie'
+  | 'caisse' | 'hospitalisation' | 'bloc' | 'imagerie' | 'administration';
+
+export interface PatientJourneyEvent {
+  id: string;
+  patientId: string;
+  timestamp: string;
+  department: JourneyDepartment;
+  action: string;             // ex: "Admis en consultation"
+  status?: string;            // PatientStatus visé
+  details?: string;
+  actorId?: string;
+  actorName?: string;
+  consultationId?: string;
+  invoiceId?: string;
+  labRequestId?: string;
+  hospitalizationId?: string;
 }
 
 export interface Consultation {
