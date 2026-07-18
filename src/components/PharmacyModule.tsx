@@ -18,19 +18,10 @@ export default function PharmacyModule({ state, setState }: Props) {
   const [searchStock, setSearchStock] = useState('');
   const [filterCat, setFilterCat] = useState<TransferCategory | 'all'>('all');
 
-  const isPrescriptionDeliverable = (p: any, c: any) => {
-    if (p.delivered) return false;
-    if (c.isEmergency) return true; // Les urgences n'exigent pas de pré-paiement
-    // Sinon, vérifier s'il existe une facture réglée pour cette prescription
-    return state.invoices.some(inv => 
-      inv.status === 'paid' && 
-      (inv.consultationId === c.id || inv.patientId === c.patientId) && 
-      inv.items.some(it => it.category === 'pharmacy' && it.description.startsWith(p.articleName))
-    );
-  };
-
   const paidConsultations = state.consultations.filter((c) => {
-    return c.prescriptions.some((p) => isPrescriptionDeliverable(p, c));
+    const inv = state.invoices.find((i) => i.consultationId === c.id && i.status === 'paid' && !i.isExternal);
+    const hasUndelivered = c.prescriptions.some((p) => !p.delivered);
+    return inv && hasUndelivered;
   });
   const emergencyConsults = state.consultations.filter((c) => c.isEmergency && c.prescriptions.some((p) => !p.delivered) && !state.invoices.find((i) => i.consultationId === c.id && i.status === 'paid'));
   const externalInvoices = state.invoices.filter((i) => i.isExternal && i.status === 'paid');
@@ -56,23 +47,10 @@ export default function PharmacyModule({ state, setState }: Props) {
     const name = patient ? `${patient.lastName} ${patient.firstName}` : 'Client externe';
 
     setState((prev) => {
-      // Filtrer uniquement les ordonnances livrables (déjà payées ou cas d'urgence)
-      const deliverablePrescriptions = consultation.prescriptions.filter(p => isPrescriptionDeliverable(p, consultation));
-      const deliverableIds = new Set(deliverablePrescriptions.map(p => p.id));
-
       const updatedConsultations = prev.consultations.map((c) =>
-        c.id === consultationId 
-          ? { 
-              ...c, 
-              prescriptions: c.prescriptions.map((p) => 
-                deliverableIds.has(p.id) ? { ...p, delivered: true } : p
-              ) 
-            } 
-          : c
-      );
-
+        c.id === consultationId ? { ...c, prescriptions: c.prescriptions.map((p) => ({ ...p, delivered: true })) } : c);
       const updatedArticles = [...prev.articles];
-      deliverablePrescriptions.forEach((p) => {
+      consultation.prescriptions.forEach((p) => {
         const idx = updatedArticles.findIndex((a) => a.name === p.articleName);
         if (idx >= 0) updatedArticles[idx] = { ...updatedArticles[idx], stockPharmacie: Math.max(0, updatedArticles[idx].stockPharmacie - p.quantity) };
       });
@@ -82,19 +60,18 @@ export default function PharmacyModule({ state, setState }: Props) {
       const next = { ...prev, consultations: updatedConsultations, articles: updatedArticles,
         patients: patient ? prev.patients.map((p) => p.id === consultation.patientId ? { ...p, status: newStatus as any } : p) : prev.patients };
       addAuditLog(next, 'DELIVRANCE', `Médicaments délivrés: ${name}`, consultation.patientId);
-      if (consultation.patientId) addJourneyEvent(next, { patientId: consultation.patientId, department: 'pharmacie', action: 'Médicaments délivrés', status: 'medications_delivered', details: deliverablePrescriptions.map((p) => `${p.articleName} ×${p.quantity}`).join(', '), actorName: state.currentUser?.name });
+      if (consultation.patientId) addJourneyEvent(next, { patientId: consultation.patientId, department: 'pharmacie', action: 'Médicaments délivrés', status: 'medications_delivered', details: consultation.prescriptions.map((p) => `${p.articleName} ×${p.quantity}`).join(', '), actorName: state.currentUser?.name });
       updatedArticles.forEach((a) => { if (a.stockPharmacie <= 0) addNotification(next, 'pharmacy', `🚨 ${a.name} en rupture (pharmacie)`, 'critical');
         else if (a.stockPharmacie <= a.minStockPharmacie) addNotification(next, 'pharmacy', `⚠️ Stock bas pharmacie: ${a.name} (${a.stockPharmacie})`, 'warning'); });
       return next;
     });
     // Imprime le bon de délivrance
     if (patient) {
-      const deliverablePrescriptions = consultation.prescriptions.filter(p => isPrescriptionDeliverable(p, consultation));
       printDeliveryTicket(
         state.ticketSettings,
         patient,
         new Date(),
-        deliverablePrescriptions.map((p) => ({ name: p.articleName, quantity: p.quantity, posology: p.posology })),
+        consultation.prescriptions.filter((p) => !p.delivered).map((p) => ({ name: p.articleName, quantity: p.quantity, posology: p.posology })),
         state.currentUser?.name,
       );
     }
@@ -148,7 +125,7 @@ export default function PharmacyModule({ state, setState }: Props) {
                   <button onClick={() => deliver(c.id, !!ext)} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium text-sm flex items-center gap-2 cursor-pointer"><CheckCircle className="w-4 h-4" /> Délivrer</button>
                 </div>
               </div>
-              <div className="p-4"><table className="w-full text-sm"><thead><tr className="border-b border-slate-200"><th className="text-left py-2 text-slate-600">Article</th><th className="text-center py-2 text-slate-600">Qté</th><th className="text-left py-2 text-slate-600">Posologie</th><th className="text-right py-2 text-slate-600">Stock</th></tr></thead><tbody>{c.prescriptions.filter((p) => isPrescriptionDeliverable(p, c)).map((p) => { const art = state.articles.find((a) => a.name === p.articleName); return (<tr key={p.id} className="border-b border-slate-100"><td className="py-2 font-medium">{p.articleName}</td><td className="py-2 text-center">{p.quantity}</td><td className="py-2">{p.posology}</td><td className={`py-2 text-right font-mono ${(art?.stockPharmacie || 0) <= 0 ? 'text-red-600 font-bold' : ''}`}>{art?.stockPharmacie || 0}</td></tr>); })}</tbody></table></div>
+              <div className="p-4"><table className="w-full text-sm"><thead><tr className="border-b border-slate-200"><th className="text-left py-2 text-slate-600">Article</th><th className="text-center py-2 text-slate-600">Qté</th><th className="text-left py-2 text-slate-600">Posologie</th><th className="text-right py-2 text-slate-600">Stock</th></tr></thead><tbody>{c.prescriptions.filter((p) => !p.delivered).map((p) => { const art = state.articles.find((a) => a.name === p.articleName); return (<tr key={p.id} className="border-b border-slate-100"><td className="py-2 font-medium">{p.articleName}</td><td className="py-2 text-center">{p.quantity}</td><td className="py-2">{p.posology}</td><td className={`py-2 text-right font-mono ${(art?.stockPharmacie || 0) <= 0 ? 'text-red-600 font-bold' : ''}`}>{art?.stockPharmacie || 0}</td></tr>); })}</tbody></table></div>
             </div>);
           })}</div>}
 
