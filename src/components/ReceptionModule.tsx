@@ -3,10 +3,11 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Patient, VitalSigns, ClientType } from '../types';
 import type { AppState } from '../store';
 import { generateDossierNumber, calculateAge, addAuditLog, addNotification } from '../store';
+import { printQueueTicket } from '../utils/printTicket';
 import {
   Search, Plus, Edit, Trash2, UserX, Activity,
   X, Check, Ban, Users, LogIn, Hospital,
-  Printer, RefreshCw, ChevronDown, Stethoscope, MessageCircle
+  RefreshCw, ChevronDown, Stethoscope, MessageCircle, Ticket
 } from 'lucide-react';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; onStaffLogin: () => void; onOpenMessaging: () => void; }
@@ -82,7 +83,15 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
       addNotification(next, 'doctor', `📋 Nouveau patient: ${selectedPatient.lastName} ${selectedPatient.firstName}`, 'info');
       return next;
     });
+    // Imprime un ticket de file d'attente (numéro auto = nombre de patients en attente + 1)
+    const queueNumber = state.patients.filter((p) => p.status === 'waiting_consultation').length + 1;
+    printQueueTicket(state.ticketSettings, { ...selectedPatient, status: 'waiting_consultation' }, queueNumber);
     setModal('none');
+  };
+
+  const handlePrintQueueTicket = (patient: Patient) => {
+    const queueNumber = state.patients.filter((p) => p.status === 'waiting_consultation').length + 1;
+    printQueueTicket(state.ticketSettings, patient, queueNumber);
   };
 
   const handleAddPatient = () => {
@@ -203,7 +212,9 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
             <button onClick={handleBlacklist} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-600 hover:bg-slate-700 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><UserX className="h-4 w-4" /> Blacklist</button>
             <div className="w-px h-6 bg-slate-300 mx-1" />
             <button className="p-1.5 bg-white border border-slate-300 hover:bg-slate-50 rounded shadow-sm transition cursor-pointer" title="Actualiser"><RefreshCw className="h-4 w-4 text-slate-600" /></button>
-            <button className="p-1.5 bg-white border border-slate-300 hover:bg-slate-50 rounded shadow-sm transition cursor-pointer" title="Imprimer"><Printer className="h-4 w-4 text-slate-600" /></button>
+            <button onClick={() => selectedPatient && handlePrintQueueTicket(selectedPatient)} disabled={!selectedPatient} className="flex items-center gap-1.5 px-2 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer" title="Imprimer ticket de file d'attente">
+              <Ticket className="h-4 w-4" /> Ticket
+            </button>
           </div>
         </div>
       </section>

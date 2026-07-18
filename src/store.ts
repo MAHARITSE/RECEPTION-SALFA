@@ -15,6 +15,7 @@ export function calculateAge(bd: string): string {
   return `${a} Ans`;
 }
 export function formatAr(n: number): string { return n.toLocaleString('fr-FR') + ' Ar'; }
+export function formatMoney(n: number, currency: string = 'Ar'): string { return n.toLocaleString('fr-FR') + ' ' + currency; }
 export function getPrice(a: Article, ct: ClientType): number {
   if (ct === 'societe') return a.priceSociete;
   if (ct === 'externe') return a.priceExterne;
@@ -94,9 +95,11 @@ export function createInitialState(): AppState {
   return {
     currentUser: null,
     ticketSettings: {
-      facilityName: 'RÉCEPTION SALFA', address: 'Madagascar', phone: '', nif: '', logoUrl: '',
-      receiptTitle: 'REÇU DE PAIEMENT', footerMessage: 'Merci de votre confiance. À bientôt !',
-      paperWidth: 80, autoPrint: true,
+      facilityName: 'RÉCEPTION SALFA', address: 'Madagascar', phone: '', nif: '', email: '', website: '',
+      logoUrl: '', receiptTitle: 'REÇU DE PAIEMENT', footerMessage: 'Merci de votre confiance. À bientôt !',
+      paperWidth: 80, autoPrint: true, showLogo: true, showBarcode: true, showSignature: true,
+      copies: 1, currency: 'Ar', paymentMethods: ['Espèces', 'Carte bancaire', 'Mobile Money', 'Virement', 'Chèque'],
+      invoicePrefix: 'FAC', ticketFooter2: '', ticketHeaderColor: '#1e40af',
     },
     patients: [...seedPatients], consultations: [], invoices: [],
     articles: [...seedArticles], beds: [...seedBeds], hospitalizations: [],

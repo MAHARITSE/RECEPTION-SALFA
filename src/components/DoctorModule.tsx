@@ -3,7 +3,8 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Consultation, VitalSigns, Prescription } from '../types';
 import type { AppState } from '../store';
 import { addAuditLog, addNotification, formatAr, getPrice } from '../store';
-import { Stethoscope, History, Trash2, AlertTriangle, Heart, FileText, Clock, CheckCircle, Send, Search, Edit2, RotateCcw, Save } from 'lucide-react';
+import { printPrescriptionTicket } from '../utils/printTicket';
+import { Stethoscope, History, Trash2, AlertTriangle, Heart, FileText, Clock, CheckCircle, Send, Search, Edit2, RotateCcw, Save, Printer } from 'lucide-react';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
 type ViewMode = 'queue' | 'consultation' | 'my_consults';
@@ -137,9 +138,19 @@ export default function DoctorModule({ state, setState }: Props) {
       addNotification(next, 'cashier', `💰 ${selectedPatient.lastName} ${selectedPatient.firstName} — ${formatAr(totalPres)}`, 'info');
       return next;
     });
+    // Impression automatique de l'ordonnance
+    if (state.currentUser) {
+      printPrescriptionTicket(state.ticketSettings, selectedPatient, state.currentUser, new Date(), lines, consultForm.diagnosis);
+    }
     setSelectedPatientId(null); setConsultForm({ visitReason: '', diagnosis: '', notes: '', isEmergency: false, hospitalizeRequested: false, surgeryRequested: false });
     setVitals({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' });
     setLines([]); setShowHistory(false); setSearchQuery(''); setSelectedLineId(null); setIsNewLine(false); setView('queue');
+  };
+
+  const printPrescription = (c: Consultation) => {
+    const pat = state.patients.find((p) => p.id === c.patientId);
+    if (!pat || !state.currentUser) return;
+    printPrescriptionTicket(state.ticketSettings, pat, state.currentUser, new Date(c.date), c.prescriptions, c.diagnosis);
   };
 
   return (
@@ -156,7 +167,7 @@ export default function DoctorModule({ state, setState }: Props) {
           <div className="overflow-auto"><table className="w-full text-sm"><thead className="bg-slate-100 sticky top-0"><tr><th className="p-2 text-left">Heure</th><th className="p-2 text-left">Patient</th><th className="p-2 text-right">Montant</th><th className="p-2 text-center">Statut</th><th className="p-2 text-center">Action</th></tr></thead>
             <tbody>{myTodayConsults.length === 0 ? <tr><td colSpan={5} className="p-8 text-center text-slate-400">Aucune</td></tr>
               : myTodayConsults.map((c) => { const pat = state.patients.find((p) => p.id === c.patientId); const st = getConsultStatus(c); const total = c.prescriptions.reduce((s, p) => s + Math.round(p.unitPrice * p.quantity * (1 - p.discount / 100)), 0);
-                return (<tr key={c.id} className="border-b hover:bg-slate-50"><td className="p-2 font-mono">{new Date(c.date).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</td><td className="p-2 font-medium">{pat?.lastName} {pat?.firstName} <span className="text-xs text-slate-400">({pat?.dossier})</span></td><td className="p-2 text-right font-mono font-bold">{formatAr(total)}</td><td className="p-2 text-center"><span className={`px-2 py-1 rounded-full text-xs font-bold ${st.color}`}>{st.label}</span></td><td className="p-2 text-center flex gap-1 justify-center">{st.canEdit && <button onClick={() => reEditConsultation(c.id)} className="px-2 py-1 bg-blue-500 text-white rounded text-xs cursor-pointer"><Edit2 className="w-3 h-3 inline" /> Mod.</button>}{st.canReturn && <button onClick={() => returnToCashier(c.id)} className="px-2 py-1 bg-amber-500 text-white rounded text-xs cursor-pointer"><RotateCcw className="w-3 h-3 inline" /> Caisse</button>}</td></tr>); })}</tbody>
+                return (<tr key={c.id} className="border-b hover:bg-slate-50"><td className="p-2 font-mono">{new Date(c.date).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</td><td className="p-2 font-medium">{pat?.lastName} {pat?.firstName} <span className="text-xs text-slate-400">({pat?.dossier})</span></td><td className="p-2 text-right font-mono font-bold">{formatAr(total)}</td><td className="p-2 text-center"><span className={`px-2 py-1 rounded-full text-xs font-bold ${st.color}`}>{st.label}</span></td><td className="p-2 text-center flex gap-1 justify-center flex-wrap"><button onClick={() => printPrescription(c)} className="px-2 py-1 bg-slate-700 text-white rounded text-xs cursor-pointer" title="Imprimer l'ordonnance"><Printer className="w-3 h-3 inline" /></button>{st.canEdit && <button onClick={() => reEditConsultation(c.id)} className="px-2 py-1 bg-blue-500 text-white rounded text-xs cursor-pointer"><Edit2 className="w-3 h-3 inline" /> Mod.</button>}{st.canReturn && <button onClick={() => returnToCashier(c.id)} className="px-2 py-1 bg-amber-500 text-white rounded text-xs cursor-pointer"><RotateCcw className="w-3 h-3 inline" /> Caisse</button>}</td></tr>); })}</tbody>
           </table></div>
         </div>
       )}
@@ -271,9 +282,18 @@ export default function DoctorModule({ state, setState }: Props) {
             </div>
           </div>
 
-          <button onClick={submitConsultation} className="w-full py-3 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 flex items-center justify-center gap-2 cursor-pointer shadow-lg">
-            <Send className="w-5 h-5" /> Valider — {formatAr(totalPres)}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => lines.length > 0 && state.currentUser && printPrescriptionTicket(state.ticketSettings, selectedPatient!, state.currentUser, new Date(), lines, consultForm.diagnosis)}
+              disabled={lines.length === 0}
+              className="flex-1 py-3 bg-slate-700 text-white rounded-xl font-semibold hover:bg-slate-800 disabled:opacity-40 flex items-center justify-center gap-2 cursor-pointer shadow-lg"
+            >
+              <Printer className="w-5 h-5" /> Aperçu ordonnance
+            </button>
+            <button onClick={submitConsultation} className="flex-[2] py-3 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 flex items-center justify-center gap-2 cursor-pointer shadow-lg">
+              <Send className="w-5 h-5" /> Valider — {formatAr(totalPres)}
+            </button>
+          </div>
         </div>
       )}
     </div>

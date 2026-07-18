@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { v4 as uuidv4 } from 'uuid';
 import type { AppState } from '../store';
-import type { StockTransfer, TransferCategory } from '../types';
+import type { TransferCategory } from '../types';
 import { addAuditLog, addNotification, formatAr, familyLabel, transferCategoryLabel, transferCategoryColor } from '../store';
+import { printDeliveryTicket } from '../utils/printTicket';
 import {
   Pill, Package, CheckCircle, AlertTriangle, Clock, Search, PackageCheck, Send,
-  Plus, Trash2, FileText, Filter
+  Plus, Trash2, FileText, Filter, Printer
 } from 'lucide-react';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
@@ -64,6 +64,30 @@ export default function PharmacyModule({ state, setState }: Props) {
         else if (a.stockPharmacie <= a.minStockPharmacie) addNotification(next, 'pharmacy', `⚠️ Stock bas pharmacie: ${a.name} (${a.stockPharmacie})`, 'warning'); });
       return next;
     });
+    // Imprime le bon de délivrance
+    if (patient) {
+      printDeliveryTicket(
+        state.ticketSettings,
+        patient,
+        new Date(),
+        consultation.prescriptions.filter((p) => !p.delivered).map((p) => ({ name: p.articleName, quantity: p.quantity, posology: p.posology })),
+        state.currentUser?.name,
+      );
+    }
+  };
+
+  const printDelivery = (consultationId: string, isExternal?: boolean) => {
+    const c = state.consultations.find((x) => x.id === consultationId);
+    if (!c) return;
+    const patient = isExternal ? null : state.patients.find((p) => p.id === c.patientId);
+    if (!patient) return;
+    printDeliveryTicket(
+      state.ticketSettings,
+      patient,
+      new Date(c.date),
+      c.prescriptions.filter((p) => !p.delivered).map((p) => ({ name: p.articleName, quantity: p.quantity, posology: p.posology })),
+      state.currentUser?.name,
+    );
   };
 
   return (
@@ -95,7 +119,10 @@ export default function PharmacyModule({ state, setState }: Props) {
               <div className="p-4 flex items-center justify-between bg-slate-50">
                 <div><div className="font-semibold text-slate-800">{patient ? `${patient.lastName} ${patient.firstName}` : ext ? ext.clientName : 'Inconnu'}{isUrgent && <span className="ml-2 px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full">🚨 Urgence</span>}</div>
                   <div className="text-xs text-slate-500 mt-1">{c.doctorName} — {new Date(c.date).toLocaleDateString('fr-FR')}</div></div>
-                <button onClick={() => deliver(c.id, !!ext)} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium text-sm flex items-center gap-2 cursor-pointer"><CheckCircle className="w-4 h-4" /> Délivrer</button>
+                <div className="flex gap-1">
+                  {patient && <button onClick={() => printDelivery(c.id, !!ext)} className="px-3 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 font-medium text-sm flex items-center gap-1 cursor-pointer" title="Imprimer le bon de délivrance"><Printer className="w-4 h-4" /></button>}
+                  <button onClick={() => deliver(c.id, !!ext)} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium text-sm flex items-center gap-2 cursor-pointer"><CheckCircle className="w-4 h-4" /> Délivrer</button>
+                </div>
               </div>
               <div className="p-4"><table className="w-full text-sm"><thead><tr className="border-b border-slate-200"><th className="text-left py-2 text-slate-600">Article</th><th className="text-center py-2 text-slate-600">Qté</th><th className="text-left py-2 text-slate-600">Posologie</th><th className="text-right py-2 text-slate-600">Stock</th></tr></thead><tbody>{c.prescriptions.filter((p) => !p.delivered).map((p) => { const art = state.articles.find((a) => a.name === p.articleName); return (<tr key={p.id} className="border-b border-slate-100"><td className="py-2 font-medium">{p.articleName}</td><td className="py-2 text-center">{p.quantity}</td><td className="py-2">{p.posology}</td><td className={`py-2 text-right font-mono ${(art?.stockPharmacie || 0) <= 0 ? 'text-red-600 font-bold' : ''}`}>{art?.stockPharmacie || 0}</td></tr>); })}</tbody></table></div>
             </div>);
