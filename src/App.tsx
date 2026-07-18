@@ -41,7 +41,10 @@ export default function App() {
     setView('reception');
   };
 
-  const handleOpenMedicalRecord = () => setView('medicalRecord');
+  const handleOpenMedicalRecord = () => {
+    // Le dossier médical est strictement réservé aux médecins.
+    if (state.currentUser?.role === 'doctor') setView('medicalRecord');
+  };
 
   const handleMarkRead = (notifId: string) => {
     setState((prev) => ({ ...prev, notifications: prev.notifications.map((n) => n.id === notifId ? { ...n, read: true } : n) }));
@@ -65,7 +68,7 @@ export default function App() {
   if (!state.currentUser) { setView('reception'); return null; }
 
   // Vue « Dossier Médical » (accessible depuis n'importe quel module)
-  if (view === 'medicalRecord') {
+  if (view === 'medicalRecord' && state.currentUser.role === 'doctor') {
     return (
       <>
         <Layout
@@ -74,7 +77,7 @@ export default function App() {
           onLogout={handleLogout}
           onMarkRead={handleMarkRead}
           onOpenMessaging={() => setShowMessaging(true)}
-          onOpenMedicalRecord={handleOpenMedicalRecord}
+          onOpenMedicalRecord={state.currentUser.role === 'doctor' ? handleOpenMedicalRecord : undefined}
           unreadMessages={myMsgCount}
         >
           <MedicalRecordModule state={state} onBack={() => setView('staff')} />
@@ -100,7 +103,7 @@ export default function App() {
   return (
     <>
         <Layout user={state.currentUser} notifications={state.notifications} onLogout={handleLogout} onMarkRead={handleMarkRead}
-          onOpenMessaging={() => setShowMessaging(true)} onOpenMedicalRecord={handleOpenMedicalRecord} unreadMessages={myMsgCount}>
+          onOpenMessaging={() => setShowMessaging(true)} onOpenMedicalRecord={state.currentUser.role === 'doctor' ? handleOpenMedicalRecord : undefined} unreadMessages={myMsgCount}>
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-slate-800">{roleTitles[state.currentUser.role]}</h2>
           <p className="text-slate-500 text-sm mt-1">
