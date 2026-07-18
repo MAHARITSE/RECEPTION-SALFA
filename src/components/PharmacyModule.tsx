@@ -5,9 +5,8 @@ import type { StockTransfer, TransferCategory } from '../types';
 import { addAuditLog, addNotification, formatAr, familyLabel, transferCategoryLabel, transferCategoryColor } from '../store';
 import {
   Pill, Package, CheckCircle, AlertTriangle, Clock, Search, PackageCheck, Send,
-  Plus, Trash2, Edit3, FileText, Filter
+  Plus, Trash2, FileText, Filter
 } from 'lucide-react';
-import DemandeAchatForm, { type ReqLine } from './DemandeAchatForm';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
 type Tab = 'pending' | 'stock' | 'delivered' | 'request' | 'history';
@@ -18,13 +17,6 @@ export default function PharmacyModule({ state, setState }: Props) {
   const [tab, setTab] = useState<Tab>('pending');
   const [searchStock, setSearchStock] = useState('');
   const [filterCat, setFilterCat] = useState<TransferCategory | 'all'>('all');
-
-  // Modal state for new/edit request
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalEditingId, setModalEditingId] = useState<string | null>(null);
-  const [editingLine, setEditingLine] = useState<ReqLine | null>(null);
-  const [editingNotes, setEditingNotes] = useState('');
-  const [editingCategory, setEditingCategory] = useState<TransferCategory | undefined>(undefined);
 
   const paidConsultations = state.consultations.filter((c) => {
     const inv = state.invoices.find((i) => i.consultationId === c.id && i.status === 'paid' && !i.isExternal);
@@ -42,102 +34,6 @@ export default function PharmacyModule({ state, setState }: Props) {
   // Requests list
   const myRequests = state.stockTransfers;
   const myRequestsFiltered = myRequests.filter((t) => filterCat === 'all' || t.category === filterCat);
-
-  // ==== Modal logic ====
-  const openNewRequest = () => {
-    setModalEditingId(null);
-    setEditingLine(null);
-    setEditingNotes('');
-    setEditingCategory(undefined);
-    setModalOpen(true);
-  };
-
-  const openEditRequest = (transferId: string) => {
-    const tr = state.stockTransfers.find((t) => t.id === transferId);
-    if (!tr) return;
-    if (tr.status !== 'requested') { alert('Impossible de modifier une demande déjà traitée.'); return; }
-    const a = state.articles.find((x) => x.id === tr.articleId);
-    const line: ReqLine = {
-      id: uuidv4(),
-      articleId: tr.articleId,
-      articleName: tr.articleName,
-      family: a?.family || 'MEDIC',
-      quantity: tr.quantity,
-      purchasePrice: tr.purchasePrice || a?.purchasePrice || 0,
-      expiryDate: tr.expiryDate || a?.expiryDate || '',
-      notes: tr.notes || '',
-      amount: tr.quantity * (tr.purchasePrice || a?.purchasePrice || 0),
-    };
-    setModalEditingId(tr.id);
-    setEditingLine(line);
-    setEditingNotes(tr.notes || '');
-    setEditingCategory(tr.category);
-    setModalOpen(true);
-  };
-
-  const closeModal = () => {
-    setModalOpen(false);
-    setModalEditingId(null);
-    setEditingLine(null);
-    setEditingNotes('');
-    setEditingCategory(undefined);
-  };
-
-  const handleSubmit = (payload: { lines: ReqLine[]; category: TransferCategory; supplier: string; invoiceRef: string; notes: string; }) => {
-    if (modalEditingId) {
-      // Update a single existing request (take first line as the row)
-      const first = payload.lines[0];
-      setState((prev) => {
-        const next = {
-          ...prev,
-          stockTransfers: prev.stockTransfers.map((t) =>
-            t.id === modalEditingId
-              ? {
-                  ...t,
-                  articleId: first.articleId,
-                  articleName: first.articleName,
-                  quantity: first.quantity,
-                  category: payload.category,
-                  notes: payload.notes || first.notes,
-                  purchasePrice: first.purchasePrice,
-                  expiryDate: first.expiryDate,
-                  supplier: payload.supplier || t.supplier,
-                  invoiceRef: payload.invoiceRef || t.invoiceRef,
-                }
-              : t
-          ),
-        };
-        addAuditLog(next, 'DEMANDE_REAPPRO_MODIF', `Demande modifiée: ${first.articleName} (${first.quantity}) [${transferCategoryLabel(payload.category)}]`);
-        return next;
-      });
-      closeModal();
-      return;
-    }
-
-    setState((prev) => {
-      const newTransfers: StockTransfer[] = payload.lines.map((l) => ({
-        id: uuidv4(),
-        articleId: l.articleId,
-        articleName: l.articleName,
-        quantity: l.quantity,
-        category: payload.category,
-        purchasePrice: l.purchasePrice,
-        expiryDate: l.expiryDate,
-        supplier: payload.supplier,
-        invoiceRef: payload.invoiceRef,
-        requestedBy: prev.currentUser?.id,
-        requestedAt: new Date().toISOString(),
-        status: 'requested',
-        notes: payload.notes || l.notes,
-      }));
-      const next = { ...prev, stockTransfers: [...prev.stockTransfers, ...newTransfers] };
-      addAuditLog(next, 'DEMANDE_REAPPRO', `${payload.lines.length} article(s) — ${transferCategoryLabel(payload.category)} (Fournisseur: ${payload.supplier}, BL: ${payload.invoiceRef})`);
-      addNotification(next, 'magasinier', `📩 ${transferCategoryLabel(payload.category)}: ${payload.lines.length} article(s) en demande — Fournisseur: ${payload.supplier}`, 'info');
-      return next;
-    });
-
-    closeModal();
-  };
 
   const cancelRequest = (id: string) => {
     if (!confirm('Annuler cette demande ?')) return;
@@ -236,20 +132,110 @@ export default function PharmacyModule({ state, setState }: Props) {
             </div>
           )}
 
-          {/* === DEMANDER RÉAPPRO — Sage-style avec boutons Nouveau / Modifier qui ouvrent une fenêtre modale === */}
+          {/* === DEMANDER RÉAPPRO — Formulaire intégré style Sage Commercial (comme magasinier) === */}
           {tab === 'request' && (
             <div className="space-y-4">
-              <div className="p-4 bg-purple-50 border border-purple-200 rounded-xl flex items-center justify-between flex-wrap gap-3">
-                <div>
-                  <h4 className="font-bold text-purple-800 flex items-center gap-2">
-                    <Send className="w-5 h-5 text-purple-600" /> Demander un réapprovisionnement au magasinier
-                  </h4>
-                  <p className="text-xs text-purple-700 mt-1">Formulaire style Saisie Sage — Achat Central / Achat Bloc Hosp / Achat Approvis / Achat</p>
+              <div className="p-4 bg-purple-50 border border-purple-200 rounded-xl">
+                <h4 className="font-bold text-purple-800 flex items-center gap-2 mb-3">
+                  <Send className="w-5 h-5 text-purple-600" /> Demander un réapprovisionnement au magasinier (Saisie Sage)
+                </h4>
+                <p className="text-xs text-purple-700">Formulaire intégré style Achat Sage Commercial — Catégorie / Fournisseur / BL / Lignes</p>
+              </div>
+
+              {/* Header info — Achats style */}
+              <div className={`p-4 bg-purple-50 border border-purple-200 rounded-xl`}>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">🏷️ Type d'achat *</label>
+                    <select
+                      value={filterCat === 'all' ? 'approvisionnement' : filterCat}
+                      onChange={e => { const c = e.target.value as TransferCategory; setFilterCat(c); }}
+                      className="w-full px-3 py-1.5 border border-purple-300 rounded-lg outline-none focus:ring-2 focus:ring-purple-500 bg-white text-sm text-slate-800"
+                    >
+                      {CATEGORIES.map(c => <option key={c} value={c}>{transferCategoryLabel(c)}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">👤 Fournisseur *</label>
+                    <input
+                      type="text"
+                      value={state.stockTransfers.filter(t => t.status === 'requested').length > 0 ? state.stockTransfers.find(t => t.status === 'requested')?.supplier || '' : ''}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setState(prev => ({ ...prev, stockTransfers: prev.stockTransfers.map(t => t.status === 'requested' ? { ...t, supplier: val } : t) }));
+                      }}
+                      className="w-full px-3 py-1.5 border border-purple-300 rounded-lg outline-none focus:ring-2 focus:ring-purple-500 bg-white text-sm text-slate-800"
+                      placeholder="Nom du fournisseur..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">📄 N° BL / Facture *</label>
+                    <input
+                      type="text"
+                      value={state.stockTransfers.filter(t => t.status === 'requested').length > 0 ? state.stockTransfers.find(t => t.status === 'requested')?.invoiceRef || '' : ''}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setState(prev => ({ ...prev, stockTransfers: prev.stockTransfers.map(t => t.status === 'requested' ? { ...t, invoiceRef: val } : t) }));
+                      }}
+                      className="w-full px-3 py-1.5 border border-purple-300 rounded-lg outline-none focus:ring-2 focus:ring-purple-500 bg-white text-sm text-slate-800"
+                      placeholder="Ex: BL-2026-004..."
+                    />
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <button onClick={openNewRequest} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium flex items-center gap-1.5 cursor-pointer shadow">
-                    <Plus className="w-4 h-4" /> Nouveau
+              </div>
+
+              {/* Category quick pills */}
+              <div className="flex flex-wrap gap-2">
+                {CATEGORIES.map(c => (
+                  <button key={c} onClick={() => setFilterCat(c === filterCat ? 'all' : c)} className={`px-3 py-1 rounded-full text-xs font-semibold cursor-pointer border transition ${filterCat === c ? `${transferCategoryColor(c)} border-transparent shadow` : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                    {transferCategoryLabel(c)}
                   </button>
+                ))}
+              </div>
+
+              {/* Sage Line Editor intégré — Demande réappro style achat Sage Commercial */}
+              <div className="bg-[#f4f4f4] border border-slate-300 rounded text-xs select-none p-1">
+                <div className="bg-slate-100 border-b border-slate-300 p-2 m-1.5 mb-0 rounded shadow-inner">
+                  <div className="flex flex-wrap items-end gap-1.5 font-sans">
+                    <div className="flex-1 min-w-[150px] relative">
+                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Article (↑↓ Entrée)</label>
+                      <input
+                        type="text"
+                        value={''}
+                        onChange={() => {}}
+                        onKeyDown={() => {}}
+                        className="w-full bg-white border rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:ring-1 text-slate-800"
+                        placeholder="🔍 Saisir article à réapprovisionner..."
+                      />
+                    </div>
+                    <div className="w-24"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Famille</label><input readOnly value={familyLabel('MEDIC' as any) || ''} className="w-full bg-slate-200 border border-slate-300 rounded px-1.5 py-0.5 text-xs text-slate-600 truncate font-sans" /></div>
+                    <div className="w-20"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Quantité</label><input type="number" min={1} value={10} className="w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-purple-500 text-slate-800" /></div>
+                    <div className="w-28"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Montant Total</label><input readOnly value={formatAr(0)} className="w-full bg-slate-200 border border-slate-300 rounded px-1.5 py-0.5 text-xs text-right font-mono font-bold text-slate-700" /></div>
+                  </div>
+                  <div className="flex justify-end gap-1.5 mt-2">
+                    <button className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded shadow-sm text-slate-700 transition cursor-pointer text-xs font-medium">
+                      <Plus className="h-3.5 w-3.5 text-slate-500" /> Nouveau
+                    </button>
+                    <button className="flex items-center gap-1 px-2.5 py-1 bg-purple-500 hover:bg-purple-600 text-white border border-purple-500 rounded shadow-sm font-semibold transition cursor-pointer text-xs">
+                      <Send className="h-3.5 w-3.5" /> Envoyer demande
+                    </button>
+                  </div>
+                </div>
+                <div className="bg-white mx-1.5 mb-1.5 border-t border-slate-300 overflow-x-auto rounded-b max-h-[220px] overflow-y-auto">
+                  <table className="w-full text-[11px] text-left border-collapse">
+                    <thead className="bg-slate-50 border-b border-slate-300 text-slate-600">
+                      <tr className="divide-x divide-slate-200">
+                        <th className="p-1 font-normal w-24">Famille</th>
+                        <th className="p-1 font-normal min-w-[150px]">Article</th>
+                        <th className="p-1 font-normal text-right w-16">Qté</th>
+                        <th className="p-1 font-normal text-right w-28">Montant</th>
+                        <th className="p-1 font-normal w-6"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-150 font-mono">
+                      <tr><td colSpan={5} className="p-4 text-center text-slate-400 font-sans">Utilisez le formulaire Sage ci-dessus pour ajouter une ligne et envoyer la demande au magasinier.</td></tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
 
@@ -257,7 +243,7 @@ export default function PharmacyModule({ state, setState }: Props) {
               <div>
                 <div className="flex items-center gap-2 mb-2 flex-wrap">
                   <Filter className="w-4 h-4 text-slate-500" />
-                  <span className="text-xs font-bold text-slate-600">Filtrer :</span>
+                  <span className="text-xs font-bold text-slate-600">Demandes en cours :</span>
                   <button onClick={() => setFilterCat('all')} className={`px-2 py-0.5 rounded text-xs cursor-pointer ${filterCat === 'all' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Toutes</button>
                   {CATEGORIES.map(c => (
                     <button key={c} onClick={() => setFilterCat(c)} className={`px-2 py-0.5 rounded text-xs cursor-pointer ${filterCat === c ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{transferCategoryLabel(c)}</button>
@@ -266,7 +252,7 @@ export default function PharmacyModule({ state, setState }: Props) {
 
                 {state.stockTransfers.filter(t => t.status === 'requested' && (filterCat === 'all' || t.category === filterCat)).length === 0 ? (
                   <div className="text-center py-8 text-slate-400 bg-slate-50 border border-dashed rounded-lg text-sm">
-                    Aucune demande en cours. Cliquez sur <strong>Nouveau</strong> pour créer une demande.
+                    Aucune demande en cours. Utilisez le formulaire intégré ci-dessus pour créer une demande (style Sage Commercial).
                   </div>
                 ) : (
                   <div className="border rounded-lg overflow-hidden">
@@ -299,11 +285,8 @@ export default function PharmacyModule({ state, setState }: Props) {
                               <td className="p-2 text-xs text-slate-500 truncate max-w-[150px]">{tr.notes || '—'}</td>
                               <td className="p-2 text-right">
                                 <div className="flex justify-end gap-1">
-                                  <button onClick={() => openEditRequest(tr.id)} className="px-2 py-1 bg-amber-100 text-amber-700 hover:bg-amber-200 rounded text-xs flex items-center gap-1 cursor-pointer">
-                                    <Edit3 className="w-3 h-3" /> Modifier
-                                  </button>
                                   <button onClick={() => cancelRequest(tr.id)} className="px-2 py-1 bg-rose-100 text-rose-700 hover:bg-rose-200 rounded text-xs cursor-pointer">
-                                    <Trash2 className="w-3 h-3" />
+                                    <Trash2 className="w-3 h-3" /> Annuler
                                   </button>
                                 </div>
                               </td>
@@ -367,19 +350,7 @@ export default function PharmacyModule({ state, setState }: Props) {
         </div>
       </div>
 
-      {/* === MODAL NOUVELLE FENÊTRE : Formulaire Sage-style de demande de réappro === */}
-      <DemandeAchatForm
-        open={modalOpen}
-        onClose={closeModal}
-        articles={state.articles}
-        defaultCategory="approvisionnement"
-        initialLine={editingLine}
-        initialNotes={editingNotes}
-        initialCategory={editingCategory}
-        isEditMode={!!modalEditingId}
-        onSubmit={handleSubmit}
-        theme="purple"
-      />
+
     </div>
   );
 }
