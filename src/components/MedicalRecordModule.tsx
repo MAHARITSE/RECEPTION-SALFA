@@ -34,22 +34,6 @@ const statusCfg: Record<string, { label: string; bg: string; text: string }> = {
 };
 
 export default function MedicalRecordModule({ state, patientId, onBack }: Props) {
-  // Restriction : seuls les docteurs peuvent consulter un dossier médical
-  if (state.currentUser?.role !== 'doctor') {
-    return (
-      <div className="max-w-xl mx-auto mt-12 bg-red-50 border-2 border-red-200 rounded-2xl p-8 text-center shadow-lg">
-        <div className="text-6xl mb-4">🔒</div>
-        <h2 className="text-2xl font-extrabold text-red-700 mb-2">Accès interdit</h2>
-        <p className="text-slate-600 mb-4">Personne n'a le droit de regarder les dossiers médicaux, à part les docteurs.</p>
-        {onBack && (
-          <button onClick={onBack} className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold shadow transition cursor-pointer flex items-center gap-2 mx-auto">
-            ← Retour
-          </button>
-        )}
-      </div>
-    );
-  }
-
   const [localId, setLocalId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<Tab>('parcours');
