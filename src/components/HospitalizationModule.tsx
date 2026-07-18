@@ -5,7 +5,7 @@ import type { AppState } from '../store';
 import { addAuditLog, addNotification, formatAr, familyLabel } from '../store';
 import {
   Building2, BedDouble, CheckCircle, Clock,
-  Plus, FileText, LogOut, Users, PackagePlus, Search, Trash2, Save, Check, Truck
+  Plus, FileText, LogOut, Users, PackagePlus, Trash2, Save, Check
 } from 'lucide-react';
 
 interface Props {

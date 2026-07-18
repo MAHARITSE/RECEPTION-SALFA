@@ -8,7 +8,7 @@ import { DollarSign, Save, Trash2, Plus, X, Check } from 'lucide-react';
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
 type Tab = 'users' | 'articles' | 'prices' | 'companies' | 'prompts';
 import { WINDEV_PROMPT, WEB_PROMPT } from '../data/promptsData';
-import { FileText, Copy } from 'lucide-react';
+import { Copy } from 'lucide-react';
 
 const roleLabels: Record<string, string> = { doctor:'Médecin', cashier:'Caisse', pharmacy:'Pharmacie', magasinier:'Magasinier', laboratory:'Laboratoire', hospitalization:'Hospitalisation', admin:'Admin' };
 const ALL_ROLES: UserRole[] = ['doctor','cashier','pharmacy','magasinier','laboratory','hospitalization','admin'];
@@ -73,7 +73,7 @@ export default function AdminModule({ state, setState }: Props) {
               <select value={newUser.role} onChange={(e) => setNewUser({...newUser,role:e.target.value as UserRole})} className="px-2 py-1.5 border rounded outline-none cursor-pointer">{ALL_ROLES.map((r) => (<option key={r} value={r}>{roleLabels[r]}</option>))}</select>
               <div className="flex gap-1"><input type="password" value={newUser.password} onChange={(e) => setNewUser({...newUser,password:e.target.value})} className="flex-1 px-2 py-1.5 border rounded outline-none" placeholder="MDP" /><button onClick={saveUser} className="px-2 bg-emerald-600 text-white rounded cursor-pointer"><Check className="w-4 h-4" /></button><button onClick={() => setAddUser(false)} className="px-2 bg-slate-400 text-white rounded cursor-pointer"><X className="w-4 h-4" /></button></div>
             </div>}
-            <div className="overflow-auto"><table className="w-full text-sm"><thead className="bg-slate-50 border-b"><tr><th className="p-2 text-left">ID</th><th className="p-2 text-left">Nom</th><th className="p-2 text-left">Rôle</th><th className="p-2 text-left">MDP</th><th className="p-2 w-10"></th></tr></thead><tbody>{staffUsers.map((u) => (<tr key={u.id} className="border-b border-slate-100"><td className="p-2 font-mono font-bold">{u.id}</td><td className="p-2">{u.name}</td><td className="p-2"><span className="px-2 py-0.5 bg-slate-200 rounded text-xs">{roleLabels[u.role]}</span></td><td className="p-2 font-mono text-slate-400">{u.password}</td><td className="p-2"><button onClick={() => deleteUser(u.id)} disabled={u.id==='ADM001'} className="text-red-500 disabled:opacity-30 cursor-pointer"><Trash2 className="w-4 h-4" /></button></td></tr>))}</tbody></table></div>
+            <div className="overflow-auto"><table className="w-full text-sm"><thead className="bg-slate-50 border-b"><tr><th className="p-2 text-left">ID</th><th className="p-2 text-left">Nom</th><th className="p-2 text-left">Rôle</th><th className="p-2 text-left">MDP</th><th className="p-2 w-10"></th></tr></thead><tbody>{state.users.map((u) => (<tr key={u.id} className="border-b border-slate-100"><td className="p-2 font-mono font-bold">{u.id}</td><td className="p-2">{u.name}</td><td className="p-2"><span className="px-2 py-0.5 bg-slate-200 rounded text-xs">{roleLabels[u.role]}</span></td><td className="p-2 font-mono text-slate-400">{u.password}</td><td className="p-2"><button onClick={() => deleteUser(u.id)} disabled={u.id==='ADM001'} className="text-red-500 disabled:opacity-30 cursor-pointer"><Trash2 className="w-4 h-4" /></button></td></tr>))}</tbody></table></div>
           </div>}
 
           {tab === 'articles' && <div>
