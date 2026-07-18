@@ -58,22 +58,42 @@ export default function CashierModule({ state, setState }: Props) {
 
   const calcItems = (): InvoiceItem[] => {
     if (!selConsult) return [];
-    return selConsult.prescriptions.map(p => ({
+    const pharmacyItems = selConsult.prescriptions.map(p => ({
       description: `${p.articleName} × ${p.quantity}${p.discount > 0 ? ` (-${p.discount}%)` : ''}`,
       amount: Math.round(p.unitPrice * p.quantity * (1 - p.discount / 100)), category: 'pharmacy' as const,
     }));
+    // Intégration labo : même ligne que les médicaments — analyses liées à la consultation en attente
+    const labInvoice = state.invoices.find(
+      (i) => i.consultationId === selConsult.id && i.status === 'pending' && i.items.some((it) => it.category === 'lab'),
+    );
+    const labItems = labInvoice ? labInvoice.items.map((it) => ({ ...it })) : [];
+    return [...pharmacyItems, ...labItems];
   };
   const items = calcItems();
   const totalAmount = items.reduce((s, it) => s + it.amount, 0);
 
   const handlePayment = () => {
     if (!selConsult || !selPatient) return;
+    const items = calcItems();
+    const totalAmount = items.reduce((s, it) => s + it.amount, 0);
+    // Facture labo associée (même consultation) — marquée payée en même temps
+    const labInvoice = state.invoices.find(
+      (i) => i.consultationId === selConsult.id && i.status === 'pending' && i.items.some((it) => it.category === 'lab'),
+    );
     const inv: Invoice = { id: uuidv4(), patientId: selConsult.patientId, consultationId: selConsult.id, clientType: selPatient.clientType, items, totalAmount, patientCharge: totalAmount, status: 'paid', paidAt: new Date().toISOString(), paidBy: state.currentUser?.id || '', createdAt: new Date().toISOString(), isExternal: false };
     setState(prev => {
-      const next = { ...prev, invoices: [...prev.invoices, inv], patients: prev.patients.map(p => p.id === selConsult.patientId ? { ...p, status: 'invoice_paid' as const } : p) };
-      addAuditLog(next, 'PAIEMENT', `${formatAr(totalAmount)} — ${selPatient.lastName}`, selConsult.patientId);
+      let next = { ...prev, invoices: [...prev.invoices, inv], patients: prev.patients.map(p => p.id === selConsult.patientId ? { ...p, status: 'invoice_paid' as const } : p) };
+      // Marquer la facture labo existante comme payée et mettre à jour les demandes
+      if (labInvoice) {
+        next = {
+          ...next,
+          invoices: next.invoices.map((i) => i.id === labInvoice.id ? { ...i, status: 'paid' as const, paidAt: new Date().toISOString(), paidBy: prev.currentUser?.id || '' } : i),
+          labRequests: next.labRequests.map((l) => (l.invoiceId === labInvoice.id ? { ...l, status: 'paid' as const } : l)),
+        };
+      }
+      addAuditLog(next, 'PAIEMENT', `${formatAr(totalAmount)} — ${selPatient.lastName}${labInvoice ? ' (+ labo)' : ''}`, selConsult.patientId);
       if (selConsult.patientId) addJourneyEvent(next, { patientId: selConsult.patientId, department: 'caisse', action: 'Paiement enregistré', status: 'invoice_paid', details: formatAr(totalAmount), actorName: prev.currentUser?.name });
-      if (selConsult.prescriptions.length > 0) addNotification(next, 'pharmacy', `💊 ${selPatient.lastName} ${selPatient.firstName}`, 'info');
+      if (selConsult.prescriptions.length > 0 || labInvoice) addNotification(next, 'pharmacy', `💊 ${selPatient.lastName} ${selPatient.firstName}${labInvoice ? ' + analyses' : ''}`, 'info');
       return next;
     });
     openThermalTicket(state.ticketSettings, inv, selPatient, state.currentUser || undefined);
@@ -299,7 +319,7 @@ export default function CashierModule({ state, setState }: Props) {
       {/* Tabs */}
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
         <div className="flex border-b overflow-x-auto">
-          {([['payment','📋 Facturation',pendingPatients.length],['external','🛒 Vte Externe',0],['hospit','🏨 Hospit.',hbRecords.filter(h=>h.type==='hospit').length],['bloc','🏥 Bloc',hbRecords.filter(h=>h.type==='bloc').length],['labo','🧪 Laboratoire',pendingLabInvoices.length],['closing','🔒 Clôture',0]] as [Tab,string,number][]).map(([k,l,c]) => (
+          {([['payment','📋 Facturation',pendingPatients.length],['external','🛒 Vte Externe',0],['hospit','🏨 Hospit.',hbRecords.filter(h=>h.type==='hospit').length],['bloc','🏥 Bloc',hbRecords.filter(h=>h.type==='bloc').length],['closing','🔒 Clôture',0]] as [Tab,string,number][]).map(([k,l,c]) => (
             <button key={k} onClick={() => switchTab(k)} className={`flex items-center gap-1 px-4 py-3 text-xs font-medium border-b-2 cursor-pointer whitespace-nowrap ${tab===k?'border-amber-500 text-amber-600 bg-amber-50/50':'border-transparent text-slate-500'}`}>{l}{c > 0 ? ` (${c})` : ''}</button>
           ))}
         </div>

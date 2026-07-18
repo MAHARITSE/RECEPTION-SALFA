@@ -100,7 +100,7 @@ export default function App() {
   return (
     <>
         <Layout user={state.currentUser} notifications={state.notifications} onLogout={handleLogout} onMarkRead={handleMarkRead}
-          onOpenMessaging={() => setShowMessaging(true)} onOpenMedicalRecord={handleOpenMedicalRecord} unreadMessages={myMsgCount}>
+          onOpenMessaging={() => setShowMessaging(true)} onOpenMedicalRecord={state.currentUser?.role === 'doctor' ? handleOpenMedicalRecord : undefined} unreadMessages={myMsgCount}>
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-slate-800">{roleTitles[state.currentUser.role]}</h2>
           <p className="text-slate-500 text-sm mt-1">
