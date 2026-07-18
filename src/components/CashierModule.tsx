@@ -10,7 +10,7 @@ interface HbLine { id: string; articleName: string; quantity: number; unitPrice:
 interface HbRecord { id: string; patientId?: string; patientName: string; clientType: ClientType; company?: string; type: 'hospit' | 'bloc'; lines: HbLine[]; payments: { amount: number; paidBy: string; date: string }[]; }
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
-type Tab = 'payment' | 'external' | 'hospit' | 'bloc' | 'closing';
+type Tab = 'payment' | 'hospit' | 'bloc' | 'closing';
 type HbModal = 'none' | 'add_patient' | 'add_article' | 'edit_client';
 
 export default function CashierModule({ state, setState }: Props) {
@@ -315,7 +315,7 @@ export default function CashierModule({ state, setState }: Props) {
       {/* Tabs */}
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
         <div className="flex border-b overflow-x-auto">
-          {([['payment','📋 Facturation',pendingPatients.length],['external','🛒 Vte Externe',0],['hospit','🏨 Hospit.',hbRecords.filter(h=>h.type==='hospit').length],['bloc','🏥 Bloc',hbRecords.filter(h=>h.type==='bloc').length],['closing','🔒 Clôture',0]] as [Tab,string,number][]).map(([k,l,c]) => (
+          {([['payment','📋 Facturation',pendingPatients.length],['hospit','🏨 Hospit.',hbRecords.filter(h=>h.type==='hospit').length],['bloc','🏥 Bloc',hbRecords.filter(h=>h.type==='bloc').length],['closing','🔒 Clôture',0]] as [Tab,string,number][]).map(([k,l,c]) => (
             <button key={k} onClick={() => switchTab(k)} className={`flex items-center gap-1 px-4 py-3 text-xs font-medium border-b-2 cursor-pointer whitespace-nowrap ${tab===k?'border-amber-500 text-amber-600 bg-amber-50/50':'border-transparent text-slate-500'}`}>{l}{c > 0 ? ` (${c})` : ''}</button>
           ))}
         </div>
@@ -324,21 +324,9 @@ export default function CashierModule({ state, setState }: Props) {
 
           {/* PAYMENT */}
           {tab === 'payment' && (
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-              {/* Vente externe toujours visible à gauche de la file d'attente caisse */}
-              <div className="border border-purple-200 rounded-lg bg-purple-50 p-3 self-start lg:sticky lg:top-0">
-                <h3 className="font-bold text-sm text-purple-800 mb-2"><ShoppingCart className="w-4 h-4 inline mr-1" />Vente externe</h3>
-                <p className="text-[11px] text-purple-700 mb-2">Ajoutez un article puis encaissez directement.</p>
-                <div className="relative">
-                  <input ref={extSearchRef} value={extLineForm.articleName && !extSearch ? extLineForm.articleName : extSearch} onChange={e => { setExtSearch(e.target.value); setExtSearchIdx(0); }} onKeyDown={extKeyDown} className="w-full bg-white border border-purple-300 rounded px-2 py-1.5 text-xs outline-none" placeholder="🔍 Rechercher un article" />
-                  {extSearch && extFiltered.length > 0 && <div className="absolute top-full left-0 right-0 bg-white border rounded shadow-xl z-30 max-h-32 overflow-y-auto">{extFiltered.map((a, idx) => <button key={a.id} onClick={() => extSelectArticle(a.id)} className={`w-full px-2 py-1 text-left text-[11px] flex justify-between ${idx === extSearchIdx ? 'bg-purple-100' : 'hover:bg-purple-50'}`}><span>{a.name}</span><span className="font-mono">{formatAr(getPrice(a, 'externe'))}</span></button>)}</div>}
-                </div>
-                <div className="flex gap-1 mt-2"><input type="number" min={1} value={extLineForm.quantity} onChange={e => setExtLineForm({...extLineForm, quantity: parseInt(e.target.value) || 1})} className="w-16 px-1 py-1 border rounded text-xs text-right" /><button onClick={extSaveLine} disabled={!extLineForm.articleName} className="flex-1 px-2 py-1 bg-purple-600 text-white rounded text-xs disabled:opacity-40 cursor-pointer">Ajouter</button></div>
-                <div className="mt-2 bg-white border rounded max-h-40 overflow-y-auto">{extLines.length === 0 ? <p className="p-3 text-center text-[11px] text-slate-400">Aucun article</p> : extLines.map(l => <div key={l.id} className="flex items-center justify-between px-2 py-1 border-b text-[11px]"><span className="truncate mr-1">{l.articleName} × {l.quantity}</span><span className="font-mono">{formatAr(extLineAmt(l))}</span></div>)}</div>
-                <div className="flex justify-between font-bold text-sm mt-2"><span>Total</span><span>{formatAr(extTotal)}</span></div>
-                <button onClick={extPay} disabled={!extLines.length} className="w-full mt-2 py-2 bg-purple-600 text-white rounded-lg text-xs font-semibold disabled:opacity-40 cursor-pointer"><CreditCard className="w-3 h-3 inline mr-1" />Encaisser vente</button>
-              </div>
-              <div className="divide-y border rounded-lg max-h-[500px] overflow-y-auto">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+              {/* File d'attente patients */}
+              <div className="lg:col-span-3 divide-y border rounded-lg max-h-[500px] overflow-y-auto">
                 {pendingPatients.length === 0 ? <div className="p-6 text-center text-slate-400">Aucune facture</div>
                   : pendingPatients.map(p => getConsults(p.id).map(c => {
                     const cItems = calcItems(c);
@@ -361,7 +349,9 @@ export default function CashierModule({ state, setState }: Props) {
                     );
                   }))}
               </div>
-              <div className="lg:col-span-2">
+
+              {/* Facture patient */}
+              <div className="lg:col-span-5">
                 {!selConsult || !selPatient ? <div className="p-12 text-center text-slate-400"><CreditCard className="w-16 h-16 mx-auto mb-4 opacity-30" /><p>Sélectionnez une consultation</p></div>
                   : <div>
                     <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg mb-3"><h3 className="font-bold">{selPatient.lastName} {selPatient.firstName} ({selPatient.dossier})</h3><p className="text-xs text-slate-500">{selConsult.doctorName} | {selConsult.diagnosis}</p><p className="text-xs text-cyan-700 font-medium mt-1">Facturation intégrée : médicaments et analyses sur le même reçu</p></div>
@@ -370,41 +360,39 @@ export default function CashierModule({ state, setState }: Props) {
                     <button onClick={handlePayment} className="w-full py-3 bg-amber-600 text-white rounded-xl font-semibold hover:bg-amber-700 cursor-pointer shadow-lg flex items-center justify-center gap-2"><CreditCard className="w-5 h-5" /> Encaisser {formatAr(totalAmount)}</button>
                   </div>}
               </div>
-            </div>
-          )}
 
-          {/* EXTERNAL - Sage */}
-          {tab === 'external' && (
-            <div className="max-w-2xl mx-auto space-y-3">
-              <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg"><h3 className="font-bold text-purple-800"><ShoppingCart className="w-5 h-5 inline" /> Vente Directe — Client Externe</h3></div>
-              <div className="bg-[#f4f4f4] border border-slate-300 rounded">
-                <div className="bg-slate-100 border-b border-slate-300 p-1.5 m-2 mb-0 rounded shadow-inner">
-                  <div className="flex flex-wrap items-end gap-1">
-                    <div className="flex-1 min-w-[140px] relative">
-                      <label className="block text-[9px] text-slate-500">Article (↑↓ Entrée)</label>
-                      <input ref={extSearchRef} type="text" value={extLineForm.articleName && !extSearch ? extLineForm.articleName : extSearch} onChange={e => { setExtSearch(e.target.value); setExtSearchIdx(0); }} onKeyDown={extKeyDown} className="w-full bg-white border border-blue-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-blue-600" placeholder="🔍 Tapez..." />
-                      {extSearch.length >= 1 && extFiltered.length > 0 && <div className="absolute top-full left-0 right-0 bg-white border rounded-b shadow-xl z-30 max-h-36 overflow-y-auto">{extFiltered.map((a, idx) => (<div key={a.id} onClick={() => extSelectArticle(a.id)} className={`px-2 py-1 cursor-pointer text-xs flex justify-between border-b ${idx === extSearchIdx ? 'bg-blue-100' : 'hover:bg-blue-50'}`}><span>[{a.family}] {a.name}</span><span className="font-mono text-blue-600">{formatAr(getPrice(a, 'externe'))}</span></div>))}</div>}
+              {/* VENTE EXTERNE À DROITE (même modèle Sage que l'ancien onglet supprimé) */}
+              <div className="lg:col-span-4 border border-purple-200 rounded-lg bg-purple-50 p-2 self-start lg:sticky lg:top-0 overflow-auto" style={{maxHeight: 'calc(100vh - 380px)'}}>
+                <h3 className="font-bold text-sm text-purple-800 mb-1.5 flex items-center gap-1"><ShoppingCart className="w-4 h-4" /> Vente externe</h3>
+
+                <div className="bg-[#f4f4f4] border border-slate-300 rounded text-xs select-none mb-1.5">
+                  <div className="bg-slate-100 border-b border-slate-300 p-1 m-1 mb-0 rounded shadow-inner">
+                    <div className="flex flex-wrap items-end gap-0.5">
+                      <div className="flex-1 min-w-[105px] relative">
+                        <label className="block text-[8px] text-slate-500">Article (↑↓ Entrée)</label>
+                        <input ref={extSearchRef} type="text" value={extLineForm.articleName && !extSearch ? extLineForm.articleName : extSearch} onChange={e => { setExtSearch(e.target.value); setExtSearchIdx(0); }} onKeyDown={extKeyDown} className="w-full bg-white border border-blue-400 rounded px-1 py-0.5 text-[10px] font-mono outline-none focus:border-blue-600" placeholder="🔍 Article..." />
+                        {extSearch.length >= 1 && extFiltered.length > 0 && <div className="absolute top-full left-0 right-0 bg-white border rounded-b shadow-xl z-30 max-h-28 overflow-y-auto">{extFiltered.map((a, idx) => (<div key={a.id} onClick={() => extSelectArticle(a.id)} className={`px-1 py-0.5 cursor-pointer text-[10px] flex justify-between border-b ${idx === extSearchIdx ? 'bg-blue-100' : 'hover:bg-blue-50'}`}><span>[{a.family}] {a.name}</span><span className="font-mono text-blue-600">{formatAr(getPrice(a, 'externe'))}</span></div>))}</div>}
+                      </div>
+                      <div className="w-9"><label className="block text-[8px] text-slate-500">Qté</label><input type="number" min={1} value={extLineForm.quantity} onChange={e => setExtLineForm({...extLineForm, quantity: parseInt(e.target.value)||1})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-white border border-slate-300 rounded px-0.5 py-0.5 text-[10px] text-right font-mono outline-none" /></div>
+                      <div className="w-9"><label className="block text-[8px] text-slate-500">Rem%</label><input type="number" min={0} max={100} value={extLineForm.discount} onChange={e => setExtLineForm({...extLineForm, discount: parseInt(e.target.value)||0})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-white border border-slate-300 rounded px-0.5 py-0.5 text-[10px] text-right font-mono outline-none" /></div>
+                      <div className="w-14"><label className="block text-[8px] text-slate-500">P.U.</label><input readOnly value={formatAr(extLineForm.unitPrice)} className="w-full bg-slate-200 border border-slate-300 rounded px-0.5 py-0.5 text-[10px] text-right font-mono" /></div>
+                      <div className="w-16"><label className="block text-[8px] text-slate-500">Montant</label><input readOnly value={formatAr(extLineAmt(extLineForm))} className="w-full bg-slate-200 border border-slate-300 rounded px-0.5 py-0.5 text-[10px] text-right font-mono font-bold" /></div>
                     </div>
-                    <div className="w-14"><label className="block text-[9px] text-slate-500">Qté</label><input type="number" min={1} value={extLineForm.quantity} onChange={e => setExtLineForm({...extLineForm, quantity: parseInt(e.target.value)||1})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono outline-none" /></div>
-                    <div className="w-14"><label className="block text-[9px] text-slate-500">Rem%</label><input type="number" min={0} max={100} value={extLineForm.discount} onChange={e => setExtLineForm({...extLineForm, discount: parseInt(e.target.value)||0})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono outline-none" /></div>
-                    <div className="w-20"><label className="block text-[9px] text-slate-500">P.U.</label><input readOnly value={formatAr(extLineForm.unitPrice)} className="w-full bg-slate-200 border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono" /></div>
-                    <div className="w-24"><label className="block text-[9px] text-slate-500">Montant</label><input readOnly value={formatAr(extLineAmt(extLineForm))} className="w-full bg-slate-200 border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono font-bold" /></div>
+                    <div className="flex justify-end gap-0.5 mt-0.5">
+                      <button onClick={() => { if (extSelLineId) { setExtLines(extLines.filter(l => l.id !== extSelLineId)); setExtSelLineId(null); }}} disabled={!extSelLineId} className="px-1 py-0.5 bg-white border border-slate-300 rounded text-[8px] disabled:opacity-40 cursor-pointer"><Trash2 className="h-2.5 w-2.5 text-rose-600 inline" /></button>
+                      <button onClick={extSaveLine} disabled={!extLineForm.articleName} className="px-1 py-0.5 bg-sky-500 text-white border border-sky-600 rounded text-[8px] disabled:opacity-40 cursor-pointer"><Save className="h-2.5 w-2.5 inline" /> Enreg.</button>
+                    </div>
                   </div>
-                  <div className="flex justify-end gap-1 mt-1">
-                    <button onClick={() => { if (extSelLineId) { setExtLines(extLines.filter(l => l.id !== extSelLineId)); setExtSelLineId(null); }}} disabled={!extSelLineId} className="px-2 py-0.5 bg-white border border-slate-300 rounded text-[10px] disabled:opacity-40 cursor-pointer"><Trash2 className="h-3 w-3 text-rose-600 inline" /></button>
-                    <button onClick={extSaveLine} disabled={!extLineForm.articleName} className="px-2 py-0.5 bg-sky-500 text-white border border-sky-600 rounded text-[10px] disabled:opacity-40 cursor-pointer"><Save className="h-3 w-3 inline" /> Enreg.</button>
+                  <div className="bg-white mx-1 mb-1 border-t border-slate-300 overflow-x-auto rounded-b">
+                    <table className="w-full text-[9px]"><thead className="bg-slate-50 border-b text-slate-600"><tr className="divide-x divide-slate-200"><th className="p-0.5 min-w-[95px]">Article</th><th className="p-0.5 text-right w-7">Qté</th><th className="p-0.5 text-center w-7">Rem%</th><th className="p-0.5 text-right w-12">P.U.</th><th className="p-0.5 text-right w-14">Montant</th></tr></thead>
+                      <tbody className="divide-y font-mono">{extLines.map(l => (<tr key={l.id} onClick={() => { setExtSelLineId(l.id); setExtLineForm({...l}); setExtIsNew(false); }} className={`cursor-pointer divide-x divide-slate-200 ${l.id === extSelLineId ? 'bg-blue-500 text-white' : 'hover:bg-slate-50'}`}><td className="p-0.5 font-sans truncate text-[9px]">{l.articleName}</td><td className="p-0.5 text-right">{l.quantity}</td><td className="p-0.5 text-center">{l.discount > 0 ? `${l.discount}%` : '—'}</td><td className="p-0.5 text-right">{l.unitPrice.toLocaleString('fr-FR')}</td><td className="p-0.5 text-right font-bold">{extLineAmt(l).toLocaleString('fr-FR')}</td></tr>))}{extLines.length === 0 && <tr><td colSpan={5} className="p-1 text-center text-slate-400 font-sans text-[9px]">Tapez un article</td></tr>}</tbody>
+                      {extLines.length > 0 && <tfoot className="bg-emerald-50 border-t-2 border-emerald-300"><tr><td colSpan={3} className="p-0.5 text-right font-bold font-sans">TOTAL</td><td colSpan={2} className="p-0.5 text-right font-mono font-bold">{formatAr(extTotal)}</td></tr></tfoot>}
+                    </table>
                   </div>
                 </div>
-                <div className="bg-white mx-2 mb-2 border-t border-slate-300 overflow-x-auto rounded-b">
-                  <table className="w-full text-[11px]"><thead className="bg-slate-50 border-b text-slate-600"><tr className="divide-x divide-slate-200"><th className="p-1 min-w-[130px]">Article</th><th className="p-1 text-right w-12">Qté</th><th className="p-1 text-center w-12">Rem%</th><th className="p-1 text-right w-20">P.U.</th><th className="p-1 text-right w-24">Montant</th></tr></thead>
-                    <tbody className="divide-y font-mono">{extLines.map(l => (<tr key={l.id} onClick={() => { setExtSelLineId(l.id); setExtLineForm({...l}); setExtIsNew(false); }} className={`cursor-pointer divide-x divide-slate-200 ${l.id === extSelLineId ? 'bg-blue-500 text-white' : 'hover:bg-slate-50'}`}><td className="p-1 font-sans">{l.articleName}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 text-center">{l.discount > 0 ? `${l.discount}%` : '—'}</td><td className="p-1 text-right">{l.unitPrice.toLocaleString('fr-FR')}</td><td className="p-1 text-right font-bold">{extLineAmt(l).toLocaleString('fr-FR')}</td></tr>))}
-                      {extLines.length === 0 && <tr><td colSpan={5} className="p-3 text-center text-slate-400 font-sans">Tapez un article</td></tr>}
-                    </tbody>
-                    {extLines.length > 0 && <tfoot className="bg-emerald-50 border-t-2 border-emerald-300"><tr><td colSpan={3} className="p-1 text-right font-bold font-sans">TOTAL:</td><td colSpan={2} className="p-1 text-right font-mono font-bold text-lg">{formatAr(extTotal)}</td></tr></tfoot>}
-                  </table>
-                </div>
+
+                <button onClick={extPay} disabled={extLines.length === 0} className="w-full py-1.5 bg-purple-600 text-white rounded text-xs font-semibold hover:bg-purple-700 disabled:opacity-40 cursor-pointer flex items-center justify-center gap-1"><CreditCard className="w-3 h-3" /> Encaisser {formatAr(extTotal)}</button>
               </div>
-              <button onClick={extPay} disabled={extLines.length === 0} className="w-full py-3 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 disabled:opacity-40 cursor-pointer flex items-center justify-center gap-2"><CreditCard className="w-5 h-5" /> Encaisser {formatAr(extTotal)}</button>
             </div>
           )}
 
