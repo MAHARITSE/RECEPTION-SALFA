@@ -68,6 +68,10 @@ export type TransferCategory = 'central' | 'hospitalisation' | 'bloc' | 'approvi
 export interface StockTransfer {
   id: string; articleId: string; articleName: string; quantity: number;
   category: TransferCategory;
+  purchasePrice?: number;
+  expiryDate?: string;
+  supplier?: string;
+  invoiceRef?: string;
   requestedBy?: string; requestedAt?: string; transferredBy?: string; transferredAt?: string;
   status: 'requested' | 'transferred' | 'cancelled'; notes?: string;
 }

@@ -1,19 +1,20 @@
 import React, { useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { HospitalizationRecord, DailyNote, StockEntry } from '../types';
+import type { HospitalizationRecord, DailyNote, StockEntry, StockTransfer, TransferCategory } from '../types';
 import type { AppState } from '../store';
-import { addAuditLog, addNotification, formatAr, familyLabel } from '../store';
+import { addAuditLog, addNotification, formatAr, familyLabel, transferCategoryLabel, transferCategoryColor, TRANSFER_CATEGORIES } from '../store';
 import {
   Building2, BedDouble, CheckCircle, Clock,
-  Plus, FileText, LogOut, Users, PackagePlus, Trash2, Save, Check
+  Plus, FileText, LogOut, Users, PackagePlus, Trash2, Save, Check, Send, Edit3, Filter
 } from 'lucide-react';
+import DemandeAchatForm, { type ReqLine } from './DemandeAchatForm';
 
 interface Props {
   state: AppState;
   setState: React.Dispatch<React.SetStateAction<AppState>>;
 }
 
-type Tab = 'admissions' | 'inpatients' | 'beds' | 'discharge' | 'achats_hospit' | 'achats_bloc';
+type Tab = 'admissions' | 'inpatients' | 'beds' | 'discharge' | 'achats_hospit' | 'achats_bloc' | 'reappro_demande';
 
 export default function HospitalizationModule({ state, setState }: Props) {
   const [tab, setTab] = useState<Tab>('admissions');
@@ -49,6 +50,109 @@ export default function HospitalizationModule({ state, setState }: Props) {
   const [blocSearch, setBlocSearch] = useState('');
   const [blocSearchIdx, setBlocSearchIdx] = useState(0);
   const blocSearchRef = useRef<HTMLInputElement>(null);
+
+  // === DEMANDER REAPPRO AU MAGASINIER (Sage-style modal) ===
+  const [reapproModalOpen, setReapproModalOpen] = useState(false);
+  const [reapproEditingId, setReapproEditingId] = useState<string | null>(null);
+  const [reapproEditingLine, setReapproEditingLine] = useState<ReqLine | null>(null);
+  const [reapproEditingNotes, setReapproEditingNotes] = useState('');
+  const [reapproEditingCategory, setReapproEditingCategory] = useState<TransferCategory | undefined>(undefined);
+  const [reapproFilterCat, setReapproFilterCat] = useState<TransferCategory | 'all'>('all');
+
+  const openReapproNew = () => {
+    setReapproEditingId(null);
+    setReapproEditingLine(null);
+    setReapproEditingNotes('');
+    setReapproEditingCategory(undefined);
+    setReapproModalOpen(true);
+  };
+  const openReapproEdit = (transferId: string) => {
+    const tr = state.stockTransfers.find((t) => t.id === transferId);
+    if (!tr) return;
+    if (tr.status !== 'requested') { alert('Impossible de modifier une demande déjà traitée.'); return; }
+    const a = state.articles.find((x) => x.id === tr.articleId);
+    const line: ReqLine = {
+      id: uuidv4(),
+      articleId: tr.articleId,
+      articleName: tr.articleName,
+      family: a?.family || 'MEDIC',
+      quantity: tr.quantity,
+      purchasePrice: tr.purchasePrice || a?.purchasePrice || 0,
+      expiryDate: tr.expiryDate || a?.expiryDate || '',
+      notes: tr.notes || '',
+      amount: tr.quantity * (tr.purchasePrice || a?.purchasePrice || 0),
+    };
+    setReapproEditingId(tr.id);
+    setReapproEditingLine(line);
+    setReapproEditingNotes(tr.notes || '');
+    setReapproEditingCategory(tr.category);
+    setReapproModalOpen(true);
+  };
+  const closeReappro = () => {
+    setReapproModalOpen(false);
+    setReapproEditingId(null);
+    setReapproEditingLine(null);
+    setReapproEditingNotes('');
+    setReapproEditingCategory(undefined);
+  };
+  const submitReappro = (payload: { lines: ReqLine[]; category: TransferCategory; supplier: string; invoiceRef: string; notes: string; }) => {
+    if (reapproEditingId) {
+      const first = payload.lines[0];
+      setState((prev) => {
+        const next = {
+          ...prev,
+          stockTransfers: prev.stockTransfers.map((t) =>
+            t.id === reapproEditingId
+              ? {
+                  ...t,
+                  articleId: first.articleId,
+                  articleName: first.articleName,
+                  quantity: first.quantity,
+                  category: payload.category,
+                  notes: payload.notes || first.notes,
+                  purchasePrice: first.purchasePrice,
+                  expiryDate: first.expiryDate,
+                  supplier: payload.supplier || t.supplier,
+                  invoiceRef: payload.invoiceRef || t.invoiceRef,
+                }
+              : t
+          ),
+        };
+        addAuditLog(next, 'DEMANDE_REAPPRO_MODIF', `[Hospit] Demande modifiée: ${first.articleName} (${first.quantity}) [${transferCategoryLabel(payload.category)}]`);
+        return next;
+      });
+      closeReappro();
+      return;
+    }
+
+    setState((prev) => {
+      const newTransfers: StockTransfer[] = payload.lines.map((l) => ({
+        id: uuidv4(),
+        articleId: l.articleId,
+        articleName: l.articleName,
+        quantity: l.quantity,
+        category: payload.category,
+        purchasePrice: l.purchasePrice,
+        expiryDate: l.expiryDate,
+        supplier: payload.supplier,
+        invoiceRef: payload.invoiceRef,
+        requestedBy: prev.currentUser?.id,
+        requestedAt: new Date().toISOString(),
+        status: 'requested',
+        notes: payload.notes || l.notes,
+      }));
+      const next = { ...prev, stockTransfers: [...prev.stockTransfers, ...newTransfers] };
+      addAuditLog(next, 'DEMANDE_REAPPRO_HOSPIT', `${payload.lines.length} article(s) — ${transferCategoryLabel(payload.category)} (Fournisseur: ${payload.supplier}, BL: ${payload.invoiceRef})`);
+      addNotification(next, 'magasinier', `📩 [Hospit] ${transferCategoryLabel(payload.category)}: ${payload.lines.length} article(s) en demande — Fournisseur: ${payload.supplier}`, 'info');
+      return next;
+    });
+
+    closeReappro();
+  };
+  const cancelReappro = (id: string) => {
+    if (!confirm('Annuler cette demande ?')) return;
+    setState((prev) => ({ ...prev, stockTransfers: prev.stockTransfers.map(t => t.id === id ? { ...t, status: 'cancelled' as const } : t) }));
+  };
 
   // Purchase filtered for both
   const hospitFiltered = hospitSearch.length >= 1 
@@ -492,6 +596,7 @@ export default function HospitalizationModule({ state, setState }: Props) {
             { key: 'discharge' as Tab, icon: <LogOut className="w-4 h-4" />, label: 'Sorties' },
             { key: 'achats_hospit' as Tab, icon: <PackagePlus className="w-4 h-4" />, label: `Achats Hospit. (${hospitLines.length})` },
             { key: 'achats_bloc' as Tab, icon: <PackagePlus className="w-4 h-4" />, label: `Achats Bloc (${blocLines.length})` },
+            { key: 'reappro_demande' as Tab, icon: <Send className="w-4 h-4" />, label: `Demander réappro (${state.stockTransfers.filter(t => t.status === 'requested').length})` },
           ].map((t) => (
             <button
               key={t.key}
@@ -1214,13 +1319,13 @@ export default function HospitalizationModule({ state, setState }: Props) {
 
               <div className="flex gap-2 justify-end">
                 {blocLines.length > 0 && (
-                  <button 
+                  <button
                     onClick={() => {
                       if (confirm('Voulez-vous vider tout le bon ?')) {
                         setBlocLines([]);
                         blocNew();
                       }
-                    }} 
+                    }}
                     className="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-600 rounded-lg text-sm font-medium cursor-pointer transition"
                   >
                     Vider
@@ -1236,8 +1341,103 @@ export default function HospitalizationModule({ state, setState }: Props) {
               </div>
             </div>
           )}
+
+          {/* === DEMANDER UN REAPPROVISIONNEMENT AU MAGASINIER === */}
+          {tab === 'reappro_demande' && (
+            <div className="space-y-4">
+              <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between flex-wrap gap-3">
+                <div>
+                  <h4 className="font-bold text-rose-800 flex items-center gap-2">
+                    <Send className="w-5 h-5 text-rose-600" /> Demander un réapprovisionnement au magasinier
+                  </h4>
+                  <p className="text-xs text-rose-700 mt-1">Formulaire style Saisie Sage — Achat Central / Achat Bloc Hosp / Achat Approvis / Achat</p>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={openReapproNew} className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-sm font-medium flex items-center gap-1.5 cursor-pointer shadow">
+                    <Plus className="w-4 h-4" /> Nouveau
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <Filter className="w-4 h-4 text-slate-500" />
+                  <span className="text-xs font-bold text-slate-600">Filtrer :</span>
+                  <button onClick={() => setReapproFilterCat('all')} className={`px-2 py-0.5 rounded text-xs cursor-pointer ${reapproFilterCat === 'all' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Toutes</button>
+                  {TRANSFER_CATEGORIES.map(c => (
+                    <button key={c} onClick={() => setReapproFilterCat(c)} className={`px-2 py-0.5 rounded text-xs cursor-pointer ${reapproFilterCat === c ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{transferCategoryLabel(c)}</button>
+                  ))}
+                </div>
+
+                {state.stockTransfers.filter(t => t.status === 'requested' && (reapproFilterCat === 'all' || t.category === reapproFilterCat)).length === 0 ? (
+                  <div className="text-center py-8 text-slate-400 bg-slate-50 border border-dashed rounded-lg text-sm">
+                    Aucune demande en cours. Cliquez sur <strong>Nouveau</strong> pour créer une demande.
+                  </div>
+                ) : (
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50 border-b text-xs text-slate-600">
+                        <tr>
+                          <th className="p-2 text-left">Catégorie</th>
+                          <th className="p-2 text-left">Article</th>
+                          <th className="p-2 text-center">Qté</th>
+                          <th className="p-2 text-left">Fournisseur</th>
+                          <th className="p-2 text-left">N° BL</th>
+                          <th className="p-2 text-left">Demandeur</th>
+                          <th className="p-2 text-left">Date</th>
+                          <th className="p-2 text-left">Notes</th>
+                          <th className="p-2 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {state.stockTransfers.filter(t => t.status === 'requested' && (reapproFilterCat === 'all' || t.category === reapproFilterCat)).map(tr => {
+                          const u = state.users.find(u => u.id === tr.requestedBy);
+                          return (
+                            <tr key={tr.id} className="border-b hover:bg-slate-50">
+                              <td className="p-2"><span className={`px-2 py-0.5 rounded text-[10px] font-bold ${transferCategoryColor(tr.category)}`}>{transferCategoryLabel(tr.category)}</span></td>
+                              <td className="p-2 font-medium">{tr.articleName}</td>
+                              <td className="p-2 text-center font-mono font-bold">{tr.quantity}</td>
+                              <td className="p-2 text-xs">{tr.supplier || '—'}</td>
+                              <td className="p-2 text-xs font-mono">{tr.invoiceRef || '—'}</td>
+                              <td className="p-2 text-xs">{u?.name || '—'}</td>
+                              <td className="p-2 text-xs text-slate-500">{tr.requestedAt ? new Date(tr.requestedAt).toLocaleDateString('fr-FR') : '—'}</td>
+                              <td className="p-2 text-xs text-slate-500 truncate max-w-[150px]">{tr.notes || '—'}</td>
+                              <td className="p-2 text-right">
+                                <div className="flex justify-end gap-1">
+                                  <button onClick={() => openReapproEdit(tr.id)} className="px-2 py-1 bg-amber-100 text-amber-700 hover:bg-amber-200 rounded text-xs flex items-center gap-1 cursor-pointer">
+                                    <Edit3 className="w-3 h-3" /> Modifier
+                                  </button>
+                                  <button onClick={() => cancelReappro(tr.id)} className="px-2 py-1 bg-rose-100 text-rose-700 hover:bg-rose-200 rounded text-xs cursor-pointer">
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* === MODAL : Formulaire Sage de demande de réappro pour Hospitalisation === */}
+      <DemandeAchatForm
+        open={reapproModalOpen}
+        onClose={closeReappro}
+        articles={state.articles}
+        defaultCategory="hospitalisation"
+        initialLine={reapproEditingLine}
+        initialNotes={reapproEditingNotes}
+        initialCategory={reapproEditingCategory}
+        isEditMode={!!reapproEditingId}
+        onSubmit={submitReappro}
+        theme="rose"
+      />
     </div>
   );
 }
