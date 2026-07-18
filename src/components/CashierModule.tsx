@@ -4,7 +4,7 @@ import type { Invoice, InvoiceItem, ClientType } from '../types';
 import type { AppState } from '../store';
 import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber } from '../store';
 import { CreditCard, CheckCircle, DollarSign, Clock, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, X, UserPlus, Edit2, Plus } from 'lucide-react';
-import { printTicket as openThermalTicket } from '../utils/printTicket';
+import { printPaymentTicket as openThermalTicket, printClosingTicket } from '../utils/printTicket';
 
 interface HbLine { id: string; articleName: string; quantity: number; unitPrice: number; discount: number; dateSort?: string; }
 interface HbRecord { id: string; patientId?: string; patientName: string; clientType: ClientType; company?: string; type: 'hospit' | 'bloc'; lines: HbLine[]; payments: { amount: number; paidBy: string; date: string }[]; }
@@ -393,7 +393,40 @@ export default function CashierModule({ state, setState }: Props) {
           {tab === 'closing' && (
             <div className="max-w-3xl mx-auto space-y-4">
               <div className="p-4 bg-slate-800 text-white rounded-lg flex justify-between items-center"><div><h3 className="font-bold text-lg"><Lock className="w-5 h-5 inline" /> Clôture — {new Date().toLocaleDateString('fr-FR')}</h3><p className="text-slate-300 text-sm">{state.currentUser?.name}</p></div>
-                <button onClick={() => setPrintTicket(`${'═'.repeat(32)}\n   CLÔTURE DE CAISSE\n   ${new Date().toLocaleDateString('fr-FR')}\n   ${state.currentUser?.name}\n${'═'.repeat(32)}\n\n1. PAR FAMILLE\nConsultations: ${formatAr(todayTotal - todayExtTotal)}\nVentes Ext.: ${formatAr(todayExtTotal)}\nHospit/Bloc: ${formatAr(todayPartialTotal)}\n\n2. HOSPIT & BLOC\n${hbRecords.filter(h => h.payments.length > 0).map(h => `${h.patientName} (${h.type})\n${h.payments.map(p => `  ${formatAr(p.amount)} — ${p.paidBy}`).join('\n')}`).join('\n')}\n\n3. TOTAL GÉNÉRAL\n${'═'.repeat(32)}\n   ${formatAr(grandTotal)}\n\n4. CLIENTS\n${todayInvoices.map(inv => { const pat = inv.patientId ? state.patients.find(p => p.id === inv.patientId) : null; return `${pat ? `${pat.lastName} ${pat.firstName}` : inv.clientName || 'Ext.'} — ${formatAr(inv.patientCharge)}`; }).join('\n')}\n${hbRecords.filter(h => h.payments.length > 0).map(h => `${h.patientName} — ${formatAr(h.payments.reduce((s,p) => s+p.amount, 0))}`).join('\n')}`)} className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm cursor-pointer flex items-center gap-2"><Printer className="w-4 h-4" /> 🧾 80×80</button>
+                <button onClick={() => {
+                  const sections = [
+                    {
+                      title: '1. PAR FAMILLE',
+                      rows: [
+                        { label: 'Consultations', value: formatAr(todayTotal - todayExtTotal) },
+                        { label: 'Ventes Externes', value: formatAr(todayExtTotal) },
+                        { label: 'Hospit / Bloc', value: formatAr(todayPartialTotal) },
+                      ],
+                      total: formatAr(grandTotal),
+                    },
+                    {
+                      title: '2. HOSPIT & BLOC',
+                      rows: hbRecords.filter(h => h.payments.length > 0).map(h => ({
+                        label: `${h.patientName} (${h.type})`,
+                        value: h.payments.map(p => formatAr(p.amount)).join(' / '),
+                      })),
+                    },
+                    {
+                      title: '3. CLIENTS',
+                      rows: [
+                        ...todayInvoices.map(inv => {
+                          const pat = inv.patientId ? state.patients.find(p => p.id === inv.patientId) : null;
+                          return { label: pat ? `${pat.lastName} ${pat.firstName}` : inv.clientName || 'Ext.', value: formatAr(inv.patientCharge) };
+                        }),
+                        ...hbRecords.filter(h => h.payments.length > 0).map(h => ({
+                          label: `${h.patientName} (${h.type})`,
+                          value: formatAr(h.payments.reduce((s, p) => s + p.amount, 0)),
+                        })),
+                      ],
+                    },
+                  ];
+                  printClosingTicket(state.ticketSettings, state.currentUser || { id: 'SYS', name: 'Caissier', role: 'cashier' }, new Date(), sections, formatAr(grandTotal));
+                }} className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm cursor-pointer flex items-center gap-2"><Printer className="w-4 h-4" /> 🧾 Imprimer Z ({state.ticketSettings.paperWidth}mm)</button>
               </div>
               <div className="bg-white border rounded-lg p-4"><h4 className="font-bold text-sm mb-2">1. Versements par famille</h4><div className="grid grid-cols-3 gap-2"><div className="p-3 bg-green-50 rounded flex justify-between"><span>Consultations</span><span className="font-mono font-bold">{formatAr(todayTotal - todayExtTotal)}</span></div><div className="p-3 bg-purple-50 rounded flex justify-between"><span>Ventes Ext.</span><span className="font-mono font-bold">{formatAr(todayExtTotal)}</span></div><div className="p-3 bg-rose-50 rounded flex justify-between"><span>Hospit/Bloc</span><span className="font-mono font-bold">{formatAr(todayPartialTotal)}</span></div></div></div>
               {hbRecords.filter(h => h.payments.length > 0).length > 0 && <div className="bg-white border rounded-lg p-4"><h4 className="font-bold text-sm mb-2">2. Hospitalisation & Bloc</h4><table className="w-full text-xs"><thead className="bg-slate-100"><tr><th className="p-2 text-left">Patient</th><th className="p-2">Type</th><th className="p-2 text-right">Facture</th><th className="p-2 text-right">Reçu</th><th className="p-2 text-right">Reste</th><th className="p-2">Caissier</th></tr></thead><tbody>{hbRecords.filter(h => h.payments.length > 0).map(h => { const tf = h.lines.reduce((s,l) => s+hbLineAmt(l),0); const tp = h.payments.reduce((s,p) => s+p.amount,0); return (<tr key={h.id} className="border-b"><td className="p-2">{h.patientName}</td><td className="p-2 text-center"><span className={`px-1 py-0.5 rounded text-[10px] font-bold ${h.type==='hospit'?'bg-rose-100 text-rose-700':'bg-blue-100 text-blue-700'}`}>{h.type==='hospit'?'Hosp.':'Bloc'}</span></td><td className="p-2 text-right font-mono">{formatAr(tf)}</td><td className="p-2 text-right font-mono text-green-600">{formatAr(tp)}</td><td className="p-2 text-right font-mono text-red-600">{formatAr(tf-tp)}</td><td className="p-2">{h.payments.map(p => p.paidBy).filter((v,i,a) => a.indexOf(v)===i).join(', ')}</td></tr>); })}</tbody></table></div>}

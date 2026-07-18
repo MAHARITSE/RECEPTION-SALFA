@@ -7,8 +7,18 @@ export interface User { id: string; name: string; role: UserRole; password?: str
 
 export interface TicketSettings {
   facilityName: string; address: string; phone: string; nif: string;
+  email?: string; website?: string;
   logoUrl: string; receiptTitle: string; footerMessage: string;
   paperWidth: 58 | 80; autoPrint: boolean;
+  showLogo: boolean;
+  showBarcode: boolean;
+  showSignature: boolean;
+  copies: number; // nombre d'exemplaires à imprimer
+  currency: 'Ar' | '€' | '$' | 'Fc';
+  paymentMethods: string[]; // ex: Espèces, Carte, Mobile Money, Virement, Chèque
+  invoicePrefix: string; // préfixe des numéros de facture
+  ticketFooter2?: string; // 2e ligne d'en-tête (ex: "Service des urgences")
+  ticketHeaderColor?: string; // couleur d'accent (hex) — utilisée dans la prévisualisation seulement
 }
 
 export interface VitalSigns {
