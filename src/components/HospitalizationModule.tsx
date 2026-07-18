@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { HospitalizationRecord, DailyNote, StockEntry, StockTransfer, TransferCategory } from '../types';
 import type { AppState } from '../store';
-import { addAuditLog, addNotification, formatAr, familyLabel, transferCategoryLabel, transferCategoryColor, TRANSFER_CATEGORIES } from '../store';
+import { addAuditLog, addNotification, formatAr, familyLabel, transferCategoryLabel, transferCategoryColor, TRANSFER_CATEGORIES, addJourneyEvent } from '../store';
 import {
   Building2, BedDouble, CheckCircle, Clock,
   Plus, FileText, LogOut, Users, PackagePlus, Trash2, Save, Check, Send, Edit3, Filter
@@ -469,6 +469,7 @@ export default function HospitalizationModule({ state, setState }: Props) {
       };
 
       addAuditLog(next, 'HOSPITALISATION', `${patient.lastName} admis en ${bed.service} - Chambre ${bed.roomNumber} Lit ${bed.bedNumber}`, selectedPatientId);
+      addJourneyEvent(next, { patientId: selectedPatientId, department: 'hospitalisation', action: 'Admission', status: 'hospitalized', details: `${bed.service} — Chambre ${bed.roomNumber} Lit ${bed.bedNumber}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, hospitalizationId: record.id });
       addNotification(next, 'doctor', `Patient hospitalisé: ${patient.lastName} - ${bed.service}`, 'info', consultation?.doctorId);
 
       return next;
@@ -534,6 +535,7 @@ export default function HospitalizationModule({ state, setState }: Props) {
       };
 
       addAuditLog(next, 'SORTIE_HOSPITALISATION', `${patient?.lastName} sorti(e) de ${hosp.service}`, hosp.patientId);
+      if (hosp.patientId) addJourneyEvent(next, { patientId: hosp.patientId, department: 'hospitalisation', action: 'Sortie', status: 'discharged', details: `Sortie de ${hosp.service}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, hospitalizationId: hosp.id });
       addNotification(next, 'cashier', `Sortie d'hospitalisation: ${patient?.lastName} - Facturation des nuitées à effectuer`, 'info');
 
       return next;

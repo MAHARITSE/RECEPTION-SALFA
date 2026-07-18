@@ -2,15 +2,15 @@ import { useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Invoice, InvoiceItem, ClientType } from '../types';
 import type { AppState } from '../store';
-import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber } from '../store';
-import { CreditCard, CheckCircle, DollarSign, Clock, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, X, UserPlus, Edit2, Plus } from 'lucide-react';
+import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber, addJourneyEvent, labCategoryLabel } from '../store';
+import { CreditCard, CheckCircle, DollarSign, Clock, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, X, UserPlus, Edit2, Plus, FlaskConical } from 'lucide-react';
 import { printPaymentTicket as openThermalTicket, printClosingTicket } from '../utils/printTicket';
 
 interface HbLine { id: string; articleName: string; quantity: number; unitPrice: number; discount: number; dateSort?: string; }
 interface HbRecord { id: string; patientId?: string; patientName: string; clientType: ClientType; company?: string; type: 'hospit' | 'bloc'; lines: HbLine[]; payments: { amount: number; paidBy: string; date: string }[]; }
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
-type Tab = 'payment' | 'external' | 'hospit' | 'bloc' | 'closing';
+type Tab = 'payment' | 'external' | 'hospit' | 'bloc' | 'labo' | 'closing';
 type HbModal = 'none' | 'add_patient' | 'add_article' | 'edit_client';
 
 export default function CashierModule({ state, setState }: Props) {
@@ -72,11 +72,41 @@ export default function CashierModule({ state, setState }: Props) {
     setState(prev => {
       const next = { ...prev, invoices: [...prev.invoices, inv], patients: prev.patients.map(p => p.id === selConsult.patientId ? { ...p, status: 'invoice_paid' as const } : p) };
       addAuditLog(next, 'PAIEMENT', `${formatAr(totalAmount)} — ${selPatient.lastName}`, selConsult.patientId);
+      if (selConsult.patientId) addJourneyEvent(next, { patientId: selConsult.patientId, department: 'caisse', action: 'Paiement enregistré', status: 'invoice_paid', details: formatAr(totalAmount), actorName: prev.currentUser?.name });
       if (selConsult.prescriptions.length > 0) addNotification(next, 'pharmacy', `💊 ${selPatient.lastName} ${selPatient.firstName}`, 'info');
       return next;
     });
     openThermalTicket(state.ticketSettings, inv, selPatient, state.currentUser || undefined);
     setSelConsultId(null);
+  };
+
+  // === LABORATOIRE : facturer les demandes d'analyses ===
+  const pendingLabInvoices = state.invoices.filter(
+    (i) => i.status === 'pending' && i.items.some((it) => it.category === 'lab'),
+  );
+
+  const payLabInvoice = (inv: Invoice) => {
+    const pat = inv.patientId ? state.patients.find((p) => p.id === inv.patientId) : null;
+    setState((prev) => {
+      const next = {
+        ...prev,
+        invoices: prev.invoices.map((i) =>
+          i.id === inv.id ? { ...i, status: 'paid' as const, paidAt: new Date().toISOString(), paidBy: prev.currentUser?.id || '' } : i,
+        ),
+        labRequests: prev.labRequests.map((l) => (l.invoiceId === inv.id ? { ...l, status: 'paid' as const } : l)),
+        patients: pat ? prev.patients.map((p) => (p.id === inv.patientId ? { ...p, status: 'analyses_pending' as const } : p)) : prev.patients,
+      };
+      addAuditLog(next, 'PAIEMENT_LABO', `${formatAr(inv.totalAmount)} — ${pat?.lastName || ''} ${pat?.firstName || ''}`, inv.patientId);
+      if (inv.patientId) {
+        addJourneyEvent(next, {
+          patientId: inv.patientId, department: 'caisse', action: 'Paiement analyses', status: 'invoice_paid',
+          details: inv.items.map((it) => it.description).join(', '), actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, invoiceId: inv.id,
+        });
+      }
+      return next;
+    });
+    openThermalTicket(state.ticketSettings, inv, pat || undefined, state.currentUser || undefined);
+    setPrintTicket(null);
   };
 
   // === EXTERNAL ===
@@ -139,7 +169,7 @@ export default function CashierModule({ state, setState }: Props) {
       clientType: hbNewPat.clientType,
       company: hbNewPat.clientType === 'societe' ? hbNewPat.company : undefined,
       subCompany: hbNewPat.clientType === 'societe' ? hbNewPat.subCompany : undefined,
-      allergies: [] as string[], chronicTreatments: [] as string[],
+      allergies: [] as string[], chronicTreatments: [] as string[], antecedents: [] as string[],
       registeredAt: new Date().toISOString(), registeredBy: state.currentUser?.id || 'CAISSE', status: 'registered' as const,
     };
     setState(prev => ({ ...prev, patients: [...prev.patients, np] }));
@@ -269,7 +299,7 @@ export default function CashierModule({ state, setState }: Props) {
       {/* Tabs */}
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
         <div className="flex border-b overflow-x-auto">
-          {([['payment','📋 Facturation',pendingPatients.length],['external','🛒 Vte Externe',0],['hospit','🏨 Hospit.',hbRecords.filter(h=>h.type==='hospit').length],['bloc','🏥 Bloc',hbRecords.filter(h=>h.type==='bloc').length],['closing','🔒 Clôture',0]] as [Tab,string,number][]).map(([k,l,c]) => (
+          {([['payment','📋 Facturation',pendingPatients.length],['external','🛒 Vte Externe',0],['hospit','🏨 Hospit.',hbRecords.filter(h=>h.type==='hospit').length],['bloc','🏥 Bloc',hbRecords.filter(h=>h.type==='bloc').length],['labo','🧪 Laboratoire',pendingLabInvoices.length],['closing','🔒 Clôture',0]] as [Tab,string,number][]).map(([k,l,c]) => (
             <button key={k} onClick={() => switchTab(k)} className={`flex items-center gap-1 px-4 py-3 text-xs font-medium border-b-2 cursor-pointer whitespace-nowrap ${tab===k?'border-amber-500 text-amber-600 bg-amber-50/50':'border-transparent text-slate-500'}`}>{l}{c > 0 ? ` (${c})` : ''}</button>
           ))}
         </div>
@@ -340,6 +370,47 @@ export default function CashierModule({ state, setState }: Props) {
                 </div>
               </div>
               <button onClick={extPay} disabled={extLines.length === 0} className="w-full py-3 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 disabled:opacity-40 cursor-pointer flex items-center justify-center gap-2"><CreditCard className="w-5 h-5" /> Encaisser {formatAr(extTotal)}</button>
+            </div>
+          )}
+
+          {/* LABORATOIRE - facturation des analyses */}
+          {tab === 'labo' && (
+            <div className="max-w-3xl mx-auto space-y-3">
+              <div className="p-3 bg-cyan-50 border border-cyan-200 rounded-lg flex items-center gap-2">
+                <FlaskConical className="w-5 h-5 text-cyan-600" />
+                <div>
+                  <h3 className="font-bold text-cyan-800">Analyses à facturer</h3>
+                  <p className="text-xs text-cyan-700">Encaissez les demandes d'analyses pour les transmettre au laboratoire.</p>
+                </div>
+              </div>
+              {pendingLabInvoices.length === 0 ? (
+                <div className="text-center py-10 text-slate-400"><CheckCircle className="w-12 h-12 mx-auto mb-3 opacity-40" /><p>Aucune analyse en attente de paiement</p></div>
+              ) : (
+                pendingLabInvoices.map((inv) => {
+                  const pat = inv.patientId ? state.patients.find((p) => p.id === inv.patientId) : null;
+                  const labReqs = state.labRequests.filter((l) => l.invoiceId === inv.id);
+                  return (
+                    <div key={inv.id} className="border border-slate-200 rounded-xl overflow-hidden">
+                      <div className="p-4 bg-slate-50 flex items-center justify-between">
+                        <div>
+                          <div className="font-semibold text-slate-800">{pat ? `${pat.lastName} ${pat.firstName}` : inv.clientName || 'Client externe'}</div>
+                          <div className="text-xs text-slate-500">{pat ? `Dossier ${pat.dossier}` : ''} · {inv.items.map((i) => i.description).join(', ')}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-mono font-bold text-cyan-700">{formatAr(inv.totalAmount)}</div>
+                          <button onClick={() => payLabInvoice(inv)} className="mt-1 px-3 py-1.5 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 text-xs font-medium cursor-pointer flex items-center gap-1"><CreditCard className="w-3.5 h-3.5" /> Encaisser</button>
+                        </div>
+                      </div>
+                      {labReqs.map((l) => (
+                        <div key={l.id} className="px-4 py-2 border-t border-slate-100 text-xs text-slate-500 flex items-center justify-between">
+                          <span>{l.examType} {l.urgent ? '· URGENT' : ''} · {l.sampleType}</span>
+                          <span>{labCategoryLabel(l.category || 'autre')}</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })
+              )}
             </div>
           )}
 
