@@ -3,7 +3,7 @@ import type { User, Notification as NotifType } from '../types';
 import {
   Hospital, LogOut, Bell, UserCircle, Stethoscope,
   CreditCard, Pill, FlaskConical, Building2, X,
-  ChevronRight, MessageCircle
+  ChevronRight, MessageCircle, FileText
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -12,6 +12,7 @@ interface LayoutProps {
   onLogout: () => void;
   onMarkRead: (id: string) => void;
   onOpenMessaging: () => void;
+  onOpenMedicalRecord?: () => void;
   unreadMessages: number;
   children: React.ReactNode;
 }
@@ -49,7 +50,7 @@ const roleBg: Record<string, string> = {
   admin: 'bg-slate-700',
 };
 
-export default function Layout({ user, notifications, onLogout, onMarkRead, onOpenMessaging, unreadMessages, children }: LayoutProps) {
+export default function Layout({ user, notifications, onLogout, onMarkRead, onOpenMessaging, onOpenMedicalRecord, unreadMessages, children }: LayoutProps) {
   const [showNotif, setShowNotif] = useState(false);
 
   const myNotifs = notifications.filter(
@@ -131,6 +132,15 @@ export default function Layout({ user, notifications, onLogout, onMarkRead, onOp
               )}
             </div>
 
+            {onOpenMedicalRecord && (
+              <button
+                onClick={onOpenMedicalRecord}
+                className="flex items-center gap-2 px-3 py-2 bg-white/20 hover:bg-white/30 backdrop-blur rounded-lg transition font-medium cursor-pointer"
+                title="Dossiers médicaux"
+              >
+                <FileText className="w-4 h-4" /> Dossiers
+              </button>
+            )}
             {/* Messagerie */}
             <button
               onClick={onOpenMessaging}

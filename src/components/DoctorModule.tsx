@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { Consultation, VitalSigns, Prescription } from '../types';
+import type { Consultation, VitalSigns, Prescription, LabRequest, ClientType, Invoice } from '../types';
 import type { AppState } from '../store';
-import { addAuditLog, addNotification, formatAr, getPrice } from '../store';
-import { printPrescriptionTicket } from '../utils/printTicket';
-import { Stethoscope, History, Trash2, AlertTriangle, Heart, FileText, Clock, CheckCircle, Send, Search, Edit2, RotateCcw, Save, Printer } from 'lucide-react';
+import { addAuditLog, addNotification, formatAr, getPrice, addJourneyEvent, labCategoryLabel } from '../store';
+import { printPrescriptionTicket, printLabRequestTicket } from '../utils/printTicket';
+import { Stethoscope, History, Trash2, AlertTriangle, Heart, FileText, Clock, CheckCircle, Send, Search, Edit2, RotateCcw, Save, Printer, FlaskConical } from 'lucide-react';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
 type ViewMode = 'queue' | 'consultation' | 'my_consults';
@@ -24,11 +24,33 @@ export default function DoctorModule({ state, setState }: Props) {
   const [isNewLine, setIsNewLine] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
+  // ---- Demandes d'analyses (Laboratoire) saisies par le médecin ----
+  const [labSearch, setLabSearch] = useState('');
+  const [labDraft, setLabDraft] = useState<{ examId: string; urgent: boolean }[]>([]);
+
   const myWaiting = state.patients.filter((p) => (!p.assignedDoctor || p.assignedDoctor === state.currentUser?.id) && p.status === 'waiting_consultation');
   const searchResults = searchQuery.length >= 2 ? state.patients.filter((p) => { const q = searchQuery.toLowerCase(); return p.firstName.toLowerCase().includes(q) || p.lastName.toLowerCase().includes(q) || p.dossier.toLowerCase().includes(q); }) : [];
   const selectedPatient = state.patients.find((p) => p.id === selectedPatientId);
   const patientConsultations = selectedPatientId ? state.consultations.filter((c) => c.patientId === selectedPatientId) : [];
   const clientType = selectedPatient?.clientType || 'comptoir';
+
+  // Catalogue labo : recherche + prix + brouillon de demandes d'analyses
+  const labFiltered = labSearch.length >= 1
+    ? state.labCatalog.filter((e) => e.name.toLowerCase().includes(labSearch.toLowerCase()) || e.code.toLowerCase().includes(labSearch.toLowerCase()))
+    : [];
+  const priceForExam = (examId: string, ct: ClientType, urgent: boolean) => {
+    const e = state.labCatalog.find((x) => x.id === examId);
+    if (!e) return 0;
+    if (urgent) return e.urgentPrice;
+    return ct === 'societe' ? e.priceSociete : ct === 'externe' ? e.priceExterne : e.priceComptoir;
+  };
+  const labTotal = labDraft.reduce((s, d) => s + priceForExam(d.examId, clientType, d.urgent), 0);
+  const addLabExam = (examId: string) => {
+    setLabDraft((prev) => (prev.some((d) => d.examId === examId) ? prev : [...prev, { examId, urgent: false }]));
+    setLabSearch('');
+  };
+  const removeLabExam = (examId: string) => setLabDraft(labDraft.filter((d) => d.examId !== examId));
+  const toggleLabUrgent = (examId: string) => setLabDraft(labDraft.map((d) => (d.examId === examId ? { ...d, urgent: !d.urgent } : d)));
 
   // Article search across ALL families
   const filteredArticles = articleSearch.length >= 1
@@ -57,7 +79,11 @@ export default function DoctorModule({ state, setState }: Props) {
     const p = state.patients.find((x) => x.id === pid);
     setSelectedPatientId(pid); setLines([]); setSelectedLineId(null); setIsNewLine(false); setView('consultation');
     if (p?.vitalSigns) setVitals({ ...p.vitalSigns }); else setVitals({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' });
-    setState((prev) => ({ ...prev, patients: prev.patients.map((x) => x.id === pid ? { ...x, status: 'in_consultation' as const, assignedDoctor: prev.currentUser?.id } : x) }));
+    setState((prev) => {
+      const next = { ...prev, patients: prev.patients.map((x) => x.id === pid ? { ...x, status: 'in_consultation' as const, assignedDoctor: prev.currentUser?.id } : x) };
+      addJourneyEvent(next, { patientId: pid, department: 'consultation', action: 'Consultation', status: 'in_consultation', details: `Dr. ${prev.currentUser?.name || ''}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name });
+      return next;
+    });
   };
 
   // Keyboard navigation in search results
@@ -126,25 +152,60 @@ export default function DoctorModule({ state, setState }: Props) {
 
   const submitConsultation = () => {
     if (!selectedPatientId || !selectedPatient || !consultForm.diagnosis) { alert('Diagnostic obligatoire'); return; }
-    if (lines.length === 0) { alert('Ajoutez au moins une ligne'); return; }
+    if (lines.length === 0 && labDraft.length === 0) { alert('Ajoutez au moins un médicament ou une analyse'); return; }
+    const ct = clientType;
+    // ---- Demandes d'analyses saisies par le médecin -> facture labo en attente + LabRequest global ----
+    const labInvoiceId = labDraft.length > 0 ? uuidv4() : null;
+    const newLabRequests: LabRequest[] = labDraft.map((d) => {
+      const e = state.labCatalog.find((x) => x.id === d.examId)!;
+      const price = d.urgent ? e.urgentPrice : ct === 'societe' ? e.priceSociete : ct === 'externe' ? e.priceExterne : e.priceComptoir;
+      return {
+        id: uuidv4(), patientId: selectedPatientId, consultationId: '', examType: e.name, code: e.code,
+        category: e.category, parameters: [...e.parameters], urgent: d.urgent, status: 'pending' as const,
+        sampleType: e.sampleType, requestedBy: state.currentUser?.id || '', requestedAt: new Date().toISOString(),
+        invoiceId: labInvoiceId || undefined, price,
+      };
+    });
+
     const consultation: Consultation = {
       id: uuidv4(), patientId: selectedPatientId, doctorId: state.currentUser?.id || '', doctorName: state.currentUser?.name || '',
       date: new Date().toISOString(), vitalSigns: { ...vitals }, visitReason: consultForm.visitReason, diagnosis: consultForm.diagnosis, notes: consultForm.notes,
       prescriptions: lines.map((l) => ({ ...l })), labRequests: [], hospitalizeRequested: consultForm.hospitalizeRequested, surgeryRequested: consultForm.surgeryRequested, isEmergency: consultForm.isEmergency,
     };
     setState((prev) => {
-      const next = { ...prev, consultations: [...prev.consultations, consultation], patients: prev.patients.map((p) => p.id === selectedPatientId ? { ...p, status: 'consulted_awaiting_payment' as const } : p) };
+      let next: AppState = {
+        ...prev,
+        consultations: [...prev.consultations, consultation],
+        patients: prev.patients.map((p) => p.id === selectedPatientId ? { ...p, status: 'consulted_awaiting_payment' as const } : p),
+      };
+      if (newLabRequests.length > 0 && labInvoiceId) {
+        const labItems = newLabRequests.map((lr) => ({ description: `${lr.examType}${lr.urgent ? ' (Urgent)' : ''}`, amount: lr.price || 0, category: 'lab' as const }));
+        const labTotalAmt = labItems.reduce((s, i) => s + i.amount, 0);
+        const labInv: Invoice = {
+          id: labInvoiceId, patientId: selectedPatientId, consultationId: consultation.id, clientType: ct,
+          items: labItems, totalAmount: labTotalAmt, patientCharge: labTotalAmt,
+          status: 'pending' as const, createdAt: new Date().toISOString(), isExternal: ct === 'externe',
+        };
+        next = { ...next, labRequests: [...next.labRequests, ...newLabRequests], invoices: [...next.invoices, labInv] };
+        addAuditLog(next, 'DEMANDE_ANALYSE', `${newLabRequests.map((r) => r.examType).join(', ')} — ${formatAr(labTotalAmt)} (${selectedPatient.dossier})`, selectedPatientId);
+        addNotification(next, 'cashier', `🧪 Analyses à facturer: ${selectedPatient.lastName} ${selectedPatient.firstName} — ${formatAr(labTotalAmt)}`, 'info');
+        addJourneyEvent(next, { patientId: selectedPatientId, department: 'consultation', action: 'Demande d\'analyse', status: 'analyses_pending', details: `${newLabRequests.map((r) => r.examType).join(', ')} — à facturer (caisse)`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId: consultation.id });
+      }
       addAuditLog(next, 'CONSULTATION', `${selectedPatient.lastName} — ${formatAr(totalPres)}`, selectedPatientId);
+      addJourneyEvent(next, { patientId: selectedPatientId, department: 'consultation', action: 'Consultation terminée', status: 'consulted_awaiting_payment', details: `${formatAr(totalPres)} — ${consultForm.diagnosis}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId: consultation.id });
       addNotification(next, 'cashier', `💰 ${selectedPatient.lastName} ${selectedPatient.firstName} — ${formatAr(totalPres)}`, 'info');
       return next;
     });
-    // Impression automatique de l'ordonnance
-    if (state.currentUser) {
-      printPrescriptionTicket(state.ticketSettings, selectedPatient, state.currentUser, new Date(), lines, consultForm.diagnosis);
+    // Impression : ordonnance (médicaments) + bon d'analyse (laboratoire)
+    if (state.currentUser && lines.length > 0) {
+      printPrescriptionTicket(state.ticketSettings, selectedPatient!, state.currentUser, new Date(), lines, consultForm.diagnosis);
+    }
+    if (state.currentUser && newLabRequests.length > 0) {
+      printLabRequestTicket(state.ticketSettings, selectedPatient!, state.currentUser, new Date(), newLabRequests);
     }
     setSelectedPatientId(null); setConsultForm({ visitReason: '', diagnosis: '', notes: '', isEmergency: false, hospitalizeRequested: false, surgeryRequested: false });
     setVitals({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' });
-    setLines([]); setShowHistory(false); setSearchQuery(''); setSelectedLineId(null); setIsNewLine(false); setView('queue');
+    setLines([]); setShowHistory(false); setSearchQuery(''); setSelectedLineId(null); setIsNewLine(false); setLabDraft([]); setLabSearch(''); setView('queue');
   };
 
   const printPrescription = (c: Consultation) => {
@@ -280,6 +341,58 @@ export default function DoctorModule({ state, setState }: Props) {
                 </tfoot>}
               </table>
             </div>
+          </div>
+
+          {/* DEMANDES D'ANALYSES — LABORATOIRE (saisies par le médecin) */}
+          <div className="bg-white rounded-xl shadow-sm border p-3">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="font-semibold text-sm flex items-center gap-2"><FlaskConical className="w-4 h-4 text-cyan-600" /> Demandes d'analyses (Laboratoire)</h4>
+              <span className="text-[10px] text-slate-400 hidden sm:block">Facturées à la caisse (onglet Laboratoire) puis transmises au labo après paiement</span>
+            </div>
+            <div className="relative mb-2">
+              <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+              <input type="text" value={labSearch} onChange={(e) => setLabSearch(e.target.value)} className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-cyan-500 text-sm" placeholder="Rechercher un examen (NFS, Glycémie, Créatinine...)" />
+              {labSearch.length >= 1 && labFiltered.length > 0 && (
+                <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 rounded-b shadow-xl z-30 max-h-48 overflow-y-auto">
+                  {labFiltered.map((e) => {
+                    const already = labDraft.some((d) => d.examId === e.id);
+                    return (
+                      <div key={e.id} onClick={() => addLabExam(e.id)} className={`px-3 py-1.5 cursor-pointer text-xs flex justify-between border-b border-slate-100 ${already ? 'opacity-40 bg-slate-50' : 'hover:bg-cyan-50'}`}>
+                        <span><span className="text-[9px] text-slate-400 mr-1">[{e.code}]</span> {e.name} <span className="text-slate-400">· {labCategoryLabel(e.category)}</span></span>
+                        <span className="font-mono text-cyan-600">{formatAr(clientType === 'societe' ? e.priceSociete : clientType === 'externe' ? e.priceExterne : e.priceComptoir)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            {labDraft.length > 0 ? (
+              <div className="border rounded-lg divide-y">
+                {labDraft.map((d) => {
+                  const e = state.labCatalog.find((x) => x.id === d.examId);
+                  if (!e) return null;
+                  return (
+                    <div key={d.examId} className="flex items-center justify-between p-2 text-sm">
+                      <div>
+                        <div className="font-medium text-slate-800">{e.name} <span className="text-[10px] text-slate-400">{e.code} · {labCategoryLabel(e.category)}</span></div>
+                        <div className="text-[10px] text-slate-400">{e.sampleType} · {e.durationHours}h</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="flex items-center gap-1 text-[10px] cursor-pointer"><input type="checkbox" checked={d.urgent} onChange={() => toggleLabUrgent(d.examId)} className="w-3.5 h-3.5" /> <span className="text-red-600 font-semibold">Urgent</span></label>
+                        <span className="font-mono font-bold text-slate-700 w-24 text-right">{formatAr(priceForExam(d.examId, clientType, d.urgent))}</span>
+                        <button onClick={() => removeLabExam(d.examId)} className="text-rose-600 hover:text-rose-800 cursor-pointer" title="Retirer"><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div className="flex justify-between items-center p-2 bg-cyan-50 text-sm font-bold">
+                  <span>Total analyses</span>
+                  <span className="font-mono">{formatAr(labTotal)}</span>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400 text-center py-2 border border-dashed rounded-lg">Aucune analyse sélectionnée — recherchez un examen ci-dessus.</p>
+            )}
           </div>
 
           <div className="flex gap-2">

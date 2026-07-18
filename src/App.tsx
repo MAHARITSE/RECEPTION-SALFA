@@ -11,6 +11,7 @@ import MagasinierModule from './components/MagasinierModule';
 import LaboratoryModule from './components/LaboratoryModule';
 import HospitalizationModule from './components/HospitalizationModule';
 import AdminModule from './components/AdminModule';
+import MedicalRecordModule from './components/MedicalRecordModule';
 import Messaging from './components/Messaging';
 
 const roleTitles: Record<string, string> = {
@@ -23,7 +24,7 @@ const roleTitles: Record<string, string> = {
   admin: '⚙️ Administration — Configuration système',
 };
 
-type AppView = 'reception' | 'login' | 'staff';
+type AppView = 'reception' | 'login' | 'staff' | 'medicalRecord';
 
 export default function App() {
   const [state, setState] = useState<AppState>(createInitialState());
@@ -39,6 +40,8 @@ export default function App() {
     setState((prev) => ({ ...prev, currentUser: null }));
     setView('reception');
   };
+
+  const handleOpenMedicalRecord = () => setView('medicalRecord');
 
   const handleMarkRead = (notifId: string) => {
     setState((prev) => ({ ...prev, notifications: prev.notifications.map((n) => n.id === notifId ? { ...n, read: true } : n) }));
@@ -61,6 +64,26 @@ export default function App() {
 
   if (!state.currentUser) { setView('reception'); return null; }
 
+  // Vue « Dossier Médical » (accessible depuis n'importe quel module)
+  if (view === 'medicalRecord') {
+    return (
+      <>
+        <Layout
+          user={state.currentUser}
+          notifications={state.notifications}
+          onLogout={handleLogout}
+          onMarkRead={handleMarkRead}
+          onOpenMessaging={() => setShowMessaging(true)}
+          onOpenMedicalRecord={handleOpenMedicalRecord}
+          unreadMessages={myMsgCount}
+        >
+          <MedicalRecordModule state={state} onBack={() => setView('staff')} />
+        </Layout>
+        {showMessaging && <Messaging state={state} setState={setState} onClose={() => setShowMessaging(false)} />}
+      </>
+    );
+  }
+
   const renderModule = () => {
     switch (state.currentUser?.role) {
       case 'doctor': return <DoctorModule state={state} setState={setState} />;
@@ -76,8 +99,8 @@ export default function App() {
 
   return (
     <>
-      <Layout user={state.currentUser} notifications={state.notifications} onLogout={handleLogout} onMarkRead={handleMarkRead}
-        onOpenMessaging={() => setShowMessaging(true)} unreadMessages={myMsgCount}>
+        <Layout user={state.currentUser} notifications={state.notifications} onLogout={handleLogout} onMarkRead={handleMarkRead}
+          onOpenMessaging={() => setShowMessaging(true)} onOpenMedicalRecord={handleOpenMedicalRecord} unreadMessages={myMsgCount}>
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-slate-800">{roleTitles[state.currentUser.role]}</h2>
           <p className="text-slate-500 text-sm mt-1">

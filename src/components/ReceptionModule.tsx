@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Patient, VitalSigns, ClientType } from '../types';
 import type { AppState } from '../store';
-import { generateDossierNumber, calculateAge, addAuditLog, addNotification } from '../store';
+import { generateDossierNumber, calculateAge, addAuditLog, addNotification, addJourneyEvent } from '../store';
 import { printQueueTicket } from '../utils/printTicket';
 import {
   Search, Plus, Edit, Trash2, UserX, Activity,
@@ -80,6 +80,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
         ),
       };
       addAuditLog(next, 'PARAMETRES_ET_ENVOI', `${selectedPatient.dossier} → Envoyé médecin`, selectedPatient.id);
+      addJourneyEvent(next, { patientId: selectedPatient.id, department: 'reception', action: 'Adressé au médecin', status: 'waiting_consultation', details: 'Paramètres vitaux saisis', actorName: 'Réception' });
       addNotification(next, 'doctor', `📋 Nouveau patient: ${selectedPatient.lastName} ${selectedPatient.firstName}`, 'info');
       return next;
     });
@@ -104,12 +105,13 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
       gender: patientForm.gender, address: patientForm.address.toUpperCase(), contact: patientForm.contact, ssn: patientForm.ssn,
       insureName: patientForm.insureName?.toUpperCase() || undefined,
       clientType: patientForm.clientType, company: patientForm.company || undefined, subCompany: patientForm.subCompany || undefined,
-      allergies: [], chronicTreatments: [],
+      allergies: [], chronicTreatments: [], antecedents: [],
       registeredAt: new Date().toISOString(), registeredBy: 'RECEPTION', status: 'registered',
     };
     setState((prev) => {
       const next = { ...prev, patients: [...prev.patients, np] };
       addAuditLog(next, 'ENREGISTREMENT', `Nouveau: ${np.dossier} - ${np.lastName} ${np.firstName}`, np.id);
+      addJourneyEvent(next, { patientId: np.id, department: 'reception', action: 'Enregistrement patient', status: 'registered', details: `Dossier ${np.dossier} créé`, actorName: 'Réception' });
       return next;
     });
     setModal('none'); setSelectedPatient(np);

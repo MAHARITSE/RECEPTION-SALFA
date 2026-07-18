@@ -1,4 +1,4 @@
-import type { Invoice, Patient, TicketSettings, User, Prescription, LabRequest, HospitalizationRecord, Company } from '../types';
+import type { Invoice, Patient, TicketSettings, User, Prescription, LabRequest, HospitalizationRecord, Company, Consultation, PatientJourneyEvent } from '../types';
 
 const escapeHtml = (value: string) =>
   value.replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#039;', '"': '&quot;' }[char] || char));
@@ -381,6 +381,181 @@ export function printClosingTicket(
     footerNote: 'Document de contrôle — à conserver.',
   });
   openTicketWindow(html, 'Clôture de caisse');
+}
+
+/* ============================================================
+ * 8) COMPTE-RENDU DE RÉSULTATS — LABORATOIRE (A4)
+ * ============================================================ */
+function openPageWindow(html: string) {
+  const popup = window.open('', '_blank', 'width=820,height=1000');
+  if (!popup) {
+    window.alert("La fenêtre d'impression a été bloquée. Autorisez les fenêtres pop-up puis réessayez.");
+    return;
+  }
+  popup.document.write(html);
+  popup.document.close();
+}
+
+export function printLabResultTicket(
+  settings: TicketSettings,
+  patient: Patient,
+  request: LabRequest,
+  doctorName?: string,
+  categoryLabel?: string,
+) {
+  const resRows = (request.results || [])
+    .map(
+      (r) => `<tr>
+        <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb">${escapeHtml(r.parameter)}</td>
+        <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;text-align:center;font-weight:700">${r.value} ${escapeHtml(r.unit)}</td>
+        <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;text-align:center">${r.normalMin} – ${r.normalMax} ${escapeHtml(r.unit)}</td>
+        <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;text-align:center">${
+          r.isAbnormal
+            ? '<span style="color:#b91c1c;font-weight:700">ANORMAL</span>'
+            : '<span style="color:#15803d">Normal</span>'
+        }</td>
+      </tr>`,
+    )
+    .join('');
+
+  const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Compte-rendu ${escapeHtml(request.examType)}</title>
+  <style>
+    @page{size:A5;margin:10mm}
+    body{font-family:Arial,Helvetica,sans-serif;color:#111;width:148mm;max-width:148mm;margin:0 auto;padding:0;font-size:12px;line-height:1.4}
+    h1{font-size:17px;margin:0}
+    .hdr{display:flex;justify-content:space-between;border-bottom:3px solid #0369a1;padding-bottom:8px;margin-bottom:12px}
+    .box{border:1px solid #cbd5e1;border-radius:6px;padding:8px 12px;margin-bottom:12px}
+    .title{color:#0369a1;font-weight:700}
+    table{width:100%;border-collapse:collapse;margin-top:6px}
+    .sig{margin-top:30px;display:flex;justify-content:space-between}
+    .sig>div{width:45%;border-top:1px solid #000;padding-top:4px;text-align:center;font-size:12px}
+  </style></head><body>
+  <div class="hdr"><div><h1>${escapeHtml(settings.facilityName)}</h1><div>${escapeHtml(settings.address || '')}${settings.phone ? ' · ' + escapeHtml(settings.phone) : ''}</div></div>
+  <div style="text-align:right"><div class="title">COMPTE-RENDU D'ANALYSE</div><div>Réf: ${escapeHtml(request.code || request.id.slice(0, 8).toUpperCase())}</div><div>${new Date(request.completedAt || Date.now()).toLocaleString('fr-FR')}</div></div></div>
+  <div class="box"><strong>Patient :</strong> ${escapeHtml(patient.lastName)} ${escapeHtml(patient.firstName)} &nbsp;|&nbsp; Dossier: ${escapeHtml(patient.dossier)} &nbsp;|&nbsp; ${escapeHtml(patient.age)} / ${patient.gender === 'M' ? 'M' : 'F'}${patient.bloodGroup ? ' &nbsp;|&nbsp; Groupe: ' + escapeHtml(patient.bloodGroup) : ''}</div>
+  <div class="box">
+    <div class="title" style="font-size:15px;margin-bottom:4px">${escapeHtml(request.examType)} ${request.urgent ? '<span style="color:#b91c1c">[URGENT]</span>' : ''}</div>
+    <div style="font-size:12px;color:#555">Catégorie: ${escapeHtml(categoryLabel || '—')} &nbsp;·&nbsp; Prélèvement: ${escapeHtml(request.sampleType || '—')} &nbsp;·&nbsp; Prescripteur: ${escapeHtml(doctorName || request.requestedBy || '—')}</div>
+    <table><thead><tr style="background:#f0f9ff"><th style="text-align:left;padding:5px 8px">Paramètre</th><th style="text-align:center;padding:5px 8px">Résultat</th><th style="text-align:center;padding:5px 8px">Valeurs usuelles</th><th style="text-align:center;padding:5px 8px">Interprétation</th></tr></thead><tbody>${resRows}</tbody></table>
+  </div>
+  <p style="font-size:11px;color:#555">Résultats validés par le biologiste le ${new Date(request.completedAt || Date.now()).toLocaleString('fr-FR')}. Ce compte-rendu est établi sous la responsabilité du laboratoire.</p>
+  <div class="sig"><div>${escapeHtml(settings.facilityName)}</div><div>${escapeHtml(request.validatedBy || request.completedBy || 'Biologiste')}</div></div>
+  <script>window.onload=()=>{window.focus();window.print();}</script>
+  </body></html>`;
+  openPageWindow(html);
+}
+
+/* ============================================================
+ * 9) DOSSIER MÉDICAL COMPLET (A4)
+ * ============================================================ */
+export function printDossierTicket(
+  settings: TicketSettings,
+  patient: Patient,
+  payload: {
+    consultations: Consultation[];
+    labRequests: LabRequest[];
+    hospitalizations: HospitalizationRecord[];
+    invoices: Invoice[];
+    journey: PatientJourneyEvent[];
+  },
+) {
+  const { consultations, labRequests, hospitalizations, invoices, journey } = payload;
+
+  const consultHtml = consultations
+    .slice()
+    .reverse()
+    .map((c) => `<div class="sec"><div class="lbl">${new Date(c.date).toLocaleDateString('fr-FR')} — ${escapeHtml(c.doctorName)}</div>
+      <div><strong>Diagnostic :</strong> ${escapeHtml(c.diagnosis)}</div>
+      ${c.visitReason ? `<div><strong>Motif :</strong> ${escapeHtml(c.visitReason)}</div>` : ''}
+      ${c.notes ? `<div><strong>Notes :</strong> ${escapeHtml(c.notes)}</div>` : ''}
+      ${c.prescriptions.length ? `<div><strong>Ordonnance :</strong> ${c.prescriptions.map((p) => `${escapeHtml(p.articleName)} ×${p.quantity}${p.posology ? ' (' + escapeHtml(p.posology) + ')' : ''}`).join(' ; ')}</div>` : ''}
+    </div>`)
+    .join('');
+
+  const labHtml = labRequests
+    .slice()
+    .reverse()
+    .map((r) => `<div class="sec"><div class="lbl">${r.completedAt ? new Date(r.completedAt).toLocaleDateString('fr-FR') : (r.requestedAt ? new Date(r.requestedAt).toLocaleDateString('fr-FR') : '—')} — ${escapeHtml(r.examType)} ${r.urgent ? '<span style="color:#b91c1c">[URGENT]</span>' : ''}</div>
+      ${(r.results || [])
+        .map((res) => `<div style="display:flex;justify-content:space-between;border-bottom:1px dotted #ddd;padding:1px 0"><span>${escapeHtml(res.parameter)}</span><span><strong>${res.value} ${escapeHtml(res.unit)}</strong> ${res.isAbnormal ? '<span style="color:#b91c1c;font-weight:700"> ANORMAL</span>' : ''}</span></div>`)
+        .join('')}
+    </div>`)
+    .join('');
+
+  const hospHtml = hospitalizations
+    .slice()
+    .reverse()
+    .map(
+      (h) => `<div class="sec"><div class="lbl">${h.status === 'active' ? 'En cours' : new Date(h.admissionDate).toLocaleDateString('fr-FR') + ' → ' + (h.dischargeDate ? new Date(h.dischargeDate).toLocaleDateString('fr-FR') : '—')} — ${escapeHtml(h.service)} (Ch. ${escapeHtml(h.roomNumber)} / Lit ${escapeHtml(h.bedNumber)})</div>
+      ${h.dailyNotes.map((n) => `<div style="font-size:11px">${new Date(n.date).toLocaleDateString('fr-FR')} — ${escapeHtml(n.nursingCare || '')}${n.doctorObservations ? ' / ' + escapeHtml(n.doctorObservations) : ''}</div>`).join('')}
+    </div>`,
+    )
+    .join('');
+
+  const invHtml = invoices
+    .slice()
+    .reverse()
+    .map(
+      (i) => `<div style="display:flex;justify-content:space-between;border-bottom:1px dotted #ddd;padding:1px 0"><span>${i.paidAt ? new Date(i.paidAt).toLocaleDateString('fr-FR') : '—'} — ${i.status === 'paid' ? 'Payée' : 'En attente'}</span><span><strong>${i.patientCharge.toLocaleString('fr-FR')} Ar</strong></span></div>`,
+    )
+    .join('');
+
+  const journeyHtml = journey
+    .slice()
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+    .map(
+      (e) =>
+        `<div style="display:flex;justify-content:space-between;border-bottom:1px dotted #ddd;padding:1px 0;font-size:11px"><span>${new Date(e.timestamp).toLocaleString('fr-FR')} — ${escapeHtml(e.action)}</span><span>${escapeHtml(e.department)}${e.actorName ? ' · ' + escapeHtml(e.actorName) : ''}</span></div>`,
+    )
+    .join('');
+
+  const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Dossier médical ${escapeHtml(patient.dossier)}</title>
+  <style>
+    body{font-family:Arial,Helvetica,sans-serif;color:#111;max-width:820px;margin:22px auto;padding:0 24px;font-size:12px;line-height:1.45}
+    h1{font-size:20px;margin:0} h2{font-size:14px;color:#0369a1;border-bottom:2px solid #0369a1;padding-bottom:3px;margin:16px 0 6px}
+    .hdr{display:flex;justify-content:space-between;border-bottom:3px solid #0369a1;padding-bottom:8px;margin-bottom:10px}
+    .id{display:grid;grid-template-columns:1fr 1fr;gap:2px 18px}
+    .sec{margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #eee}
+    .lbl{font-weight:700;color:#0f172a}
+    .tag{display:inline-block;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:4px;padding:0 6px;margin:1px;font-size:11px}
+  </style></head><body>
+  <div class="hdr"><div><h1>${escapeHtml(settings.facilityName)}</h1><div>${escapeHtml(settings.address || '')}${settings.phone ? ' · ' + escapeHtml(settings.phone) : ''}</div></div>
+  <div style="text-align:right"><div class="title" style="color:#0369a1;font-weight:700">DOSSIER MÉDICAL</div><div>Réf: ${escapeHtml(patient.dossier)}</div><div>${new Date().toLocaleDateString('fr-FR')}</div></div></div>
+
+  <div class="id">
+    <div><strong>Nom :</strong> ${escapeHtml(patient.lastName)} ${escapeHtml(patient.firstName)}</div>
+    <div><strong>Sexe :</strong> ${patient.gender === 'M' ? 'Masculin' : 'Féminin'} &nbsp; <strong>Âge :</strong> ${escapeHtml(patient.age)}</div>
+    <div><strong>Dossier :</strong> ${escapeHtml(patient.dossier)}</div>
+    <div><strong>Groupe sanguin :</strong> ${escapeHtml(patient.bloodGroup || '—')}</div>
+    <div><strong>Naissance :</strong> ${patient.dateOfBirth !== 'N/A' ? new Date(patient.dateOfBirth).toLocaleDateString('fr-FR') : '—'}</div>
+    <div><strong>Téléphone :</strong> ${escapeHtml(patient.contact || '—')}</div>
+    <div><strong>Adresse :</strong> ${escapeHtml(patient.address || '—')}</div>
+    <div><strong>Assuré :</strong> ${escapeHtml(patient.insureName || '—')}${patient.company ? ' (' + escapeHtml(patient.company) + ')' : ''}</div>
+  </div>
+  <div style="margin-top:6px">
+    ${patient.allergies.length ? `<span class="tag" style="color:#b91c1c;border-color:#fecaca;background:#fef2f2">⚠ Allergies : ${escapeHtml(patient.allergies.join(', '))}</span>` : ''}
+    ${patient.antecedents.length ? `<span class="tag">Antécédents : ${escapeHtml(patient.antecedents.join(', '))}</span>` : ''}
+    ${patient.chronicTreatments.length ? `<span class="tag">Traitements : ${escapeHtml(patient.chronicTreatments.join(', '))}</span>` : ''}
+  </div>
+
+  <h2>PARCOURS PATIENT</h2>
+  ${journeyHtml || '<div>Aucun événement.</div>'}
+
+  <h2>HISTORIQUE DES CONSULTATIONS</h2>
+  ${consultHtml || '<div>Aucune consultation.</div>'}
+
+  <h2>BIOLOGIE — ANALYSES</h2>
+  ${labHtml || '<div>Aucune analyse.</div>'}
+
+  <h2>HOSPITALISATIONS</h2>
+  ${hospHtml || '<div>Aucune hospitalisation.</div>'}
+
+  <h2>FACTURATION</h2>
+  ${invHtml || '<div>Aucune facture.</div>'}
+
+  <script>window.onload=()=>{window.focus();window.print();}</script>
+  </body></html>`;
+  openPageWindow(html);
 }
 
 /* ============================================================
