@@ -2,10 +2,6 @@
 REM ============================================================================
 REM RECEPTION SALFA - Lancement Impression Directe (Mode Kiosk / Silencieux)
 REM ============================================================================
-REM 1. Définir votre imprimante thermique comme imprimante par défaut Windows
-REM 2. Lancer ce script (lancer-impression-directe.bat)
-REM 3. Admin -> Tickets : cocher "Lancer l'impression automatiquement"
-REM ============================================================================
 
 echo [1/3] Verification des dependances...
 if not exist "node_modules" (
@@ -20,13 +16,22 @@ echo Attente de l'initialisation du serveur (4 secondes)...
 timeout /t 4 /nobreak >nul
 
 echo [3/3] Ouverture du navigateur en mode IMPRESSION DIRECTE (--kiosk-printing)...
-REM Tentative avec Google Chrome
-start chrome --kiosk-printing http://localhost:5173
-if %ERRORLEVEL% NEQ 0 (
-    REM Si Chrome n'est pas disponible, tentative avec Microsoft Edge
-    start msedge --kiosk-printing http://localhost:5173
+
+REM Vérification des chemins standards de Google Chrome
+if exist "%ProgramFiles%\Google\Chrome\Application\chrome.exe" (
+    start "" "%ProgramFiles%\Google\Chrome\Application\chrome.exe" --kiosk-printing http://localhost:5173
+    goto :fin
+)
+if exist "%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe" (
+    start "" "%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe" --kiosk-printing http://localhost:5173
+    goto :fin
 )
 
+REM Si Chrome n'est pas trouvé, on lance Microsoft Edge (présent par défaut sur Windows 10/11)
+echo Chrome introuvable. Tentative avec Microsoft Edge...
+start msedge --kiosk-printing http://localhost:5173
+
+:fin
 echo.
 echo Application lancee avec succes !
 echo Les tickets s'impriment directement sur l'imprimante Windows par defaut.
