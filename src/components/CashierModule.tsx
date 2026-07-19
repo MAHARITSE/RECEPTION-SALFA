@@ -419,7 +419,7 @@ export default function CashierModule({ state, setState }: Props) {
           ))}
         </div>
 
-        <div className="p-4 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 300px)' }}>
+        <div className="p-4">
 
           {/* PAYMENT */}
           {tab === 'payment' && (
@@ -584,59 +584,54 @@ export default function CashierModule({ state, setState }: Props) {
         </div>
       </div>
 
-      {/* === MODALS === */}
-
-      {/* Add Patient Modal */}
+      {/* === INLINE ADD PATIENT (no modal) === */}
       {hbModal === 'add_patient' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-auto">
-            <div className={`px-4 py-3 flex justify-between items-center text-white ${tab === 'hospit' ? 'bg-rose-600' : 'bg-blue-600'}`}><span className="font-bold"><UserPlus className="w-5 h-5 inline" /> Ajouter Patient — {tab === 'hospit' ? 'Hospitalisation' : 'Bloc'}</span><button onClick={() => setHbModal('none')} className="hover:bg-white/20 rounded p-1 cursor-pointer"><X className="w-5 h-5" /></button></div>
-            <div className="p-4 space-y-3">
-              {/* Search existing */}
-              <div><label className="block text-sm font-medium mb-1">Rechercher patient existant</label>
-                <input type="text" value={hbPatSearch} onChange={e => setHbPatSearch(e.target.value)} className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" placeholder="🔍 Nom, prénom ou dossier..." />
-                {hbPatFiltered.length > 0 && <div className="border rounded-lg mt-1 max-h-40 overflow-y-auto">{hbPatFiltered.map(p => (<div key={p.id} onClick={() => hbSelectPatient(p.id)} className="p-2 hover:bg-blue-50 cursor-pointer text-sm flex justify-between border-b"><span className="font-medium">{p.lastName} {p.firstName}</span><span className="text-slate-400 text-xs">{p.dossier} | {p.clientType === 'societe' ? `🏢 ${p.company}` : '🏪 Comptoir'}</span></div>))}</div>}
-              </div>
-              <div className="border-t pt-3">
-                <h4 className="font-bold text-sm mb-2">Ou créer un nouveau patient :</h4>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="col-span-2 flex items-center gap-3 mb-1">
-                    <span className="font-bold text-slate-700">Sexe</span>
-                    <div className="flex border border-slate-400 rounded overflow-hidden">
-                      <button type="button" onClick={() => setHbNewPat({...hbNewPat, gender: 'M'})} className={`px-3 py-1 font-bold cursor-pointer ${hbNewPat.gender === 'M' ? 'bg-blue-500 text-white' : 'bg-white'}`}>M</button>
-                      <button type="button" onClick={() => setHbNewPat({...hbNewPat, gender: 'F'})} className={`px-3 py-1 font-bold border-l border-slate-400 cursor-pointer ${hbNewPat.gender === 'F' ? 'bg-pink-500 text-white' : 'bg-white'}`}>F</button>
-                    </div>
+        <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-4">
+          <div className={`px-4 py-3 flex justify-between items-center text-white ${tab === 'hospit' ? 'bg-rose-600' : 'bg-blue-600'}`}><span className="font-bold"><UserPlus className="w-5 h-5 inline" /> Ajouter Patient — {tab === 'hospit' ? 'Hospitalisation' : 'Bloc'}</span><button onClick={() => setHbModal('none')} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button></div>
+          <div className="p-4 space-y-3">
+            {/* Search existing */}
+            <div><label className="block text-sm font-medium mb-1">Rechercher patient existant</label>
+              <input type="text" value={hbPatSearch} onChange={e => setHbPatSearch(e.target.value)} className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" placeholder="🔍 Nom, prénom ou dossier..." autoFocus />
+              {hbPatFiltered.length > 0 && <div className="border rounded-lg mt-1 max-h-40 overflow-y-auto">{hbPatFiltered.map(p => (<div key={p.id} onClick={() => hbSelectPatient(p.id)} className="p-2 hover:bg-blue-50 cursor-pointer text-sm flex justify-between border-b"><span className="font-medium">{p.lastName} {p.firstName}</span><span className="text-slate-400 text-xs">{p.dossier} | {p.clientType === 'societe' ? `🏢 ${p.company}` : '🏪 Comptoir'}</span></div>))}</div>}
+            </div>
+            <div className="border-t pt-3">
+              <h4 className="font-bold text-sm mb-2">Ou créer un nouveau patient :</h4>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="col-span-2 flex items-center gap-3 mb-1">
+                  <span className="font-bold text-slate-700">Sexe</span>
+                  <div className="flex border border-slate-400 rounded overflow-hidden">
+                    <button type="button" onClick={() => setHbNewPat({...hbNewPat, gender: 'M'})} className={`px-3 py-1 font-bold cursor-pointer ${hbNewPat.gender === 'M' ? 'bg-blue-500 text-white' : 'bg-white'}`}>M</button>
+                    <button type="button" onClick={() => setHbNewPat({...hbNewPat, gender: 'F'})} className={`px-3 py-1 font-bold border-l border-slate-400 cursor-pointer ${hbNewPat.gender === 'F' ? 'bg-pink-500 text-white' : 'bg-white'}`}>F</button>
                   </div>
-                  <div><label className="block font-bold text-slate-700 mb-0.5">Nom *</label><input type="text" value={hbNewPat.lastName} onChange={e => setHbNewPat({...hbNewPat, lastName: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-white" /></div>
-                  <div><label className="block font-bold text-slate-700 mb-0.5">Prénom *</label><input type="text" value={hbNewPat.firstName} onChange={e => setHbNewPat({...hbNewPat, firstName: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-white" /></div>
-                  <div><label className="block font-bold text-slate-700 mb-0.5">Date Naissance</label><input type="date" value={hbNewPat.dateOfBirth} onChange={e => setHbNewPat({...hbNewPat, dateOfBirth: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none bg-white" /></div>
-                  <div><label className="block font-bold text-slate-700 mb-0.5">Age</label><input type="text" readOnly value={hbNewPat.dateOfBirth ? calculateAge(hbNewPat.dateOfBirth) : '—'} className="w-full px-2 py-1.5 border rounded bg-slate-100" /></div>
-                  <div><label className="block font-bold text-slate-700 mb-0.5">Matricule</label><input type="text" value={hbNewPat.matricule} onChange={e => setHbNewPat({...hbNewPat, matricule: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none font-mono bg-white" placeholder="M-0000" /></div>
-                  <div><label className="block font-bold text-slate-700 mb-0.5">Téléphone</label><input type="text" value={hbNewPat.contact} onChange={e => setHbNewPat({...hbNewPat, contact: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none font-mono bg-white" placeholder="034 00 000 00" /></div>
-                  <div className="col-span-2"><label className="block font-bold text-slate-700 mb-0.5">Adresse</label><input type="text" value={hbNewPat.address} onChange={e => setHbNewPat({...hbNewPat, address: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-white" /></div>
-                  <div><label className="block font-bold text-slate-700 mb-0.5">N° Sécurité Sociale</label><input type="text" value={hbNewPat.ssn} onChange={e => setHbNewPat({...hbNewPat, ssn: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none bg-white" /></div>
-                  <div><label className="block font-bold text-slate-700 mb-0.5">Société</label><input type="text" value={hbNewPat.insureName} onChange={e => setHbNewPat({...hbNewPat, insureName: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-white" /></div>
-                  <div><label className="block font-bold text-slate-700 mb-0.5">Type Client</label><select value={hbNewPat.clientType} onChange={e => setHbNewPat({...hbNewPat, clientType: e.target.value as ClientType})} className="w-full px-2 py-1.5 border rounded outline-none cursor-pointer bg-white"><option value="comptoir">Client Comptoir</option><option value="societe">Client Société</option></select></div>
-                  {hbNewPat.clientType === 'societe' && <div><label className="block font-bold text-slate-700 mb-0.5">Société</label><select value={hbNewPat.company} onChange={e => setHbNewPat({...hbNewPat, company: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none cursor-pointer bg-white"><option value="">— Sélectionner —</option>{state.companies.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}</select></div>}
-                  {hbNewPat.clientType === 'societe' && <div className="col-span-2"><label className="block font-bold text-slate-700 mb-0.5">Sous-société (libre)</label><input type="text" value={hbNewPat.subCompany} onChange={e => setHbNewPat({...hbNewPat, subCompany: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-white" placeholder="Direction, Service..." /></div>}
                 </div>
-                <button onClick={hbAddNewPatient} className="mt-3 w-full py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 cursor-pointer flex items-center justify-center gap-2"><UserPlus className="w-4 h-4" /> Créer et ajouter</button>
+                <div><label className="block font-bold text-slate-700 mb-0.5">Nom *</label><input type="text" value={hbNewPat.lastName} onChange={e => setHbNewPat({...hbNewPat, lastName: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-white" /></div>
+                <div><label className="block font-bold text-slate-700 mb-0.5">Prénom *</label><input type="text" value={hbNewPat.firstName} onChange={e => setHbNewPat({...hbNewPat, firstName: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-white" /></div>
+                <div><label className="block font-bold text-slate-700 mb-0.5">Date Naissance</label><input type="date" value={hbNewPat.dateOfBirth} onChange={e => setHbNewPat({...hbNewPat, dateOfBirth: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none bg-white" /></div>
+                <div><label className="block font-bold text-slate-700 mb-0.5">Age</label><input type="text" readOnly value={hbNewPat.dateOfBirth ? calculateAge(hbNewPat.dateOfBirth) : '—'} className="w-full px-2 py-1.5 border rounded bg-slate-100" /></div>
+                <div><label className="block font-bold text-slate-700 mb-0.5">Matricule</label><input type="text" value={hbNewPat.matricule} onChange={e => setHbNewPat({...hbNewPat, matricule: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none font-mono bg-white" placeholder="M-0000" /></div>
+                <div><label className="block font-bold text-slate-700 mb-0.5">Téléphone</label><input type="text" value={hbNewPat.contact} onChange={e => setHbNewPat({...hbNewPat, contact: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none font-mono bg-white" placeholder="034 00 000 00" /></div>
+                <div className="col-span-2"><label className="block font-bold text-slate-700 mb-0.5">Adresse</label><input type="text" value={hbNewPat.address} onChange={e => setHbNewPat({...hbNewPat, address: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-white" /></div>
+                <div><label className="block font-bold text-slate-700 mb-0.5">N° Sécurité Sociale</label><input type="text" value={hbNewPat.ssn} onChange={e => setHbNewPat({...hbNewPat, ssn: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none bg-white" /></div>
+                <div><label className="block font-bold text-slate-700 mb-0.5">Société</label><input type="text" value={hbNewPat.insureName} onChange={e => setHbNewPat({...hbNewPat, insureName: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-white" /></div>
+                <div><label className="block font-bold text-slate-700 mb-0.5">Type Client</label><select value={hbNewPat.clientType} onChange={e => setHbNewPat({...hbNewPat, clientType: e.target.value as ClientType})} className="w-full px-2 py-1.5 border rounded outline-none cursor-pointer bg-white"><option value="comptoir">Client Comptoir</option><option value="societe">Client Société</option></select></div>
+                {hbNewPat.clientType === 'societe' && <div><label className="block font-bold text-slate-700 mb-0.5">Société</label><select value={hbNewPat.company} onChange={e => setHbNewPat({...hbNewPat, company: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none cursor-pointer bg-white"><option value="">— Sélectionner —</option>{state.companies.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}</select></div>}
+                {hbNewPat.clientType === 'societe' && <div className="col-span-2"><label className="block font-bold text-slate-700 mb-0.5">Sous-société (libre)</label><input type="text" value={hbNewPat.subCompany} onChange={e => setHbNewPat({...hbNewPat, subCompany: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-white" placeholder="Direction, Service..." /></div>}
               </div>
+              <button onClick={hbAddNewPatient} className="mt-3 w-full py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 cursor-pointer flex items-center justify-center gap-2"><UserPlus className="w-4 h-4" /> Créer et ajouter</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Prescription Modal — Full Sage-style window */}
+      {/* Prescription — Inline Sage-style (no modal) */}
       {hbModal === 'add_article' && hbSelRecordId && (() => {
         const rec = hbRecords.find(r => r.id === hbSelRecordId);
         const recTotal = rec ? rec.lines.reduce((s, l) => s + hbLineAmt(l), 0) : 0;
         return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-auto">
-            <div className="bg-emerald-600 px-4 py-3 flex justify-between items-center text-white rounded-t-xl">
+        <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-4">
+            <div className="bg-emerald-600 px-4 py-3 flex justify-between items-center text-white">
               <span className="font-bold flex items-center gap-1">💊 Prescription (Saisie Sage) — {rec?.patientName} ({rec?.type === 'hospit' ? 'Hospitalisation' : 'Bloc'})</span>
-              <button onClick={() => setHbModal('none')} className="hover:bg-white/20 rounded p-1 cursor-pointer"><X className="w-5 h-5" /></button>
+              <button onClick={() => setHbModal('none')} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button>
             </div>
             <div className="p-4 space-y-3">
               {/* Date de sortie — persiste entre les saisies */}
@@ -823,22 +818,19 @@ export default function CashierModule({ state, setState }: Props) {
 
               <button onClick={() => setHbModal('none')} className="w-full py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 cursor-pointer font-medium transition text-sm">✅ Terminer et fermer</button>
             </div>
-          </div>
         </div>
         );
       })()}
 
-      {/* Edit Client Type Modal */}
+      {/* Edit Client Type — Inline (no modal) */}
       {hbModal === 'edit_client' && hbSelRecordId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm">
-            <div className="bg-blue-600 px-4 py-3 flex justify-between items-center text-white rounded-t-xl"><span className="font-bold"><Edit2 className="w-5 h-5 inline" /> Modifier Type Client</span><button onClick={() => setHbModal('none')} className="hover:bg-white/20 rounded p-1 cursor-pointer"><X className="w-5 h-5" /></button></div>
+        <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-4">
+            <div className="bg-blue-600 px-4 py-3 flex justify-between items-center text-white"><span className="font-bold"><Edit2 className="w-5 h-5 inline" /> Modifier Type Client</span><button onClick={() => setHbModal('none')} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button></div>
             <div className="p-4 space-y-3">
               <div><label className="block text-sm font-medium mb-1">Type</label><select value={hbEditClientType} onChange={e => setHbEditClientType(e.target.value as ClientType)} className="w-full px-3 py-2 border rounded-lg outline-none cursor-pointer"><option value="comptoir">Client Comptoir</option><option value="societe">Client Société</option></select></div>
               {hbEditClientType === 'societe' && <div><label className="block text-sm font-medium mb-1">Société</label><select value={hbEditCompany} onChange={e => setHbEditCompany(e.target.value)} className="w-full px-3 py-2 border rounded-lg outline-none cursor-pointer"><option value="">—</option>{state.companies.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}</select></div>}
               <button onClick={hbSaveClientType} className="w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer">Enregistrer</button>
             </div>
-          </div>
         </div>
       )}
     </div>
