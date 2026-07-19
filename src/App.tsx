@@ -52,7 +52,46 @@ class ModuleErrorBoundary extends Component<{ children: ReactNode; onReset: () =
   }
 }
 
-export default function App() {
+/* ─── Error Boundary GLOBAL : plus AUCUN écran blanc possible, même si
+   la page de connexion, la réception, le layout ou la messagerie plante.
+   Affiche un message clair avec un bouton « Réessayer » (recharge l'app). ─── */
+class AppErrorBoundary extends Component<{ children: ReactNode }, EBState> {
+  state: EBState = { hasError: false, error: null };
+  static getDerivedStateFromError(error: Error): EBState { return { hasError: true, error }; }
+  componentDidCatch(error: Error, info: ErrorInfo) { console.error('[AppErrorBoundary]', error, info); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-8 text-center bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900">
+          <div className="text-6xl">⚠️</div>
+          <h1 className="text-2xl font-bold text-white">MediCare HIS — Une erreur est survenue</h1>
+          <p className="text-sm text-slate-300 max-w-lg">
+            L'application a rencontré un problème inattendu. Vos données de session n'ont pas été perdues.
+            <br />
+            <span className="text-slate-400">{this.state.error?.message || 'Erreur inconnue.'}</span>
+          </p>
+          <div className="flex gap-3 mt-2">
+            <button
+              onClick={() => this.setState({ hasError: false, error: null })}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 cursor-pointer"
+            >
+              Réessayer
+            </button>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-6 py-2 bg-slate-700 text-white rounded-lg font-semibold hover:bg-slate-600 cursor-pointer"
+            >
+              Recharger l'application
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function AppInner() {
   const [state, setState] = useState<AppState>(createInitialState());
   const [view, setView] = useState<AppView>('reception');
   const [showMessaging, setShowMessaging] = useState(false);
@@ -148,5 +187,13 @@ export default function App() {
       </Layout>
       {showMessaging && <Messaging state={state} setState={setState} onClose={() => setShowMessaging(false)} />}
     </>
+  );
+}
+
+export default function App() {
+  return (
+    <AppErrorBoundary>
+      <AppInner />
+    </AppErrorBoundary>
   );
 }
