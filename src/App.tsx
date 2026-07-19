@@ -66,6 +66,8 @@ export default function App() {
 
   // Vue « Dossier Médical » (accessible depuis n'importe quel module)
   if (view === 'medicalRecord') {
+    // Défense en profondeur : les dossiers médicaux sont strictement réservés aux médecins.
+    if (state.currentUser.role !== 'doctor') return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-red-700 font-semibold">Accès refusé : seuls les médecins peuvent consulter les dossiers médicaux.</div>;
     return (
       <>
         <Layout
