@@ -7,7 +7,7 @@ import { printQueueTicket } from '../utils/printTicket';
 import {
   Search, Plus, Edit, Trash2, UserX, Activity,
   X, Check, Ban, Users, LogIn, Hospital,
-  RefreshCw, ChevronDown, Stethoscope, MessageCircle, Ticket
+  RefreshCw, Stethoscope, MessageCircle, Ticket
 } from 'lucide-react';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; onStaffLogin: () => void; onOpenMessaging: () => void; }
@@ -18,7 +18,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [modal, setModal] = useState<ModalType>('none');
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [filterStatus, setFilterStatus] = useState<string>('all');
+
 
   const [patientForm, setPatientForm] = useState({
     lastName: '', firstName: '', dateOfBirth: '', gender: 'F' as 'M' | 'F',
@@ -44,8 +44,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
     const q = searchQuery.toLowerCase();
     const ms = p.firstName.toLowerCase().includes(q) || p.lastName.toLowerCase().includes(q) ||
       p.dossier.toLowerCase().includes(q) || (p.matricule && p.matricule.toLowerCase().includes(q));
-    const mf = filterStatus === 'all' || p.status === filterStatus;
-    return ms && mf;
+    return ms;
   });
 
   const waitingCount = state.patients.filter((p) => p.status === 'waiting_consultation').length;
@@ -73,6 +72,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
             ...p,
             vitalSigns: { ...vitalsForm },
             status: 'waiting_consultation' as const,
+            lastVisitAt: new Date().toISOString(),
             clientType: vitalsClientType,
             company: vitalsClientType === 'societe' ? vitalsCompany : undefined,
             subCompany: vitalsClientType === 'societe' ? vitalsSubCompany : undefined,
@@ -152,15 +152,9 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
     setSelectedPatient(null);
   };
 
-  const statusCfg: Record<string, { label: string; bg: string; text: string }> = {
-    registered: { label: 'Enregistré', bg: 'bg-slate-200', text: 'text-slate-700' },
-    waiting_consultation: { label: '⏳ Attente', bg: 'bg-amber-200', text: 'text-amber-800' },
-    in_consultation: { label: '🩺 Consult.', bg: 'bg-blue-200', text: 'text-blue-800' },
-    consulted_awaiting_payment: { label: '💰 À payer', bg: 'bg-orange-200', text: 'text-orange-800' },
-    invoice_paid: { label: '✅ Payé', bg: 'bg-green-200', text: 'text-green-800' },
-    medications_delivered: { label: '💊 Délivré', bg: 'bg-emerald-200', text: 'text-emerald-800' },
-    hospitalized: { label: '🏨 Hospit.', bg: 'bg-rose-200', text: 'text-rose-800' },
-    completed: { label: '✅ Terminé', bg: 'bg-emerald-200', text: 'text-emerald-800' },
+  const formatLastVisit = (dateStr?: string): string => {
+    if (!dateStr) return '—';
+    return new Date(dateStr).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
   };
 
   return (
@@ -195,16 +189,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
               <Search className="absolute left-3 top-2 h-4 w-4 text-slate-400" />
               <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-300 rounded text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-inner" placeholder="Rechercher: Nom, Dossier, Matricule..." />
             </div>
-            <div className="relative">
-              <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="appearance-none bg-white border border-slate-300 rounded px-3 py-1.5 pr-8 text-sm focus:outline-none focus:border-blue-500 cursor-pointer">
-                <option value="all">Tous</option>
-                <option value="registered">Enregistré</option>
-                <option value="waiting_consultation">En attente</option>
-                <option value="consulted_awaiting_payment">À payer</option>
-                <option value="invoice_paid">Payé</option>
-              </select>
-              <ChevronDown className="absolute right-2 top-2 h-4 w-4 text-slate-400 pointer-events-none" />
-            </div>
+
           </div>
           <div className="flex items-center gap-1">
             <button onClick={() => { setModal('add'); setPatientForm({ ...patientForm, lastName: '', firstName: '', dateOfBirth: '', gender: 'F', address: '', contact: '', ssn: '', matricule: '', insureName: '', clientType: 'comptoir', company: '', subCompany: '' }); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold shadow transition cursor-pointer"><Plus className="h-4 w-4" /> Nouveau</button>
@@ -230,12 +215,11 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
           <div className="overflow-auto flex-1">
             <table className="w-full text-left border-collapse text-xs">
               <thead className="bg-gradient-to-b from-[#4a6fa5] to-[#3d5a80] text-white sticky top-0 z-10">
-                <tr><th className="p-2 border-r border-[#5a7fb5] w-10 text-center">#</th><th className="p-2 border-r border-[#5a7fb5] w-20">Dossier</th><th className="p-2 border-r border-[#5a7fb5] w-20">Matricule</th><th className="p-2 border-r border-[#5a7fb5] min-w-[200px]">Nom et Prénom</th><th className="p-2 border-r border-[#5a7fb5] w-24">Date Nais.</th><th className="p-2 border-r border-[#5a7fb5] w-16">Age</th><th className="p-2 border-r border-[#5a7fb5] w-12 text-center">Sexe</th><th className="p-2 border-r border-[#5a7fb5] w-28">Téléphone</th><th className="p-2 border-r border-[#5a7fb5] min-w-[120px]">Adresse</th><th className="p-2 border-r border-[#5a7fb5] w-28">Statut</th><th className="p-2 min-w-[120px]">Assuré</th></tr>
+                <tr><th className="p-2 border-r border-[#5a7fb5] w-10 text-center">#</th><th className="p-2 border-r border-[#5a7fb5] w-20">Dossier</th><th className="p-2 border-r border-[#5a7fb5] w-20">Matricule</th><th className="p-2 border-r border-[#5a7fb5] min-w-[200px]">Nom et Prénom</th><th className="p-2 border-r border-[#5a7fb5] w-24">Date Nais.</th><th className="p-2 border-r border-[#5a7fb5] w-16">Age</th><th className="p-2 border-r border-[#5a7fb5] w-12 text-center">Sexe</th><th className="p-2 border-r border-[#5a7fb5] w-28">Téléphone</th><th className="p-2 border-r border-[#5a7fb5] min-w-[120px]">Adresse</th><th className="p-2 border-r border-[#5a7fb5] w-32">Dernière visite</th><th className="p-2 min-w-[120px]">Assuré</th></tr>
               </thead>
               <tbody>
                 {filteredPatients.map((patient, index) => {
                   const isSel = selectedPatient?.id === patient.id;
-                  const st = statusCfg[patient.status] || { label: patient.status, bg: 'bg-slate-100', text: 'text-slate-600' };
                   const hv = patient.vitalSigns && (patient.vitalSigns.temperature || patient.vitalSigns.weight);
                   return (
                     <tr key={patient.id} onClick={() => setSelectedPatient(patient)} onDoubleClick={() => handleRowDoubleClick(patient)}
@@ -249,7 +233,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
                       <td className="p-2 border-r border-slate-200 text-center"><span className={`inline-block w-6 h-6 rounded-full font-bold text-xs leading-6 ${patient.gender === 'F' ? 'bg-pink-100 text-pink-700' : 'bg-blue-100 text-blue-700'}`}>{patient.gender}</span></td>
                       <td className="p-2 border-r border-slate-200 font-mono text-slate-600">{patient.contact || '—'}</td>
                       <td className="p-2 border-r border-slate-200 uppercase truncate text-slate-600">{patient.address || '—'}</td>
-                      <td className="p-2 border-r border-slate-200"><span className={`px-2 py-0.5 rounded text-[10px] font-bold ${st.bg} ${st.text}`}>{st.label}</span></td>
+                      <td className="p-2 border-r border-slate-200 text-slate-600 font-mono">{formatLastVisit(patient.lastVisitAt)}</td>
                       <td className="p-2 uppercase truncate text-slate-600">{patient.insureName || '—'}</td>
                     </tr>
                   );

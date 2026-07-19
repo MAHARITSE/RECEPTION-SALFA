@@ -33,6 +33,7 @@ export interface Patient {
   allergies: string[]; chronicTreatments: string[]; antecedents: string[];
   bloodGroup?: string; vitalSigns?: VitalSigns;
   registeredAt: string; registeredBy: string; status: PatientStatus;
+  lastVisitAt?: string;
   assignedDoctor?: string; assignedSpecialty?: string; blacklisted?: boolean;
 }
 
