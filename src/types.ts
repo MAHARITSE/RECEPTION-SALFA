@@ -139,10 +139,27 @@ export interface Consultation {
   id: string; patientId: string; doctorId: string; doctorName: string; date: string;
   vitalSigns: VitalSigns; visitReason: string; diagnosis: string; notes: string;
   prescriptions: Prescription[]; labRequests: LabRequest[];
+  echoRequests?: EchoRequest[];
   hospitalizeRequested: boolean; surgeryRequested: boolean; isEmergency: boolean;
 }
 
-export interface InvoiceItem { description: string; amount: number; category: 'consultation' | 'lab' | 'pharmacy' | 'surgery' | 'hospitalization'; }
+export interface InvoiceItem { description: string; amount: number; category: 'consultation' | 'lab' | 'pharmacy' | 'surgery' | 'hospitalization' | 'echo'; }
+
+/** Demande d'échographie saisie par le médecin */
+export interface EchoRequest {
+  id: string;
+  patientId?: string;
+  consultationId?: string;
+  examType: string;          // ex: Écho abdominale, Écho pelvienne...
+  notes?: string;
+  urgent: boolean;
+  status: 'pending' | 'paid' | 'completed';
+  requestedBy?: string;
+  requestedAt?: string;
+  invoiceId?: string;
+  price?: number;
+  completedAt?: string;
+}
 
 export interface Invoice {
   id: string; patientId?: string; consultationId?: string; clientName?: string;

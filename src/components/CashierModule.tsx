@@ -1,10 +1,10 @@
 import { useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { Invoice, InvoiceItem, ClientType } from '../types';
+import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User } from '../types';
 import type { AppState } from '../store';
 import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber, addJourneyEvent } from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, X, UserPlus, Edit2, Plus } from 'lucide-react';
-import { printPaymentTicket as openThermalTicket, printClosingTicket } from '../utils/printTicket';
+import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket } from '../utils/printTicket';
 
 interface HbLine { id: string; articleName: string; quantity: number; unitPrice: number; discount: number; dateSort?: string; }
 interface HbRecord { id: string; patientId?: string; patientName: string; clientType: ClientType; company?: string; type: 'hospit' | 'bloc'; lines: HbLine[]; payments: { amount: number; paidBy: string; date: string }[]; }
@@ -51,27 +51,31 @@ export default function CashierModule({ state, setState }: Props) {
   const [hbEditCompany, setHbEditCompany] = useState('');
 
   // Data
-  // Unified: patients with pharmacy awaiting payment OR pending lab invoices
-  // Pending pharmacy + lab invoices merged (no separate lab tab)
-  const pendingPatients = state.patients.filter(p => 
-    p.status === 'consulted_awaiting_payment' || 
-    state.invoices.some(i => i.patientId === p.id && i.status === 'pending' && i.items.some(it => it.category === 'lab'))
+  // Unified: patients with pharmacy awaiting payment OR pending lab/echo invoices
+  const pendingPatients = state.patients.filter(p =>
+    p.status === 'consulted_awaiting_payment' ||
+    state.invoices.some(i => i.patientId === p.id && i.status === 'pending' && i.items.some(it => it.category === 'lab' || it.category === 'echo'))
   );
 
-  // Unified pending lab invoices (merge with pharmacy)
-  const pendingLabInvoices = state.invoices.filter(
-    (i) => i.status === 'pending' && i.items.some((it) => it.category === 'lab'),
+  // Pending lab + echo invoices (merge with pharmacy)
+  const pendingServiceInvoices = state.invoices.filter(
+    (i) => i.status === 'pending' && i.items.some((it) => it.category === 'lab' || it.category === 'echo'),
   );
 
-  // Helper: get all pending items for a patient (pharmacy + lab)
+  // Helper: get all pending items for a patient (pharmacy + lab + echo)
   const getPendingAmount = (p: any) => {
-    const cons = state.consultations.filter(c => c.patientId === p.id && !state.invoices.some(inv => inv.consultationId === c.id && inv.status === 'paid'));
+    const cons = state.consultations.filter(c => c.patientId === p.id && !state.invoices.some(inv => inv.consultationId === c.id && inv.status === 'paid' && inv.items.some(it => it.category === 'pharmacy')));
     let amt = cons.reduce((s, c) => s + c.prescriptions.reduce((ss, pr) => ss + Math.round(pr.unitPrice * pr.quantity * (1 - pr.discount / 100)), 0), 0);
-    const labInvs = pendingLabInvoices.filter(i => i.patientId === p.id);
-    amt += labInvs.reduce((s, i) => s + i.totalAmount, 0);
+    const svcInvs = pendingServiceInvoices.filter(i => i.patientId === p.id);
+    amt += svcInvs.reduce((s, i) => s + i.totalAmount, 0);
     return amt;
   };
-  const getConsults = (pid: string) => state.consultations.filter(c => c.patientId === pid && !state.invoices.some(inv => inv.consultationId === c.id && inv.status === 'paid'));
+  // Consultations dont les médicaments ne sont pas encore encaissés
+  const getConsults = (pid: string) => state.consultations.filter(c =>
+    c.patientId === pid &&
+    c.prescriptions.length > 0 &&
+    !state.invoices.some(inv => inv.consultationId === c.id && inv.status === 'paid' && inv.items.some(it => it.category === 'pharmacy'))
+  );
   const selConsult = state.consultations.find(c => c.id === selConsultId);
   const selPatient = state.patients.find(p => p.id === (selPatientId || selConsult?.patientId)) || null;
 
@@ -82,23 +86,109 @@ export default function CashierModule({ state, setState }: Props) {
       description: `${p.articleName} × ${p.quantity}${p.discount > 0 ? ` (-${p.discount}%)` : ''}`,
       amount: Math.round(p.unitPrice * p.quantity * (1 - p.discount / 100)), category: 'pharmacy' as const,
     })));
-    const labInvoices = pendingLabInvoices.filter(i => i.patientId === selPatient.id);
-    const labItems = labInvoices.flatMap(i => i.items);
-    const unifiedItems = [...medicationItems, ...labItems];
+    const serviceInvoices = pendingServiceInvoices.filter(i => i.patientId === selPatient.id);
+    const serviceItems = serviceInvoices.flatMap(i => i.items);
+    const unifiedItems = [...medicationItems, ...serviceItems];
     const total = unifiedItems.reduce((sum, item) => sum + item.amount, 0);
     if (!unifiedItems.length) return;
-    const inv: Invoice = { id: uuidv4(), patientId: selPatient.id, consultationId: unpaidConsults[0]?.id, clientType: selPatient.clientType, items: unifiedItems, totalAmount: total, patientCharge: total, status: 'paid', paidAt: new Date().toISOString(), paidBy: state.currentUser?.id || '', createdAt: new Date().toISOString(), isExternal: false };
+    const paidAt = new Date().toISOString();
+    const inv: Invoice = { id: uuidv4(), patientId: selPatient.id, consultationId: unpaidConsults[0]?.id, clientType: selPatient.clientType, items: unifiedItems, totalAmount: total, patientCharge: total, status: 'paid', paidAt, paidBy: state.currentUser?.id || '', createdAt: paidAt, isExternal: false };
+
+    // Collecter les examens labo / écho à imprimer sur le bon (seulement ceux demandés)
+    const paidLabInvoiceIds = new Set(serviceInvoices.filter(i => i.items.some(it => it.category === 'lab')).map(i => i.id));
+    const paidEchoInvoiceIds = new Set(serviceInvoices.filter(i => i.items.some(it => it.category === 'echo')).map(i => i.id));
+    const patientConsults = state.consultations.filter(c => c.patientId === selPatient.id);
+    const labToPrint: LabRequest[] = state.labRequests.filter(r =>
+      r.patientId === selPatient.id && (r.status === 'pending' || !r.status) && (
+        (r.invoiceId && paidLabInvoiceIds.has(r.invoiceId)) ||
+        unpaidConsults.some(c => c.id === r.consultationId)
+      )
+    );
+    // Échos en attente du patient (via facture écho ou consultation non soldée)
+    const allEchos: EchoRequest[] = patientConsults.flatMap(c =>
+      (c.echoRequests || []).filter(e =>
+        (e.status === 'pending' || !e.status) && (
+          (e.invoiceId && paidEchoInvoiceIds.has(e.invoiceId)) ||
+          unpaidConsults.some(uc => uc.id === c.id) ||
+          paidEchoInvoiceIds.size > 0 && !e.invoiceId
+        )
+      )
+    );
+
+    const doctorUser: User | undefined = (() => {
+      const refConsult = unpaidConsults[0] || patientConsults[patientConsults.length - 1];
+      const docId = refConsult?.doctorId;
+      const docName = refConsult?.doctorName;
+      if (docId) {
+        const u = state.users.find(x => x.id === docId);
+        if (u) return u;
+      }
+      if (docName) return { id: docId || 'DOC', name: docName, role: 'doctor' };
+      return state.currentUser || undefined;
+    })();
+
     setState(prev => {
+      // Factures labo/écho en attente + anciennes factures pharmacie pending du patient
+      const toMarkPaid = new Set([
+        ...serviceInvoices.map(i => i.id),
+        ...prev.invoices
+          .filter(i => i.patientId === selPatient.id && i.status === 'pending' && i.items.every(it => it.category === 'pharmacy'))
+          .map(i => i.id),
+      ]);
       const next = { ...prev,
-        invoices: [...prev.invoices.map(i => labInvoices.some(li => li.id === i.id) ? { ...i, status: 'paid' as const, paidAt: new Date().toISOString(), paidBy: prev.currentUser?.id || '' } : i), inv],
-        patients: prev.patients.map(p => p.id === selPatient.id ? { ...p, status: 'invoice_paid' as const } : p),
+        invoices: [
+          ...prev.invoices.map(i => toMarkPaid.has(i.id)
+            ? { ...i, status: 'paid' as const, paidAt, paidBy: prev.currentUser?.id || '' }
+            : i),
+          inv,
+        ],
+        // Marquer les lab requests comme payés
+        labRequests: prev.labRequests.map(r =>
+          labToPrint.some(l => l.id === r.id) ? { ...r, status: 'paid' as const } : r
+        ),
+        // Marquer les échos comme payés sur les consultations
+        consultations: prev.consultations.map(c => {
+          if (c.patientId !== selPatient.id || !c.echoRequests?.length) return c;
+          return {
+            ...c,
+            echoRequests: c.echoRequests.map(e =>
+              allEchos.some(x => x.id === e.id) ? { ...e, status: 'paid' as const } : e
+            ),
+          };
+        }),
+        // lastVisitAt mis à jour au paiement (clients déjà payés inclus)
+        patients: prev.patients.map(p => p.id === selPatient.id
+          ? { ...p, status: 'invoice_paid' as const, lastVisitAt: paidAt }
+          : p),
       };
-      addAuditLog(next, 'PAIEMENT_UNIFIE', `${formatAr(total)} — médicaments + analyses — ${selPatient.lastName}`, selPatient.id);
-      addJourneyEvent(next, { patientId: selPatient.id, department: 'caisse', action: 'Paiement unifié enregistré', status: 'invoice_paid', details: `${formatAr(total)} (médicaments + analyses)`, actorName: prev.currentUser?.name });
+      const parts = [
+        medicationItems.length ? 'médicaments' : '',
+        serviceItems.some(i => i.category === 'lab') ? 'analyses' : '',
+        serviceItems.some(i => i.category === 'echo') ? 'échographies' : '',
+      ].filter(Boolean).join(' + ');
+      addAuditLog(next, 'PAIEMENT_UNIFIE', `${formatAr(total)} — ${parts || 'facture'} — ${selPatient.lastName}`, selPatient.id);
+      addJourneyEvent(next, { patientId: selPatient.id, department: 'caisse', action: 'Paiement unifié enregistré', status: 'invoice_paid', details: `${formatAr(total)} (${parts || 'facture'})`, actorName: prev.currentUser?.name });
       if (medicationItems.length > 0) addNotification(next, 'pharmacy', `💊 ${selPatient.lastName} ${selPatient.firstName}`, 'info');
+      if (labToPrint.length > 0) addNotification(next, 'laboratory', `🧪 Analyses payées: ${selPatient.lastName} ${selPatient.firstName}`, 'info');
       return next;
     });
+
+    // 1) Ticket caisse (reçu de paiement)
     openThermalTicket(state.ticketSettings, inv, selPatient, state.currentUser || undefined);
+
+    // 2) Bon d'analyse — uniquement les examens demandés — après le ticket
+    if (labToPrint.length > 0 && doctorUser) {
+      setTimeout(() => {
+        printLabRequestTicket(state.ticketSettings, selPatient, doctorUser, new Date(), labToPrint);
+      }, 900);
+    }
+    // 3) Bon d'échographie — uniquement les examens demandés
+    if (allEchos.length > 0 && doctorUser) {
+      setTimeout(() => {
+        printEchoRequestTicket(state.ticketSettings, selPatient, doctorUser, new Date(), allEchos);
+      }, labToPrint.length > 0 ? 1800 : 900);
+    }
+
     setSelConsultId(null); setSelPatientId(null);
   };
 
@@ -341,7 +431,11 @@ export default function CashierModule({ state, setState }: Props) {
                     const amount = getPendingAmount(p);
                     return <div key={p.id} className={`p-3 cursor-pointer hover:bg-slate-50 ${selPatientId === p.id ? 'bg-amber-50 border-l-4 border-amber-500' : ''}`} onClick={() => { setSelPatientId(p.id); setSelConsultId(unpaid[0]?.id || null); }}>
                       <div className="flex justify-between items-start"><div><div className="font-medium text-sm">{p.lastName} {p.firstName}</div><div className="text-xs text-slate-500">{unpaid[0]?.doctorName || 'Analyses laboratoire'}</div></div><div className="font-mono font-bold text-sm text-amber-700">{formatAr(amount)}</div></div>
-                      <div className="flex gap-1 mt-1"><span className="px-1 py-0.5 bg-cyan-100 text-cyan-700 text-[10px] rounded">Médicaments + analyses</span></div>
+                      <div className="flex gap-1 mt-1 flex-wrap">
+                        <span className="px-1 py-0.5 bg-cyan-100 text-cyan-700 text-[10px] rounded">Médicaments</span>
+                        <span className="px-1 py-0.5 bg-teal-100 text-teal-700 text-[10px] rounded">Analyses</span>
+                        <span className="px-1 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] rounded">Écho</span>
+                      </div>
                     </div>;
                   })}
               </div>

@@ -415,8 +415,14 @@ export default function AdminModule({ state, setState }: Props) {
                   <div className="space-y-3">
                     <label className="text-sm font-medium flex items-center gap-2">
                       <input type="checkbox" checked={state.ticketSettings.autoPrint} onChange={e => updateTicket({ autoPrint: e.target.checked })} className="w-4 h-4" />
-                      Lancer l'impression automatiquement
+                      Impression directe (sans aperçu dans l'app)
                     </label>
+                    <p className="text-[11px] text-slate-500 leading-snug pl-6">
+                      Les tickets partent directement vers l'imprimante par défaut.
+                      Pour supprimer aussi la boîte de dialogue Windows/Chrome : lancer Chrome avec
+                      <code className="mx-1 px-1 bg-slate-200 rounded">--kiosk-printing</code>
+                      et définir l'imprimante thermique par défaut.
+                    </p>
                     <label className="text-sm font-medium flex items-center gap-2">
                       <input type="checkbox" checked={state.ticketSettings.showLogo} onChange={e => updateTicket({ showLogo: e.target.checked })} className="w-4 h-4" />
                       Afficher le logo
