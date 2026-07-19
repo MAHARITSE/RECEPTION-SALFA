@@ -4,7 +4,8 @@ import type {
   Notification, HospitalizationRecord, UserRole, User, Company, Fournisseur, Famille,
   Message, StockTransfer, StockEntry, ClientType, ArticleFamily, TransferCategory,
   LabExamCatalog, LabCategory, LabRequest, PatientJourneyEvent, JourneyDepartment,
-  WarehouseService, StockMovement, InventorySession, StockLocation
+  WarehouseService, StockMovement, InventorySession, StockLocation,
+  MovementHeader, MovementLine, MovementType
 } from './types';
 
 let dossierCounter = 100;
@@ -95,6 +96,47 @@ export function locationLabel(location: StockLocation, services: WarehouseServic
   return svc?.name || location;
 }
 
+/* ====== FONCTIONS UTILITAIRES POUR MOUVEMENTS AVEC EN-TÊTE + LIGNES ====== */
+
+/** Crée un en-tête de mouvement + ses lignes dans la base */
+export function createMovementWithLines(
+  state: AppState,
+  header: Omit<MovementHeader, 'id' | 'date'>,
+  lines: Array<Omit<MovementLine, 'id' | 'movementId'>>
+): { header: MovementHeader; lines: MovementLine[] } {
+  const movementId = uuidv4();
+  const now = new Date().toISOString();
+
+  const fullHeader: MovementHeader = {
+    id: movementId,
+    date: now,
+    ...header,
+    totalQuantity: header.totalQuantity ?? lines.reduce((sum, l) => sum + l.quantity, 0),
+  };
+
+  const fullLines: MovementLine[] = lines.map((line, index) => ({
+    id: uuidv4(),
+    movementId,
+    ...line,
+  }));
+
+  // Push into state arrays (mutation-friendly for React state updates)
+  state.movementHeaders = [...(state.movementHeaders || []), fullHeader];
+  state.movementLines = [...(state.movementLines || []), ...fullLines];
+
+  return { header: fullHeader, lines: fullLines };
+}
+
+/** Récupère toutes les lignes d'un mouvement */
+export function getMovementLines(state: AppState, movementId: string): MovementLine[] {
+  return (state.movementLines || []).filter(l => l.movementId === movementId);
+}
+
+/** Récupère le mouvement par id */
+export function getMovementHeader(state: AppState, movementId: string): MovementHeader | undefined {
+  return (state.movementHeaders || []).find(h => h.id === movementId);
+}
+
 /** Article vendable en pharmacie : stock > 0 et non bloqué */
 export function isArticleSaleable(a: Article): boolean {
   return !a.saleBlocked && a.stockPharmacie > 0;
@@ -150,8 +192,10 @@ export interface AppState {
   labRequests: LabRequest[];               // demandes d'analyse autonomes
   labCatalog: LabExamCatalog[];            // catalogue d'examens
   warehouseServices: WarehouseService[];  // services destinataires du dépôt
-  stockMovements: StockMovement[];         // entrées / sorties / transferts
+  stockMovements: StockMovement[];         // entrées / sorties / transferts (legacy)
   inventorySessions: InventorySession[];   // inventaires
+  movementHeaders: MovementHeader[];       // en-têtes de mouvement (achat, vente, transfert, inventaire, sortie)
+  movementLines: MovementLine[];           // lignes associées aux mouvements
 }
 
 export function createInitialState(): AppState {
@@ -394,6 +438,8 @@ export function createInitialState(): AppState {
     warehouseServices: SEED_WAREHOUSE_SERVICES.map(s => ({ ...s })),
     stockMovements: [],
     inventorySessions: [],
+    movementHeaders: [],
+    movementLines: [],
   };
 }
 

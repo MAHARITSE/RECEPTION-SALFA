@@ -2,13 +2,15 @@ import { useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type {
   StockEntry, StockMovement, WarehouseService, InventorySession, InventoryLine,
-  StockLocation, Article, ArticleFamily, Fournisseur, Famille
+  StockLocation, Article, ArticleFamily, Fournisseur, Famille,
+  MovementHeader, MovementLine, MovementType
 } from '../types';
 import type { AppState } from '../store';
 import {
   addAuditLog, addNotification, formatAr, ARTICLE_FAMILIES, familyLabel,
   transferCategoryLabel, TRANSFER_CATEGORIES,
   applyStockDelta, getArticleStock, locationLabel,
+  createMovementWithLines,
 } from '../store';
 import {
   Package, PackageCheck, PackagePlus, Search, Truck, Plus, Trash2, Save, Check,
@@ -368,6 +370,29 @@ export default function MagasinierModule({ state, setState }: Props) {
       const newEntries: StockEntry[] = [];
       const newMovs: StockMovement[] = [];
 
+      // === NOUVEAU : Créer en-tête + lignes mouvement ACHAT ===
+      const movementLinesForHeader = purchaseLines.map(l => ({
+        articleId: l.articleId,
+        articleName: l.articleName,
+        quantity: l.quantity,
+        purchasePrice: l.purchasePrice,
+        reason: `Achat ${supName}`,
+      }));
+
+      const { header: achatHeader } = createMovementWithLines(
+        prev,
+        {
+          type: 'achat' as MovementType,
+          ref: invoiceRef.trim(),
+          fromLocation: 'external' as any,
+          toLocation: 'central',
+          userId: prev.currentUser?.id || 'MAGASINIER',
+          userName: prev.currentUser?.name,
+          notes: `Achat fournisseur ${supName}`,
+        },
+        movementLinesForHeader
+      );
+
       purchaseLines.forEach((line) => {
         nextArticles = nextArticles.map((a) => {
           if (a.id !== line.articleId) return a;
@@ -416,6 +441,7 @@ export default function MagasinierModule({ state, setState }: Props) {
         articles: nextArticles,
         stockEntries: [...prev.stockEntries, ...newEntries],
         stockMovements: [...(prev.stockMovements || []), ...newMovs],
+        // movementHeaders & movementLines déjà mis à jour par createMovementWithLines
       };
       addAuditLog(next, 'ACHAT_DEPOT_CENTRAL', `Entrée d'achat ${purchaseLines.length} article(s) de ${supName} (BL: ${invoiceRef.trim()})`);
       return next;
@@ -486,6 +512,26 @@ export default function MagasinierModule({ state, setState }: Props) {
         serviceId: typeof toLoc === 'string' && toLoc !== 'pharmacie' && toLoc !== 'central' ? toLoc : undefined,
         serviceName,
       };
+
+      // === NOUVEAU : Mouvement TRANSFERT avec header + ligne ===
+      createMovementWithLines(
+        prev,
+        {
+          type: 'transfert' as MovementType,
+          ref: tr.id.slice(0, 8),
+          fromLocation: 'central',
+          toLocation: toLoc,
+          userId: prev.currentUser?.id || 'MAGASINIER',
+          userName: prev.currentUser?.name,
+          notes: tr.notes || `Transfert vers ${serviceName}`,
+        },
+        [{
+          articleId: tr.articleId,
+          articleName: tr.articleName,
+          quantity: tr.quantity,
+          reason: tr.notes || `Transfert vers ${serviceName}`,
+        }]
+      );
 
       const next = {
         ...prev,
@@ -663,6 +709,33 @@ export default function MagasinierModule({ state, setState }: Props) {
             : i
         ),
       };
+
+      // === NOUVEAU : Mouvement INVENTAIRE avec header + lignes ===
+      const invAdjustLines = updatedLines
+        .filter(l => l.difference !== 0)
+        .map(l => ({
+          articleId: l.articleId,
+          articleName: l.articleName,
+          quantity: Math.abs(l.difference),
+          reason: `Ajustement inventaire: ${l.theoreticalQty} → ${l.countedQty}`,
+        }));
+
+      if (invAdjustLines.length > 0) {
+        createMovementWithLines(
+          prev,
+          {
+            type: 'inventaire' as MovementType,
+            ref: `INV-${sess.id.slice(0, 8)}`,
+            fromLocation: sess.location,
+            toLocation: sess.location,
+            userId: prev.currentUser?.id || 'MAGASINIER',
+            userName: prev.currentUser?.name,
+            notes: `Inventaire ${sess.locationLabel}`,
+          },
+          invAdjustLines
+        );
+      }
+
       addAuditLog(next, 'INVENTAIRE_VALIDE', `Inventaire ${sess.locationLabel} validé — ${updatedLines.filter((l) => l.difference !== 0).length} écart(s) ajustés`);
       return next;
     });

@@ -292,3 +292,31 @@ export interface Famille {
 }
 
 export interface Company { id: string; name: string; }
+
+/* ====== MOUVEMENTS AVEC EN-TÊTE + LIGNES (pour interface propre) ====== */
+export type MovementType = 'achat' | 'vente' | 'transfert' | 'inventaire' | 'sortie';
+
+export interface MovementHeader {
+  id: string;
+  type: MovementType;
+  ref?: string;               // N° BL, N° Facture, N° Transfert, etc.
+  date: string;
+  userId: string;
+  userName?: string;
+  fromLocation?: StockLocation;
+  toLocation?: StockLocation;
+  totalQuantity?: number;
+  notes?: string;
+  status?: 'completed' | 'cancelled';
+}
+
+export interface MovementLine {
+  id: string;
+  movementId: string;
+  articleId: string;
+  articleName: string;
+  quantity: number;
+  unitPrice?: number;
+  purchasePrice?: number;
+  reason?: string;
+}
