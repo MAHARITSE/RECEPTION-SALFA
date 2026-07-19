@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { AppState } from '../store';
 import type { TransferCategory, StockTransfer } from '../types';
-import { addAuditLog, addNotification, formatAr, familyLabel, transferCategoryLabel, transferCategoryColor, addJourneyEvent, isArticleSaleable } from '../store';
+import { addAuditLog, addNotification, formatAr, familyLabel, transferCategoryLabel, transferCategoryColor, addJourneyEvent, isArticleSaleable, createMovementWithLines } from '../store';
+import type { MovementType } from '../types';
 import { printDeliveryTicket } from '../utils/printTicket';
 import DemandeAchatForm, { type ReqLine } from './DemandeAchatForm';
 import CashierModule from './CashierModule';
@@ -228,11 +229,40 @@ export default function PharmacyModule({ state, setState }: Props) {
       const updatedConsultations = prev.consultations.map((c) =>
         c.id === consultationId ? { ...c, prescriptions: c.prescriptions.map((p) => ({ ...p, delivered: true })) } : c);
       const updatedArticles = [...prev.articles];
+      const venteLines: any[] = [];
+
       consultation.prescriptions.forEach((p) => {
         if (p.delivered) return;
         const idx = updatedArticles.findIndex((a) => a.name === p.articleName || a.id === p.articleId);
-        if (idx >= 0) updatedArticles[idx] = { ...updatedArticles[idx], stockPharmacie: Math.max(0, updatedArticles[idx].stockPharmacie - p.quantity) };
+        if (idx >= 0) {
+          updatedArticles[idx] = { ...updatedArticles[idx], stockPharmacie: Math.max(0, updatedArticles[idx].stockPharmacie - p.quantity) };
+          venteLines.push({
+            articleId: updatedArticles[idx].id,
+            articleName: p.articleName,
+            quantity: p.quantity,
+            unitPrice: p.unitPrice,
+            reason: 'Vente / délivrance pharmacie',
+          });
+        }
       });
+
+      // === NOUVEAU : Mouvement VENTE (header + lignes) ===
+      if (venteLines.length > 0) {
+        createMovementWithLines(
+          prev,
+          {
+            type: 'vente' as MovementType,
+            ref: `DELIV-${consultationId.slice(0, 8)}`,
+            fromLocation: 'pharmacie',
+            toLocation: 'external' as any,
+            userId: prev.currentUser?.id || 'PHARMACY',
+            userName: prev.currentUser?.name,
+            notes: `Vente / délivrance à ${name}`,
+          },
+          venteLines
+        );
+      }
+
       const hasLab = updatedConsultations.find((c) => c.id === consultationId)?.labRequests.some((lr) => lr.status !== 'completed');
       const newStatus = hasLab ? 'invoice_paid' : 'medications_delivered';
 
