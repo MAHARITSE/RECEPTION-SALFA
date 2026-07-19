@@ -34,6 +34,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
   const [vitalsClientType, setVitalsClientType] = useState<ClientType>('comptoir');
   const [vitalsCompany, setVitalsCompany] = useState('');
   const [vitalsSubCompany, setVitalsSubCompany] = useState('');
+  const [vitalsReadOnly, setVitalsReadOnly] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -52,6 +53,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
 
   const handleRowDoubleClick = (patient: Patient) => {
     setSelectedPatient(patient);
+    setVitalsReadOnly(!canEditVitals(patient));
     setVitalsForm(patient.vitalSigns || {
       temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '',
       heartRate: '', oxygenSaturation: '', weight: '', height: '', tdr: '',
@@ -64,6 +66,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
 
   const handleSaveVitalsAndSend = () => {
     if (!selectedPatient) return;
+    if (selectedPatient.vitalSigns && !canEditVitals(selectedPatient)) { alert('Les paramètres sont verrouillés : modification autorisée pendant 24 heures seulement.'); return; }
     setState((prev) => {
       const next = {
         ...prev,
@@ -98,7 +101,6 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
       firstName: patientForm.firstName.toUpperCase(), lastName: patientForm.lastName.toUpperCase(),
       dateOfBirth: patientForm.dateOfBirth || 'N/A', age: patientForm.dateOfBirth ? calculateAge(patientForm.dateOfBirth) : 'N/A',
       gender: patientForm.gender, address: patientForm.address.toUpperCase(), contact: patientForm.contact, ssn: patientForm.ssn,
-      insureName: patientForm.insureName?.toUpperCase() || undefined,
       clientType: patientForm.clientType, company: patientForm.company || undefined, subCompany: patientForm.subCompany || undefined,
       allergies: [], chronicTreatments: [], antecedents: [],
       registeredAt: new Date().toISOString(), registeredBy: 'RECEPTION', status: 'registered',
@@ -120,7 +122,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
         ...p, firstName: patientForm.firstName.toUpperCase(), lastName: patientForm.lastName.toUpperCase(),
         dateOfBirth: patientForm.dateOfBirth || 'N/A', age: patientForm.dateOfBirth ? calculateAge(patientForm.dateOfBirth) : 'N/A',
         gender: patientForm.gender, address: patientForm.address.toUpperCase(), contact: patientForm.contact, ssn: patientForm.ssn,
-        matricule: patientForm.matricule || undefined, insureName: patientForm.insureName?.toUpperCase() || undefined,
+        matricule: patientForm.matricule || undefined,
         clientType: patientForm.clientType, company: patientForm.company || undefined, subCompany: patientForm.subCompany || undefined,
       } : p),
     }));
@@ -179,7 +181,8 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
 
   // Check if vitals editable within 24h
   const canEditVitals = (patient: Patient): boolean => {
-    if (!patient.lastVisitAt) return true;
+    if (!patient.vitalSigns) return true;
+    if (!patient.lastVisitAt) return false;
     const last = new Date(patient.lastVisitAt).getTime();
     const now = Date.now();
     return (now - last) < 24 * 60 * 60 * 1000; // 24h
@@ -187,6 +190,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
 
   const openVitalsForPatient = (patient: Patient) => {
     setSelectedPatient(patient);
+    setVitalsReadOnly(!canEditVitals(patient));
     setVitalsForm(patient.vitalSigns || {
       temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '',
       heartRate: '', oxygenSaturation: '', weight: '', height: '', tdr: '',
@@ -238,7 +242,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
           </div>
           <div className="flex items-center gap-1">
             <button onClick={() => { setModal('add'); setPatientForm({ ...patientForm, lastName: '', firstName: '', dateOfBirth: '', gender: 'F', address: '', contact: '', ssn: '', matricule: '', insureName: '', clientType: 'comptoir', company: '', subCompany: '' }); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold shadow transition cursor-pointer"><Plus className="h-4 w-4" /> Nouveau</button>
-            <button onClick={() => { if (!selectedPatient) return; setPatientForm({ lastName: selectedPatient.lastName, firstName: selectedPatient.firstName, dateOfBirth: selectedPatient.dateOfBirth === 'N/A' ? '' : selectedPatient.dateOfBirth, gender: selectedPatient.gender, address: selectedPatient.address, contact: selectedPatient.contact, ssn: selectedPatient.ssn, matricule: selectedPatient.matricule || '', insureName: selectedPatient.insureName || '', clientType: selectedPatient.clientType === 'externe' ? 'comptoir' : selectedPatient.clientType, company: selectedPatient.company || '', subCompany: selectedPatient.subCompany || '' }); setModal('edit'); }} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Edit className="h-4 w-4" /> Modifier</button>
+            <button onClick={() => { if (!selectedPatient) return; setPatientForm({ lastName: selectedPatient.lastName, firstName: selectedPatient.firstName, dateOfBirth: selectedPatient.dateOfBirth === 'N/A' ? '' : selectedPatient.dateOfBirth, gender: selectedPatient.gender, address: selectedPatient.address, contact: selectedPatient.contact, ssn: selectedPatient.ssn, matricule: selectedPatient.matricule || '', insureName: selectedPatient.company || selectedPatient.insureName || '', clientType: selectedPatient.clientType === 'externe' ? 'comptoir' : selectedPatient.clientType, company: selectedPatient.company || '', subCompany: selectedPatient.subCompany || '' }); setModal('edit'); }} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Edit className="h-4 w-4" /> Modifier</button>
             <button onClick={handleDeletePatient} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Trash2 className="h-4 w-4" /> Supprimer</button>
             <div className="w-px h-6 bg-slate-300 mx-1" />
             <button onClick={() => selectedPatient && setModal('patientInfo')} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Info className="h-4 w-4" /> Info</button>
@@ -280,7 +284,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
                           onClick={(e) => { e.stopPropagation(); openVitalsForPatient(patient); }}
                           className={`px-1 py-0.5 rounded text-[9px] ${patient.vitalSigns && (patient.vitalSigns.temperature || patient.vitalSigns.weight) ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-600 hover:bg-emerald-100'}`}
                           title="Paramètres (modifiable 24h)"
-                          disabled={!canEditVitals(patient) && patient.vitalSigns && (patient.vitalSigns.temperature || patient.vitalSigns.weight)}
+
                         >
                           P
                         </button>
@@ -294,7 +298,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
                       <td className="p-2 border-r border-slate-200 font-mono text-slate-600">{patient.contact || '—'}</td>
                       <td className="p-2 border-r border-slate-200 uppercase truncate text-slate-600">{patient.address || '—'}</td>
                       <td className="p-2 border-r border-slate-200 text-slate-600 font-mono">{formatLastVisit(patient.lastVisitAt)}</td>
-                      <td className="p-2 uppercase truncate text-slate-600">{patient.insureName || '—'}</td>
+                      <td className="p-2 uppercase truncate text-slate-600">{patient.company || patient.insureName || '—'}</td>
                     </tr>
                   );
                 })}
@@ -326,7 +330,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
                 </div>
                 <div className="space-y-3">
                   <div><label className="block font-bold text-slate-700 mb-1">Matricule</label><input type="text" value={patientForm.matricule} onChange={(e) => setPatientForm({ ...patientForm, matricule: e.target.value })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 font-mono focus:outline-none focus:border-blue-500" /></div>
-                  <div><label className="block font-bold text-slate-700 mb-1">Société</label><input type="text" value={patientForm.insureName} onChange={(e) => setPatientForm({ ...patientForm, insureName: e.target.value })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 uppercase focus:outline-none focus:border-blue-500" /></div>
+                  <div><label className="block font-bold text-slate-700 mb-1">Société (libre)</label><input type="text" value={patientForm.company} onChange={(e) => setPatientForm({ ...patientForm, company: e.target.value })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 uppercase focus:outline-none focus:border-blue-500" /></div>
                   <div><label className="block font-bold text-slate-700 mb-1">Adresse</label><input type="text" value={patientForm.address} onChange={(e) => setPatientForm({ ...patientForm, address: e.target.value })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 uppercase focus:outline-none focus:border-blue-500" /></div>
                   <div><label className="block font-bold text-slate-700 mb-1">Type Client</label><select value={patientForm.clientType} onChange={(e) => setPatientForm({ ...patientForm, clientType: e.target.value as ClientType })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 focus:outline-none focus:border-blue-500 cursor-pointer"><option value="comptoir">Client Comptoir</option><option value="societe">Client Société</option></select></div>
                   {patientForm.clientType === 'societe' && <div><label className="block font-bold text-slate-700 mb-1">Société</label><select value={patientForm.company} onChange={(e) => setPatientForm({ ...patientForm, company: e.target.value })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 focus:outline-none focus:border-blue-500 cursor-pointer"><option value="">—</option>{state.companies.map((c) => (<option key={c.id} value={c.name}>{c.name}</option>))}</select></div>}
@@ -361,7 +365,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
       )}
       {modal === 'patientInfo' && selectedPatient && (
         <ModalShell title="Informations du patient" icon={<Info className="w-5 h-5" />} onClose={() => setModal('none')}>
-          <div className="rounded-xl bg-gradient-to-br from-blue-50 to-slate-50 p-5"><div className="mb-5 text-center"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-xl font-bold text-white">{selectedPatient.firstName[0]}{selectedPatient.lastName[0]}</div><h3 className="mt-2 text-xl font-bold text-slate-800">{selectedPatient.lastName} {selectedPatient.firstName}</h3><p className="font-mono text-sm text-blue-700">{selectedPatient.dossier}</p></div><div className="grid grid-cols-2 gap-3 text-sm"><InfoLine label="Date de naissance" value={selectedPatient.dateOfBirth === 'N/A' ? '—' : new Date(selectedPatient.dateOfBirth).toLocaleDateString('fr-FR')} /><InfoLine label="Âge" value={selectedPatient.age} /><InfoLine label="Téléphone" value={selectedPatient.contact || '—'} /><InfoLine label="Adresse" value={selectedPatient.address || '—'} /><InfoLine label="Assuré" value={selectedPatient.insureName || '—'} /><InfoLine label="Type client" value={selectedPatient.clientType} /></div>{selectedPatient.blacklisted && <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800"><b>⚠ Personne blacklistée</b><br />Motif : {selectedPatient.blacklistReason || 'Non renseigné'}</div>}</div>
+          <div className="rounded-xl bg-gradient-to-br from-blue-50 to-slate-50 p-5"><div className="mb-5 text-center"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-xl font-bold text-white">{selectedPatient.firstName[0]}{selectedPatient.lastName[0]}</div><h3 className="mt-2 text-xl font-bold text-slate-800">{selectedPatient.lastName} {selectedPatient.firstName}</h3><p className="font-mono text-sm text-blue-700">{selectedPatient.dossier}</p></div><div className="grid grid-cols-2 gap-3 text-sm"><InfoLine label="Date de naissance" value={selectedPatient.dateOfBirth === 'N/A' ? '—' : new Date(selectedPatient.dateOfBirth).toLocaleDateString('fr-FR')} /><InfoLine label="Âge" value={selectedPatient.age} /><InfoLine label="Téléphone" value={selectedPatient.contact || '—'} /><InfoLine label="Adresse" value={selectedPatient.address || '—'} /><InfoLine label="Société" value={selectedPatient.company || selectedPatient.insureName || '—'} /><InfoLine label="Type client" value={selectedPatient.clientType} /></div>{selectedPatient.blacklisted && <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800"><b>⚠ Personne blacklistée</b><br />Motif : {selectedPatient.blacklistReason || 'Non renseigné'}</div>}</div>
         </ModalShell>
       )}
 
@@ -378,6 +382,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
               <div className="text-xs text-emerald-600">Dossier: {selectedPatient.dossier} | {selectedPatient.gender === 'M' ? 'Homme' : 'Femme'} | {selectedPatient.age}</div>
             </div>
             <div className="p-4">
+              {vitalsReadOnly && <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">Lecture seule : le délai de modification de 24 heures est dépassé.</div>}
               <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-xs mb-4">
                 {[ 
                   { label: '🌡️ Température (°C)', key: 'temperature' as const, step: '0.1' },
@@ -392,10 +397,10 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
                   <div key={f.key} className="flex items-center justify-between">
                     <label className="font-bold text-slate-700">{f.label}</label>
                     {f.key === 'tdr' ? (
-                      <select value={vitalsForm.tdr || ''} onChange={(e) => setVitalsForm({ ...vitalsForm, tdr: e.target.value })} className="w-24 bg-white border border-slate-400 rounded px-2 py-1.5 text-center focus:outline-none focus:border-emerald-500 cursor-pointer"><option value="">—</option><option value="Positif">Positif</option><option value="Négatif">Négatif</option></select>
+                      <select value={vitalsForm.tdr || ''} disabled={vitalsReadOnly} onChange={(e) => setVitalsForm({ ...vitalsForm, tdr: e.target.value })} className="w-24 bg-white border border-slate-400 rounded px-2 py-1.5 text-center focus:outline-none focus:border-emerald-500 cursor-pointer"><option value="">—</option><option value="Positif">Positif</option><option value="Négatif">Négatif</option></select>
                     ) : (
                       <div className="flex items-center gap-1">
-                        <input type="number" step={f.step} inputMode={f.step === '0.1' ? 'decimal' : 'numeric'} value={(vitalsForm as any)[f.key]} onChange={(e) => setVitalsForm({ ...vitalsForm, [f.key]: e.target.value })} className="w-20 bg-white border border-slate-400 rounded px-2 py-1.5 text-center font-mono focus:outline-none focus:border-emerald-500" />
+                        <input type="number" step={f.step} inputMode={f.step === '0.1' ? 'decimal' : 'numeric'} disabled={vitalsReadOnly} value={(vitalsForm as any)[f.key]} onChange={(e) => setVitalsForm({ ...vitalsForm, [f.key]: e.target.value })} className="w-20 bg-white border border-slate-400 rounded px-2 py-1.5 text-center font-mono focus:outline-none focus:border-emerald-500" />
                       </div>
                     )}
                   </div>
@@ -422,7 +427,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
               </div>
 
               <div className="flex items-center justify-center gap-3 mt-5">
-                <button onClick={handleSaveVitalsAndSend} className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-bold shadow-lg transition cursor-pointer"><Stethoscope className="w-4 h-4" /> VALIDER & ENVOYER AU MÉDECIN</button>
+                <button onClick={handleSaveVitalsAndSend} disabled={vitalsReadOnly} className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-bold shadow-lg transition cursor-pointer"><Stethoscope className="w-4 h-4" /> VALIDER & ENVOYER AU MÉDECIN</button>
                 <button onClick={() => setModal('none')} className="flex items-center gap-2 px-6 py-2.5 bg-slate-500 hover:bg-slate-600 text-white rounded font-bold shadow transition cursor-pointer"><Ban className="w-4 h-4" /> ANNULER</button>
               </div>
             </div>

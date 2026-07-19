@@ -37,6 +37,8 @@ export default function MedicalRecordModule({ state, patientId, onBack }: Props)
   const [localId, setLocalId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<Tab>('parcours');
+  // Ne jamais rendre une donnée clinique si le composant est appelé hors du parcours médecin.
+  if (state.currentUser?.role !== 'doctor') return <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-red-800">Accès refusé : le dossier médical est réservé aux médecins.</div>;
 
   const pid = patientId ?? localId;
   const patient = state.patients.find((p) => p.id === pid) || null;
@@ -139,7 +141,7 @@ export default function MedicalRecordModule({ state, patientId, onBack }: Props)
                         <span className={`inline-block w-6 h-6 rounded-full font-bold text-xs leading-6 ${p.gender === 'F' ? 'bg-pink-100 text-pink-700' : 'bg-blue-100 text-blue-700'}`}>{p.gender}</span>
                       </td>
                       <td className="p-2">{p.age}</td>
-                      <td className="p-2">{p.insureName || p.company || '—'}</td>
+                      <td className="p-2">{p.company || p.insureName || '—'}</td>
                       <td className="p-2"><span className={`px-2 py-0.5 rounded text-[10px] font-bold ${st.bg} ${st.text}`}>{st.label}</span></td>
                     </tr>
                   );
@@ -177,7 +179,7 @@ export default function MedicalRecordModule({ state, patientId, onBack }: Props)
             <div className="text-xs text-slate-300 mt-0.5">
               {patient.address} · {patient.contact}
               {patient.company ? ` · 🏢 ${patient.company}` : ''}
-              {patient.insureName ? ` · Assuré: ${patient.insureName}` : ''}
+              {patient.company ? ` · Société: ${patient.company}` : (patient.insureName ? ` · Société: ${patient.insureName}` : '')}
             </div>
           </div>
           <div className="flex gap-2">
