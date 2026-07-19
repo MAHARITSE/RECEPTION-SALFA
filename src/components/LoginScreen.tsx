@@ -118,7 +118,7 @@ export default function LoginScreen({ users, onLogin, onBack }: LoginScreenProps
               <option value="">-- Sélectionner --</option>
               {staffUsers.map((user) => (
                 <option key={user.id} value={user.id}>
-                  {user.id} — {user.name} ({roleLabels[user.role]})
+                  {user.id} — {user.name} ({roleLabels[user.role] || user.role})
                 </option>
               ))}
             </select>
@@ -153,10 +153,10 @@ export default function LoginScreen({ users, onLogin, onBack }: LoginScreenProps
             onClick={handleLogin}
             disabled={!selectedUserId || !password}
             className={`w-full py-3 rounded-lg font-semibold text-white transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
-              selectedUser ? roleColors[selectedUser.role] : 'bg-blue-600 hover:bg-blue-700'
+              selectedUser ? (roleColors[selectedUser.role] || 'bg-blue-600 hover:bg-blue-700') : 'bg-blue-600 hover:bg-blue-700'
             }`}
           >
-            {selectedUser && roleIcons[selectedUser.role]}
+            {(selectedUser && roleIcons[selectedUser.role]) || null}
             Se connecter
           </button>
 
