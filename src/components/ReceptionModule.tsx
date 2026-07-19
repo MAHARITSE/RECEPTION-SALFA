@@ -261,10 +261,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
           <div><h1 className="text-2xl font-bold tracking-tight">MediCare HIS</h1><p className="text-blue-100 text-xs font-medium">Module Réception</p></div>
         </div>
         <div className="flex items-center gap-6">
-          <div className="flex gap-3 text-sm">
-            <div className="bg-white/10 backdrop-blur rounded-lg px-3 py-1.5 flex items-center gap-2"><Stethoscope className="w-4 h-4 text-amber-300" /><span className="font-bold text-lg">{waitingCount}</span></div>
-            <div className="bg-white/10 backdrop-blur rounded-lg px-3 py-1.5"><span className="font-bold">{todayCount}</span></div>
-          </div>
+
           <div className="text-right bg-white/10 backdrop-blur rounded-lg px-4 py-1.5">
             <div className="text-xl font-mono font-bold">{currentTime.toLocaleTimeString('fr-FR')}</div>
             <div className="text-xs text-blue-100">{currentTime.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
