@@ -190,8 +190,7 @@ export default function DemandeAchatForm({
   const headerText = transferCategoryColor(reqCategory).split(' ').find(s => s.startsWith('text-')) || 'text-slate-800';
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[92vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+    <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-4">
         {/* Header */}
         <div className={`px-5 py-3 ${styles.header} text-white flex items-center justify-between`}>
           <span className="font-bold flex items-center gap-2">
@@ -200,12 +199,12 @@ export default function DemandeAchatForm({
               ? 'Modifier la demande'
               : pharmacyMode
                 ? `Demande d'approvisionnement — ${targetServiceName} → Magasinier`
-                : "Nouvelle fenêtre — Demande d'achat / Réapprovisionnement"} (Saisie Sage)
+                : "Demande d'achat / Réapprovisionnement"} (Saisie Sage)
           </span>
-          <button onClick={onClose} className="hover:bg-white/20 rounded p-1 cursor-pointer"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button>
         </div>
 
-        <div className="p-4 overflow-y-auto flex-1 space-y-4">
+        <div className="p-4 space-y-4">
           {/* Header info */}
           <div className={`p-4 ${headerBg} border rounded-xl`}>
             <h4 className={`font-bold flex items-center gap-2 mb-3 ${headerText}`}>
@@ -448,7 +447,6 @@ export default function DemandeAchatForm({
             <Send className="w-4 h-4" /> {isEditMode ? 'Enregistrer les modifications' : pharmacyMode ? 'Envoyer au magasinier (dépôt central)' : 'Envoyer la demande au magasinier'}
           </button>
         </div>
-      </div>
     </div>
   );
 }

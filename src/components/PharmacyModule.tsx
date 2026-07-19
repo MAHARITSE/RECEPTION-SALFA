@@ -676,47 +676,47 @@ export default function PharmacyModule({ state, setState }: Props) {
         </div>
       </div>
 
-      {/* Modal blocage vente */}
+      {/* Blocage vente — Inline (no modal) */}
       {blockModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setBlockModal(null)}>
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className={`px-5 py-3 text-white font-bold flex items-center gap-2 ${blockModal.currentlyBlocked ? 'bg-emerald-600' : 'bg-orange-600'}`}>
-              {blockModal.currentlyBlocked ? <Unlock className="w-5 h-5" /> : <Ban className="w-5 h-5" />}
-              {blockModal.currentlyBlocked ? 'Débloquer la vente' : 'Bloquer la vente'}
-            </div>
-            <div className="p-5 space-y-3">
-              <p className="text-sm text-slate-700">
-                Article : <strong>{blockModal.name}</strong>
-              </p>
-              {!blockModal.currentlyBlocked ? (
-                <>
-                  <p className="text-xs text-slate-500">
-                    Empêche la délivrance / vente même si le stock est encore disponible (réservation, attente de régularisation, lot douteux…).
-                  </p>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Motif du blocage *</label>
-                    <input
-                      type="text"
-                      value={blockReason}
-                      onChange={(e) => setBlockReason(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm"
-                      placeholder="Ex: Réservé patient X / En attente régularisation / Lot à vérifier"
-                      autoFocus
-                    />
-                  </div>
-                </>
-              ) : (
-                <p className="text-sm text-slate-600">Confirmez le déblocage de la vente pour cet article.</p>
-              )}
-              <div className="flex justify-end gap-2 pt-2">
-                <button onClick={() => setBlockModal(null)} className="px-4 py-2 border border-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-50">Annuler</button>
-                <button
-                  onClick={toggleSaleBlock}
-                  className={`px-4 py-2 text-white rounded-lg text-sm font-bold cursor-pointer ${blockModal.currentlyBlocked ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-orange-600 hover:bg-orange-700'}`}
-                >
-                  {blockModal.currentlyBlocked ? 'Confirmer déblocage' : 'Confirmer blocage'}
-                </button>
-              </div>
+        <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-4">
+          <div className={`px-5 py-3 text-white font-bold flex items-center gap-2 ${blockModal.currentlyBlocked ? 'bg-emerald-600' : 'bg-orange-600'}`}>
+            {blockModal.currentlyBlocked ? <Unlock className="w-5 h-5" /> : <Ban className="w-5 h-5" />}
+            {blockModal.currentlyBlocked ? 'Débloquer la vente' : 'Bloquer la vente'}
+            <div className="flex-1" />
+            <button onClick={() => setBlockModal(null)} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button>
+          </div>
+          <div className="p-5 space-y-3">
+            <p className="text-sm text-slate-700">
+              Article : <strong>{blockModal.name}</strong>
+            </p>
+            {!blockModal.currentlyBlocked ? (
+              <>
+                <p className="text-xs text-slate-500">
+                  Empêche la délivrance / vente même si le stock est encore disponible (réservation, attente de régularisation, lot douteux…).
+                </p>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Motif du blocage *</label>
+                  <input
+                    type="text"
+                    value={blockReason}
+                    onChange={(e) => setBlockReason(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm"
+                    placeholder="Ex: Réservé patient X / En attente régularisation / Lot à vérifier"
+                    autoFocus
+                  />
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-slate-600">Confirmez le déblocage de la vente pour cet article.</p>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setBlockModal(null)} className="px-4 py-2 border border-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-50">Annuler</button>
+              <button
+                onClick={toggleSaleBlock}
+                className={`px-4 py-2 text-white rounded-lg text-sm font-bold cursor-pointer ${blockModal.currentlyBlocked ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-orange-600 hover:bg-orange-700'}`}
+              >
+                {blockModal.currentlyBlocked ? 'Confirmer déblocage' : 'Confirmer blocage'}
+              </button>
             </div>
           </div>
         </div>

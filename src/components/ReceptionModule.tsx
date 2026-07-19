@@ -254,7 +254,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
   };
 
   return (
-    <div className="flex flex-col h-screen w-full bg-[#e8e8e8] text-slate-800 font-sans select-none overflow-hidden">
+    <div className="flex flex-col min-h-screen w-full bg-[#e8e8e8] text-slate-800 font-sans select-none">
       <header className="bg-gradient-to-b from-[#4a90d9] to-[#3a7bc8] text-white px-4 py-2 flex justify-between items-center shadow-md">
         <div className="flex items-center gap-4">
           <div className="flex items-center justify-center bg-white/20 backdrop-blur rounded-lg p-2"><Hospital className="w-7 h-7" /></div>
@@ -298,7 +298,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
         </div>
       </section>
 
-      <main className="flex-1 overflow-hidden p-3">
+      <main className="flex-1 p-3">
         <div className="bg-white border border-slate-400 rounded shadow-lg overflow-hidden h-full flex flex-col">
           <div className="bg-gradient-to-b from-slate-100 to-slate-200 border-b border-slate-400 px-3 py-1.5 flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-600">📋 Patients — {filteredPatients.length} fiche(s)</span>
@@ -361,11 +361,10 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
         <div className="font-semibold">MediCare HIS v2.0 © 2026</div>
       </footer>
 
-      {/* MODAL: SAISIE PATIENT */}
+      {/* SAISIE PATIENT — Inline (no modal) */}
       {(modal === 'add' || modal === 'edit') && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-xl bg-[#f0f0f0] rounded border-2 border-slate-500 shadow-2xl overflow-auto max-h-[90vh]">
-            <div className="bg-gradient-to-r from-[#4a6fa5] to-[#3d5a80] px-3 py-1.5 flex justify-between items-center"><span className="text-white text-sm font-bold flex items-center gap-2"><Plus className="w-4 h-4" />{modal === 'add' ? 'NOUVEAU PATIENT' : 'MODIFIER PATIENT'}</span><button onClick={() => setModal('none')} className="text-white/80 hover:text-white hover:bg-white/20 rounded p-0.5 transition cursor-pointer"><X className="h-4 w-4" /></button></div>
+        <div className="w-full max-w-xl mx-auto bg-[#f0f0f0] rounded border-2 border-slate-500 shadow-lg mt-3">
+            <div className="bg-gradient-to-r from-[#4a6fa5] to-[#3d5a80] px-3 py-1.5 flex justify-between items-center"><span className="text-white text-sm font-bold flex items-center gap-2"><Plus className="w-4 h-4" />{modal === 'add' ? 'NOUVEAU PATIENT' : 'MODIFIER PATIENT'}</span><button onClick={() => setModal('none')} className="text-white/80 hover:text-white hover:bg-white/20 rounded p-0.5 px-2 transition cursor-pointer text-sm">✕</button></div>
             <div className="p-4">
               <div className="grid grid-cols-2 gap-4 text-xs">
                 <div className="space-y-3">
@@ -388,7 +387,6 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
                 <button onClick={() => setModal('none')} className="flex items-center gap-2 px-6 py-2 bg-slate-500 hover:bg-slate-600 text-white rounded font-bold shadow transition cursor-pointer"><Ban className="w-4 h-4" /> ANNULER</button>
               </div>
             </div>
-          </div>
         </div>
       )}
 
@@ -457,13 +455,12 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
         </ModalShell>
       )}
 
-      {/* MODAL: SAISIE PARAMÈTRES */}
+      {/* SAISIE PARAMÈTRES — Inline (no modal) */}
       {modal === 'vitals' && selectedPatient && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-lg bg-[#f0f0f0] rounded border-2 border-slate-500 shadow-2xl overflow-auto max-h-[90vh]">
+        <div className="w-full max-w-lg mx-auto bg-[#f0f0f0] rounded border-2 border-slate-500 shadow-lg mt-3">
             <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 px-3 py-1.5 flex justify-between items-center">
               <span className="text-white text-sm font-bold flex items-center gap-2"><Activity className="w-4 h-4" />SAISIE PARAMÈTRES</span>
-              <button onClick={() => setModal('none')} className="text-white/80 hover:text-white hover:bg-white/20 rounded p-0.5 transition cursor-pointer"><X className="h-4 w-4" /></button>
+              <button onClick={() => setModal('none')} className="text-white/80 hover:text-white hover:bg-white/20 rounded p-0.5 px-2 transition cursor-pointer text-sm">✕</button>
             </div>
             <div className="bg-emerald-50 border-b border-emerald-200 px-4 py-2 text-center">
               <div className="text-lg font-bold text-emerald-800 uppercase">{selectedPatient.lastName} {selectedPatient.firstName}</div>
@@ -519,12 +516,11 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
                 <button onClick={() => setModal('none')} className="flex items-center gap-2 px-6 py-2.5 bg-slate-500 hover:bg-slate-600 text-white rounded font-bold shadow transition cursor-pointer"><Ban className="w-4 h-4" /> ANNULER</button>
               </div>
             </div>
-          </div>
         </div>
       )}
     </div>
   );
 }
 
-function ModalShell({ title, icon, onClose, children, wide = false }: { title: string; icon: React.ReactNode; onClose: () => void; children: React.ReactNode; wide?: boolean }) { return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"><div className={`w-full ${wide ? 'max-w-4xl' : 'max-w-lg'} overflow-hidden rounded-2xl bg-white shadow-2xl`}><div className="flex items-center justify-between bg-gradient-to-r from-slate-800 to-slate-700 px-5 py-4 text-white"><div className="flex items-center gap-2 font-bold">{icon}{title}</div><button onClick={onClose} className="rounded p-1 hover:bg-white/15"><X className="h-5 w-5" /></button></div><div className="p-5">{children}</div></div></div>; }
+function ModalShell({ title, icon, onClose, children, wide = false }: { title: string; icon: React.ReactNode; onClose: () => void; children: React.ReactNode; wide?: boolean }) { return <div className={`${wide ? 'max-w-4xl' : 'max-w-lg'} mx-auto overflow-hidden rounded-2xl bg-white shadow-lg border border-slate-300 mt-3`}><div className="flex items-center justify-between bg-gradient-to-r from-slate-800 to-slate-700 px-5 py-4 text-white"><div className="flex items-center gap-2 font-bold">{icon}{title}</div><button onClick={onClose} className="rounded p-1 px-2 hover:bg-white/15 text-sm">✕ Fermer</button></div><div className="p-5">{children}</div></div>; }
 function InfoLine({ label, value }: { label: string; value: string }) { return <div className="rounded-lg border border-slate-200 bg-white p-3"><p className="text-xs font-medium text-slate-400">{label}</p><p className="mt-1 font-semibold text-slate-700">{value}</p></div>; }

@@ -492,13 +492,12 @@ export default function LaboratoryModule({ state, setState }: Props) {
         </div>
       </div>
 
-      {/* MODAL NOUVELLE DEMANDE */}
+      {/* NOUVELLE DEMANDE — Inline (no modal) */}
       {showNew && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-auto">
+        <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-4">
             <div className="bg-gradient-to-r from-cyan-600 to-cyan-700 px-4 py-3 flex justify-between items-center text-white">
               <span className="font-bold flex items-center gap-2"><FlaskConical className="w-5 h-5" /> Nouvelle demande d'analyse</span>
-              <button onClick={() => setShowNew(false)} className="hover:bg-white/20 rounded p-1 cursor-pointer"><X className="w-5 h-5" /></button>
+              <button onClick={() => setShowNew(false)} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button>
             </div>
             <div className="p-4 space-y-4">
               {/* 1. Patient */}
@@ -561,7 +560,7 @@ export default function LaboratoryModule({ state, setState }: Props) {
                       <span className="text-red-600 font-semibold">Urgent (+ supplément)</span>
                     </label>
                   </div>
-                  <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-1">
+                  <div className="space-y-3 pr-1">
                     {LAB_CATEGORIES.map((cat) => {
                       const exams = state.labCatalog.filter((e) => e.category === cat);
                       if (exams.length === 0) return null;
@@ -606,17 +605,15 @@ export default function LaboratoryModule({ state, setState }: Props) {
                 </div>
               )}
             </div>
-          </div>
         </div>
       )}
 
-      {/* MODAL AJOUT D'EXAMEN AU CATALOGUE (formulaire d'ajout d'article) */}
+      {/* AJOUT D'EXAMEN — Inline (no modal) */}
       {showAddExam && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-auto">
+        <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-4">
             <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 px-4 py-3 flex justify-between items-center text-white">
               <span className="font-bold flex items-center gap-2"><FlaskConical className="w-5 h-5" /> Ajouter un examen au catalogue</span>
-              <button onClick={() => setShowAddExam(false)} className="hover:bg-white/20 rounded p-1 cursor-pointer"><X className="w-5 h-5" /></button>
+              <button onClick={() => setShowAddExam(false)} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button>
             </div>
             <div className="p-4 space-y-3">
               <div className="grid grid-cols-2 gap-3">
@@ -659,7 +656,6 @@ export default function LaboratoryModule({ state, setState }: Props) {
                 <Check className="w-4 h-4" /> Enregistrer l'examen
               </button>
             </div>
-          </div>
         </div>
       )}
 
