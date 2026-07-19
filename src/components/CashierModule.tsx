@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User } from '../types';
+import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing } from '../types';
 import type { AppState } from '../store';
 import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber, addJourneyEvent } from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, X, UserPlus, Edit2, Plus } from 'lucide-react';
@@ -406,6 +406,54 @@ export default function CashierModule({ state, setState }: Props) {
   const grandTotal = todayTotal + todayPartialTotal;
 
   const curHbRecords = hbRecords.filter(h => h.type === tab);
+  const closingDateKey = new Date().toDateString();
+  const currentCashierId = state.currentUser?.id || 'SYS';
+  const existingClosing = state.cashClosings.find(c => new Date(c.date).toDateString() === closingDateKey && c.cashierId === currentCashierId);
+  // Une facture déjà intégrée dans un Z ne peut jamais être comptée une seconde fois.
+  const closeableInvoices = todayInvoices.filter(inv => !inv.closingId && (!inv.paidBy || inv.paidBy === currentCashierId));
+
+  const closingSections = (invoices: Invoice[], hospitalizationTotal = todayPartialTotal) => {
+    const consultTotal = invoices.filter(i => !i.isExternal).reduce((sum, i) => sum + i.patientCharge, 0);
+    const externalTotal = invoices.filter(i => i.isExternal).reduce((sum, i) => sum + i.patientCharge, 0);
+    const hospitTotal = hospitalizationTotal;
+    return [
+      { title: '1. PAR FAMILLE', rows: [
+        { label: 'Consultations / soins', value: formatAr(consultTotal) },
+        { label: 'Ventes externes', value: formatAr(externalTotal) },
+        { label: 'Hospitalisation / bloc', value: formatAr(hospitTotal) },
+      ], total: formatAr(consultTotal + externalTotal + hospitTotal) },
+      { title: '2. FACTURES ENCAISSÉES', rows: invoices.map(inv => {
+        const patient = inv.patientId ? state.patients.find(p => p.id === inv.patientId) : undefined;
+        return { label: `${new Date(inv.paidAt || inv.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} — ${patient ? `${patient.lastName} ${patient.firstName}` : inv.clientName || 'Client externe'}`, value: formatAr(inv.patientCharge) };
+      }) },
+    ];
+  };
+
+  const printSavedClosing = (closing: CashClosing) => {
+    const invoices = state.invoices.filter(i => closing.invoiceIds.includes(i.id));
+    printClosingTicket(state.ticketSettings, { id: closing.cashierId, name: closing.cashierName, role: 'cashier' }, new Date(closing.createdAt), closingSections(invoices, closing.hospitalizationTotal), formatAr(closing.grandTotal));
+  };
+
+  const finalizeClosing = () => {
+    if (existingClosing) { alert('La caisse de ce caissier est déjà clôturée pour aujourd’hui. Vous pouvez réimprimer le ticket Z ci-dessous.'); return; }
+    if (closeableInvoices.length === 0 && todayPartialTotal === 0) { alert('Aucun encaissement à clôturer aujourd’hui.'); return; }
+    if (!confirm(`Clôturer ${closeableInvoices.length} facture(s) pour ${formatAr(closeableInvoices.reduce((sum, i) => sum + i.patientCharge, 0) + todayPartialTotal)} ? Cette opération verrouille les factures dans le Z.`)) return;
+    const now = new Date();
+    const consultationTotal = closeableInvoices.filter(i => !i.isExternal).reduce((sum, i) => sum + i.patientCharge, 0);
+    const externalTotal = closeableInvoices.filter(i => i.isExternal).reduce((sum, i) => sum + i.patientCharge, 0);
+    const closing: CashClosing = {
+      id: uuidv4(), date: now.toISOString(), cashierId: currentCashierId, cashierName: state.currentUser?.name || 'Caissier',
+      invoiceIds: closeableInvoices.map(i => i.id), invoiceCount: closeableInvoices.length,
+      consultationTotal, externalTotal, hospitalizationTotal: todayPartialTotal,
+      grandTotal: consultationTotal + externalTotal + todayPartialTotal, createdAt: now.toISOString(),
+    };
+    setState(prev => {
+      const next = { ...prev, cashClosings: [...prev.cashClosings, closing], invoices: prev.invoices.map(i => closing.invoiceIds.includes(i.id) ? { ...i, closingId: closing.id } : i) };
+      addAuditLog(next, 'CLOTURE_CAISSE', `Z ${closing.id.slice(0, 8).toUpperCase()} — ${closing.invoiceCount} facture(s), ${formatAr(closing.grandTotal)}`);
+      return next;
+    });
+    printClosingTicket(state.ticketSettings, state.currentUser || { id: 'SYS', name: 'Caissier', role: 'cashier' }, now, closingSections(closeableInvoices), formatAr(closing.grandTotal));
+  };
 
   return (
     <div className="space-y-4">
@@ -537,41 +585,14 @@ export default function CashierModule({ state, setState }: Props) {
           {tab === 'closing' && (
             <div className="max-w-3xl mx-auto space-y-4">
               <div className="p-4 bg-slate-800 text-white rounded-lg flex justify-between items-center"><div><h3 className="font-bold text-lg"><Lock className="w-5 h-5 inline" /> Clôture — {new Date().toLocaleDateString('fr-FR')}</h3><p className="text-slate-300 text-sm">{state.currentUser?.name}</p></div>
-                <button onClick={() => {
-                  const sections = [
-                    {
-                      title: '1. PAR FAMILLE',
-                      rows: [
-                        { label: 'Consultations', value: formatAr(todayTotal - todayExtTotal) },
-                        { label: 'Ventes Externes', value: formatAr(todayExtTotal) },
-                        { label: 'Hospit / Bloc', value: formatAr(todayPartialTotal) },
-                      ],
-                      total: formatAr(grandTotal),
-                    },
-                    {
-                      title: '2. HOSPIT & BLOC',
-                      rows: hbRecords.filter(h => h.payments.length > 0).map(h => ({
-                        label: `${h.patientName} (${h.type})`,
-                        value: h.payments.map(p => formatAr(p.amount)).join(' / '),
-                      })),
-                    },
-                    {
-                      title: '3. CLIENTS',
-                      rows: [
-                        ...todayInvoices.map(inv => {
-                          const pat = inv.patientId ? state.patients.find(p => p.id === inv.patientId) : null;
-                          return { label: pat ? `${pat.lastName} ${pat.firstName}` : inv.clientName || 'Ext.', value: formatAr(inv.patientCharge) };
-                        }),
-                        ...hbRecords.filter(h => h.payments.length > 0).map(h => ({
-                          label: `${h.patientName} (${h.type})`,
-                          value: formatAr(h.payments.reduce((s, p) => s + p.amount, 0)),
-                        })),
-                      ],
-                    },
-                  ];
-                  printClosingTicket(state.ticketSettings, state.currentUser || { id: 'SYS', name: 'Caissier', role: 'cashier' }, new Date(), sections, formatAr(grandTotal));
-                }} className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm cursor-pointer flex items-center gap-2"><Printer className="w-4 h-4" /> 🧾 Imprimer Z ({state.ticketSettings.paperWidth}mm)</button>
+                {existingClosing ? (
+                  <button onClick={() => printSavedClosing(existingClosing)} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg text-sm cursor-pointer flex items-center gap-2"><Printer className="w-4 h-4" /> Réimprimer Z</button>
+                ) : (
+                  <button onClick={finalizeClosing} className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm cursor-pointer flex items-center gap-2"><Lock className="w-4 h-4" /> Clôturer & imprimer Z</button>
+                )}
               </div>
+              {existingClosing && <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm text-emerald-800 flex justify-between items-center"><span>✓ Caisse clôturée à {new Date(existingClosing.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} — {existingClosing.invoiceCount} facture(s)</span><button onClick={() => printSavedClosing(existingClosing)} className="underline font-semibold cursor-pointer">Réimprimer</button></div>}
+              {!existingClosing && <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">{closeableInvoices.length} facture(s) non clôturée(s) à intégrer au ticket Z.</div>}
               <div className="bg-white border rounded-lg p-4"><h4 className="font-bold text-sm mb-2">1. Versements par famille</h4><div className="grid grid-cols-3 gap-2"><div className="p-3 bg-green-50 rounded flex justify-between"><span>Consultations</span><span className="font-mono font-bold">{formatAr(todayTotal - todayExtTotal)}</span></div><div className="p-3 bg-purple-50 rounded flex justify-between"><span>Ventes Ext.</span><span className="font-mono font-bold">{formatAr(todayExtTotal)}</span></div><div className="p-3 bg-rose-50 rounded flex justify-between"><span>Hospit/Bloc</span><span className="font-mono font-bold">{formatAr(todayPartialTotal)}</span></div></div></div>
               {hbRecords.filter(h => h.payments.length > 0).length > 0 && <div className="bg-white border rounded-lg p-4"><h4 className="font-bold text-sm mb-2">2. Hospitalisation & Bloc</h4><table className="w-full text-xs"><thead className="bg-slate-100"><tr><th className="p-2 text-left">Patient</th><th className="p-2">Type</th><th className="p-2 text-right">Facture</th><th className="p-2 text-right">Reçu</th><th className="p-2 text-right">Reste</th><th className="p-2">Caissier</th></tr></thead><tbody>{hbRecords.filter(h => h.payments.length > 0).map(h => { const tf = h.lines.reduce((s,l) => s+hbLineAmt(l),0); const tp = h.payments.reduce((s,p) => s+p.amount,0); return (<tr key={h.id} className="border-b"><td className="p-2">{h.patientName}</td><td className="p-2 text-center"><span className={`px-1 py-0.5 rounded text-[10px] font-bold ${h.type==='hospit'?'bg-rose-100 text-rose-700':'bg-blue-100 text-blue-700'}`}>{h.type==='hospit'?'Hosp.':'Bloc'}</span></td><td className="p-2 text-right font-mono">{formatAr(tf)}</td><td className="p-2 text-right font-mono text-green-600">{formatAr(tp)}</td><td className="p-2 text-right font-mono text-red-600">{formatAr(tf-tp)}</td><td className="p-2">{h.payments.map(p => p.paidBy).filter((v,i,a) => a.indexOf(v)===i).join(', ')}</td></tr>); })}</tbody></table></div>}
               <div className="bg-gradient-to-r from-emerald-50 to-green-50 border-2 border-emerald-300 rounded-lg p-6 text-center"><div className="text-sm text-slate-600">3. TOTAL GÉNÉRAL</div><div className="text-4xl font-bold font-mono text-emerald-700">{formatAr(grandTotal)}</div></div>

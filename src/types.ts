@@ -166,6 +166,16 @@ export interface Invoice {
   clientType: ClientType; items: InvoiceItem[]; totalAmount: number;
   patientCharge: number; status: 'pending' | 'paid';
   paidAt?: string; paidBy?: string; createdAt: string; isExternal: boolean;
+  /** Identifiant de la clôture Z ayant intégré cette facture. */
+  closingId?: string;
+}
+
+/** Instantané de clôture de caisse. Les montants sont figés pour permettre la réimpression. */
+export interface CashClosing {
+  id: string; date: string; cashierId: string; cashierName: string;
+  invoiceIds: string[]; invoiceCount: number;
+  consultationTotal: number; externalTotal: number; hospitalizationTotal: number;
+  grandTotal: number; createdAt: string;
 }
 
 export type TransferCategory = 'central' | 'hospitalisation' | 'bloc' | 'approvisionnement';
