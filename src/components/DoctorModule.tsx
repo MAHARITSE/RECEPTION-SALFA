@@ -3,23 +3,30 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Consultation, VitalSigns, Prescription, LabRequest, ClientType, Invoice, EchoRequest } from '../types';
 import type { AppState } from '../store';
 import { addAuditLog, addNotification, formatAr, getPrice, addJourneyEvent, labCategoryLabel } from '../store';
-import { printPrescriptionTicket } from '../utils/printTicket';
-import { Stethoscope, History, Trash2, AlertTriangle, Heart, FileText, Clock, CheckCircle, Send, Search, Edit2, RotateCcw, Save, Printer, FlaskConical, Scan } from 'lucide-react';
+import { Stethoscope, History, Trash2, AlertTriangle, Heart, FileText, Clock, CheckCircle, Send, Search, Edit2, RotateCcw, Save, FlaskConical, Scan } from 'lucide-react';
 
-/** Types d'échographie proposés au médecin (saisie libre possible) */
-const ECHO_TYPES = [
-  'Échographie abdominale',
-  'Échographie pelvienne',
-  'Échographie obstétricale',
-  'Échographie cardiaque (ETT)',
-  'Échographie rénale',
-  'Échographie thyroïdienne',
-  'Échographie mammaire',
-  'Échographie des parties molles',
-  'Échographie Doppler',
-  'Échographie prostatique',
+export interface EchoExamCatalog {
+  id: string;
+  code: string;
+  name: string;
+  priceComptoir: number;
+  priceSociete: number;
+  priceExterne: number;
+  urgentPrice: number;
+}
+
+const ECHO_CATALOG: EchoExamCatalog[] = [
+  { id: 'echo-abd', code: 'ECH001', name: 'Échographie abdominale', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 35000 },
+  { id: 'echo-pel', code: 'ECH002', name: 'Échographie pelvienne', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 35000 },
+  { id: 'echo-obs', code: 'ECH003', name: 'Échographie obstétricale', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 35000 },
+  { id: 'echo-car', code: 'ECH004', name: 'Échographie cardiaque (ETT)', priceComptoir: 40000, priceSociete: 35000, priceExterne: 45000, urgentPrice: 50000 },
+  { id: 'echo-ren', code: 'ECH005', name: 'Échographie rénale', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 35000 },
+  { id: 'echo-thy', code: 'ECH006', name: 'Échographie thyroïdienne', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 35000 },
+  { id: 'echo-mam', code: 'ECH007', name: 'Échographie mammaire', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 35000 },
+  { id: 'echo-pmo', code: 'ECH008', name: 'Échographie des parties molles', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 35000 },
+  { id: 'echo-dop', code: 'ECH009', name: 'Échographie Doppler', priceComptoir: 35000, priceSociete: 30000, priceExterne: 40000, urgentPrice: 45000 },
+  { id: 'echo-pro', code: 'ECH010', name: 'Échographie prostatique', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 35000 },
 ];
-const DEFAULT_ECHO_PRICE = 25000;
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
 type ViewMode = 'queue' | 'consultation' | 'my_consults';
@@ -44,11 +51,8 @@ export default function DoctorModule({ state, setState }: Props) {
   const [labDraft, setLabDraft] = useState<{ examId: string; urgent: boolean }[]>([]);
 
   // ---- Demandes d'échographie ----
-  const [echoDraft, setEchoDraft] = useState<{ examType: string; notes: string; urgent: boolean; price: number }[]>([]);
-  const [echoType, setEchoType] = useState('');
-  const [echoNotes, setEchoNotes] = useState('');
-  const [echoUrgent, setEchoUrgent] = useState(false);
-  const [echoPrice, setEchoPrice] = useState(DEFAULT_ECHO_PRICE);
+  const [echoSearch, setEchoSearch] = useState('');
+  const [echoDraft, setEchoDraft] = useState<{ examId: string; urgent: boolean; notes?: string }[]>([]);
 
   const myWaiting = state.patients.filter((p) => (!p.assignedDoctor || p.assignedDoctor === state.currentUser?.id) && p.status === 'waiting_consultation');
   const searchResults = searchQuery.length >= 2 ? state.patients.filter((p) => { const q = searchQuery.toLowerCase(); return p.firstName.toLowerCase().includes(q) || p.lastName.toLowerCase().includes(q) || p.dossier.toLowerCase().includes(q); }) : [];
@@ -67,7 +71,19 @@ export default function DoctorModule({ state, setState }: Props) {
     return ct === 'societe' ? e.priceSociete : ct === 'externe' ? e.priceExterne : e.priceComptoir;
   };
   const labTotal = labDraft.reduce((s, d) => s + priceForExam(d.examId, clientType, d.urgent), 0);
-  const echoTotal = echoDraft.reduce((s, d) => s + (d.price || 0), 0);
+
+  // Catalogue écho : recherche + prix + brouillon de demandes d'échographies
+  const echoFiltered = echoSearch.length >= 1
+    ? ECHO_CATALOG.filter((e) => e.name.toLowerCase().includes(echoSearch.toLowerCase()) || e.code.toLowerCase().includes(echoSearch.toLowerCase()))
+    : [];
+  const echoPriceForExam = (examId: string, ct: ClientType, urgent: boolean) => {
+    const e = ECHO_CATALOG.find((x) => x.id === examId);
+    if (!e) return 0;
+    if (urgent) return e.urgentPrice;
+    return ct === 'societe' ? e.priceSociete : ct === 'externe' ? e.priceExterne : e.priceComptoir;
+  };
+  const echoTotal = echoDraft.reduce((s, d) => s + echoPriceForExam(d.examId, clientType, d.urgent), 0);
+
   const addLabExam = (examId: string) => {
     setLabDraft((prev) => (prev.some((d) => d.examId === examId) ? prev : [...prev, { examId, urgent: false }]));
     setLabSearch('');
@@ -75,17 +91,13 @@ export default function DoctorModule({ state, setState }: Props) {
   const removeLabExam = (examId: string) => setLabDraft(labDraft.filter((d) => d.examId !== examId));
   const toggleLabUrgent = (examId: string) => setLabDraft(labDraft.map((d) => (d.examId === examId ? { ...d, urgent: !d.urgent } : d)));
 
-  const addEchoExam = () => {
-    const name = echoType.trim();
-    if (!name) { alert('Indiquez le type d\'échographie'); return; }
-    if (echoDraft.some((d) => d.examType.toLowerCase() === name.toLowerCase())) {
-      alert('Cette échographie est déjà dans la liste');
-      return;
-    }
-    setEchoDraft([...echoDraft, { examType: name, notes: echoNotes.trim(), urgent: echoUrgent, price: echoPrice || DEFAULT_ECHO_PRICE }]);
-    setEchoType(''); setEchoNotes(''); setEchoUrgent(false); setEchoPrice(DEFAULT_ECHO_PRICE);
+  const addEchoExam = (examId: string) => {
+    setEchoDraft((prev) => (prev.some((d) => d.examId === examId) ? prev : [...prev, { examId, urgent: false, notes: '' }]));
+    setEchoSearch('');
   };
-  const removeEchoExam = (idx: number) => setEchoDraft(echoDraft.filter((_, i) => i !== idx));
+  const removeEchoExam = (examId: string) => setEchoDraft(echoDraft.filter((d) => d.examId !== examId));
+  const toggleEchoUrgent = (examId: string) => setEchoDraft(echoDraft.map((d) => (d.examId === examId ? { ...d, urgent: !d.urgent } : d)));
+  const updateEchoNotes = (examId: string, val: string) => setEchoDraft(echoDraft.map((d) => (d.examId === examId ? { ...d, notes: val } : d)));
 
   // Article search across ALL families
   const filteredArticles = articleSearch.length >= 1
@@ -113,7 +125,7 @@ export default function DoctorModule({ state, setState }: Props) {
   const selectPatient = (pid: string) => {
     const p = state.patients.find((x) => x.id === pid);
     setSelectedPatientId(pid); setLines([]); setSelectedLineId(null); setIsNewLine(false); setView('consultation');
-    setLabDraft([]); setLabSearch(''); setEchoDraft([]); setEchoType(''); setEchoNotes(''); setEchoUrgent(false); setEchoPrice(DEFAULT_ECHO_PRICE);
+    setLabDraft([]); setLabSearch(''); setEchoDraft([]); setEchoSearch('');
     setConsultForm({ visitReason: '', diagnosis: '', notes: '', isEmergency: false, hospitalizeRequested: false, surgeryRequested: false });
     if (p?.vitalSigns) setVitals({ ...p.vitalSigns }); else setVitals({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' });
     setState((prev) => {
@@ -206,12 +218,17 @@ export default function DoctorModule({ state, setState }: Props) {
     });
     // ---- Échographies -> facture en attente (bon imprimé à la CAISSE après paiement) ----
     const echoInvoiceId = echoDraft.length > 0 ? uuidv4() : null;
-    const newEchoRequests: EchoRequest[] = echoDraft.map((d) => ({
-      id: uuidv4(), patientId: selectedPatientId, consultationId: consultId,
-      examType: d.examType, notes: d.notes || undefined, urgent: d.urgent,
-      status: 'pending' as const, requestedBy: state.currentUser?.id || '',
-      requestedAt: new Date().toISOString(), invoiceId: echoInvoiceId || undefined, price: d.price,
-    }));
+    const newEchoRequests: EchoRequest[] = echoDraft.map((d) => {
+      const e = ECHO_CATALOG.find((x) => x.id === d.examId);
+      const examName = e ? e.name : 'Échographie';
+      const price = echoPriceForExam(d.examId, ct, d.urgent);
+      return {
+        id: uuidv4(), patientId: selectedPatientId, consultationId: consultId,
+        examType: examName, notes: d.notes || undefined, urgent: d.urgent,
+        status: 'pending' as const, requestedBy: state.currentUser?.id || '',
+        requestedAt: new Date().toISOString(), invoiceId: echoInvoiceId || undefined, price,
+      };
+    });
 
     const consultation: Consultation = {
       id: consultId, patientId: selectedPatientId, doctorId: state.currentUser?.id || '', doctorName: state.currentUser?.name || '',
@@ -267,20 +284,15 @@ export default function DoctorModule({ state, setState }: Props) {
     });
     // Impression médecin : ordonnance UNIQUEMENT s'il y a des médicaments
     // (les bons labo / écho sortent à la CAISSE après paiement, avec le ticket)
-    if (state.currentUser && lines.length > 0) {
-      printPrescriptionTicket(state.ticketSettings, selectedPatient!, state.currentUser, new Date(), lines, consultForm.diagnosis);
-    }
+    // ne pas imprimer l'ordonnance dans la partie docteur
+    // if (state.currentUser && lines.length > 0) {
+    //   printPrescriptionTicket(state.ticketSettings, selectedPatient!, state.currentUser, new Date(), lines, consultForm.diagnosis);
+    // }
     setSelectedPatientId(null); setConsultForm({ visitReason: '', diagnosis: '', notes: '', isEmergency: false, hospitalizeRequested: false, surgeryRequested: false });
     setVitals({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' });
     setLines([]); setShowHistory(false); setSearchQuery(''); setSelectedLineId(null); setIsNewLine(false);
-    setLabDraft([]); setLabSearch(''); setEchoDraft([]); setEchoType(''); setEchoNotes(''); setEchoUrgent(false); setEchoPrice(DEFAULT_ECHO_PRICE);
+    setLabDraft([]); setLabSearch(''); setEchoDraft([]); setEchoSearch('');
     setView('queue');
-  };
-
-  const printPrescription = (c: Consultation) => {
-    const pat = state.patients.find((p) => p.id === c.patientId);
-    if (!pat || !state.currentUser) return;
-    printPrescriptionTicket(state.ticketSettings, pat, state.currentUser, new Date(c.date), c.prescriptions, c.diagnosis);
   };
 
   return (
@@ -297,7 +309,7 @@ export default function DoctorModule({ state, setState }: Props) {
           <div className="overflow-auto"><table className="w-full text-sm"><thead className="bg-slate-100 sticky top-0"><tr><th className="p-2 text-left">Heure</th><th className="p-2 text-left">Patient</th><th className="p-2 text-right">Montant</th><th className="p-2 text-center">Statut</th><th className="p-2 text-center">Action</th></tr></thead>
             <tbody>{myTodayConsults.length === 0 ? <tr><td colSpan={5} className="p-8 text-center text-slate-400">Aucune</td></tr>
               : myTodayConsults.map((c) => { const pat = state.patients.find((p) => p.id === c.patientId); const st = getConsultStatus(c); const total = c.prescriptions.reduce((s, p) => s + Math.round(p.unitPrice * p.quantity * (1 - p.discount / 100)), 0);
-                return (<tr key={c.id} className="border-b hover:bg-slate-50"><td className="p-2 font-mono">{new Date(c.date).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</td><td className="p-2 font-medium">{pat?.lastName} {pat?.firstName} <span className="text-xs text-slate-400">({pat?.dossier})</span></td><td className="p-2 text-right font-mono font-bold">{formatAr(total)}</td><td className="p-2 text-center"><span className={`px-2 py-1 rounded-full text-xs font-bold ${st.color}`}>{st.label}</span></td><td className="p-2 text-center flex gap-1 justify-center flex-wrap"><button onClick={() => printPrescription(c)} className="px-2 py-1 bg-slate-700 text-white rounded text-xs cursor-pointer" title="Imprimer l'ordonnance"><Printer className="w-3 h-3 inline" /></button>{st.canEdit && <button onClick={() => reEditConsultation(c.id)} className="px-2 py-1 bg-blue-500 text-white rounded text-xs cursor-pointer"><Edit2 className="w-3 h-3 inline" /> Mod.</button>}{st.canReturn && <button onClick={() => returnToCashier(c.id)} className="px-2 py-1 bg-amber-500 text-white rounded text-xs cursor-pointer"><RotateCcw className="w-3 h-3 inline" /> Caisse</button>}</td></tr>); })}</tbody>
+                return (<tr key={c.id} className="border-b hover:bg-slate-50"><td className="p-2 font-mono">{new Date(c.date).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</td><td className="p-2 font-medium">{pat?.lastName} {pat?.firstName} <span className="text-xs text-slate-400">({pat?.dossier})</span></td><td className="p-2 text-right font-mono font-bold">{formatAr(total)}</td><td className="p-2 text-center"><span className={`px-2 py-1 rounded-full text-xs font-bold ${st.color}`}>{st.label}</span></td><td className="p-2 text-center flex gap-1 justify-center flex-wrap">{st.canEdit && <button onClick={() => reEditConsultation(c.id)} className="px-2 py-1 bg-blue-500 text-white rounded text-xs cursor-pointer"><Edit2 className="w-3 h-3 inline" /> Mod.</button>}{st.canReturn && <button onClick={() => returnToCashier(c.id)} className="px-2 py-1 bg-amber-500 text-white rounded text-xs cursor-pointer"><RotateCcw className="w-3 h-3 inline" /> Caisse</button>}</td></tr>); })}</tbody>
           </table></div>
         </div>
       )}
@@ -471,69 +483,60 @@ export default function DoctorModule({ state, setState }: Props) {
               <h4 className="font-semibold text-sm flex items-center gap-2"><Scan className="w-4 h-4 text-indigo-600" /> Demandes d'échographie</h4>
               <span className="text-[10px] text-slate-400 hidden sm:block">Bon imprimé à la caisse après paiement</span>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-2 mb-2">
-              <div className="md:col-span-4">
-                <label className="block text-[10px] text-slate-500 mb-0.5">Type d'échographie</label>
-                <input
-                  list="echo-types"
-                  type="text"
-                  value={echoType}
-                  onChange={(e) => setEchoType(e.target.value)}
-                  className="w-full px-2 py-1.5 border border-indigo-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
-                  placeholder="Ex: Échographie abdominale..."
-                />
-                <datalist id="echo-types">
-                  {ECHO_TYPES.map((t) => <option key={t} value={t} />)}
-                </datalist>
-              </div>
-              <div className="md:col-span-3">
-                <label className="block text-[10px] text-slate-500 mb-0.5">Notes / indication</label>
-                <input type="text" value={echoNotes} onChange={(e) => setEchoNotes(e.target.value)} className="w-full px-2 py-1.5 border border-slate-300 rounded-lg outline-none text-sm" placeholder="Indication clinique..." />
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-[10px] text-slate-500 mb-0.5">Tarif (Ar)</label>
-                <input type="number" min={0} value={echoPrice} onChange={(e) => setEchoPrice(parseInt(e.target.value) || 0)} className="w-full px-2 py-1.5 border border-slate-300 rounded-lg outline-none text-sm font-mono text-right" />
-              </div>
-              <div className="md:col-span-1 flex items-end pb-1">
-                <label className="flex items-center gap-1 text-[10px] cursor-pointer"><input type="checkbox" checked={echoUrgent} onChange={(e) => setEchoUrgent(e.target.checked)} className="w-3.5 h-3.5" /> <span className="text-red-600 font-semibold">Urg.</span></label>
-              </div>
-              <div className="md:col-span-2 flex items-end">
-                <button type="button" onClick={addEchoExam} className="w-full py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold cursor-pointer">+ Ajouter</button>
-              </div>
+            <div className="relative mb-2">
+              <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+              <input type="text" value={echoSearch} onChange={(e) => setEchoSearch(e.target.value)} className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-sm" placeholder="Rechercher une échographie (Abdominale, Pelvienne, Obstétricale...)" />
+              {echoSearch.length >= 1 && echoFiltered.length > 0 && (
+                <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 rounded-b shadow-xl z-30 max-h-48 overflow-y-auto">
+                  {echoFiltered.map((e) => {
+                    const already = echoDraft.some((d) => d.examId === e.id);
+                    return (
+                      <div key={e.id} onClick={() => addEchoExam(e.id)} className={`px-3 py-1.5 cursor-pointer text-xs flex justify-between border-b border-slate-100 ${already ? 'opacity-40 bg-slate-50' : 'hover:bg-indigo-50'}`}>
+                        <span><span className="text-[9px] text-slate-400 mr-1">[{e.code}]</span> {e.name}</span>
+                        <span className="font-mono text-indigo-600">{formatAr(clientType === 'societe' ? e.priceSociete : clientType === 'externe' ? e.priceExterne : e.priceComptoir)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
             {echoDraft.length > 0 ? (
               <div className="border rounded-lg divide-y">
-                {echoDraft.map((d, idx) => (
-                  <div key={`${d.examType}-${idx}`} className="flex items-center justify-between p-2 text-sm">
-                    <div>
-                      <div className="font-medium text-slate-800">{d.examType}{d.urgent && <span className="ml-1 text-[10px] text-red-600 font-bold">[URGENT]</span>}</div>
-                      {d.notes && <div className="text-[10px] text-slate-400">{d.notes}</div>}
+                {echoDraft.map((d) => {
+                  const e = ECHO_CATALOG.find((x) => x.id === d.examId);
+                  if (!e) return null;
+                  return (
+                    <div key={d.examId} className="flex items-center justify-between p-2 text-sm">
+                      <div className="flex-1 mr-4">
+                        <div className="font-medium text-slate-800">{e.name} <span className="text-[10px] text-slate-400">{e.code}</span></div>
+                        <input
+                          type="text"
+                          placeholder="Notes / indication clinique..."
+                          value={d.notes || ''}
+                          onChange={(evt) => updateEchoNotes(d.examId, evt.target.value)}
+                          className="w-full text-xs text-slate-500 border-b border-dashed border-slate-200 outline-none focus:border-indigo-500 py-0.5 mt-0.5"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <label className="flex items-center gap-1 text-[10px] cursor-pointer"><input type="checkbox" checked={d.urgent} onChange={() => toggleEchoUrgent(d.examId)} className="w-3.5 h-3.5" /> <span className="text-red-600 font-semibold">Urgent</span></label>
+                        <span className="font-mono font-bold text-slate-700 w-24 text-right">{formatAr(echoPriceForExam(d.examId, clientType, d.urgent))}</span>
+                        <button onClick={() => removeEchoExam(d.examId)} className="text-rose-600 hover:text-rose-800 cursor-pointer" title="Retirer"><Trash2 className="w-4 h-4" /></button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-slate-700 w-24 text-right">{formatAr(d.price)}</span>
-                      <button onClick={() => removeEchoExam(idx)} className="text-rose-600 hover:text-rose-800 cursor-pointer" title="Retirer"><Trash2 className="w-4 h-4" /></button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
                 <div className="flex justify-between items-center p-2 bg-indigo-50 text-sm font-bold">
                   <span>Total échographies</span>
                   <span className="font-mono">{formatAr(echoTotal)}</span>
                 </div>
               </div>
             ) : (
-              <p className="text-xs text-slate-400 text-center py-2 border border-dashed rounded-lg">Aucune échographie — saisissez un type ci-dessus (liste ou libre).</p>
+              <p className="text-xs text-slate-400 text-center py-2 border border-dashed rounded-lg">Aucune échographie sélectionnée — recherchez un examen ci-dessus.</p>
             )}
           </div>
 
           <div className="flex gap-2">
-            <button
-              onClick={() => lines.length > 0 && state.currentUser && printPrescriptionTicket(state.ticketSettings, selectedPatient!, state.currentUser, new Date(), lines, consultForm.diagnosis)}
-              disabled={lines.length === 0}
-              className="flex-1 py-3 bg-slate-700 text-white rounded-xl font-semibold hover:bg-slate-800 disabled:opacity-40 flex items-center justify-center gap-2 cursor-pointer shadow-lg"
-            >
-              <Printer className="w-5 h-5" /> Aperçu ordonnance
-            </button>
-            <button onClick={submitConsultation} className="flex-[2] py-3 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 flex items-center justify-center gap-2 cursor-pointer shadow-lg">
+            <button onClick={submitConsultation} className="w-full py-3 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 flex items-center justify-center gap-2 cursor-pointer shadow-lg">
               <Send className="w-5 h-5" /> Valider — {formatAr(totalPres + labTotal + echoTotal)}
             </button>
           </div>

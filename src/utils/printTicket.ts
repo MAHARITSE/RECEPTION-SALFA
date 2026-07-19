@@ -303,7 +303,6 @@ export function printLabRequestTicket(
   const lines = requests
     .flatMap((r) => [
       `<tr><td colspan="2" class="bold" style="padding-top:1.5mm">▸ ${escapeHtml(r.examType)}${r.urgent ? ' <span style="color:#b00">[URGENT]</span>' : ''}</td></tr>`,
-      ...r.parameters.map((p) => `<tr><td colspan="2" class="small">  • ${escapeHtml(p)}</td></tr>`),
     ])
     .join('');
   const bodyHtml = `
