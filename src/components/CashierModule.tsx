@@ -105,13 +105,20 @@ export default function CashierModule({ state, setState }: Props) {
   // LAB items merged: invoices containing lab items are processed in payment queue (no separate lab tab)
 
   // === EXTERNAL ===
-  const extFiltered = extSearch.length >= 1 ? state.articles.filter(a => a.name.toLowerCase().includes(extSearch.toLowerCase())) : [];
+  // Exclure les articles bloqués à la vente (réservé / régularisation)
+  const extFiltered = extSearch.length >= 1
+    ? state.articles.filter(a => a.name.toLowerCase().includes(extSearch.toLowerCase()) && !a.saleBlocked)
+    : [];
   const extLineAmt = (l: HbLine) => Math.round(l.unitPrice * l.quantity * (1 - l.discount / 100));
   const extTotal = extLines.reduce((s, l) => s + extLineAmt(l), 0);
 
   const extSelectArticle = (articleId: string) => {
     const a = state.articles.find(x => x.id === articleId);
     if (!a) return;
+    if (a.saleBlocked) {
+      alert(`⛔ Vente bloquée pour « ${a.name} »${a.saleBlockReason ? ` — ${a.saleBlockReason}` : ''}. Débloquez l'article en pharmacie.`);
+      return;
+    }
     const nl: HbLine = { id: uuidv4(), articleName: a.name, quantity: 1, unitPrice: getPrice(a, 'externe'), discount: 0 };
     setExtLineForm({ ...nl }); setExtSelLineId(nl.id); setExtIsNew(true); setExtSearch('');
   };
@@ -133,8 +140,31 @@ export default function CashierModule({ state, setState }: Props) {
   };
   const extPay = () => {
     if (extLines.length === 0) return;
+    // Contrôle blocage vente au moment de l'encaissement
+    const blockedLines = extLines.filter((l) => {
+      const art = state.articles.find((a) => a.name === l.articleName);
+      return art?.saleBlocked;
+    });
+    if (blockedLines.length > 0) {
+      alert(`⛔ Vente bloquée pour :\n${blockedLines.map((l) => {
+        const art = state.articles.find((a) => a.name === l.articleName);
+        return `• ${l.articleName}${art?.saleBlockReason ? ` (${art.saleBlockReason})` : ''}`;
+      }).join('\n')}`);
+      return;
+    }
     const inv: Invoice = { id: uuidv4(), clientName: 'Client Externe', clientType: 'externe', items: extLines.map(l => ({ description: `${l.articleName} × ${l.quantity}`, amount: extLineAmt(l), category: 'pharmacy' as const })), totalAmount: extTotal, patientCharge: extTotal, status: 'paid', paidAt: new Date().toISOString(), paidBy: state.currentUser?.id || '', createdAt: new Date().toISOString(), isExternal: true };
-    setState(prev => { const next = { ...prev, invoices: [...prev.invoices, inv] }; addAuditLog(next, 'VENTE_EXTERNE', `Client Externe — ${formatAr(extTotal)}`); addNotification(next, 'pharmacy', `🛒 Client Externe — ${formatAr(extTotal)}`, 'info'); return next; });
+    setState(prev => {
+      // Décrémenter stock pharmacie
+      let articles = [...prev.articles];
+      extLines.forEach((l) => {
+        const idx = articles.findIndex((a) => a.name === l.articleName);
+        if (idx >= 0) articles[idx] = { ...articles[idx], stockPharmacie: Math.max(0, articles[idx].stockPharmacie - l.quantity) };
+      });
+      const next = { ...prev, invoices: [...prev.invoices, inv], articles };
+      addAuditLog(next, 'VENTE_EXTERNE', `Client Externe — ${formatAr(extTotal)}`);
+      addNotification(next, 'pharmacy', `🛒 Client Externe — ${formatAr(extTotal)}`, 'info');
+      return next;
+    });
     openThermalTicket(state.ticketSettings, inv, undefined, state.currentUser || undefined);
     setExtLines([]); setExtSearch('');
   };
@@ -173,8 +203,10 @@ export default function CashierModule({ state, setState }: Props) {
     setHbModal('none');
   };
 
-  // Article modal for hospit/bloc
-  const hbArtFiltered = hbArtSearch.length >= 1 ? state.articles.filter(a => a.name.toLowerCase().includes(hbArtSearch.toLowerCase())) : [];
+  // Article modal for hospit/bloc — exclure articles bloqués
+  const hbArtFiltered = hbArtSearch.length >= 1
+    ? state.articles.filter(a => a.name.toLowerCase().includes(hbArtSearch.toLowerCase()) && !a.saleBlocked)
+    : [];
 
   const hbArtNew = () => {
     setHbArtForm({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: hbDateSort });
@@ -193,6 +225,10 @@ export default function CashierModule({ state, setState }: Props) {
   const hbArtSelectArticle = (articleId: string) => {
     const a = state.articles.find(x => x.id === articleId);
     if (!a) return;
+    if (a.saleBlocked) {
+      alert(`⛔ Vente bloquée pour « ${a.name} »${a.saleBlockReason ? ` — ${a.saleBlockReason}` : ''}.`);
+      return;
+    }
     const rec = hbRecords.find(r => r.id === hbSelRecordId);
     setHbArtForm({ id: uuidv4(), articleName: a.name, quantity: 1, unitPrice: getPrice(a, rec?.clientType || 'comptoir'), discount: 0, dateSort: hbDateSort });
     setHbIsNew(true);

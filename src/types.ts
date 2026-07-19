@@ -44,8 +44,17 @@ export interface Article {
   purchasePrice: number; // prix d'achat
   stockCentral: number; stockPharmacie: number;
   minStockCentral: number; minStockPharmacie: number;
+  /** Stocks par service (hors pharmacie) — clé = WarehouseService.id */
+  serviceStocks?: Record<string, number>;
+  /** Seuils mini par service */
+  serviceMinStocks?: Record<string, number>;
   expiryDate?: string; // date péremption
   supplier?: string;
+  /** Blocage vente pharmacie (réservé / en attente régularisation / rupture forcée) */
+  saleBlocked?: boolean;
+  saleBlockReason?: string;
+  saleBlockedAt?: string;
+  saleBlockedBy?: string;
 }
 
 export interface Prescription {
@@ -144,6 +153,60 @@ export interface Invoice {
 
 export type TransferCategory = 'central' | 'hospitalisation' | 'bloc' | 'approvisionnement';
 
+/** Service destinataire du dépôt (pharmacie, bloc, soins, etc.) — extensible */
+export interface WarehouseService {
+  id: string;
+  code: string;
+  name: string;
+  /** 'pharmacie' utilise stockPharmacie ; les autres utilisent serviceStocks[id] */
+  kind: 'pharmacie' | 'service';
+  color: string;
+  active: boolean;
+  createdAt: string;
+}
+
+export type StockMovementType = 'entry' | 'exit' | 'transfer' | 'inventory_adjust';
+export type StockLocation = 'central' | 'pharmacie' | string; // string = service id
+
+/** Mouvement unifié entrée / sortie / transfert / inventaire */
+export interface StockMovement {
+  id: string;
+  type: StockMovementType;
+  articleId: string;
+  articleName: string;
+  quantity: number;
+  fromLocation: StockLocation;
+  toLocation: StockLocation;
+  reason?: string;
+  ref?: string;
+  date: string;
+  userId: string;
+  userName?: string;
+  serviceId?: string;
+  serviceName?: string;
+}
+
+export interface InventoryLine {
+  articleId: string;
+  articleName: string;
+  theoreticalQty: number;
+  countedQty: number | null;
+  difference: number;
+}
+
+export interface InventorySession {
+  id: string;
+  location: StockLocation;
+  locationLabel: string;
+  status: 'in_progress' | 'completed' | 'cancelled';
+  startedAt: string;
+  completedAt?: string;
+  startedBy: string;
+  startedByName?: string;
+  lines: InventoryLine[];
+  notes?: string;
+}
+
 export interface StockTransfer {
   id: string; articleId: string; articleName: string; quantity: number;
   category: TransferCategory;
@@ -153,6 +216,11 @@ export interface StockTransfer {
   invoiceRef?: string;
   requestedBy?: string; requestedAt?: string; transferredBy?: string; transferredAt?: string;
   status: 'requested' | 'transferred' | 'cancelled'; notes?: string;
+  /** Service destinataire (pharmacie, bloc, soins…) */
+  targetServiceId?: string;
+  targetServiceName?: string;
+  /** Origine de la demande */
+  requestSource?: 'pharmacy' | 'hospitalisation' | 'magasinier' | 'other';
 }
 
 export interface StockEntry {
@@ -160,6 +228,8 @@ export interface StockEntry {
   purchasePrice: number; supplier: string; invoiceRef: string;
   expiryDate?: string; date: string; enteredBy: string;
   category?: 'central' | 'hospitalisation' | 'bloc' | 'approvisionnement';
+  /** Toujours dépôt central pour les achats centralisés */
+  destination?: 'central';
 }
 
 export interface Message {

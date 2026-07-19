@@ -203,9 +203,12 @@ export default function AdminModule({ state, setState }: Props) {
         patients: [], consultations: [], invoices: [],
         stockTransfers: [], stockEntries: [], hospitalizations: [],
         notifications: [], messages: [], auditLogs: [],
+        stockMovements: [], inventorySessions: [],
+        journey: [], labRequests: [],
         articles: prev.articles, // on garde le catalogue
         companies: prev.companies, // on garde les sociétés
         users: prev.users, // on garde les utilisateurs
+        warehouseServices: prev.warehouseServices, // on garde les services entrepôt
       };
       addAuditLog(fresh, 'RESET_SYSTEM', 'Réinitialisation complète');
       return fresh;

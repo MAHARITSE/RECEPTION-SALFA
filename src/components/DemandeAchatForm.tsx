@@ -37,6 +37,10 @@ interface DemandeAchatFormProps {
   }) => void;
   /** Color theme for the modal header & accents */
   theme?: 'purple' | 'blue' | 'rose' | 'sky' | 'amber' | 'emerald';
+  /** Mode pharmacie : demande d'appro au magasinier (pas d'achat fournisseur) */
+  pharmacyMode?: boolean;
+  /** Libellé service destinataire (affiché en mode pharmacie) */
+  targetServiceName?: string;
 }
 
 const THEME_STYLES: Record<string, { header: string; ring: string; row: string; save: string; }> = {
@@ -52,7 +56,7 @@ export default function DemandeAchatForm({
   open, onClose, articles, defaultCategory = 'approvisionnement',
   defaultSupplier = '', defaultInvoiceRef = '',
   initialLine = null, initialNotes = '', initialCategory, isEditMode = false,
-  onSubmit, theme = 'purple',
+  onSubmit, theme = 'purple', pharmacyMode = false, targetServiceName = 'Pharmacie',
 }: DemandeAchatFormProps) {
   const [reqLines, setReqLines] = useState<ReqLine[]>([]);
   const [reqCategory, setReqCategory] = useState<TransferCategory>(initialCategory || defaultCategory);
@@ -165,11 +169,14 @@ export default function DemandeAchatForm({
 
   const handleSubmit = () => {
     if (reqLines.length === 0) { alert('Ajoutez au moins un article.'); return; }
-    if (!reqSupplier.trim() && !isEditMode) { alert('Fournisseur requis.'); return; }
-    if (!reqInvoiceRef.trim() && !isEditMode) { alert('N° BL / Facture requis.'); return; }
+    // En mode pharmacie : demande d'appro interne (pas d'achat fournisseur)
+    if (!pharmacyMode) {
+      if (!reqSupplier.trim() && !isEditMode) { alert('Fournisseur requis.'); return; }
+      if (!reqInvoiceRef.trim() && !isEditMode) { alert('N° BL / Facture requis.'); return; }
+    }
     onSubmit({
       lines: reqLines,
-      category: reqCategory,
+      category: pharmacyMode ? 'approvisionnement' : reqCategory,
       supplier: reqSupplier.trim(),
       invoiceRef: reqInvoiceRef.trim(),
       notes: reqGlobalNotes.trim(),
@@ -189,72 +196,102 @@ export default function DemandeAchatForm({
         <div className={`px-5 py-3 ${styles.header} text-white flex items-center justify-between`}>
           <span className="font-bold flex items-center gap-2">
             {isEditMode ? <Edit3 className="w-5 h-5" /> : <Send className="w-5 h-5" />}
-            {isEditMode ? 'Modifier la demande' : 'Nouvelle fenêtre — Demande d\'achat / Réapprovisionnement'} (Saisie Sage)
+            {isEditMode
+              ? 'Modifier la demande'
+              : pharmacyMode
+                ? `Demande d'approvisionnement — ${targetServiceName} → Magasinier`
+                : "Nouvelle fenêtre — Demande d'achat / Réapprovisionnement"} (Saisie Sage)
           </span>
           <button onClick={onClose} className="hover:bg-white/20 rounded p-1 cursor-pointer"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="p-4 overflow-y-auto flex-1 space-y-4">
-          {/* Header info — Achats style */}
+          {/* Header info */}
           <div className={`p-4 ${headerBg} border rounded-xl`}>
             <h4 className={`font-bold flex items-center gap-2 mb-3 ${headerText}`}>
-              <Send className="w-5 h-5" /> Demander un réapprovisionnement au magasinier — {transferCategoryLabel(reqCategory)}
+              <Send className="w-5 h-5" />
+              {pharmacyMode
+                ? `Demande d'appro ${targetServiceName} → dépôt central (magasinier)`
+                : `Demander un réapprovisionnement au magasinier — ${transferCategoryLabel(reqCategory)}`}
             </h4>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">🏷️ Type d'achat *</label>
-                <select
-                  value={reqCategory}
-                  onChange={e => setReqCategory(e.target.value as TransferCategory)}
-                  className={`w-full px-3 py-1.5 border border-slate-300 rounded-lg outline-none focus:ring-2 ${styles.ring} bg-white text-sm text-slate-800 cursor-pointer`}
-                >
-                  {TRANSFER_CATEGORIES.map(c => (
-                    <option key={c} value={c}>{transferCategoryLabel(c)}</option>
-                  ))}
-                </select>
+            {pharmacyMode ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">🏥 Service destinataire</label>
+                  <input readOnly value={targetServiceName} className="w-full px-3 py-1.5 border border-slate-300 rounded-lg bg-slate-100 text-sm text-slate-700 font-medium" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">📝 Motif / Notes</label>
+                  <input
+                    type="text"
+                    value={reqGlobalNotes}
+                    onChange={e => setReqGlobalNotes(e.target.value)}
+                    className={`w-full px-3 py-1.5 border border-slate-300 rounded-lg outline-none focus:ring-2 ${styles.ring} bg-white text-sm text-slate-800`}
+                    placeholder="Ex: Stock bas, urgence, patient en attente..."
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">👤 Fournisseur *</label>
-                <input
-                  type="text"
-                  value={reqSupplier}
-                  onChange={e => setReqSupplier(e.target.value)}
-                  className={`w-full px-3 py-1.5 border border-slate-300 rounded-lg outline-none focus:ring-2 ${styles.ring} bg-white text-sm text-slate-800`}
-                  placeholder="Nom du fournisseur..."
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">📄 N° BL / Facture *</label>
-                <input
-                  type="text"
-                  value={reqInvoiceRef}
-                  onChange={e => setReqInvoiceRef(e.target.value)}
-                  className={`w-full px-3 py-1.5 border border-slate-300 rounded-lg outline-none focus:ring-2 ${styles.ring} bg-white text-sm text-slate-800`}
-                  placeholder="Ex: BL-2026-004..."
-                />
-              </div>
-            </div>
-            <div className="mt-2">
-              <label className="block text-xs font-bold text-slate-700 mb-1">📝 Notes / Motif global</label>
-              <input
-                type="text"
-                value={reqGlobalNotes}
-                onChange={e => setReqGlobalNotes(e.target.value)}
-                className={`w-full px-3 py-1.5 border border-slate-300 rounded-lg outline-none focus:ring-2 ${styles.ring} bg-white text-sm text-slate-800`}
-                placeholder="Ex: Stock bas, urgence bloc opératoire..."
-              />
-            </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">🏷️ Type d'achat *</label>
+                    <select
+                      value={reqCategory}
+                      onChange={e => setReqCategory(e.target.value as TransferCategory)}
+                      className={`w-full px-3 py-1.5 border border-slate-300 rounded-lg outline-none focus:ring-2 ${styles.ring} bg-white text-sm text-slate-800 cursor-pointer`}
+                    >
+                      {TRANSFER_CATEGORIES.map(c => (
+                        <option key={c} value={c}>{transferCategoryLabel(c)}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">👤 Fournisseur *</label>
+                    <input
+                      type="text"
+                      value={reqSupplier}
+                      onChange={e => setReqSupplier(e.target.value)}
+                      className={`w-full px-3 py-1.5 border border-slate-300 rounded-lg outline-none focus:ring-2 ${styles.ring} bg-white text-sm text-slate-800`}
+                      placeholder="Nom du fournisseur..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">📄 N° BL / Facture *</label>
+                    <input
+                      type="text"
+                      value={reqInvoiceRef}
+                      onChange={e => setReqInvoiceRef(e.target.value)}
+                      className={`w-full px-3 py-1.5 border border-slate-300 rounded-lg outline-none focus:ring-2 ${styles.ring} bg-white text-sm text-slate-800`}
+                      placeholder="Ex: BL-2026-004..."
+                    />
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <label className="block text-xs font-bold text-slate-700 mb-1">📝 Notes / Motif global</label>
+                  <input
+                    type="text"
+                    value={reqGlobalNotes}
+                    onChange={e => setReqGlobalNotes(e.target.value)}
+                    className={`w-full px-3 py-1.5 border border-slate-300 rounded-lg outline-none focus:ring-2 ${styles.ring} bg-white text-sm text-slate-800`}
+                    placeholder="Ex: Stock bas, urgence bloc opératoire..."
+                  />
+                </div>
+              </>
+            )}
           </div>
 
-          {/* Category quick pills */}
-          <div className="flex flex-wrap gap-2">
-            {TRANSFER_CATEGORIES.map(c => (
-              <button key={c} onClick={() => setReqCategory(c)} className={`px-3 py-1 rounded-full text-xs font-semibold cursor-pointer border transition ${reqCategory === c ? `${transferCategoryColor(c)} border-transparent shadow` : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-                {transferCategoryLabel(c)}
-              </button>
-            ))}
-          </div>
+          {/* Category quick pills — masqués en mode pharmacie */}
+          {!pharmacyMode && (
+            <div className="flex flex-wrap gap-2">
+              {TRANSFER_CATEGORIES.map(c => (
+                <button key={c} onClick={() => setReqCategory(c)} className={`px-3 py-1 rounded-full text-xs font-semibold cursor-pointer border transition ${reqCategory === c ? `${transferCategoryColor(c)} border-transparent shadow` : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                  {transferCategoryLabel(c)}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Sage Line Editor */}
           <div className="bg-[#f4f4f4] border border-slate-300 rounded text-xs select-none p-1">
@@ -408,7 +445,7 @@ export default function DemandeAchatForm({
             disabled={reqLines.length === 0}
             className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold disabled:opacity-40 cursor-pointer flex items-center gap-2 shadow"
           >
-            <Send className="w-4 h-4" /> {isEditMode ? 'Enregistrer les modifications' : 'Envoyer la demande au magasinier'}
+            <Send className="w-4 h-4" /> {isEditMode ? 'Enregistrer les modifications' : pharmacyMode ? 'Envoyer au magasinier (dépôt central)' : 'Envoyer la demande au magasinier'}
           </button>
         </div>
       </div>
