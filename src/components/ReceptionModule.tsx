@@ -7,17 +7,18 @@ import { printQueueTicket } from '../utils/printTicket';
 import {
   Search, Plus, Edit, Trash2, UserX, Activity,
   X, Check, Ban, Users, LogIn, Hospital,
-  RefreshCw, Stethoscope, MessageCircle
+  Stethoscope, MessageCircle, Info, CalendarDays, FileWarning
 } from 'lucide-react';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; onStaffLogin: () => void; onOpenMessaging: () => void; }
-type ModalType = 'none' | 'add' | 'edit' | 'vitals';
+type ModalType = 'none' | 'add' | 'edit' | 'vitals' | 'blacklistConfirm' | 'blacklistReason' | 'blacklistList' | 'patientInfo';
 
 export default function ReceptionModule({ state, setState, onStaffLogin, onOpenMessaging }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [modal, setModal] = useState<ModalType>('none');
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [blacklistReason, setBlacklistReason] = useState('');
 
 
   const [patientForm, setPatientForm] = useState({
@@ -40,7 +41,6 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
   }, []);
 
   const filteredPatients = state.patients.filter((p) => {
-    if (p.blacklisted) return false;
     const q = searchQuery.toLowerCase();
     const ms = p.firstName.toLowerCase().includes(q) || p.lastName.toLowerCase().includes(q) ||
       p.dossier.toLowerCase().includes(q) || (p.matricule && p.matricule.toLowerCase().includes(q));
@@ -137,14 +137,29 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
     setSelectedPatient(null);
   };
 
-  const handleBlacklist = () => {
-    if (!selectedPatient || !confirm(`Blacklist ${selectedPatient.lastName} ?`)) return;
+  const handleBlacklistClick = () => {
+    if (!selectedPatient) { setModal('blacklistList'); return; }
+    if (selectedPatient.blacklisted) { setModal('blacklistList'); return; }
+    setModal('blacklistConfirm');
+  };
+
+  const confirmBlacklist = () => {
+    setBlacklistReason('');
+    setModal('blacklistReason');
+  };
+
+  const saveBlacklist = () => {
+    if (!selectedPatient || !blacklistReason.trim()) return;
+    const blacklistDate = new Date().toISOString();
     setState((prev) => {
-      const next = { ...prev, patients: prev.patients.map((p) => p.id === selectedPatient.id ? { ...p, blacklisted: true } : p) };
-      addAuditLog(next, 'BLACKLIST', `${selectedPatient.dossier} blacklisté`, selectedPatient.id);
+      const next = { ...prev, patients: prev.patients.map((p) => p.id === selectedPatient.id ? {
+        ...p, blacklisted: true, blacklistReason: blacklistReason.trim(), blacklistDate,
+      } : p) };
+      addAuditLog(next, 'BLACKLIST', `${selectedPatient.dossier} blacklisté — Motif : ${blacklistReason.trim()}`, selectedPatient.id);
       return next;
     });
     setSelectedPatient(null);
+    setModal('none');
   };
 
   const formatLastVisit = (dateStr?: string): string => {
@@ -191,9 +206,8 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
             <button onClick={() => { if (!selectedPatient) return; setPatientForm({ lastName: selectedPatient.lastName, firstName: selectedPatient.firstName, dateOfBirth: selectedPatient.dateOfBirth === 'N/A' ? '' : selectedPatient.dateOfBirth, gender: selectedPatient.gender, address: selectedPatient.address, contact: selectedPatient.contact, ssn: selectedPatient.ssn, matricule: selectedPatient.matricule || '', insureName: selectedPatient.insureName || '', clientType: selectedPatient.clientType === 'externe' ? 'comptoir' : selectedPatient.clientType, company: selectedPatient.company || '', subCompany: selectedPatient.subCompany || '' }); setModal('edit'); }} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Edit className="h-4 w-4" /> Modifier</button>
             <button onClick={handleDeletePatient} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Trash2 className="h-4 w-4" /> Supprimer</button>
             <div className="w-px h-6 bg-slate-300 mx-1" />
-            <button onClick={handleBlacklist} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-600 hover:bg-slate-700 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><UserX className="h-4 w-4" /> Blacklist</button>
-            <div className="w-px h-6 bg-slate-300 mx-1" />
-            <button className="p-1.5 bg-white border border-slate-300 hover:bg-slate-50 rounded shadow-sm transition cursor-pointer" title="Actualiser"><RefreshCw className="h-4 w-4 text-slate-600" /></button>
+            <button onClick={() => selectedPatient && setModal('patientInfo')} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Info className="h-4 w-4" /> Info</button>
+            <button onClick={handleBlacklistClick} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-600 hover:bg-slate-700 text-white rounded text-xs font-bold shadow cursor-pointer"><UserX className="h-4 w-4" /> Blacklist</button>
           </div>
         </div>
       </section>
@@ -215,11 +229,11 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
                   const hv = patient.vitalSigns && (patient.vitalSigns.temperature || patient.vitalSigns.weight);
                   return (
                     <tr key={patient.id} onClick={() => setSelectedPatient(patient)} onDoubleClick={() => handleRowDoubleClick(patient)}
-                      className={`cursor-pointer border-b border-slate-200 transition-colors ${isSel ? 'bg-[#cce5ff] hover:bg-[#b8daff]' : index % 2 === 0 ? 'bg-white hover:bg-slate-100' : 'bg-slate-50 hover:bg-slate-100'}`}>
+                      className={`cursor-pointer border-b transition-colors ${patient.blacklisted ? (isSel ? 'bg-red-200 hover:bg-red-300 border-red-300 text-red-900' : 'bg-red-50 hover:bg-red-100 border-red-200 text-red-700') : isSel ? 'bg-[#cce5ff] hover:bg-[#b8daff] border-slate-200' : index % 2 === 0 ? 'bg-white hover:bg-slate-100 border-slate-200' : 'bg-slate-50 hover:bg-slate-100 border-slate-200'}`}>
                       <td className="p-2 border-r border-slate-200 text-center text-slate-400 font-mono">{index + 1}</td>
                       <td className="p-2 border-r border-slate-200"><span className="font-mono font-bold text-blue-700">{patient.dossier}</span></td>
                       <td className="p-2 border-r border-slate-200 font-mono text-slate-600">{patient.matricule || '—'}</td>
-                      <td className="p-2 border-r border-slate-200 uppercase font-medium"><div className="flex items-center gap-2"><span>{patient.lastName} {patient.firstName}</span>{hv && <span title="Paramètres saisis"><Activity className="w-3 h-3 text-green-600" /></span>}</div></td>
+                      <td className="p-2 border-r border-slate-200 uppercase font-medium"><div className="flex items-center gap-2"><span>{patient.lastName} {patient.firstName}</span>{patient.blacklisted && <span className="rounded bg-red-600 px-1.5 py-0.5 text-[9px] font-bold text-white">BLACKLISTE</span>}{hv && <span title="Paramètres saisis"><Activity className="w-3 h-3 text-green-600" /></span>}</div></td>
                       <td className="p-2 border-r border-slate-200 text-slate-600">{patient.dateOfBirth === 'N/A' ? '—' : new Date(patient.dateOfBirth).toLocaleDateString('fr-FR')}</td>
                       <td className="p-2 border-r border-slate-200 font-medium">{patient.age === 'N/A' ? '—' : patient.age}</td>
                       <td className="p-2 border-r border-slate-200 text-center"><span className={`inline-block w-6 h-6 rounded-full font-bold text-xs leading-6 ${patient.gender === 'F' ? 'bg-pink-100 text-pink-700' : 'bg-blue-100 text-blue-700'}`}>{patient.gender}</span></td>
@@ -271,6 +285,30 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
             </div>
           </div>
         </div>
+      )}
+
+      {/* MODALES : BLACKLIST ET INFORMATIONS */}
+      {modal === 'blacklistConfirm' && selectedPatient && (
+        <ModalShell title="Ajouter à la blacklist" icon={<UserX className="w-5 h-5" />} onClose={() => setModal('none')}>
+          <div className="py-3 text-center"><div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 text-amber-700"><FileWarning className="h-7 w-7" /></div><p className="text-lg font-bold text-slate-800">{selectedPatient.lastName} {selectedPatient.firstName}</p><p className="mt-2 text-sm text-slate-500">Voulez-vous ajouter cette personne à la blacklist ?</p></div>
+          <div className="flex justify-center gap-3"><button onClick={confirmBlacklist} className="rounded-lg bg-red-600 px-6 py-2 font-bold text-white hover:bg-red-700">Oui, ajouter</button><button onClick={() => setModal('none')} className="rounded-lg bg-slate-100 px-6 py-2 font-bold text-slate-700 hover:bg-slate-200">Non</button></div>
+        </ModalShell>
+      )}
+      {modal === 'blacklistReason' && selectedPatient && (
+        <ModalShell title="Motif de mise en blacklist" icon={<UserX className="w-5 h-5" />} onClose={() => setModal('none')}>
+          <p className="mb-3 text-sm text-slate-600">Indiquez le motif pour <strong>{selectedPatient.lastName} {selectedPatient.firstName}</strong>.</p><textarea autoFocus value={blacklistReason} onChange={(e) => setBlacklistReason(e.target.value)} placeholder="Ex. Impayés répétés…" className="min-h-28 w-full rounded-lg border border-slate-300 p-3 text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100" />
+          <div className="mt-4 flex justify-end gap-3"><button onClick={() => setModal('none')} className="rounded-lg px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100">Annuler</button><button onClick={saveBlacklist} disabled={!blacklistReason.trim()} className="rounded-lg bg-red-600 px-5 py-2 font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40">Confirmer</button></div>
+        </ModalShell>
+      )}
+      {modal === 'blacklistList' && (
+        <ModalShell title="Personnes en blacklist" icon={<UserX className="w-5 h-5" />} onClose={() => setModal('none')} wide>
+          <div className="max-h-[55vh] overflow-auto rounded-lg border border-red-100">{state.patients.filter(p => p.blacklisted).length ? <table className="w-full text-left text-sm"><thead className="sticky top-0 bg-red-50 text-red-800"><tr><th className="p-3">Patient</th><th className="p-3">Dossier</th><th className="p-3">Motif</th><th className="p-3">Date</th></tr></thead><tbody>{state.patients.filter(p => p.blacklisted).map(p => <tr key={p.id} className="border-t border-red-100 text-slate-700"><td className="p-3 font-bold">{p.lastName} {p.firstName}</td><td className="p-3 font-mono">{p.dossier}</td><td className="p-3">{p.blacklistReason || 'Motif non renseigné'}</td><td className="p-3 whitespace-nowrap">{p.blacklistDate ? new Date(p.blacklistDate).toLocaleDateString('fr-FR') : '—'}</td></tr>)}</tbody></table> : <div className="p-10 text-center text-slate-500"><Users className="mx-auto mb-2 h-10 w-10 text-slate-300" />Aucune personne en blacklist.</div>}</div>
+        </ModalShell>
+      )}
+      {modal === 'patientInfo' && selectedPatient && (
+        <ModalShell title="Informations du patient" icon={<Info className="w-5 h-5" />} onClose={() => setModal('none')}>
+          <div className="rounded-xl bg-gradient-to-br from-blue-50 to-slate-50 p-5"><div className="mb-5 text-center"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-xl font-bold text-white">{selectedPatient.firstName[0]}{selectedPatient.lastName[0]}</div><h3 className="mt-2 text-xl font-bold text-slate-800">{selectedPatient.lastName} {selectedPatient.firstName}</h3><p className="font-mono text-sm text-blue-700">{selectedPatient.dossier}</p></div><div className="grid grid-cols-2 gap-3 text-sm"><InfoLine label="Date de naissance" value={selectedPatient.dateOfBirth === 'N/A' ? '—' : new Date(selectedPatient.dateOfBirth).toLocaleDateString('fr-FR')} /><InfoLine label="Âge" value={selectedPatient.age} /><InfoLine label="Téléphone" value={selectedPatient.contact || '—'} /><InfoLine label="Adresse" value={selectedPatient.address || '—'} /><InfoLine label="Assuré" value={selectedPatient.insureName || '—'} /><InfoLine label="Type client" value={selectedPatient.clientType} /></div>{selectedPatient.blacklisted && <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800"><b>⚠ Personne blacklistée</b><br />Motif : {selectedPatient.blacklistReason || 'Non renseigné'}</div>}</div>
+        </ModalShell>
       )}
 
       {/* MODAL: SAISIE PARAMÈTRES */}
@@ -340,3 +378,6 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
     </div>
   );
 }
+
+function ModalShell({ title, icon, onClose, children, wide = false }: { title: string; icon: React.ReactNode; onClose: () => void; children: React.ReactNode; wide?: boolean }) { return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"><div className={`w-full ${wide ? 'max-w-4xl' : 'max-w-lg'} overflow-hidden rounded-2xl bg-white shadow-2xl`}><div className="flex items-center justify-between bg-gradient-to-r from-slate-800 to-slate-700 px-5 py-4 text-white"><div className="flex items-center gap-2 font-bold">{icon}{title}</div><button onClick={onClose} className="rounded p-1 hover:bg-white/15"><X className="h-5 w-5" /></button></div><div className="p-5">{children}</div></div></div>; }
+function InfoLine({ label, value }: { label: string; value: string }) { return <div className="rounded-lg border border-slate-200 bg-white p-3"><p className="text-xs font-medium text-slate-400">{label}</p><p className="mt-1 font-semibold text-slate-700">{value}</p></div>; }

@@ -35,6 +35,7 @@ export interface Patient {
   registeredAt: string; registeredBy: string; status: PatientStatus;
   lastVisitAt?: string;
   assignedDoctor?: string; assignedSpecialty?: string; blacklisted?: boolean;
+  blacklistReason?: string; blacklistDate?: string;
 }
 
 export interface Article {
