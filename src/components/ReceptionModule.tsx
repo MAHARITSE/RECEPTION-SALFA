@@ -162,6 +162,41 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
     setModal('none');
   };
 
+  const handleBlacklistToggle = (patient: Patient) => {
+    if (patient.blacklisted) {
+      if (!confirm(`Retirer ${patient.lastName} ${patient.firstName} de la blacklist ?`)) return;
+      setState((prev) => {
+        const next = { ...prev, patients: prev.patients.map((p) => p.id === patient.id ? { ...p, blacklisted: false, blacklistReason: undefined, blacklistDate: undefined } : p) };
+        addAuditLog(next, 'UNBLACKLIST', `${patient.dossier} retiré de blacklist`, patient.id);
+        return next;
+      });
+    } else {
+      setSelectedPatient(patient);
+      setBlacklistReason('');
+      setModal('blacklistReason');
+    }
+  };
+
+  // Check if vitals editable within 24h
+  const canEditVitals = (patient: Patient): boolean => {
+    if (!patient.lastVisitAt) return true;
+    const last = new Date(patient.lastVisitAt).getTime();
+    const now = Date.now();
+    return (now - last) < 24 * 60 * 60 * 1000; // 24h
+  };
+
+  const openVitalsForPatient = (patient: Patient) => {
+    setSelectedPatient(patient);
+    setVitalsForm(patient.vitalSigns || {
+      temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '',
+      heartRate: '', oxygenSaturation: '', weight: '', height: '', tdr: '',
+    });
+    setVitalsClientType(patient.clientType === 'externe' ? 'comptoir' : patient.clientType);
+    setVitalsCompany(patient.company || '');
+    setVitalsSubCompany(patient.subCompany || '');
+    setModal('vitals');
+  };
+
   const formatLastVisit = (dateStr?: string): string => {
     if (!dateStr) return '—';
     return new Date(dateStr).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -221,7 +256,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
           <div className="overflow-auto flex-1">
             <table className="w-full text-left border-collapse text-xs">
               <thead className="bg-gradient-to-b from-[#4a6fa5] to-[#3d5a80] text-white sticky top-0 z-10">
-                <tr><th className="p-2 border-r border-[#5a7fb5] w-10 text-center">#</th><th className="p-2 border-r border-[#5a7fb5] w-20">Dossier</th><th className="p-2 border-r border-[#5a7fb5] w-20">Matricule</th><th className="p-2 border-r border-[#5a7fb5] min-w-[200px]">Nom et Prénom</th><th className="p-2 border-r border-[#5a7fb5] w-24">Date Nais.</th><th className="p-2 border-r border-[#5a7fb5] w-16">Age</th><th className="p-2 border-r border-[#5a7fb5] w-12 text-center">Sexe</th><th className="p-2 border-r border-[#5a7fb5] w-28">Téléphone</th><th className="p-2 border-r border-[#5a7fb5] min-w-[120px]">Adresse</th><th className="p-2 border-r border-[#5a7fb5] w-32">Dernière visite</th><th className="p-2 min-w-[120px]">Assuré</th></tr>
+                <tr><th className="p-2 border-r border-[#5a7fb5] w-10 text-center">#</th><th className="p-2 border-r border-[#5a7fb5] w-8 text-center">BL</th><th className="p-2 border-r border-[#5a7fb5] w-8 text-center">P</th><th className="p-2 border-r border-[#5a7fb5] w-20">Dossier</th><th className="p-2 border-r border-[#5a7fb5] w-20">Matricule</th><th className="p-2 border-r border-[#5a7fb5] min-w-[200px]">Nom et Prénom</th><th className="p-2 border-r border-[#5a7fb5] w-24">Date Nais.</th><th className="p-2 border-r border-[#5a7fb5] w-16">Age</th><th className="p-2 border-r border-[#5a7fb5] w-12 text-center">Sexe</th><th className="p-2 border-r border-[#5a7fb5] w-28">Téléphone</th><th className="p-2 border-r border-[#5a7fb5] min-w-[120px]">Adresse</th><th className="p-2 border-r border-[#5a7fb5] w-32">Dernière visite</th><th className="p-2 min-w-[120px]">Société</th></tr>
               </thead>
               <tbody>
                 {filteredPatients.map((patient, index) => {
@@ -231,6 +266,25 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
                     <tr key={patient.id} onClick={() => setSelectedPatient(patient)} onDoubleClick={() => handleRowDoubleClick(patient)}
                       className={`cursor-pointer border-b transition-colors ${patient.blacklisted ? (isSel ? 'bg-red-200 hover:bg-red-300 border-red-300 text-red-900' : 'bg-red-50 hover:bg-red-100 border-red-200 text-red-700') : isSel ? 'bg-[#cce5ff] hover:bg-[#b8daff] border-slate-200' : index % 2 === 0 ? 'bg-white hover:bg-slate-100 border-slate-200' : 'bg-slate-50 hover:bg-slate-100 border-slate-200'}`}>
                       <td className="p-2 border-r border-slate-200 text-center text-slate-400 font-mono">{index + 1}</td>
+                      <td className="p-2 border-r border-slate-200 text-center">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleBlacklistToggle(patient); }}
+                          className={`px-1 py-0.5 rounded text-[9px] ${patient.blacklisted ? 'bg-red-600 text-white' : 'bg-slate-200 text-slate-600 hover:bg-red-100'}`}
+                          title={patient.blacklisted ? 'Retirer de la blacklist' : 'Mettre en blacklist'}
+                        >
+                          {patient.blacklisted ? '✓' : 'BL'}
+                        </button>
+                      </td>
+                      <td className="p-2 border-r border-slate-200 text-center">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openVitalsForPatient(patient); }}
+                          className={`px-1 py-0.5 rounded text-[9px] ${patient.vitalSigns && (patient.vitalSigns.temperature || patient.vitalSigns.weight) ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-600 hover:bg-emerald-100'}`}
+                          title="Paramètres (modifiable 24h)"
+                          disabled={!canEditVitals(patient) && patient.vitalSigns && (patient.vitalSigns.temperature || patient.vitalSigns.weight)}
+                        >
+                          P
+                        </button>
+                      </td>
                       <td className="p-2 border-r border-slate-200"><span className="font-mono font-bold text-blue-700">{patient.dossier}</span></td>
                       <td className="p-2 border-r border-slate-200 font-mono text-slate-600">{patient.matricule || '—'}</td>
                       <td className="p-2 border-r border-slate-200 uppercase font-medium"><div className="flex items-center gap-2"><span>{patient.lastName} {patient.firstName}</span>{patient.blacklisted && <span className="rounded bg-red-600 px-1.5 py-0.5 text-[9px] font-bold text-white">BLACKLISTE</span>}{hv && <span title="Paramètres saisis"><Activity className="w-3 h-3 text-green-600" /></span>}</div></td>
@@ -244,7 +298,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
                     </tr>
                   );
                 })}
-                {filteredPatients.length === 0 && <tr><td colSpan={11} className="p-12 text-center text-slate-400"><Users className="w-12 h-12 mx-auto mb-2 opacity-30" /><p className="font-medium">Aucun patient trouvé</p></td></tr>}
+                {filteredPatients.length === 0 && <tr><td colSpan={13} className="p-12 text-center text-slate-400"><Users className="w-12 h-12 mx-auto mb-2 opacity-30" /><p className="font-medium">Aucun patient trouvé</p></td></tr>}
               </tbody>
             </table>
           </div>
@@ -272,7 +326,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
                 </div>
                 <div className="space-y-3">
                   <div><label className="block font-bold text-slate-700 mb-1">Matricule</label><input type="text" value={patientForm.matricule} onChange={(e) => setPatientForm({ ...patientForm, matricule: e.target.value })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 font-mono focus:outline-none focus:border-blue-500" /></div>
-                  <div><label className="block font-bold text-slate-700 mb-1">Assuré</label><input type="text" value={patientForm.insureName} onChange={(e) => setPatientForm({ ...patientForm, insureName: e.target.value })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 uppercase focus:outline-none focus:border-blue-500" /></div>
+                  <div><label className="block font-bold text-slate-700 mb-1">Société</label><input type="text" value={patientForm.insureName} onChange={(e) => setPatientForm({ ...patientForm, insureName: e.target.value })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 uppercase focus:outline-none focus:border-blue-500" /></div>
                   <div><label className="block font-bold text-slate-700 mb-1">Adresse</label><input type="text" value={patientForm.address} onChange={(e) => setPatientForm({ ...patientForm, address: e.target.value })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 uppercase focus:outline-none focus:border-blue-500" /></div>
                   <div><label className="block font-bold text-slate-700 mb-1">Type Client</label><select value={patientForm.clientType} onChange={(e) => setPatientForm({ ...patientForm, clientType: e.target.value as ClientType })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 focus:outline-none focus:border-blue-500 cursor-pointer"><option value="comptoir">Client Comptoir</option><option value="societe">Client Société</option></select></div>
                   {patientForm.clientType === 'societe' && <div><label className="block font-bold text-slate-700 mb-1">Société</label><select value={patientForm.company} onChange={(e) => setPatientForm({ ...patientForm, company: e.target.value })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 focus:outline-none focus:border-blue-500 cursor-pointer"><option value="">—</option>{state.companies.map((c) => (<option key={c.id} value={c.name}>{c.name}</option>))}</select></div>}
@@ -302,7 +356,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
       )}
       {modal === 'blacklistList' && (
         <ModalShell title="Personnes en blacklist" icon={<UserX className="w-5 h-5" />} onClose={() => setModal('none')} wide>
-          <div className="max-h-[55vh] overflow-auto rounded-lg border border-red-100">{state.patients.filter(p => p.blacklisted).length ? <table className="w-full text-left text-sm"><thead className="sticky top-0 bg-red-50 text-red-800"><tr><th className="p-3">Patient</th><th className="p-3">Dossier</th><th className="p-3">Motif</th><th className="p-3">Date</th></tr></thead><tbody>{state.patients.filter(p => p.blacklisted).map(p => <tr key={p.id} className="border-t border-red-100 text-slate-700"><td className="p-3 font-bold">{p.lastName} {p.firstName}</td><td className="p-3 font-mono">{p.dossier}</td><td className="p-3">{p.blacklistReason || 'Motif non renseigné'}</td><td className="p-3 whitespace-nowrap">{p.blacklistDate ? new Date(p.blacklistDate).toLocaleDateString('fr-FR') : '—'}</td></tr>)}</tbody></table> : <div className="p-10 text-center text-slate-500"><Users className="mx-auto mb-2 h-10 w-10 text-slate-300" />Aucune personne en blacklist.</div>}</div>
+          <div className="max-h-[55vh] overflow-auto rounded-lg border border-red-100">{state.patients.filter(p => p.blacklisted).length ? <table className="w-full text-left text-sm"><thead className="sticky top-0 bg-red-50 text-red-800"><tr><th className="p-3">Patient</th><th className="p-3">Dossier</th><th className="p-3">Motif</th><th className="p-3">Date</th><th className="p-3 w-20"></th></tr></thead><tbody>{state.patients.filter(p => p.blacklisted).map(p => <tr key={p.id} className="border-t border-red-100 text-slate-700"><td className="p-3 font-bold">{p.lastName} {p.firstName}</td><td className="p-3 font-mono">{p.dossier}</td><td className="p-3">{p.blacklistReason || 'Motif non renseigné'}</td><td className="p-3 whitespace-nowrap">{p.blacklistDate ? new Date(p.blacklistDate).toLocaleDateString('fr-FR') : '—'}</td><td className="p-3"><button onClick={() => { if(confirm('Retirer de la blacklist ?')) { setState((prev:any) => ({...prev, patients: prev.patients.map((pp:any) => pp.id===p.id ? {...pp, blacklisted:false, blacklistReason:undefined, blacklistDate:undefined} : pp)})); } }} className="px-2 py-0.5 bg-white border border-red-300 text-red-600 rounded text-xs hover:bg-red-50">Supprimer</button></td></tr>)}</tbody></table> : <div className="p-10 text-center text-slate-500"><Users className="mx-auto mb-2 h-10 w-10 text-slate-300" />Aucune personne en blacklist.</div>}</div>
         </ModalShell>
       )}
       {modal === 'patientInfo' && selectedPatient && (

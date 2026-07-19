@@ -120,7 +120,7 @@ export default function MedicalRecordModule({ state, patientId, onBack }: Props)
                   <th className="p-2 text-left">Nom et Prénom</th>
                   <th className="p-2 text-center">Sexe</th>
                   <th className="p-2 text-left">Âge</th>
-                  <th className="p-2 text-left">Assuré / Société</th>
+                  <th className="p-2 text-left">Société</th>
                   <th className="p-2 text-left">Statut</th>
                 </tr>
               </thead>
@@ -299,6 +299,11 @@ export default function MedicalRecordModule({ state, patientId, onBack }: Props)
                             </li>
                           ))}
                         </ul>
+                      </div>
+                    )}
+                    {state.currentUser?.role === 'doctor' && (
+                      <div className="mt-2 pt-2 border-t text-xs">
+                        <button className="px-2 py-0.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700" onClick={() => alert('Ajout observation médecin (simulé) — dossier mis à jour.')}>+ Ajouter observation médecin</button>
                       </div>
                     )}
                   </div>
