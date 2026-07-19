@@ -18,7 +18,6 @@ const roleIcons: Record<string, React.ReactNode> = {
   pharmacy: <Pill className="w-5 h-5" />,
   magasinier: <Building2 className="w-5 h-5" />,
   laboratory: <FlaskConical className="w-5 h-5" />,
-  hospitalization: <Building2 className="w-5 h-5" />,
   admin: <UserIcon className="w-5 h-5" />,
 };
 
@@ -28,7 +27,6 @@ const roleLabels: Record<string, string> = {
   pharmacy: 'Pharmacie',
   magasinier: 'Magasinier',
   laboratory: 'Laboratoire',
-  hospitalization: 'Hospitalisation',
   admin: 'Administrateur',
 };
 
@@ -38,7 +36,6 @@ const roleColors: Record<string, string> = {
   pharmacy: 'bg-purple-600 hover:bg-purple-700',
   magasinier: 'bg-orange-600 hover:bg-orange-700',
   laboratory: 'bg-cyan-600 hover:bg-cyan-700',
-  hospitalization: 'bg-rose-600 hover:bg-rose-700',
   admin: 'bg-slate-700 hover:bg-slate-800',
 };
 
@@ -168,8 +165,7 @@ export default function LoginScreen({ users, onLogin, onBack }: LoginScreenProps
               Caisse: <code className="bg-slate-600 px-1 rounded">caisse123</code><br />
               Pharmacie: <code className="bg-slate-600 px-1 rounded">pharma123</code> • 
               Magasin: <code className="bg-slate-600 px-1 rounded">mag123</code><br />
-              Labo: <code className="bg-slate-600 px-1 rounded">labo123</code> • 
-              Hosp: <code className="bg-slate-600 px-1 rounded">hosp123</code><br />
+              Labo: <code className="bg-slate-600 px-1 rounded">labo123</code><br />
               Admin: <code className="bg-slate-600 px-1 rounded">admin123</code>
             </p>
           </div>

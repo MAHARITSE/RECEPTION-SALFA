@@ -24,7 +24,6 @@ const roleLabels: Record<string, string> = {
   pharmacy: 'Pharmacie',
   magasinier: 'Magasinier',
   laboratory: 'Laboratoire',
-  hospitalization: 'Hospitalisation',
   admin: 'Administrateur',
 };
 
@@ -35,7 +34,6 @@ const roleIcons: Record<string, React.ReactNode> = {
   pharmacy: <Pill className="w-5 h-5" />,
   magasinier: <Building2 className="w-5 h-5" />,
   laboratory: <FlaskConical className="w-5 h-5" />,
-  hospitalization: <Building2 className="w-5 h-5" />,
   admin: <UserCircle className="w-5 h-5" />,
 };
 
@@ -46,7 +44,6 @@ const roleBg: Record<string, string> = {
   pharmacy: 'bg-purple-600',
   magasinier: 'bg-orange-600',
   laboratory: 'bg-cyan-600',
-  hospitalization: 'bg-rose-600',
   admin: 'bg-slate-700',
 };
 

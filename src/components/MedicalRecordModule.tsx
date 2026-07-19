@@ -16,7 +16,7 @@ interface Props {
 }
 
 type DispLab = { lr: LabRequest; doctorName: string; consultationId?: string };
-type Tab = 'parcours' | 'consultations' | 'analyses' | 'hospitalisation' | 'factures';
+type Tab = 'parcours' | 'consultations' | 'analyses' | 'factures';
 
 const statusCfg: Record<string, { label: string; bg: string; text: string }> = {
   registered: { label: 'Enregistré', bg: 'bg-slate-200', text: 'text-slate-700' },
@@ -27,9 +27,6 @@ const statusCfg: Record<string, { label: string; bg: string; text: string }> = {
   medications_delivered: { label: '💊 Délivré', bg: 'bg-emerald-200', text: 'text-emerald-800' },
   analyses_pending: { label: '🧪 Analyse', bg: 'bg-cyan-200', text: 'text-cyan-800' },
   analyses_complete: { label: '🧪 Résultats', bg: 'bg-teal-200', text: 'text-teal-800' },
-  hospitalized: { label: '🏨 Hospit.', bg: 'bg-rose-200', text: 'text-rose-800' },
-  surgery_planned: { label: '🏥 Bloc', bg: 'bg-red-200', text: 'text-red-800' },
-  discharged: { label: '✅ Sorti', bg: 'bg-emerald-200', text: 'text-emerald-800' },
   completed: { label: '✅ Terminé', bg: 'bg-emerald-200', text: 'text-emerald-800' },
 };
 
@@ -45,9 +42,6 @@ export default function MedicalRecordModule({ state, patientId, onBack }: Props)
 
   const consultations = pid
     ? state.consultations.filter((c) => c.patientId === pid).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    : [];
-  const hospitalizations = pid
-    ? state.hospitalizations.filter((h) => h.patientId === pid).sort((a, b) => new Date(b.admissionDate).getTime() - new Date(a.admissionDate).getTime())
     : [];
   const invoices = pid
     ? state.invoices.filter((i) => i.patientId === pid).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
@@ -184,7 +178,7 @@ export default function MedicalRecordModule({ state, patientId, onBack }: Props)
           </div>
           <div className="flex gap-2">
             <button
-              onClick={() => printDossierTicket(state.ticketSettings, patient, { consultations, labRequests: allLabs.map((d) => d.lr), hospitalizations, invoices, journey })}
+              onClick={() => printDossierTicket(state.ticketSettings, patient, { consultations, labRequests: allLabs.map((d) => d.lr), invoices, journey })}
               className="px-3 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm flex items-center gap-2 cursor-pointer"
             >
               <Printer className="w-4 h-4" /> Imprimer le dossier
@@ -247,7 +241,6 @@ export default function MedicalRecordModule({ state, patientId, onBack }: Props)
             { key: 'parcours' as Tab, icon: <Route className="w-4 h-4" />, label: `Parcours (${journey.length})` },
             { key: 'consultations' as Tab, icon: <Stethoscope className="w-4 h-4" />, label: `Consult. (${consultations.length})` },
             { key: 'analyses' as Tab, icon: <FlaskConical className="w-4 h-4" />, label: `Analyses (${labCount})` },
-            { key: 'hospitalisation' as Tab, icon: <Building2 className="w-4 h-4" />, label: `Hospit. (${hospitalizations.length})` },
             { key: 'factures' as Tab, icon: <Receipt className="w-4 h-4" />, label: `Factures (${invoices.length})` },
           ].map((t) => (
             <button
@@ -380,38 +373,6 @@ export default function MedicalRecordModule({ state, patientId, onBack }: Props)
                   </div>
                 );
               })}
-            </div>
-          )}
-
-          {/* HOSPITALISATION */}
-          {tab === 'hospitalisation' && (
-            <div className="space-y-3">
-              {hospitalizations.length === 0 && <p className="text-slate-400 text-sm text-center py-6">Aucune hospitalisation.</p>}
-              {hospitalizations.map((h) => (
-                <div key={h.id} className="border border-slate-200 rounded-xl overflow-hidden">
-                  <div className="p-3 bg-rose-50 flex items-center justify-between">
-                    <div>
-                      <div className="font-semibold text-slate-800">{h.service} — Chambre {h.roomNumber}, Lit {h.bedNumber}</div>
-                      <div className="text-xs text-slate-500">
-                        Admission: {new Date(h.admissionDate).toLocaleDateString('fr-FR')}
-                        {h.dischargeDate ? ` · Sortie: ${new Date(h.dischargeDate).toLocaleDateString('fr-FR')}` : ' · En cours'}
-                      </div>
-                    </div>
-                    <span className={`px-2 py-0.5 rounded text-xs font-bold ${h.status === 'active' ? 'bg-rose-200 text-rose-800' : 'bg-emerald-200 text-emerald-800'}`}>
-                      {h.status === 'active' ? 'En cours' : 'Terminé'}
-                    </span>
-                  </div>
-                  <div className="p-3 space-y-1">
-                    {h.dailyNotes.map((n) => (
-                      <div key={n.id} className="text-xs border-b border-slate-100 pb-1">
-                        <span className="font-medium text-slate-600">{new Date(n.date).toLocaleDateString('fr-FR')} — {n.authorName} :</span>
-                        <span className="text-slate-700"> {n.nursingCare}{n.doctorObservations ? ` / ${n.doctorObservations}` : ''}</span>
-                        {n.medicationsAdministered.length > 0 && <span className="text-slate-500"> · Médicaments: {n.medicationsAdministered.join(', ')}</span>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
             </div>
           )}
 

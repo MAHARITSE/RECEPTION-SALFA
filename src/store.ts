@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import type {
-  Patient, Consultation, Invoice, CashClosing, Article, Bed, AuditLog, VitalSigns, Prescription,
-  Notification, HospitalizationRecord, UserRole, User, Company, Fournisseur, Famille,
+  Patient, Consultation, Invoice, CashClosing, Article, AuditLog, VitalSigns, Prescription,
+  Notification, UserRole, User, Company, Fournisseur, Famille,
   Message, StockTransfer, StockEntry, ClientType, ArticleFamily, TransferCategory,
   LabExamCatalog, LabCategory, LabRequest, PatientJourneyEvent, JourneyDepartment,
   WarehouseService, StockMovement, InventorySession, StockLocation,
@@ -43,16 +43,6 @@ const seedArticles: Article[] = [
   art('Anesthésique dentaire','DENT','cartouche',3000,2500,3500,1200,40,15,10,5),
   art('Gel échographie','ECHO','flacon',5000,4000,6000,2000,12,4,5,2),
   art('Papier thermique','ECHO','rouleau',2000,1800,2500,800,25,8,5,3),
-];
-
-const seedBeds: Bed[] = [
-  { id: uuidv4(), service: 'Médecine Générale', roomNumber: '101', bedNumber: 'A', occupied: false },
-  { id: uuidv4(), service: 'Médecine Générale', roomNumber: '101', bedNumber: 'B', occupied: false },
-  { id: uuidv4(), service: 'Chirurgie', roomNumber: '201', bedNumber: 'A', occupied: false },
-  { id: uuidv4(), service: 'Chirurgie', roomNumber: '201', bedNumber: 'B', occupied: false },
-  { id: uuidv4(), service: 'Cardiologie', roomNumber: '301', bedNumber: 'A', occupied: false },
-  { id: uuidv4(), service: 'Pédiatrie', roomNumber: '401', bedNumber: 'A', occupied: false },
-  { id: uuidv4(), service: 'Réanimation', roomNumber: '501', bedNumber: 'A', occupied: false },
 ];
 
 const seedCompanies: Company[] = [
@@ -156,7 +146,6 @@ const users: User[] = [
   { id: 'PHA001', name: 'Fatima Benali', role: 'pharmacy', password: 'pharma123' },
   { id: 'MAG001', name: 'Ali Rasolofo', role: 'magasinier', password: 'mag123' },
   { id: 'LAB001', name: 'Thomas Nguyen', role: 'laboratory', password: 'labo123' },
-  { id: 'HOS001', name: 'Claire Moreau', role: 'hospitalization', password: 'hosp123' },
   { id: 'ADM001', name: 'Admin Système', role: 'admin', password: 'admin123' },
 ];
 
@@ -164,7 +153,6 @@ export const CONSULTATION_FEE = 10000;
 export const LAB_FEE = 15000;
 export const LAB_FEE_URGENT = 25000;
 export const SURGERY_FEE = 500000;
-export const HOSPITALIZATION_FEE = 80000;
 
 export const SEED_FOURNISSEURS: Fournisseur[] = [
   { id: 'fourn-1', name: 'PHARMA LABS S.A.', contactPerson: 'M. Rabe', phone: '034 00 111 22', email: 'contact@pharmalabs.mg', address: 'Ankorondrano, Antananarivo', nif: '1000234567', stat: '51301 11 2018 0 00123' },
@@ -182,8 +170,8 @@ export const SEED_FAMILLES: Famille[] = [
 
 export interface AppState {
   currentUser: User | null; ticketSettings: import('./types').TicketSettings; patients: Patient[]; consultations: Consultation[];
-  invoices: Invoice[]; cashClosings: CashClosing[]; articles: Article[]; beds: Bed[];
-  hospitalizations: HospitalizationRecord[]; stockTransfers: StockTransfer[];
+  invoices: Invoice[]; cashClosings: CashClosing[]; articles: Article[];
+  stockTransfers: StockTransfer[];
   stockEntries: StockEntry[]; auditLogs: AuditLog[]; notifications: Notification[];
   messages: Message[]; users: User[]; companies: Company[];
   fournisseurs: Fournisseur[];
@@ -207,7 +195,6 @@ export function createInitialState(): AppState {
   const leaConsultId = uuidv4();
   const leaInvoiceId = uuidv4();
   const leaLabInvoiceId = uuidv4();
-  const leaHospId = uuidv4();
   const leaNfsId = uuidv4();
   const leaGlyId = uuidv4();
 
@@ -282,16 +269,6 @@ export function createInitialState(): AppState {
     },
   ];
 
-  const leaHosp: HospitalizationRecord = {
-    id: leaHospId, patientId: leaId, consultationId: leaConsultId, service: 'Médecine Générale',
-    roomNumber: '101', bedNumber: 'A', admissionDate: daysAgo(4), dischargeDate: daysAgo(2),
-    dailyNotes: [
-      { id: uuidv4(), date: daysAgo(4), authorId: 'HOS001', authorName: 'Claire Moreau', nursingCare: 'Surveillance constante, antipyrétique', doctorObservations: 'Adapter antibiothérapie', medicationsAdministered: ['Amoxicilline 1g'] },
-      { id: uuidv4(), date: daysAgo(3), authorId: 'HOS001', authorName: 'Claire Moreau', nursingCare: 'Amélioration clinique', doctorObservations: 'Poursuivre traitement', medicationsAdministered: ['Amoxicilline 1g', 'Paracétamol'] },
-    ],
-    status: 'discharged',
-  };
-
   const leaJourney: PatientJourneyEvent[] = [
     { id: uuidv4(), patientId: leaId, timestamp: daysAgo(5), department: 'reception', action: 'Enregistrement patient', status: 'registered', details: 'Dossier AND104 créé — TELMA', actorName: 'Réception' },
     { id: uuidv4(), patientId: leaId, timestamp: daysAgo(5), department: 'reception', action: 'Adressé au médecin', status: 'waiting_consultation', details: 'Paramètres vitaux saisis', actorName: 'Réception' },
@@ -303,8 +280,6 @@ export function createInitialState(): AppState {
     { id: uuidv4(), patientId: leaId, timestamp: daysAgo(4), department: 'laboratoire', action: 'Résultats validés', status: 'completed', details: 'Glycémie à jeun — Normal', actorId: 'LAB001', actorName: 'Thomas Nguyen', labRequestId: leaGlyId },
     { id: uuidv4(), patientId: leaId, timestamp: daysAgo(4), department: 'caisse', action: 'Paiement enregistré', status: 'invoice_paid', details: '17 000 Ar (pharmacie) + 30 000 Ar (labo)', actorId: 'CAS001', actorName: 'Pierre Duval', invoiceId: leaInvoiceId },
     { id: uuidv4(), patientId: leaId, timestamp: daysAgo(4), department: 'pharmacie', action: 'Médicaments délivrés', status: 'medications_delivered', details: 'Amoxicilline 1g ×6, Paracétamol ×10', actorName: 'Fatima Benali' },
-    { id: uuidv4(), patientId: leaId, timestamp: daysAgo(4), department: 'hospitalisation', action: 'Admission', status: 'hospitalized', details: 'Médecine Générale — Chambre 101 Lit A', actorId: 'HOS001', actorName: 'Claire Moreau', hospitalizationId: leaHospId },
-    { id: uuidv4(), patientId: leaId, timestamp: daysAgo(2), department: 'hospitalisation', action: 'Sortie', status: 'discharged', details: 'Guérison — retour domicile', actorId: 'HOS001', actorName: 'Claire Moreau', hospitalizationId: leaHospId },
   ];
 
   const baseJourney: PatientJourneyEvent[] = seedPatients.map((p) => ({
@@ -427,7 +402,7 @@ export function createInitialState(): AppState {
       invoicePrefix: 'FAC', ticketFooter2: '', ticketHeaderColor: '#1e40af',
     },
     patients: [...seedPatients, lea, ...demoPatients, ...morePatients], consultations: [leaConsult, ...demoConsultations], invoices: [leaInvoice, leaLabInvoice, ...demoInvoices], cashClosings: [],
-    articles: [...seedArticles], beds: [...seedBeds], hospitalizations: [leaHosp],
+    articles: [...seedArticles],
     stockTransfers: [], stockEntries: [], auditLogs: [], notifications: [],
     messages: [], users: [...users], companies: [...seedCompanies],
     fournisseurs: [...SEED_FOURNISSEURS],

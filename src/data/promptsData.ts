@@ -101,6 +101,5 @@ export const WEB_PROMPT = `# Prompt Web — MediCare HIS / RECEPTION SALFA v3.0
 - **Pharmacie (PHA001)** : Délivrance sur ordonnance payée, stock pharmacie indépendant, demande réappro.
 - **Magasinier (MAG001)** : Stock central, achats fournisseurs style Sage (N° BL, péremption), transferts vers pharmacie.
 - **Laboratoire (LAB001)** : Saisie résultats analyses, normes automatiques, alertes hors normes.
-- **Hospitalisation (HOS001)** : Gestion des lits et séjours.
 - **Admin (ADM001)** : Gestion utilisateurs, articles, 3 tarifs (comptoir, société, externe), sociétés partenaires.
 `;
