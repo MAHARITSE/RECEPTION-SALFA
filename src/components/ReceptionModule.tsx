@@ -223,6 +223,31 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
     setModal('vitals');
   };
 
+  /**
+   * Dernière visite : lastVisitAt si renseigné, sinon dernière facture payée,
+   * sinon dernière consultation, sinon date d'enregistrement.
+   * Corrige les fiches déjà payées dont lastVisitAt était resté vide.
+   */
+  const resolveLastVisit = (patient: Patient): string | undefined => {
+    if (patient.lastVisitAt) return patient.lastVisitAt;
+    const paidDates = state.invoices
+      .filter((i) => i.patientId === patient.id && i.status === 'paid' && i.paidAt)
+      .map((i) => i.paidAt as string);
+    const consultDates = state.consultations
+      .filter((c) => c.patientId === patient.id)
+      .map((c) => c.date);
+    const journeyDates = state.journey
+      .filter((j) => j.patientId === patient.id && (j.department === 'reception' || j.department === 'caisse' || j.department === 'consultation'))
+      .map((j) => j.timestamp);
+    const all = [...paidDates, ...consultDates, ...journeyDates].filter(Boolean);
+    if (all.length === 0) {
+      // Patient déjà en parcours (payé / consulté) sans historique → registeredAt
+      if (patient.status && patient.status !== 'registered') return patient.registeredAt;
+      return undefined;
+    }
+    return all.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
+  };
+
   const formatLastVisit = (dateStr?: string): string => {
     if (!dateStr) return '—';
     return new Date(dateStr).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -319,7 +344,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
                       <td className="p-2 border-r border-slate-200 text-center"><span className={`inline-block w-6 h-6 rounded-full font-bold text-xs leading-6 ${patient.gender === 'F' ? 'bg-pink-100 text-pink-700' : 'bg-blue-100 text-blue-700'}`}>{patient.gender}</span></td>
                       <td className="p-2 border-r border-slate-200 font-mono text-slate-600">{patient.contact || '—'}</td>
                       <td className="p-2 border-r border-slate-200 uppercase truncate text-slate-600">{patient.address || '—'}</td>
-                      <td className="p-2 border-r border-slate-200 text-slate-600 font-mono">{formatLastVisit(patient.lastVisitAt)}</td>
+                      <td className="p-2 border-r border-slate-200 text-slate-600 font-mono">{formatLastVisit(resolveLastVisit(patient))}</td>
                       <td className="p-2 uppercase truncate text-slate-600">{patient.company || patient.insureName || '—'}</td>
                     </tr>
                   );

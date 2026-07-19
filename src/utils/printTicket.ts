@@ -1,4 +1,4 @@
-import type { Invoice, Patient, TicketSettings, User, Prescription, LabRequest, HospitalizationRecord, Company, Consultation, PatientJourneyEvent } from '../types';
+import type { Invoice, Patient, TicketSettings, User, Prescription, LabRequest, HospitalizationRecord, Company, Consultation, PatientJourneyEvent, EchoRequest } from '../types';
 
 const escapeHtml = (value: string) =>
   value.replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#039;', '"': '&quot;' }[char] || char));
@@ -24,12 +24,41 @@ interface TicketBase {
   bodyHtml: string; // corps déjà préparé
   footerNote?: string;
   signatureLabel?: string; // ex: "Signature du caissier"
+  /** Si true (défaut) : lance print() sans boîte de dialogue quand le navigateur le permet */
+  silent?: boolean;
+}
+
+/**
+ * Script d'impression injecté dans le ticket.
+ * - Appelle print() immédiatement (pas de popup de choix d'imprimante côté app).
+ * - Si l'API experimental `getAttention` / kiosk n'est pas dispo, le navigateur
+ *   peut encore afficher sa boîte native — on minimise le délai et on ferme l'iframe.
+ * - Pour une vraie impression silencieuse : configurer l'imprimante par défaut
+ *   OS + Chrome/Edge avec --kiosk-printing (documenté en admin).
+ */
+function printScript(silent = true) {
+  if (!silent) {
+    return `<script>window.onload=function(){try{window.focus();window.print();}catch(e){}}</script>`;
+  }
+  return `<script>
+(function(){
+  function doPrint(){
+    try {
+      window.focus();
+      // Impression directe — pas de fenêtre de sélection dans l'app
+      window.print();
+    } catch (e) {}
+  }
+  if (document.readyState === 'complete') doPrint();
+  else window.onload = doPrint;
+})();
+</script>`;
 }
 
 function buildTicketHtml(t: TicketBase) {
-  const { settings, title, reference, date = new Date(), extraHeader = [], bodyHtml, footerNote } = t;
+  const { settings, title, reference, date = new Date(), extraHeader = [], bodyHtml, footerNote, silent = true } = t;
   const m = paperMetrics(settings.paperWidth);
-  const logo = settings.logoUrl
+  const logo = (settings.showLogo !== false && settings.logoUrl)
     ? `<img class="logo" src="${escapeHtml(settings.logoUrl)}" alt="Logo" />`
     : '';
   const refLine = reference
@@ -69,34 +98,54 @@ function buildTicketHtml(t: TicketBase) {
     ${bodyHtml}
     <div class="rule-double"></div>
     <footer class="center small">${escapeHtml(footerNote || settings.footerMessage || '')}</footer>
-    <script>window.onload=()=>{ window.focus(); window.print(); }</script>
+    ${printScript(silent)}
   </body></html>`;
 }
 
-function openTicketWindow(html: string, _title: string) {
-  const iframe = document.createElement('iframe');
-  iframe.style.position = 'fixed';
-  iframe.style.right = '0';
-  iframe.style.bottom = '0';
-  iframe.style.width = '0';
-  iframe.style.height = '0';
-  iframe.style.border = '0';
-  document.body.appendChild(iframe);
+/**
+ * Ouvre un ticket dans un iframe invisible et lance l'impression directement
+ * (sans fenêtre de choix d'imprimante côté application).
+ * Respecte settings.copies pour réimprimer N fois.
+ */
+function openTicketWindow(html: string, _title: string, copies = 1) {
+  const n = Math.max(1, Math.min(5, copies || 1));
 
-  const doc = iframe.contentWindow?.document || iframe.contentDocument;
-  if (!doc) {
-    if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-    return;
+  const printOnce = (delayMs: number) => {
+    setTimeout(() => {
+      const iframe = document.createElement('iframe');
+      iframe.setAttribute('aria-hidden', 'true');
+      iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+      document.body.appendChild(iframe);
+
+      const win = iframe.contentWindow;
+      const doc = win?.document || iframe.contentDocument;
+      if (!doc || !win) {
+        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+        return;
+      }
+      doc.open();
+      doc.write(html);
+      doc.close();
+
+      // Nettoyage après impression (ou timeout de sécurité)
+      const cleanup = () => {
+        try {
+          if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+        } catch { /* ignore */ }
+      };
+      win.addEventListener?.('afterprint', cleanup);
+      setTimeout(cleanup, 45000);
+    }, delayMs);
+  };
+
+  for (let i = 0; i < n; i++) {
+    printOnce(i * 800);
   }
-  doc.open();
-  doc.write(html);
-  doc.close();
+}
 
-  setTimeout(() => {
-    if (iframe && iframe.parentNode) {
-      iframe.parentNode.removeChild(iframe);
-    }
-  }, 60000);
+/** Helper : nombre de copies depuis settings */
+function ticketCopies(settings: TicketSettings): number {
+  return Math.max(1, Math.min(5, settings.copies || 1));
 }
 
 /* ============================================================
@@ -149,8 +198,9 @@ export function printPaymentTicket(
     date,
     bodyHtml,
     footerNote: settings.footerMessage,
+    silent: settings.autoPrint !== false,
   });
-  openTicketWindow(html, 'Reçu de paiement 80mm');
+  openTicketWindow(html, 'Reçu de paiement', ticketCopies(settings));
 }
 
 /* ============================================================
@@ -183,13 +233,14 @@ export function printQueueTicket(
   `;
   const html = buildTicketHtml({
     settings,
-    title: 'TICKET DE FILE D\'ATTENTE',
+    title: "TICKET DE FILE D'ATTENTE",
     reference: `Q-${String(queueNumber).padStart(4, '0')}`,
     date,
     bodyHtml,
-    footerNote: 'Conservez ce ticket — il sera appelé par l\'équipe médicale.',
+    footerNote: "Conservez ce ticket — il sera appelé par l'équipe médicale.",
+    silent: settings.autoPrint !== false,
   });
-  openTicketWindow(html, 'Ticket file d\'attente');
+  openTicketWindow(html, "Ticket file d'attente", ticketCopies(settings));
 }
 
 /* ============================================================
@@ -234,8 +285,9 @@ export function printPrescriptionTicket(
     date,
     bodyHtml,
     footerNote: 'À présenter à la pharmacie pour délivrance.',
+    silent: settings.autoPrint !== false,
   });
-  openTicketWindow(html, 'Ordonnance');
+  openTicketWindow(html, 'Ordonnance', ticketCopies(settings));
 }
 
 /* ============================================================
@@ -269,13 +321,59 @@ export function printLabRequestTicket(
   `;
   const html = buildTicketHtml({
     settings,
-    title: 'BON D\'ANALYSE — LABORATOIRE',
+    title: "BON D'ANALYSE — LABORATOIRE",
     reference: `LAB-${Date.now().toString().slice(-6)}`,
     date,
     bodyHtml,
-    footerNote: 'Présentez ce bon au laboratoire avec votre pièce d\'identité.',
+    footerNote: "Présentez ce bon au laboratoire avec votre pièce d'identité.",
+    silent: settings.autoPrint !== false,
   });
-  openTicketWindow(html, 'Bon d\'analyse');
+  openTicketWindow(html, "Bon d'analyse", ticketCopies(settings));
+}
+
+
+/* ============================================================
+ * 4b) BON D'ÉCHOGRAPHIE
+ * ============================================================ */
+export function printEchoRequestTicket(
+  settings: TicketSettings,
+  patient: Patient,
+  doctor: User,
+  date: Date,
+  requests: EchoRequest[],
+) {
+  const lines = requests
+    .map(
+      (r) => `
+      <tr><td colspan="2" class="bold" style="padding-top:1.5mm">▸ ${escapeHtml(r.examType)}${r.urgent ? ' <span style="color:#b00">[URGENT]</span>' : ''}</td></tr>
+      ${r.notes ? `<tr><td colspan="2" class="small">  ${escapeHtml(r.notes)}</td></tr>` : ''}
+      ${r.price != null ? `<tr><td colspan="2" class="small">  Tarif : ${money(r.price)}</td></tr>` : ''}
+    `,
+    )
+    .join('');
+  const bodyHtml = `
+    <div><span class="bold">Patient :</span> ${escapeHtml(patient.lastName)} ${escapeHtml(patient.firstName)}</div>
+    <div><span class="bold">Dossier :</span> ${escapeHtml(patient.dossier)}</div>
+    <div><span class="bold">Âge / Sexe :</span> ${escapeHtml(patient.age)} / ${patient.gender === 'M' ? 'M' : 'F'}</div>
+    <div><span class="bold">Prescripteur :</span> ${escapeHtml(doctor.name)}</div>
+    <div class="rule"></div>
+    <div class="bold heading">ÉCHOGRAPHIES DEMANDÉES</div>
+    <table>${lines || '<tr><td><i>Aucune échographie</i></td></tr>'}</table>
+    <div class="signature">
+      <span>Technicien</span>
+      <span>${escapeHtml(doctor.name)}</span>
+    </div>
+  `;
+  const html = buildTicketHtml({
+    settings,
+    title: "BON D'ÉCHOGRAPHIE",
+    reference: `ECHO-${Date.now().toString().slice(-6)}`,
+    date,
+    bodyHtml,
+    footerNote: "Présentez ce bon au service d'imagerie / échographie.",
+    silent: settings.autoPrint !== false,
+  });
+  openTicketWindow(html, "Bon d'échographie", ticketCopies(settings));
 }
 
 /* ============================================================
@@ -314,8 +412,9 @@ export function printDeliveryTicket(
     date,
     bodyHtml,
     footerNote: settings.footerMessage,
+    silent: settings.autoPrint !== false,
   });
-  openTicketWindow(html, 'Bon de délivrance');
+  openTicketWindow(html, 'Bon de délivrance', ticketCopies(settings));
 }
 
 /* ============================================================
@@ -344,13 +443,14 @@ export function printHospitalizationTicket(
   `;
   const html = buildTicketHtml({
     settings,
-    title: 'BON D\'HOSPITALISATION',
+    title: "BON D'HOSPITALISATION",
     reference: `HOSP-${record.id.slice(0, 6).toUpperCase()}`,
     date: new Date(),
     bodyHtml,
     footerNote: settings.footerMessage,
+    silent: settings.autoPrint !== false,
   });
-  openTicketWindow(html, 'Bon d\'hospitalisation');
+  openTicketWindow(html, "Bon d'hospitalisation", ticketCopies(settings));
 }
 
 /* ============================================================
@@ -395,8 +495,9 @@ export function printClosingTicket(
     date,
     bodyHtml,
     footerNote: 'Document de contrôle — à conserver.',
+    silent: settings.autoPrint !== false,
   });
-  openTicketWindow(html, 'Clôture de caisse');
+  openTicketWindow(html, 'Clôture de caisse', ticketCopies(settings));
 }
 
 /* ============================================================

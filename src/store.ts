@@ -158,6 +158,7 @@ export function createInitialState(): AppState {
     chronicTreatments: ['Levothyrox 75µg'], antecedents: ['Hypothyroïdie', 'Asthme'], bloodGroup: 'A+',
     vitalSigns: { temperature: '38.2', bloodPressureSystolic: '120', bloodPressureDiastolic: '80', heartRate: '98', oxygenSaturation: '96', weight: '58', height: '162', tdr: 'Négatif' },
     registeredAt: daysAgo(5), registeredBy: 'RECEPTION', status: 'medications_delivered',
+    lastVisitAt: daysAgo(4),
     clientType: 'societe', company: 'TELMA',
   };
 
@@ -262,6 +263,8 @@ export function createInitialState(): AppState {
     vitalSigns: opts.vitalSigns, registeredAt: opts.registeredAt || daysAgo(1), registeredBy: 'RECEPTION',
     status: opts.status || 'registered', clientType: opts.clientType || 'comptoir',
     company: opts.clientType === 'societe' ? opts.company : undefined, subCompany: opts.clientType === 'societe' ? opts.subCompany : undefined,
+    // Dernière visite : fournie ou déduite si le patient a déjà un parcours actif
+    lastVisitAt: opts.lastVisitAt || (opts.status && opts.status !== 'registered' ? (opts.registeredAt || daysAgo(1)) : undefined),
   });
   const mkConsult = (patientId: string, doctorId: string, doctorName: string, diagnosis: string, opts: Partial<Consultation> = {}): Consultation => ({
     id: uuidv4(), patientId, doctorId, doctorName, date: opts.date || daysAgo(1),
@@ -274,7 +277,7 @@ export function createInitialState(): AppState {
   });
 
   // --- RAK105 : analyses DÉJÀ PAYÉES, en attente de prélèvement (file labo) ---
-  const rak105 = mkPatient('RAK105', 'Hery', 'RAKOTOARIVELO', 'M', '1978-02-12', { clientType: 'societe', company: 'JIRAMA', status: 'analyses_pending', allergies: ['Iode'], antecedents: ['Diabète type 2'], bloodGroup: 'B+', registeredAt: daysAgo(2) });
+  const rak105 = mkPatient('RAK105', 'Hery', 'RAKOTOARIVELO', 'M', '1978-02-12', { clientType: 'societe', company: 'JIRAMA', status: 'analyses_pending', allergies: ['Iode'], antecedents: ['Diabète type 2'], bloodGroup: 'B+', registeredAt: daysAgo(2), lastVisitAt: daysAgo(2) });
   const rak105Consult = mkConsult(rak105.id, 'DOC002', 'Dr. Sophie Leclerc', 'Diabète type 2 — contrôle', { date: daysAgo(2), visitReason: 'Suivi diabète' });
   const rak105InvId = uuidv4();
   const rak105ReqId = uuidv4();
@@ -282,7 +285,7 @@ export function createInitialState(): AppState {
   const rak105Req: LabRequest = { id: rak105ReqId, patientId: rak105.id, consultationId: rak105Consult.id, examType: 'Bilan hépatique', code: 'BIO003', category: 'biochimie', parameters: ['ASAT', 'ALAT', 'GGT', 'Bilirubine'], urgent: false, status: 'paid', sampleType: 'Sang veineux', sampleReceived: false, requestedBy: 'DOC002', requestedAt: daysAgo(2), invoiceId: rak105InvId, price: 22000 };
 
   // --- RAS106 : prélèvement effectué, analyse EN COURS ---
-  const ras106 = mkPatient('RAS106', 'Soa', 'RASOA', 'F', '1991-09-03', { clientType: 'comptoir', status: 'analyses_pending', allergies: ['Aspirine'], antecedents: ['Asthme'], bloodGroup: 'A+', registeredAt: daysAgo(1) });
+  const ras106 = mkPatient('RAS106', 'Soa', 'RASOA', 'F', '1991-09-03', { clientType: 'comptoir', status: 'analyses_pending', allergies: ['Aspirine'], antecedents: ['Asthme'], bloodGroup: 'A+', registeredAt: daysAgo(1), lastVisitAt: daysAgo(1) });
   const ras106Consult = mkConsult(ras106.id, 'DOC001', 'Dr. Jean Martin', 'Anémie à préciser', { date: daysAgo(1), visitReason: 'Fatigue, pâleur' });
   const ras106InvId = uuidv4();
   const ras106ReqId = uuidv4();
@@ -290,7 +293,7 @@ export function createInitialState(): AppState {
   const ras106Req: LabRequest = { id: ras106ReqId, patientId: ras106.id, consultationId: ras106Consult.id, examType: 'NFS', code: 'HEM001', category: 'hematologie', parameters: ['Globules Rouges', 'Globules Blancs', 'Hémoglobine', 'Plaquettes', 'Hématocrite'], urgent: false, status: 'in_progress', sampleType: 'Sang veineux (EDTA)', sampleReceived: true, sampleReceivedAt: daysAgo(1), requestedBy: 'DOC001', requestedAt: daysAgo(1), invoiceId: ras106InvId, price: 15000 };
 
   // --- AND107 : analyses TERMINÉES (résultats disponibles, impression A5) ---
-  const and107 = mkPatient('AND107', 'Fara', 'ANDRIANINA', 'F', '1985-12-20', { clientType: 'societe', company: 'TELMA', status: 'analyses_complete', antecedents: ['Hypothyroïdie'], bloodGroup: 'O+', registeredAt: daysAgo(3) });
+  const and107 = mkPatient('AND107', 'Fara', 'ANDRIANINA', 'F', '1985-12-20', { clientType: 'societe', company: 'TELMA', status: 'analyses_complete', antecedents: ['Hypothyroïdie'], bloodGroup: 'O+', registeredAt: daysAgo(3), lastVisitAt: daysAgo(3) });
   const and107Consult = mkConsult(and107.id, 'DOC002', 'Dr. Sophie Leclerc', 'Bilan thyroïdien & lipidique', { date: daysAgo(3), visitReason: 'Contrôle' });
   const and107InvId = uuidv4();
   const and107NfsId = uuidv4();
@@ -311,7 +314,7 @@ export function createInitialState(): AppState {
   ], completedAt: daysAgo(3), completedBy: 'LAB001', validatedBy: 'LAB001' };
 
   // --- RAB108 : en attente à la CAISSE (onglet Laboratoire) + médicaments ---
-  const rab108 = mkPatient('RAB108', 'Lala', 'RABEARIVELO', 'M', '1969-04-15', { clientType: 'comptoir', status: 'consulted_awaiting_payment', antecedents: ['Hypertension'], bloodGroup: 'AB+', registeredAt: daysAgo(0) });
+  const rab108 = mkPatient('RAB108', 'Lala', 'RABEARIVELO', 'M', '1969-04-15', { clientType: 'comptoir', status: 'consulted_awaiting_payment', antecedents: ['Hypertension'], bloodGroup: 'AB+', registeredAt: daysAgo(0), lastVisitAt: daysAgo(0) });
   const rab108Paracetamol: Prescription = { id: uuidv4(), articleId: '', articleName: 'Paracétamol 500mg', quantity: 10, posology: '1 cp x3/j', duration: '5 jours', instructions: '', unitPrice: 500, discount: 0, delivered: false };
   const rab108Consult = mkConsult(rab108.id, 'DOC003', 'Dr. Ahmed Benali', 'Hypertension — contrôle rénal', { date: daysAgo(0), visitReason: 'Suivi TA', prescriptions: [rab108Paracetamol] });
   const rab108PharmaInvId = uuidv4();
