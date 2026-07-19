@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import type {
   Patient, Consultation, Invoice, Article, Bed, AuditLog, VitalSigns, Prescription,
-  Notification, HospitalizationRecord, UserRole, User, Company,
+  Notification, HospitalizationRecord, UserRole, User, Company, Fournisseur, Famille,
   Message, StockTransfer, StockEntry, ClientType, ArticleFamily, TransferCategory,
   LabExamCatalog, LabCategory, LabRequest, PatientJourneyEvent, JourneyDepartment,
   WarehouseService, StockMovement, InventorySession, StockLocation
@@ -124,12 +124,28 @@ export const LAB_FEE_URGENT = 25000;
 export const SURGERY_FEE = 500000;
 export const HOSPITALIZATION_FEE = 80000;
 
+export const SEED_FOURNISSEURS: Fournisseur[] = [
+  { id: 'fourn-1', name: 'PHARMA LABS S.A.', contactPerson: 'M. Rabe', phone: '034 00 111 22', email: 'contact@pharmalabs.mg', address: 'Ankorondrano, Antananarivo', nif: '1000234567', stat: '51301 11 2018 0 00123' },
+  { id: 'fourn-2', name: 'MEDICIS IMPORT', contactPerson: 'Mme Razafy', phone: '033 11 222 33', email: 'ventes@medicis.mg', address: 'Ankorondrano, Antananarivo', nif: '1000345678', stat: '51301 11 2019 0 00456' },
+  { id: 'fourn-3', name: 'SANTE EQUIPEMENT MADAGASCAR', contactPerson: 'M. Jean', phone: '032 22 333 44', email: 'info@sem-madagascar.com', address: 'Isoraka, Antananarivo', nif: '1000456789', stat: '51301 11 2020 0 00789' },
+  { id: 'fourn-4', name: 'DISPHAR LABO', contactPerson: 'M. Andry', phone: '034 44 555 66', email: 'commande@disphar.mg', address: 'Andraharo, Antananarivo', nif: '1000567890', stat: '51301 11 2021 0 00321' },
+];
+
+export const SEED_FAMILLES: Famille[] = [
+  { id: 'fam-medic', code: 'MEDIC', name: 'Médicaments', color: '#0D47A1', order: 1 },
+  { id: 'fam-labo', code: 'LABO', name: 'Laboratoire', color: '#10B981', order: 2 },
+  { id: 'fam-dent', code: 'DENT', name: 'Dentaire', color: '#8B5CF6', order: 3 },
+  { id: 'fam-echo', code: 'ECHO', name: 'Échographie', color: '#F59E0B', order: 4 },
+];
+
 export interface AppState {
   currentUser: User | null; ticketSettings: import('./types').TicketSettings; patients: Patient[]; consultations: Consultation[];
   invoices: Invoice[]; articles: Article[]; beds: Bed[];
   hospitalizations: HospitalizationRecord[]; stockTransfers: StockTransfer[];
   stockEntries: StockEntry[]; auditLogs: AuditLog[]; notifications: Notification[];
   messages: Message[]; users: User[]; companies: Company[];
+  fournisseurs: Fournisseur[];
+  familles: Famille[];
   journey: PatientJourneyEvent[];          // parcours patient (timeline)
   labRequests: LabRequest[];               // demandes d'analyse autonomes
   labCatalog: LabExamCatalog[];            // catalogue d'examens
@@ -370,6 +386,8 @@ export function createInitialState(): AppState {
     articles: [...seedArticles], beds: [...seedBeds], hospitalizations: [leaHosp],
     stockTransfers: [], stockEntries: [], auditLogs: [], notifications: [],
     messages: [], users: [...users], companies: [...seedCompanies],
+    fournisseurs: [...SEED_FOURNISSEURS],
+    familles: [...SEED_FAMILLES],
     journey: [...baseJourney, ...leaJourney, ...demoJourney],
     labRequests: [...leaLabRequests, ...demoLabs],
     labCatalog: [...seedLabCatalog],

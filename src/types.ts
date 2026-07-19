@@ -270,4 +270,25 @@ export interface DailyNote {
 export interface Bed { id: string; service: string; roomNumber: string; bedNumber: string; occupied: boolean; patientId?: string; }
 export interface AuditLog { id: string; timestamp: string; userId: string; userName: string; userRole: UserRole; action: string; details: string; patientId?: string; }
 export interface Notification { id: string; targetRole: UserRole; targetUserId?: string; message: string; type: 'info' | 'warning' | 'critical'; timestamp: string; read: boolean; }
+export interface Fournisseur {
+  id: string;
+  name: string;
+  contactPerson?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  nif?: string;
+  stat?: string;
+  notes?: string;
+  createdAt?: string;
+}
+
+export interface Famille {
+  id: string;
+  code: string;
+  name: string;
+  color: string;
+  order?: number;
+}
+
 export interface Company { id: string; name: string; }
