@@ -503,16 +503,6 @@ export function printClosingTicket(
 /* ============================================================
  * 8) COMPTE-RENDU DE RÉSULTATS — LABORATOIRE (A4)
  * ============================================================ */
-function openPageWindow(html: string) {
-  const popup = window.open('', '_blank', 'width=820,height=1000');
-  if (!popup) {
-    window.alert("La fenêtre d'impression a été bloquée. Autorisez les fenêtres pop-up puis réessayez.");
-    return;
-  }
-  popup.document.write(html);
-  popup.document.close();
-}
-
 export function printLabResultTicket(
   settings: TicketSettings,
   patient: Patient,
@@ -557,9 +547,9 @@ export function printLabResultTicket(
   </div>
   <p style="font-size:11px;color:#555">Résultats validés par le biologiste le ${new Date(request.completedAt || Date.now()).toLocaleString('fr-FR')}. Ce compte-rendu est établi sous la responsabilité du laboratoire.</p>
   <div class="sig"><div>${escapeHtml(settings.facilityName)}</div><div>${escapeHtml(request.validatedBy || request.completedBy || 'Biologiste')}</div></div>
-  <script>window.onload=()=>{window.focus();window.print();}</script>
+  ${printScript(settings.autoPrint !== false)}
   </body></html>`;
-  openPageWindow(html);
+  openTicketWindow(html, `Compte-rendu ${request.examType}`, ticketCopies(settings));
 }
 
 /* ============================================================
@@ -670,9 +660,9 @@ export function printDossierTicket(
   <h2>FACTURATION</h2>
   ${invHtml || '<div>Aucune facture.</div>'}
 
-  <script>window.onload=()=>{window.focus();window.print();}</script>
+  ${printScript(settings.autoPrint !== false)}
   </body></html>`;
-  openPageWindow(html);
+  openTicketWindow(html, `Dossier ${patient.dossier}`, ticketCopies(settings));
 }
 
 /* ============================================================
