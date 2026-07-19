@@ -166,7 +166,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
   };
 
   const restoreBlacklistedPatient = (patient: Patient) => {
-    if (!confirm(`Remettre ${patient.lastName} ${patient.firstName} dans la liste normale ?`)) return;
+    if (!confirm(`Rétablir ${patient.lastName} ${patient.firstName} dans la liste normale ?`)) return;
 
     setState((prev) => {
       const next = {
@@ -178,7 +178,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
           blacklistDate: undefined,
         } : p),
       };
-      addAuditLog(next, 'UNBLACKLIST', `${patient.dossier} remis dans la liste normale`, patient.id);
+      addAuditLog(next, 'UNBLACKLIST', `${patient.dossier} rétabli — remis dans la liste normale`, patient.id);
       return next;
     });
 
@@ -268,7 +268,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
             <button onClick={handleDeletePatient} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Trash2 className="h-4 w-4" /> Supprimer</button>
             <div className="w-px h-6 bg-slate-300 mx-1" />
             <button onClick={() => selectedPatient && setModal('patientInfo')} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Info className="h-4 w-4" /> Info</button>
-            <button onClick={handleBlacklistClick} title="Afficher les personnes blacklistées" className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-600 hover:bg-slate-700 text-white rounded text-xs font-bold shadow cursor-pointer"><UserX className="h-4 w-4" /> Blacklist{blacklistedPatients.length > 0 && <span className="ml-0.5 rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] leading-none">{blacklistedPatients.length}</span>}</button>
+            <button onClick={handleBlacklistClick} title="Afficher les patients bloqués" className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-600 hover:bg-slate-700 text-white rounded text-xs font-bold shadow cursor-pointer"><UserX className="h-4 w-4" /> Bloqués{blacklistedPatients.length > 0 && <span className="ml-0.5 rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] leading-none">{blacklistedPatients.length}</span>}</button>
           </div>
         </div>
       </section>
@@ -295,8 +295,8 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
                       <td className="p-2 border-r border-slate-200 text-center">
                         <button
                           onClick={(e) => { e.stopPropagation(); handleBlacklistToggle(patient); }}
-                          className={`px-1 py-0.5 rounded text-[9px] ${patient.blacklisted ? 'bg-red-600 text-white' : 'bg-slate-200 text-slate-600 hover:bg-red-100'}`}
-                          title={patient.blacklisted ? 'Retirer de la blacklist' : 'Mettre en blacklist'}
+                          className={`px-1 py-0.5 rounded text-[9px] cursor-pointer ${patient.blacklisted ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-slate-200 text-slate-600 hover:bg-red-100'}`}
+                          title={patient.blacklisted ? 'Rétablir dans la liste normale' : 'Mettre en blacklist'}
                         >
                           {patient.blacklisted ? '✓' : 'BL'}
                         </button>
@@ -369,21 +369,21 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
 
       {/* MODALES : BLACKLIST ET INFORMATIONS */}
       {modal === 'blacklistConfirm' && selectedPatient && (
-        <ModalShell title="Ajouter à la blacklist" icon={<UserX className="w-5 h-5" />} onClose={() => setModal('none')}>
-          <div className="py-3 text-center"><div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 text-amber-700"><FileWarning className="h-7 w-7" /></div><p className="text-lg font-bold text-slate-800">{selectedPatient.lastName} {selectedPatient.firstName}</p><p className="mt-2 text-sm text-slate-500">Voulez-vous ajouter cette personne à la blacklist ?</p></div>
+        <ModalShell title="Bloquer ce patient" icon={<UserX className="w-5 h-5" />} onClose={() => setModal('none')}>
+          <div className="py-3 text-center"><div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 text-amber-700"><FileWarning className="h-7 w-7" /></div><p className="text-lg font-bold text-slate-800">{selectedPatient.lastName} {selectedPatient.firstName}</p><p className="mt-2 text-sm text-slate-500">Voulez-vous bloquer ce patient ?</p></div>
           <div className="flex justify-center gap-3"><button onClick={confirmBlacklist} className="rounded-lg bg-red-600 px-6 py-2 font-bold text-white hover:bg-red-700">Oui, ajouter</button><button onClick={() => setModal('none')} className="rounded-lg bg-slate-100 px-6 py-2 font-bold text-slate-700 hover:bg-slate-200">Non</button></div>
         </ModalShell>
       )}
       {modal === 'blacklistReason' && selectedPatient && (
-        <ModalShell title="Motif de mise en blacklist" icon={<UserX className="w-5 h-5" />} onClose={() => setModal('none')}>
-          <p className="mb-3 text-sm text-slate-600">Indiquez le motif pour <strong>{selectedPatient.lastName} {selectedPatient.firstName}</strong>.</p><textarea autoFocus value={blacklistReason} onChange={(e) => setBlacklistReason(e.target.value)} placeholder="Ex. Impayés répétés…" className="min-h-28 w-full rounded-lg border border-slate-300 p-3 text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100" />
+        <ModalShell title="Motif du blocage" icon={<UserX className="w-5 h-5" />} onClose={() => setModal('none')}>
+          <p className="mb-3 text-sm text-slate-600">Indiquez le motif du blocage pour <strong>{selectedPatient.lastName} {selectedPatient.firstName}</strong>.</p><textarea autoFocus value={blacklistReason} onChange={(e) => setBlacklistReason(e.target.value)} placeholder="Ex. Impayés répétés…" className="min-h-28 w-full rounded-lg border border-slate-300 p-3 text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100" />
           <div className="mt-4 flex justify-end gap-3"><button onClick={() => setModal('none')} className="rounded-lg px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100">Annuler</button><button onClick={saveBlacklist} disabled={!blacklistReason.trim()} className="rounded-lg bg-red-600 px-5 py-2 font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40">Confirmer</button></div>
         </ModalShell>
       )}
       {modal === 'blacklistList' && (
-        <ModalShell title={`Personnes en blacklist (${blacklistedPatients.length})`} icon={<UserX className="w-5 h-5" />} onClose={() => setModal('none')} wide>
+        <ModalShell title={`Patients bloqués (${blacklistedPatients.length})`} icon={<UserX className="w-5 h-5" />} onClose={() => setModal('none')} wide>
           <p className="mb-4 text-sm text-slate-500">
-            Consultez le motif de chaque mise en blacklist ou remettez une personne dans la liste normale.
+            Consultez le motif de chaque blocage ou rétablissez un patient dans la liste normale.
           </p>
           <div className="max-h-[55vh] overflow-auto rounded-lg border border-red-100">
             {blacklistedPatients.length > 0 ? (
@@ -407,10 +407,10 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
                       <td className="p-3 text-right">
                         <button
                           onClick={() => restoreBlacklistedPatient(patient)}
-                          className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700"
-                          title="Retirer de la blacklist"
+                          className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 cursor-pointer"
+                          title="Rétablir dans la liste normale"
                         >
-                          <Check className="h-4 w-4" /> Liste normale
+                          <Check className="h-4 w-4" /> Rétablir
                         </button>
                       </td>
                     </tr>
