@@ -2,24 +2,30 @@ import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { AppState } from '../store';
 import type { TransferCategory, StockTransfer } from '../types';
-import { addAuditLog, addNotification, formatAr, familyLabel, transferCategoryLabel, transferCategoryColor, addJourneyEvent } from '../store';
+import { addAuditLog, addNotification, formatAr, familyLabel, transferCategoryLabel, transferCategoryColor, addJourneyEvent, isArticleSaleable } from '../store';
 import { printDeliveryTicket } from '../utils/printTicket';
 import DemandeAchatForm, { type ReqLine } from './DemandeAchatForm';
 import CashierModule from './CashierModule';
 import {
   Pill, Package, CheckCircle, Clock, Search, Send,
-  Plus, Trash2, FileText, Filter, Printer, Edit3, CreditCard
+  Plus, Trash2, Filter, Printer, Edit3, CreditCard,
+  Ban, Unlock, AlertTriangle
 } from 'lucide-react';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
-type Tab = 'pending' | 'stock' | 'delivered' | 'request' | 'history' | 'caisse';
+type Tab = 'caisse' | 'pending' | 'stock' | 'delivered' | 'request';
 
 const CATEGORIES: TransferCategory[] = ['approvisionnement', 'hospitalisation', 'bloc', 'central'];
+const PHARMA_SERVICE_ID = 'svc-pharmacie';
 
 export default function PharmacyModule({ state, setState }: Props) {
-  const [tab, setTab] = useState<Tab>('pending');
+  // Caisse de garde en premier par défaut
+  const [tab, setTab] = useState<Tab>('caisse');
   const [searchStock, setSearchStock] = useState('');
   const [filterCat, setFilterCat] = useState<TransferCategory | 'all'>('all');
+  const [stockSub, setStockSub] = useState<'articles' | 'demandes' | 'historique'>('articles');
+  const [blockModal, setBlockModal] = useState<{ articleId: string; name: string; currentlyBlocked: boolean } | null>(null);
+  const [blockReason, setBlockReason] = useState('');
 
   // Reappro Modal State
   const [reapproModalOpen, setReapproModalOpen] = useState(false);
@@ -86,6 +92,9 @@ export default function PharmacyModule({ state, setState }: Props) {
                   expiryDate: first.expiryDate,
                   supplier: payload.supplier || t.supplier,
                   invoiceRef: payload.invoiceRef || t.invoiceRef,
+                  targetServiceId: PHARMA_SERVICE_ID,
+                  targetServiceName: 'Pharmacie',
+                  requestSource: 'pharmacy' as const,
                 }
               : t
           ),
@@ -103,23 +112,28 @@ export default function PharmacyModule({ state, setState }: Props) {
         articleId: l.articleId,
         articleName: l.articleName,
         quantity: l.quantity,
-        category: payload.category,
+        category: 'approvisionnement' as TransferCategory,
         purchasePrice: l.purchasePrice,
         expiryDate: l.expiryDate,
         supplier: payload.supplier,
         invoiceRef: payload.invoiceRef,
         requestedBy: prev.currentUser?.id,
         requestedAt: new Date().toISOString(),
-        status: 'requested',
+        status: 'requested' as const,
         notes: payload.notes || l.notes,
+        targetServiceId: PHARMA_SERVICE_ID,
+        targetServiceName: 'Pharmacie',
+        requestSource: 'pharmacy' as const,
       }));
       const next = { ...prev, stockTransfers: [...prev.stockTransfers, ...newTransfers] };
-      addAuditLog(next, 'DEMANDE_REAPPRO_PHARMA', `${payload.lines.length} article(s) — ${transferCategoryLabel(payload.category)} (Fournisseur: ${payload.supplier})`);
-      addNotification(next, 'magasinier', `📩 [Pharmacie] Réappro: ${payload.lines.length} article(s) demandé(s)`, 'info');
+      addAuditLog(next, 'DEMANDE_REAPPRO_PHARMA', `${payload.lines.length} article(s) — Demande d'approvisionnement Pharmacie → Magasinier`);
+      addNotification(next, 'magasinier', `📩 [Pharmacie] Demande d'appro: ${payload.lines.length} article(s) — à traiter depuis le dépôt central`, 'info');
       return next;
     });
 
     closeReappro();
+    setTab('stock');
+    setStockSub('demandes');
   };
 
   const paidConsultations = state.consultations.filter((c) => {
@@ -133,13 +147,51 @@ export default function PharmacyModule({ state, setState }: Props) {
 
   const filtered = state.articles.filter((a) => a.name.toLowerCase().includes(searchStock.toLowerCase()));
 
-  // Requests list
-  const myRequests = state.stockTransfers;
+  // Demandes pharmacie uniquement
+  const myRequests = state.stockTransfers.filter(
+    (t) => t.requestSource === 'pharmacy' || t.targetServiceId === PHARMA_SERVICE_ID || t.category === 'approvisionnement'
+  );
   const myRequestsFiltered = myRequests.filter((t) => filterCat === 'all' || t.category === filterCat);
+  const pendingCount = myRequests.filter((t) => t.status === 'requested').length;
 
   const cancelRequest = (id: string) => {
     if (!confirm('Annuler cette demande ?')) return;
     setState((prev) => ({ ...prev, stockTransfers: prev.stockTransfers.map(t => t.id === id ? { ...t, status: 'cancelled' as const } : t) }));
+  };
+
+  const toggleSaleBlock = () => {
+    if (!blockModal) return;
+    const reason = blockReason.trim();
+    if (!blockModal.currentlyBlocked && !reason) {
+      alert('Indiquez le motif du blocage (réservé, en attente de régularisation, etc.).');
+      return;
+    }
+    setState((prev) => {
+      const next = {
+        ...prev,
+        articles: prev.articles.map((a) => {
+          if (a.id !== blockModal.articleId) return a;
+          if (blockModal.currentlyBlocked) {
+            return { ...a, saleBlocked: false, saleBlockReason: undefined, saleBlockedAt: undefined, saleBlockedBy: undefined };
+          }
+          return {
+            ...a,
+            saleBlocked: true,
+            saleBlockReason: reason,
+            saleBlockedAt: new Date().toISOString(),
+            saleBlockedBy: prev.currentUser?.id,
+          };
+        }),
+      };
+      addAuditLog(
+        next,
+        blockModal.currentlyBlocked ? 'DEBLOCAGE_VENTE' : 'BLOCAGE_VENTE',
+        `${blockModal.name}${reason ? ` — ${reason}` : ''}`
+      );
+      return next;
+    });
+    setBlockModal(null);
+    setBlockReason('');
   };
 
   const deliver = (consultationId: string, isExternal?: boolean) => {
@@ -148,12 +200,37 @@ export default function PharmacyModule({ state, setState }: Props) {
     const patient = isExternal ? null : state.patients.find((p) => p.id === consultation.patientId);
     const name = patient ? `${patient.lastName} ${patient.firstName}` : 'Client externe';
 
+    // Vérifier stock + blocages avant délivrance
+    const blocked = consultation.prescriptions.filter((p) => {
+      if (p.delivered) return false;
+      const art = state.articles.find((a) => a.name === p.articleName || a.id === p.articleId);
+      return art?.saleBlocked;
+    });
+    if (blocked.length > 0) {
+      alert(
+        `⛔ Vente bloquée pour :\n${blocked.map((p) => {
+          const art = state.articles.find((a) => a.name === p.articleName);
+          return `• ${p.articleName}${art?.saleBlockReason ? ` (${art.saleBlockReason})` : ''}`;
+        }).join('\n')}\n\nDébloquez l'article dans Stock pharmacie ou retirez-le de l'ordonnance.`
+      );
+      return;
+    }
+    const outOfStock = consultation.prescriptions.filter((p) => {
+      if (p.delivered) return false;
+      const art = state.articles.find((a) => a.name === p.articleName || a.id === p.articleId);
+      return !art || art.stockPharmacie < p.quantity;
+    });
+    if (outOfStock.length > 0) {
+      if (!confirm(`Stock insuffisant pour :\n${outOfStock.map((p) => `• ${p.articleName}`).join('\n')}\n\nDélivrer quand même (stock peut passer à 0) ?`)) return;
+    }
+
     setState((prev) => {
       const updatedConsultations = prev.consultations.map((c) =>
         c.id === consultationId ? { ...c, prescriptions: c.prescriptions.map((p) => ({ ...p, delivered: true })) } : c);
       const updatedArticles = [...prev.articles];
       consultation.prescriptions.forEach((p) => {
-        const idx = updatedArticles.findIndex((a) => a.name === p.articleName);
+        if (p.delivered) return;
+        const idx = updatedArticles.findIndex((a) => a.name === p.articleName || a.id === p.articleId);
         if (idx >= 0) updatedArticles[idx] = { ...updatedArticles[idx], stockPharmacie: Math.max(0, updatedArticles[idx].stockPharmacie - p.quantity) };
       });
       const hasLab = updatedConsultations.find((c) => c.id === consultationId)?.labRequests.some((lr) => lr.status !== 'completed');
@@ -167,7 +244,6 @@ export default function PharmacyModule({ state, setState }: Props) {
         else if (a.stockPharmacie <= a.minStockPharmacie) addNotification(next, 'pharmacy', `⚠️ Stock bas pharmacie: ${a.name} (${a.stockPharmacie})`, 'warning'); });
       return next;
     });
-    // Imprime le bon de délivrance
     if (patient) {
       printDeliveryTicket(
         state.ticketSettings,
@@ -193,22 +269,33 @@ export default function PharmacyModule({ state, setState }: Props) {
     );
   };
 
+  const blockedCount = state.articles.filter((a) => a.saleBlocked).length;
+
   return (
     <div className="space-y-6">
-      {/* Banner & Sélecteur de Module : Pharmacie & Caisse de garde */}
-      <div className="bg-gradient-to-r from-purple-900 via-indigo-900 to-purple-800 rounded-xl p-4 text-white shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      {/* Banner & Sélecteur : Caisse de garde EN PREMIER */}
+      <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-purple-800 rounded-xl p-4 text-white shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full bg-purple-500/30 border border-purple-400/30 text-xs font-semibold uppercase tracking-wider text-purple-200">
+            <span className="px-2.5 py-0.5 rounded-full bg-blue-500/30 border border-blue-400/30 text-xs font-semibold uppercase tracking-wider text-blue-200">
               Service Continu & Garde
             </span>
-            <h3 className="font-bold text-lg">Pharmacie & Caisse intégrée</h3>
+            <h3 className="font-bold text-lg">Pharmacie & Caisse de garde</h3>
           </div>
-          <p className="text-xs text-purple-200 mt-1">
-            Intégration complète du module de Caisse pour assurer les encaissements lors des gardes de nuit et jours fériés.
+          <p className="text-xs text-blue-200 mt-1">
+            Caisse de garde en priorité pour les encaissements de nuit et jours fériés. Demandes d'appro transmises au magasinier (dépôt central).
           </p>
         </div>
         <div className="flex items-center gap-2 bg-black/20 p-1 rounded-lg border border-white/10 w-full sm:w-auto">
+          <button
+            onClick={() => setTab('caisse')}
+            className={`flex-1 sm:flex-none px-4 py-2 rounded-md text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              tab === 'caisse' ? 'bg-blue-600 text-white shadow' : 'text-blue-200 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <CreditCard className="w-4 h-4" />
+            <span>Caisse de garde</span>
+          </button>
           <button
             onClick={() => setTab('pending')}
             className={`flex-1 sm:flex-none px-4 py-2 rounded-md text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
@@ -218,141 +305,268 @@ export default function PharmacyModule({ state, setState }: Props) {
             <Pill className="w-4 h-4" />
             <span>Module Pharmacie</span>
           </button>
-          <button
-            onClick={() => setTab('caisse')}
-            className={`flex-1 sm:flex-none px-4 py-2 rounded-md text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
-              tab === 'caisse' ? 'bg-blue-600 text-white shadow' : 'text-purple-200 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            <CreditCard className="w-4 h-4" />
-            <span>Module Caisse (Garde)</span>
-          </button>
         </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="flex border-b border-slate-200 overflow-x-auto">
           {[
+            { key: 'caisse' as Tab, icon: <CreditCard className="w-4 h-4 text-blue-600" />, label: '💳 Caisse de garde' },
             { key: 'pending' as Tab, icon: <Clock className="w-4 h-4" />, label: `Ordonnances (${allPending.length})` },
-            { key: 'stock' as Tab, icon: <Package className="w-4 h-4" />, label: 'Stock pharmacie' },
+            { key: 'stock' as Tab, icon: <Package className="w-4 h-4" />, label: `Stock pharmacie${blockedCount > 0 ? ` ⛔${blockedCount}` : ''}${pendingCount > 0 ? ` · ${pendingCount} dem.` : ''}` },
             { key: 'delivered' as Tab, icon: <CheckCircle className="w-4 h-4" />, label: 'Délivrées' },
-            { key: 'request' as Tab, icon: <Send className="w-4 h-4" />, label: `Demander réappro (${state.stockTransfers.filter(t=>t.status==='requested').length})` },
-            { key: 'history' as Tab, icon: <FileText className="w-4 h-4" />, label: 'Historique demandes' },
-            { key: 'caisse' as Tab, icon: <CreditCard className="w-4 h-4 text-blue-600" />, label: '💳 Module Caisse (Garde)' },
-          ].map((t) => (<button key={t.key} onClick={() => setTab(t.key)} className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors cursor-pointer ${tab === t.key ? 'border-purple-500 text-purple-600 bg-purple-50/50' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>{t.icon}{t.label}</button>))}
+            { key: 'request' as Tab, icon: <Send className="w-4 h-4" />, label: 'Nouvelle demande appro' },
+          ].map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
+                tab === t.key ? 'border-purple-500 text-purple-600 bg-purple-50/50' : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {t.icon}{t.label}
+            </button>
+          ))}
         </div>
 
         <div className="p-6">
-          {tab === 'pending' && <div>{allPending.length === 0 ? <div className="text-center py-12 text-slate-400"><Pill className="w-12 h-12 mx-auto mb-3 opacity-50" /><p>Aucune ordonnance</p></div> : allPending.map((c) => {
-            const patient = state.patients.find((p) => p.id === c.patientId);
-            const ext = externalInvoices.find((i) => i.consultationId === c.id);
-            const isUrgent = c.isEmergency && !state.invoices.find((i) => i.consultationId === c.id && i.status === 'paid');
-            return (<div key={c.id} className={`border rounded-xl overflow-hidden mb-3 ${isUrgent ? 'border-red-300 bg-red-50/50' : 'border-slate-200'}`}>
-              <div className="p-4 flex items-center justify-between bg-slate-50">
-                <div><div className="font-semibold text-slate-800">{patient ? `${patient.lastName} ${patient.firstName}` : ext ? ext.clientName : 'Inconnu'}{isUrgent && <span className="ml-2 px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full">🚨 Urgence</span>}</div>
-                  <div className="text-xs text-slate-500 mt-1">{c.doctorName} — {new Date(c.date).toLocaleDateString('fr-FR')}</div></div>
-                <div className="flex gap-1">
-                  {patient && <button onClick={() => printDelivery(c.id, !!ext)} className="px-3 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 font-medium text-sm flex items-center gap-1 cursor-pointer" title="Imprimer le bon de délivrance"><Printer className="w-4 h-4" /></button>}
-                  <button onClick={() => deliver(c.id, !!ext)} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium text-sm flex items-center gap-2 cursor-pointer"><CheckCircle className="w-4 h-4" /> Délivrer</button>
+          {/* === CAISSE DE GARDE (premier) === */}
+          {tab === 'caisse' && (
+            <div className="space-y-4">
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-100 text-blue-700 rounded-lg">
+                    <CreditCard className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-blue-900 text-base">Caisse de garde — Nuit & Jours fériés</h4>
+                    <p className="text-xs text-blue-700 mt-0.5">
+                      Encaissement unifié, ventes externes, hospitalisation/bloc et clôture journalière pendant les permanences.
+                    </p>
+                  </div>
                 </div>
               </div>
-              <div className="p-4"><table className="w-full text-sm"><thead><tr className="border-b border-slate-200"><th className="text-left py-2 text-slate-600">Article</th><th className="text-center py-2 text-slate-600">Qté</th><th className="text-left py-2 text-slate-600">Posologie</th><th className="text-right py-2 text-slate-600">Stock</th></tr></thead><tbody>{c.prescriptions.filter((p) => !p.delivered).map((p) => { const art = state.articles.find((a) => a.name === p.articleName); return (<tr key={p.id} className="border-b border-slate-100"><td className="py-2 font-medium">{p.articleName}</td><td className="py-2 text-center">{p.quantity}</td><td className="py-2">{p.posology}</td><td className={`py-2 text-right font-mono ${(art?.stockPharmacie || 0) <= 0 ? 'text-red-600 font-bold' : ''}`}>{art?.stockPharmacie || 0}</td></tr>); })}</tbody></table></div>
-            </div>);
-          })}</div>}
-
-          {tab === 'stock' && <div>
-            <div className="mb-4"><div className="relative max-w-md"><Search className="absolute left-3 top-2.5 w-5 h-5 text-slate-400" /><input type="text" value={searchStock} onChange={(e) => setSearchStock(e.target.value)} className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none" placeholder="Rechercher..." /></div></div>
-            <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="bg-slate-50 border-b border-slate-200"><th className="text-left py-3 px-4 font-semibold text-slate-600">Famille</th><th className="text-left py-3 px-4 font-semibold text-slate-600">Article</th><th className="text-center py-3 px-4 font-semibold text-slate-600">Stock Pharma</th><th className="text-center py-3 px-4 font-semibold text-slate-600">Stock Central</th><th className="text-right py-3 px-4 font-semibold text-slate-600">Prix</th><th className="text-center py-3 px-4 font-semibold text-slate-600">État</th></tr></thead><tbody>{filtered.map((a) => {
-              const isLow = a.stockPharmacie <= a.minStockPharmacie && a.stockPharmacie > 0;
-              const isOut = a.stockPharmacie === 0;
-              return (<tr key={a.id} className={`border-b border-slate-100 ${isOut ? 'bg-red-50' : isLow ? 'bg-amber-50' : ''}`}>
-                <td className="py-3 px-4"><span className="px-2 py-0.5 bg-slate-200 rounded text-xs">{familyLabel(a.family)}</span></td>
-                <td className="py-3 px-4 font-medium">{a.name}</td>
-                <td className="py-3 px-4 text-center font-mono font-bold">{a.stockPharmacie}</td>
-                <td className="py-3 px-4 text-center font-mono text-slate-500">{a.stockCentral}</td>
-                <td className="py-3 px-4 text-right font-mono">{formatAr(a.priceComptoir)}</td>
-                <td className="py-3 px-4 text-center">{isOut ? <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full font-medium">RUPTURE</span> : isLow ? <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs rounded-full font-medium">Stock bas</span> : <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full font-medium">OK</span>}</td>
-              </tr>);
-            })}</tbody></table></div>
-          </div>}
-
-          {tab === 'delivered' && (
-            <div className="space-y-3">
-              <h4 className="font-semibold text-slate-700">Ordonnances délivrées</h4>
-              {state.consultations.filter(c => c.prescriptions.length > 0 && c.prescriptions.every(p => p.delivered)).length === 0
-                ? <div className="text-center py-8 text-slate-400 text-sm">Aucune ordonnance délivrée.</div>
-                : state.consultations.filter(c => c.prescriptions.length > 0 && c.prescriptions.every(p => p.delivered)).slice(-20).reverse().map(c => {
-                  const p = state.patients.find(pp => pp.id === c.patientId);
-                  return (<div key={c.id} className="border rounded-lg p-3 flex justify-between items-center">
-                    <div><div className="font-medium">{p?.lastName} {p?.firstName}</div><div className="text-xs text-slate-500">{c.doctorName} — {new Date(c.date).toLocaleDateString('fr-FR')}</div></div>
-                    <span className="text-emerald-600 font-medium text-sm flex items-center gap-1"><CheckCircle className="w-4 h-4" /> Délivrée</span>
-                  </div>);
-                })}
+              <div className="-mx-6 -mb-6 p-6 bg-slate-50/50 border-t border-slate-200">
+                <CashierModule state={state} setState={setState} />
+              </div>
             </div>
           )}
 
-          {/* === DEMANDER RÉAPPRO — Formulaire intégré style Sage Commercial === */}
-          {tab === 'request' && (
+          {tab === 'pending' && (
+            <div>
+              {allPending.length === 0 ? (
+                <div className="text-center py-12 text-slate-400"><Pill className="w-12 h-12 mx-auto mb-3 opacity-50" /><p>Aucune ordonnance</p></div>
+              ) : allPending.map((c) => {
+                const patient = state.patients.find((p) => p.id === c.patientId);
+                const ext = externalInvoices.find((i) => i.consultationId === c.id);
+                const isUrgent = c.isEmergency && !state.invoices.find((i) => i.consultationId === c.id && i.status === 'paid');
+                return (
+                  <div key={c.id} className={`border rounded-xl overflow-hidden mb-3 ${isUrgent ? 'border-red-300 bg-red-50/50' : 'border-slate-200'}`}>
+                    <div className="p-4 flex items-center justify-between bg-slate-50">
+                      <div>
+                        <div className="font-semibold text-slate-800">
+                          {patient ? `${patient.lastName} ${patient.firstName}` : ext ? ext.clientName : 'Inconnu'}
+                          {isUrgent && <span className="ml-2 px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full">🚨 Urgence</span>}
+                        </div>
+                        <div className="text-xs text-slate-500 mt-1">{c.doctorName} — {new Date(c.date).toLocaleDateString('fr-FR')}</div>
+                      </div>
+                      <div className="flex gap-1">
+                        {patient && (
+                          <button onClick={() => printDelivery(c.id, !!ext)} className="px-3 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 font-medium text-sm flex items-center gap-1 cursor-pointer" title="Imprimer le bon de délivrance">
+                            <Printer className="w-4 h-4" />
+                          </button>
+                        )}
+                        <button onClick={() => deliver(c.id, !!ext)} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium text-sm flex items-center gap-2 cursor-pointer">
+                          <CheckCircle className="w-4 h-4" /> Délivrer
+                        </button>
+                      </div>
+                    </div>
+                    <div className="p-4">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-slate-200">
+                            <th className="text-left py-2 text-slate-600">Article</th>
+                            <th className="text-center py-2 text-slate-600">Qté</th>
+                            <th className="text-left py-2 text-slate-600">Posologie</th>
+                            <th className="text-right py-2 text-slate-600">Stock</th>
+                            <th className="text-center py-2 text-slate-600">Vente</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {c.prescriptions.filter((p) => !p.delivered).map((p) => {
+                            const art = state.articles.find((a) => a.name === p.articleName);
+                            const blocked = !!art?.saleBlocked;
+                            const noStock = (art?.stockPharmacie || 0) < p.quantity;
+                            return (
+                              <tr key={p.id} className={`border-b border-slate-100 ${blocked ? 'bg-orange-50' : noStock ? 'bg-red-50/50' : ''}`}>
+                                <td className="py-2 font-medium">{p.articleName}</td>
+                                <td className="py-2 text-center">{p.quantity}</td>
+                                <td className="py-2">{p.posology}</td>
+                                <td className={`py-2 text-right font-mono ${(art?.stockPharmacie || 0) <= 0 ? 'text-red-600 font-bold' : ''}`}>{art?.stockPharmacie || 0}</td>
+                                <td className="py-2 text-center">
+                                  {blocked ? (
+                                    <span className="px-2 py-0.5 bg-orange-100 text-orange-800 text-[10px] rounded-full font-bold" title={art?.saleBlockReason}>⛔ Bloqué</span>
+                                  ) : noStock ? (
+                                    <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] rounded-full font-bold">Rupture</span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] rounded-full font-bold">OK</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* === STOCK PHARMACIE — réappro + historique fusionnés ici === */}
+          {tab === 'stock' && (
             <div className="space-y-4">
-              <div className="p-4 bg-purple-50 border border-purple-200 rounded-xl flex items-center justify-between flex-wrap gap-3">
-                <div>
-                  <h4 className="font-bold text-purple-800 flex items-center gap-2">
-                    <Send className="w-5 h-5 text-purple-600" /> Demander un réapprovisionnement au magasinier (Saisie Sage)
-                  </h4>
-                  <p className="text-xs text-purple-700 mt-1">Créez ou modifiez des demandes de réapprovisionnement pour la pharmacie avec saisie d'articles Sage Commercial.</p>
-                </div>
+              <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
+                {[
+                  { k: 'articles' as const, l: '📦 Articles & blocage vente' },
+                  { k: 'demandes' as const, l: `📩 Demandes réappro (${pendingCount})` },
+                  { k: 'historique' as const, l: '📜 Historique demandes' },
+                ].map((s) => (
+                  <button
+                    key={s.k}
+                    onClick={() => setStockSub(s.k)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition ${
+                      stockSub === s.k ? 'bg-purple-600 text-white shadow' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {s.l}
+                  </button>
+                ))}
+                <div className="flex-1" />
                 <button
                   onClick={openReapproNew}
-                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium flex items-center gap-1.5 cursor-pointer shadow transition"
+                  className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 cursor-pointer shadow"
                 >
-                  <Plus className="w-4 h-4" /> Nouveau réapprovisionnement
+                  <Plus className="w-3.5 h-3.5" /> Demander réappro
                 </button>
               </div>
 
-              {/* Liste des demandes en cours avec bouton Modifier */}
-              <div>
-                <div className="flex items-center gap-2 mb-2 flex-wrap">
-                  <Filter className="w-4 h-4 text-slate-500" />
-                  <span className="text-xs font-bold text-slate-600">Demandes en cours :</span>
-                  <button onClick={() => setFilterCat('all')} className={`px-2 py-0.5 rounded text-xs cursor-pointer ${filterCat === 'all' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Toutes</button>
-                  {CATEGORIES.map(c => (
-                    <button key={c} onClick={() => setFilterCat(c)} className={`px-2 py-0.5 rounded text-xs cursor-pointer ${filterCat === c ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{transferCategoryLabel(c)}</button>
-                  ))}
-                </div>
-
-                {state.stockTransfers.filter(t => t.status === 'requested' && (filterCat === 'all' || t.category === filterCat)).length === 0 ? (
-                  <div className="text-center py-8 text-slate-400 bg-slate-50 border border-dashed rounded-lg text-sm">
-                    Aucune demande en cours. Cliquez sur <strong>Nouveau réapprovisionnement</strong> ci-dessus pour créer une demande.
+              {stockSub === 'articles' && (
+                <div>
+                  <div className="mb-3 flex flex-wrap gap-3 items-center">
+                    <div className="relative max-w-md flex-1 min-w-[200px]">
+                      <Search className="absolute left-3 top-2.5 w-5 h-5 text-slate-400" />
+                      <input type="text" value={searchStock} onChange={(e) => setSearchStock(e.target.value)} className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none" placeholder="Rechercher un article..." />
+                    </div>
+                    <div className="text-xs text-slate-500 bg-orange-50 border border-orange-200 px-3 py-2 rounded-lg flex items-center gap-2">
+                      <Ban className="w-4 h-4 text-orange-600" />
+                      Bloquez la vente même si le stock est encore disponible (réservé, régularisation…).
+                    </div>
                   </div>
-                ) : (
-                  <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
+                  <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                      <thead className="bg-slate-50 border-b text-xs text-slate-600">
-                        <tr>
-                          <th className="p-2 text-left">Catégorie</th>
-                          <th className="p-2 text-left">Article</th>
-                          <th className="p-2 text-center">Qté</th>
-                          <th className="p-2 text-left">Fournisseur</th>
-                          <th className="p-2 text-left">N° BL</th>
-                          <th className="p-2 text-left">Demandeur</th>
-                          <th className="p-2 text-left">Date</th>
-                          <th className="p-2 text-left">Notes</th>
-                          <th className="p-2 text-right">Actions</th>
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200">
+                          <th className="text-left py-3 px-3 font-semibold text-slate-600">Famille</th>
+                          <th className="text-left py-3 px-3 font-semibold text-slate-600">Article</th>
+                          <th className="text-center py-3 px-3 font-semibold text-slate-600">Stock Pharma</th>
+                          <th className="text-center py-3 px-3 font-semibold text-slate-600">Stock Central</th>
+                          <th className="text-right py-3 px-3 font-semibold text-slate-600">Prix</th>
+                          <th className="text-center py-3 px-3 font-semibold text-slate-600">État stock</th>
+                          <th className="text-center py-3 px-3 font-semibold text-slate-600">Vente</th>
+                          <th className="text-right py-3 px-3 font-semibold text-slate-600">Action</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {state.stockTransfers.filter(t => t.status === 'requested' && (filterCat === 'all' || t.category === filterCat)).map(tr => {
-                          const u = state.users.find(u => u.id === tr.requestedBy);
+                        {filtered.map((a) => {
+                          const isLow = a.stockPharmacie <= a.minStockPharmacie && a.stockPharmacie > 0;
+                          const isOut = a.stockPharmacie === 0;
+                          const blocked = !!a.saleBlocked;
                           return (
+                            <tr key={a.id} className={`border-b border-slate-100 ${blocked ? 'bg-orange-50/80' : isOut ? 'bg-red-50' : isLow ? 'bg-amber-50' : ''}`}>
+                              <td className="py-3 px-3"><span className="px-2 py-0.5 bg-slate-200 rounded text-xs">{familyLabel(a.family)}</span></td>
+                              <td className="py-3 px-3 font-medium">
+                                {a.name}
+                                {blocked && a.saleBlockReason && (
+                                  <div className="text-[10px] text-orange-700 mt-0.5 flex items-center gap-1">
+                                    <AlertTriangle className="w-3 h-3" /> {a.saleBlockReason}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-3 px-3 text-center font-mono font-bold">{a.stockPharmacie}</td>
+                              <td className="py-3 px-3 text-center font-mono text-slate-500">{a.stockCentral}</td>
+                              <td className="py-3 px-3 text-right font-mono">{formatAr(a.priceComptoir)}</td>
+                              <td className="py-3 px-3 text-center">
+                                {isOut ? <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full font-medium">RUPTURE</span>
+                                  : isLow ? <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs rounded-full font-medium">Stock bas</span>
+                                  : <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full font-medium">OK</span>}
+                              </td>
+                              <td className="py-3 px-3 text-center">
+                                {blocked
+                                  ? <span className="px-2 py-1 bg-orange-200 text-orange-900 text-xs rounded-full font-bold">⛔ BLOQUÉ</span>
+                                  : isArticleSaleable(a)
+                                    ? <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs rounded-full font-medium">Vendable</span>
+                                    : <span className="px-2 py-1 bg-slate-200 text-slate-600 text-xs rounded-full font-medium">Non vendable</span>}
+                              </td>
+                              <td className="py-3 px-3 text-right">
+                                <button
+                                  onClick={() => { setBlockModal({ articleId: a.id, name: a.name, currentlyBlocked: blocked }); setBlockReason(a.saleBlockReason || ''); }}
+                                  className={`px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1 cursor-pointer ml-auto ${
+                                    blocked
+                                      ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                                      : 'bg-orange-100 text-orange-800 hover:bg-orange-200'
+                                  }`}
+                                >
+                                  {blocked ? <><Unlock className="w-3.5 h-3.5" /> Débloquer</> : <><Ban className="w-3.5 h-3.5" /> Bloquer vente</>}
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {stockSub === 'demandes' && (
+                <div className="space-y-3">
+                  <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl text-xs text-purple-800">
+                    Les demandes sont transmises au <strong>magasinier</strong> qui les traite depuis le <strong>dépôt central</strong> (dispersion vers la pharmacie).
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Filter className="w-4 h-4 text-slate-500" />
+                    <button onClick={() => setFilterCat('all')} className={`px-2 py-0.5 rounded text-xs cursor-pointer ${filterCat === 'all' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Toutes</button>
+                    {CATEGORIES.map(c => (
+                      <button key={c} onClick={() => setFilterCat(c)} className={`px-2 py-0.5 rounded text-xs cursor-pointer ${filterCat === c ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{transferCategoryLabel(c)}</button>
+                    ))}
+                  </div>
+                  {myRequests.filter(t => t.status === 'requested' && (filterCat === 'all' || t.category === filterCat)).length === 0 ? (
+                    <div className="text-center py-8 text-slate-400 bg-slate-50 border border-dashed rounded-lg text-sm">
+                      Aucune demande en cours. Cliquez sur <strong>Demander réappro</strong>.
+                    </div>
+                  ) : (
+                    <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
+                      <table className="w-full text-sm">
+                        <thead className="bg-slate-50 border-b text-xs text-slate-600">
+                          <tr>
+                            <th className="p-2 text-left">Service</th>
+                            <th className="p-2 text-left">Article</th>
+                            <th className="p-2 text-center">Qté</th>
+                            <th className="p-2 text-left">Notes</th>
+                            <th className="p-2 text-left">Date</th>
+                            <th className="p-2 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {myRequests.filter(t => t.status === 'requested' && (filterCat === 'all' || t.category === filterCat)).map(tr => (
                             <tr key={tr.id} className="border-b hover:bg-slate-50">
-                              <td className="p-2"><span className={`px-2 py-0.5 rounded text-[10px] font-bold ${transferCategoryColor(tr.category)}`}>{transferCategoryLabel(tr.category)}</span></td>
+                              <td className="p-2"><span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700">{tr.targetServiceName || 'Pharmacie'}</span></td>
                               <td className="p-2 font-medium">{tr.articleName}</td>
                               <td className="p-2 text-center font-mono font-bold">{tr.quantity}</td>
-                              <td className="p-2 text-xs">{tr.supplier || '—'}</td>
-                              <td className="p-2 text-xs font-mono">{tr.invoiceRef || '—'}</td>
-                              <td className="p-2 text-xs">{u?.name || '—'}</td>
+                              <td className="p-2 text-xs text-slate-500 truncate max-w-[180px]">{tr.notes || '—'}</td>
                               <td className="p-2 text-xs text-slate-500">{tr.requestedAt ? new Date(tr.requestedAt).toLocaleDateString('fr-FR') : '—'}</td>
-                              <td className="p-2 text-xs text-slate-500 truncate max-w-[150px]">{tr.notes || '—'}</td>
                               <td className="p-2 text-right">
                                 <div className="flex justify-end gap-1">
                                   <button onClick={() => openReapproEdit(tr.id)} className="px-2 py-1 bg-amber-100 text-amber-700 hover:bg-amber-200 rounded text-xs flex items-center gap-1 cursor-pointer font-medium">
@@ -364,87 +578,150 @@ export default function PharmacyModule({ state, setState }: Props) {
                                 </div>
                               </td>
                             </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {stockSub === 'historique' && (
+                <div>
+                  <div className="flex items-center gap-2 mb-3 flex-wrap">
+                    <Filter className="w-4 h-4 text-slate-500" />
+                    <button onClick={() => setFilterCat('all')} className={`px-2 py-0.5 rounded text-xs cursor-pointer ${filterCat === 'all' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Toutes</button>
+                    {CATEGORIES.map(c => (
+                      <button key={c} onClick={() => setFilterCat(c)} className={`px-2 py-0.5 rounded text-xs cursor-pointer ${filterCat === c ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{transferCategoryLabel(c)}</button>
+                    ))}
+                  </div>
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-slate-50 border-b text-slate-600">
+                        <tr>
+                          <th className="p-2 text-left">Date</th>
+                          <th className="p-2 text-left">Service</th>
+                          <th className="p-2 text-left">Article</th>
+                          <th className="p-2 text-center">Qté</th>
+                          <th className="p-2 text-left">Demandeur</th>
+                          <th className="p-2 text-center">Statut</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {myRequestsFiltered.slice().reverse().slice(0, 50).map(tr => {
+                          const u = state.users.find(x => x.id === tr.requestedBy);
+                          return (
+                            <tr key={tr.id} className="border-b hover:bg-slate-50">
+                              <td className="p-2 text-slate-500">{tr.requestedAt ? new Date(tr.requestedAt).toLocaleString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+                              <td className="p-2"><span className={`px-2 py-0.5 rounded text-[10px] font-bold ${transferCategoryColor(tr.category)}`}>{tr.targetServiceName || transferCategoryLabel(tr.category)}</span></td>
+                              <td className="p-2 font-medium">{tr.articleName}</td>
+                              <td className="p-2 text-center font-mono font-bold">{tr.quantity}</td>
+                              <td className="p-2">{u?.name || '—'}</td>
+                              <td className="p-2 text-center">
+                                {tr.status === 'requested' && <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] rounded-full font-bold">En attente magasinier</span>}
+                                {tr.status === 'transferred' && <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] rounded-full font-bold">Livrée</span>}
+                                {tr.status === 'cancelled' && <span className="px-2 py-0.5 bg-slate-200 text-slate-600 text-[10px] rounded-full font-bold">Annulée</span>}
+                              </td>
+                            </tr>
                           );
                         })}
+                        {myRequestsFiltered.length === 0 && (
+                          <tr><td colSpan={6} className="p-6 text-center text-slate-400">Aucune demande.</td></tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {tab === 'history' && (
-            <div>
-              <div className="flex items-center gap-2 mb-3 flex-wrap">
-                <Filter className="w-4 h-4 text-slate-500" />
-                <span className="text-xs font-bold text-slate-600">Filtrer :</span>
-                <button onClick={() => setFilterCat('all')} className={`px-2 py-0.5 rounded text-xs cursor-pointer ${filterCat === 'all' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Toutes</button>
-                {CATEGORIES.map(c => (
-                  <button key={c} onClick={() => setFilterCat(c)} className={`px-2 py-0.5 rounded text-xs cursor-pointer ${filterCat === c ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{transferCategoryLabel(c)}</button>
-                ))}
-              </div>
-              <div className="border rounded-lg overflow-hidden">
-                <table className="w-full text-xs">
-                  <thead className="bg-slate-50 border-b text-slate-600">
-                    <tr>
-                      <th className="p-2 text-left">Date</th><th className="p-2 text-left">Catégorie</th><th className="p-2 text-left">Article</th>
-                      <th className="p-2 text-center">Qté</th><th className="p-2 text-left">Fournisseur</th><th className="p-2 text-left">N° BL</th><th className="p-2 text-left">Demandeur</th><th className="p-2 text-center">Statut</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {myRequestsFiltered.slice().reverse().slice(0, 50).map(tr => {
-                      const u = state.users.find(x => x.id === tr.requestedBy);
-                      return (
-                        <tr key={tr.id} className="border-b hover:bg-slate-50">
-                          <td className="p-2 text-slate-500">{tr.requestedAt ? new Date(tr.requestedAt).toLocaleString('fr-FR', { hour:'2-digit', minute:'2-digit' }) : '—'}</td>
-                          <td className="p-2"><span className={`px-2 py-0.5 rounded text-[10px] font-bold ${transferCategoryColor(tr.category)}`}>{transferCategoryLabel(tr.category)}</span></td>
-                          <td className="p-2 font-medium">{tr.articleName}</td>
-                          <td className="p-2 text-center font-mono font-bold">{tr.quantity}</td>
-                          <td className="p-2 text-xs">{tr.supplier || '—'}</td>
-                          <td className="p-2 text-xs font-mono">{tr.invoiceRef || '—'}</td>
-                          <td className="p-2">{u?.name || '—'}</td>
-                          <td className="p-2 text-center">
-                            {tr.status === 'requested' && <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] rounded-full font-bold">En attente</span>}
-                            {tr.status === 'transferred' && <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] rounded-full font-bold">Transférée</span>}
-                            {tr.status === 'cancelled' && <span className="px-2 py-0.5 bg-slate-200 text-slate-600 text-[10px] rounded-full font-bold">Annulée</span>}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {myRequestsFiltered.length === 0 && (
-                      <tr><td colSpan={8} className="p-6 text-center text-slate-400">Aucune demande.</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {tab === 'caisse' && (
-            <div className="space-y-4">
-              <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-100 text-blue-700 rounded-lg">
-                    <CreditCard className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-blue-900 text-base">Module de Caisse Intégré — Garde de nuit & Jours Fériés</h4>
-                    <p className="text-xs text-blue-700 mt-0.5">
-                      Ce module permet au personnel de la Pharmacie de réaliser l'intégralité des opérations de caisse (Encaissement unifié, Ventes directes externe, Hospitalisation/Bloc et Clôture journalière) pendant les périodes de permanence.
-                    </p>
-                  </div>
                 </div>
+              )}
+            </div>
+          )}
+
+          {tab === 'delivered' && (
+            <div className="space-y-3">
+              <h4 className="font-semibold text-slate-700">Ordonnances délivrées</h4>
+              {state.consultations.filter(c => c.prescriptions.length > 0 && c.prescriptions.every(p => p.delivered)).length === 0
+                ? <div className="text-center py-8 text-slate-400 text-sm">Aucune ordonnance délivrée.</div>
+                : state.consultations.filter(c => c.prescriptions.length > 0 && c.prescriptions.every(p => p.delivered)).slice(-20).reverse().map(c => {
+                  const p = state.patients.find(pp => pp.id === c.patientId);
+                  return (
+                    <div key={c.id} className="border rounded-lg p-3 flex justify-between items-center">
+                      <div><div className="font-medium">{p?.lastName} {p?.firstName}</div><div className="text-xs text-slate-500">{c.doctorName} — {new Date(c.date).toLocaleDateString('fr-FR')}</div></div>
+                      <span className="text-emerald-600 font-medium text-sm flex items-center gap-1"><CheckCircle className="w-4 h-4" /> Délivrée</span>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+
+          {tab === 'request' && (
+            <div className="space-y-4">
+              <div className="p-4 bg-purple-50 border border-purple-200 rounded-xl flex items-center justify-between flex-wrap gap-3">
+                <div>
+                  <h4 className="font-bold text-purple-800 flex items-center gap-2">
+                    <Send className="w-5 h-5 text-purple-600" /> Demande d'approvisionnement → Magasinier
+                  </h4>
+                  <p className="text-xs text-purple-700 mt-1">
+                    La demande est envoyée au magasinier qui crée le transfert depuis le <strong>dépôt central</strong> vers la pharmacie.
+                  </p>
+                </div>
+                <button onClick={openReapproNew} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium flex items-center gap-1.5 cursor-pointer shadow transition">
+                  <Plus className="w-4 h-4" /> Nouvelle demande
+                </button>
               </div>
-              <div className="-mx-6 -mb-6 p-6 bg-slate-50/50 border-t border-slate-200">
-                <CashierModule state={state} setState={setState} />
+              <div className="text-center py-6 text-slate-500 text-sm">
+                Ou consultez les demandes en cours dans l'onglet <button onClick={() => { setTab('stock'); setStockSub('demandes'); }} className="text-purple-600 font-semibold underline cursor-pointer">Stock pharmacie → Demandes</button>.
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* === MODAL : Formulaire Sage de demande de réappro pour Pharmacie === */}
+      {/* Modal blocage vente */}
+      {blockModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setBlockModal(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className={`px-5 py-3 text-white font-bold flex items-center gap-2 ${blockModal.currentlyBlocked ? 'bg-emerald-600' : 'bg-orange-600'}`}>
+              {blockModal.currentlyBlocked ? <Unlock className="w-5 h-5" /> : <Ban className="w-5 h-5" />}
+              {blockModal.currentlyBlocked ? 'Débloquer la vente' : 'Bloquer la vente'}
+            </div>
+            <div className="p-5 space-y-3">
+              <p className="text-sm text-slate-700">
+                Article : <strong>{blockModal.name}</strong>
+              </p>
+              {!blockModal.currentlyBlocked ? (
+                <>
+                  <p className="text-xs text-slate-500">
+                    Empêche la délivrance / vente même si le stock est encore disponible (réservation, attente de régularisation, lot douteux…).
+                  </p>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Motif du blocage *</label>
+                    <input
+                      type="text"
+                      value={blockReason}
+                      onChange={(e) => setBlockReason(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm"
+                      placeholder="Ex: Réservé patient X / En attente régularisation / Lot à vérifier"
+                      autoFocus
+                    />
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-slate-600">Confirmez le déblocage de la vente pour cet article.</p>
+              )}
+              <div className="flex justify-end gap-2 pt-2">
+                <button onClick={() => setBlockModal(null)} className="px-4 py-2 border border-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-50">Annuler</button>
+                <button
+                  onClick={toggleSaleBlock}
+                  className={`px-4 py-2 text-white rounded-lg text-sm font-bold cursor-pointer ${blockModal.currentlyBlocked ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-orange-600 hover:bg-orange-700'}`}
+                >
+                  {blockModal.currentlyBlocked ? 'Confirmer déblocage' : 'Confirmer blocage'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <DemandeAchatForm
         open={reapproModalOpen}
         onClose={closeReappro}
@@ -456,6 +733,7 @@ export default function PharmacyModule({ state, setState }: Props) {
         isEditMode={!!reapproEditingId}
         onSubmit={submitReappro}
         theme="purple"
+        pharmacyMode
       />
     </div>
   );

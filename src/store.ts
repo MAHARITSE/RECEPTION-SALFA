@@ -3,7 +3,8 @@ import type {
   Patient, Consultation, Invoice, Article, Bed, AuditLog, VitalSigns, Prescription,
   Notification, HospitalizationRecord, UserRole, User, Company,
   Message, StockTransfer, StockEntry, ClientType, ArticleFamily, TransferCategory,
-  LabExamCatalog, LabCategory, LabRequest, PatientJourneyEvent, JourneyDepartment
+  LabExamCatalog, LabCategory, LabRequest, PatientJourneyEvent, JourneyDepartment,
+  WarehouseService, StockMovement, InventorySession, StockLocation
 } from './types';
 
 let dossierCounter = 100;
@@ -60,6 +61,45 @@ const seedCompanies: Company[] = [
   { id: uuidv4(), name: 'BNI MADAGASCAR' },{ id: uuidv4(), name: 'SOCIMEX' },
 ];
 
+/** Services d'entrepôt par défaut — le dépôt central disperse vers ces services */
+export const SEED_WAREHOUSE_SERVICES: WarehouseService[] = [
+  { id: 'svc-pharmacie', code: 'PHA', name: 'Pharmacie', kind: 'pharmacie', color: 'purple', active: true, createdAt: new Date().toISOString() },
+  { id: 'svc-bloc', code: 'BLOC', name: 'Bloc opératoire', kind: 'service', color: 'blue', active: true, createdAt: new Date().toISOString() },
+  { id: 'svc-soins', code: 'SOINS', name: 'Soins / Hospitalisation', kind: 'service', color: 'rose', active: true, createdAt: new Date().toISOString() },
+  { id: 'svc-labo', code: 'LABO', name: 'Laboratoire', kind: 'service', color: 'emerald', active: true, createdAt: new Date().toISOString() },
+  { id: 'svc-urgence', code: 'URG', name: 'Urgences', kind: 'service', color: 'amber', active: true, createdAt: new Date().toISOString() },
+];
+
+/** Stock d'un article pour une localisation (central | pharmacie | serviceId) */
+export function getArticleStock(a: Article, location: StockLocation): number {
+  if (location === 'central') return a.stockCentral;
+  if (location === 'pharmacie') return a.stockPharmacie;
+  return a.serviceStocks?.[location] ?? 0;
+}
+
+/** Applique un delta de stock sur une localisation */
+export function applyStockDelta(a: Article, location: StockLocation, delta: number): Article {
+  if (location === 'central') return { ...a, stockCentral: Math.max(0, a.stockCentral + delta) };
+  if (location === 'pharmacie') return { ...a, stockPharmacie: Math.max(0, a.stockPharmacie + delta) };
+  const prev = a.serviceStocks?.[location] ?? 0;
+  return {
+    ...a,
+    serviceStocks: { ...(a.serviceStocks || {}), [location]: Math.max(0, prev + delta) },
+  };
+}
+
+export function locationLabel(location: StockLocation, services: WarehouseService[] = []): string {
+  if (location === 'central') return 'Dépôt central';
+  if (location === 'pharmacie') return 'Pharmacie';
+  const svc = services.find(s => s.id === location);
+  return svc?.name || location;
+}
+
+/** Article vendable en pharmacie : stock > 0 et non bloqué */
+export function isArticleSaleable(a: Article): boolean {
+  return !a.saleBlocked && a.stockPharmacie > 0;
+}
+
 const seedPatients: Patient[] = [
   { id: uuidv4(), dossier: 'MAR101', firstName: 'Jean', lastName: 'MARTIN', dateOfBirth: '1985-03-15', age: '39 Ans', gender: 'M', address: 'ANTANANARIVO', contact: '034 12 345 67', ssn: '', allergies: ['Pénicilline'], chronicTreatments: ['Amlodipine 5mg'], antecedents: ['Hypertension'], bloodGroup: 'O+', registeredAt: new Date().toISOString(), registeredBy: 'SYSTEM', status: 'registered', clientType: 'comptoir', blacklisted: true, blacklistReason: 'Impayés répétés — exemple de contrôle', blacklistDate: new Date(Date.now() - 3 * 86400000).toISOString() },
   { id: uuidv4(), dossier: 'DUP102', firstName: 'Marie', lastName: 'DUPONT', dateOfBirth: '1990-07-22', age: '34 Ans', gender: 'F', address: 'TOAMASINA', contact: '033 98 765 43', ssn: '', allergies: [], chronicTreatments: [], antecedents: [], bloodGroup: 'A+', registeredAt: new Date().toISOString(), registeredBy: 'SYSTEM', status: 'registered', clientType: 'societe', company: 'JIRAMA', subCompany: 'Direction Régionale' },
@@ -93,6 +133,9 @@ export interface AppState {
   journey: PatientJourneyEvent[];          // parcours patient (timeline)
   labRequests: LabRequest[];               // demandes d'analyse autonomes
   labCatalog: LabExamCatalog[];            // catalogue d'examens
+  warehouseServices: WarehouseService[];  // services destinataires du dépôt
+  stockMovements: StockMovement[];         // entrées / sorties / transferts
+  inventorySessions: InventorySession[];   // inventaires
 }
 
 export function createInitialState(): AppState {
@@ -327,6 +370,9 @@ export function createInitialState(): AppState {
     journey: [...baseJourney, ...leaJourney, ...demoJourney],
     labRequests: [...leaLabRequests, ...demoLabs],
     labCatalog: [...seedLabCatalog],
+    warehouseServices: SEED_WAREHOUSE_SERVICES.map(s => ({ ...s })),
+    stockMovements: [],
+    inventorySessions: [],
   };
 }
 
