@@ -1,4 +1,4 @@
-import type { Invoice, Patient, TicketSettings, User, Prescription, LabRequest, HospitalizationRecord, Company, Consultation, PatientJourneyEvent, EchoRequest } from '../types';
+import type { Invoice, Patient, TicketSettings, User, Prescription, LabRequest, Company, Consultation, PatientJourneyEvent, EchoRequest } from '../types';
 
 const escapeHtml = (value: string) =>
   value.replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#039;', '"': '&quot;' }[char] || char));
@@ -417,43 +417,7 @@ export function printDeliveryTicket(
 }
 
 /* ============================================================
- * 6) BON D'HOSPITALISATION / BLOC
- * ============================================================ */
-export function printHospitalizationTicket(
-  settings: TicketSettings,
-  patient: Patient,
-  record: HospitalizationRecord,
-  totalEstimate?: number,
-) {
-  const bodyHtml = `
-    <div><span class="bold">Patient :</span> ${escapeHtml(patient.lastName)} ${escapeHtml(patient.firstName)}</div>
-    <div><span class="bold">Dossier :</span> ${escapeHtml(patient.dossier)}</div>
-    <div><span class="bold">Âge / Sexe :</span> ${escapeHtml(patient.age)} / ${patient.gender === 'M' ? 'M' : 'F'}</div>
-    <div class="rule"></div>
-    <div><span class="bold">Service :</span> ${escapeHtml(record.service)}</div>
-    <div><span class="bold">Chambre :</span> ${escapeHtml(record.roomNumber)} — Lit ${escapeHtml(record.bedNumber)}</div>
-    <div><span class="bold">Admission :</span> ${new Date(record.admissionDate).toLocaleString('fr-FR')}</div>
-    ${record.dischargeDate ? `<div><span class="bold">Sortie :</span> ${new Date(record.dischargeDate).toLocaleString('fr-FR')}</div>` : ''}
-    ${totalEstimate ? `<div><span class="bold">Estimation :</span> ${money(totalEstimate)}</div>` : ''}
-    <div class="rule"></div>
-    <div class="center small">
-      Conservez ce bon pour la facturation lors de votre sortie.
-    </div>
-  `;
-  const html = buildTicketHtml({
-    settings,
-    title: "BON D'HOSPITALISATION",
-    reference: `HOSP-${record.id.slice(0, 6).toUpperCase()}`,
-    date: new Date(),
-    bodyHtml,
-    footerNote: settings.footerMessage,
-    silent: settings.autoPrint !== false,
-  });
-  openTicketWindow(html, "Bon d'hospitalisation", ticketCopies(settings));
-}
-
-/* ============================================================
- * 7) CLÔTURE DE CAISSE (Z de caisse)
+ * 6) CLÔTURE DE CAISSE (Z de caisse)
  * ============================================================ */
 export function printClosingTicket(
   settings: TicketSettings,
@@ -521,7 +485,7 @@ export function printClosingTicket(
 }
 
 /* ============================================================
- * 8) COMPTE-RENDU DE RÉSULTATS — LABORATOIRE (A4)
+ * 7) COMPTE-RENDU DE RÉSULTATS — LABORATOIRE (A4)
  * ============================================================ */
 export function printLabResultTicket(
   settings: TicketSettings,
@@ -573,7 +537,7 @@ export function printLabResultTicket(
 }
 
 /* ============================================================
- * 9) DOSSIER MÉDICAL COMPLET (A4)
+ * 8) DOSSIER MÉDICAL COMPLET (A4)
  * ============================================================ */
 export function printDossierTicket(
   settings: TicketSettings,
@@ -581,12 +545,11 @@ export function printDossierTicket(
   payload: {
     consultations: Consultation[];
     labRequests: LabRequest[];
-    hospitalizations: HospitalizationRecord[];
     invoices: Invoice[];
     journey: PatientJourneyEvent[];
   },
 ) {
-  const { consultations, labRequests, hospitalizations, invoices, journey } = payload;
+  const { consultations, labRequests, invoices, journey } = payload;
 
   const consultHtml = consultations
     .slice()
@@ -607,16 +570,6 @@ export function printDossierTicket(
         .map((res) => `<div style="display:flex;justify-content:space-between;border-bottom:1px dotted #ddd;padding:1px 0"><span>${escapeHtml(res.parameter)}</span><span><strong>${res.value} ${escapeHtml(res.unit)}</strong> ${res.isAbnormal ? '<span style="color:#b91c1c;font-weight:700"> ANORMAL</span>' : ''}</span></div>`)
         .join('')}
     </div>`)
-    .join('');
-
-  const hospHtml = hospitalizations
-    .slice()
-    .reverse()
-    .map(
-      (h) => `<div class="sec"><div class="lbl">${h.status === 'active' ? 'En cours' : new Date(h.admissionDate).toLocaleDateString('fr-FR') + ' → ' + (h.dischargeDate ? new Date(h.dischargeDate).toLocaleDateString('fr-FR') : '—')} — ${escapeHtml(h.service)} (Ch. ${escapeHtml(h.roomNumber)} / Lit ${escapeHtml(h.bedNumber)})</div>
-      ${h.dailyNotes.map((n) => `<div style="font-size:11px">${new Date(n.date).toLocaleDateString('fr-FR')} — ${escapeHtml(n.nursingCare || '')}${n.doctorObservations ? ' / ' + escapeHtml(n.doctorObservations) : ''}</div>`).join('')}
-    </div>`,
-    )
     .join('');
 
   const invHtml = invoices
@@ -673,9 +626,6 @@ export function printDossierTicket(
 
   <h2>BIOLOGIE — ANALYSES</h2>
   ${labHtml || '<div>Aucune analyse.</div>'}
-
-  <h2>HOSPITALISATIONS</h2>
-  ${hospHtml || '<div>Aucune hospitalisation.</div>'}
 
   <h2>FACTURATION</h2>
   ${invHtml || '<div>Aucune facture.</div>'}

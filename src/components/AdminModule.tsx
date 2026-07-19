@@ -21,11 +21,10 @@ const roleLabels: Record<string, string> = {
   pharmacy: 'Pharmacie',
   magasinier: 'Magasinier',
   laboratory: 'Laboratoire',
-  hospitalization: 'Hospitalisation',
   admin: 'Admin'
 };
 
-const ALL_ROLES: UserRole[] = ['doctor', 'cashier', 'pharmacy', 'magasinier', 'laboratory', 'hospitalization', 'admin'];
+const ALL_ROLES: UserRole[] = ['doctor', 'cashier', 'pharmacy', 'magasinier', 'laboratory', 'admin'];
 
 const LOGO_EMOJIS = ['🍺', '🍻', '🍷', '🍸', '☕', '🍽️', '🏥', '⚕️', '💊', '🔬', '🏨', '🏢', '🩺', '⭐', '❤️', '🛡️'];
 
@@ -203,7 +202,7 @@ export default function AdminModule({ state, setState }: Props) {
       const fresh: AppState = {
         ...prev,
         patients: [], consultations: [], invoices: [],
-        stockTransfers: [], stockEntries: [], hospitalizations: [],
+        stockTransfers: [], stockEntries: [],
         notifications: [], messages: [], auditLogs: [],
         stockMovements: [], inventorySessions: [], journey: [], labRequests: [],
         articles: prev.articles,

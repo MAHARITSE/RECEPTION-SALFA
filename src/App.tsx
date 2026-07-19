@@ -9,7 +9,6 @@ import CashierModule from './components/CashierModule';
 import PharmacyModule from './components/PharmacyModule';
 import MagasinierModule from './components/MagasinierModule';
 import LaboratoryModule from './components/LaboratoryModule';
-import HospitalizationModule from './components/HospitalizationModule';
 import AdminModule from './components/AdminModule';
 import MedicalRecordModule from './components/MedicalRecordModule';
 import Messaging from './components/Messaging';
@@ -20,7 +19,6 @@ const roleTitles: Record<string, string> = {
   pharmacy: '💊 Pharmacie — Dispensation & Stock',
   magasinier: '📦 Magasinier — Stock Central, Achats & Transferts',
   laboratory: '🔬 Laboratoire — Analyses & Résultats',
-  hospitalization: '🏨 Hospitalisation — Gestion des séjours',
   admin: '⚙️ Administration — Configuration système',
 };
 
@@ -165,7 +163,6 @@ function AppInner() {
       case 'pharmacy': return <PharmacyModule state={state} setState={setState} />;
       case 'magasinier': return <MagasinierModule state={state} setState={setState} />;
       case 'laboratory': return <LaboratoryModule state={state} setState={setState} />;
-      case 'hospitalization': return <HospitalizationModule state={state} setState={setState} />;
       case 'admin': return <AdminModule state={state} setState={setState} />;
       default: return <div>Module non trouvé</div>;
     }

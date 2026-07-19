@@ -1,7 +1,7 @@
-export type UserRole = 'receptionist' | 'doctor' | 'cashier' | 'pharmacy' | 'magasinier' | 'laboratory' | 'hospitalization' | 'admin';
+export type UserRole = 'receptionist' | 'doctor' | 'cashier' | 'pharmacy' | 'magasinier' | 'laboratory' | 'admin';
 export type ClientType = 'comptoir' | 'societe' | 'externe';
 export type ArticleFamily = 'MEDIC' | 'LABO' | 'DENT' | 'ECHO';
-export type PatientStatus = 'registered' | 'waiting_consultation' | 'in_consultation' | 'consulted_awaiting_payment' | 'invoice_paid' | 'medications_delivered' | 'analyses_pending' | 'analyses_complete' | 'hospitalized' | 'surgery_planned' | 'discharged' | 'completed';
+export type PatientStatus = 'registered' | 'waiting_consultation' | 'in_consultation' | 'consulted_awaiting_payment' | 'invoice_paid' | 'medications_delivered' | 'analyses_pending' | 'analyses_complete' | 'completed';
 
 export interface User { id: string; name: string; role: UserRole; password?: string; }
 
@@ -265,19 +265,6 @@ export interface Message {
   timestamp: string; read: boolean;
 }
 
-export interface HospitalizationRecord {
-  id: string; patientId: string; consultationId: string; service: string;
-  roomNumber: string; bedNumber: string; admissionDate: string; dischargeDate?: string;
-  dailyNotes: DailyNote[]; status: 'active' | 'discharged';
-}
-
-export interface DailyNote {
-  id: string; date: string; authorId: string; authorName: string;
-  vitalSigns?: Partial<VitalSigns>; nursingCare: string;
-  doctorObservations: string; medicationsAdministered: string[];
-}
-
-export interface Bed { id: string; service: string; roomNumber: string; bedNumber: string; occupied: boolean; patientId?: string; }
 export interface AuditLog { id: string; timestamp: string; userId: string; userName: string; userRole: UserRole; action: string; details: string; patientId?: string; }
 export interface Notification { id: string; targetRole: UserRole; targetUserId?: string; message: string; type: 'info' | 'warning' | 'critical'; timestamp: string; read: boolean; }
 export interface Fournisseur {
