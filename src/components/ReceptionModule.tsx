@@ -7,7 +7,7 @@ import { printQueueTicket } from '../utils/printTicket';
 import {
   Search, Plus, Edit, Trash2, UserX, Activity,
   X, Check, Ban, Users, LogIn, Hospital,
-  Stethoscope, MessageCircle, Info, CalendarDays, FileWarning
+  Stethoscope, MessageCircle, Info, FileWarning
 } from 'lucide-react';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; onStaffLogin: () => void; onOpenMessaging: () => void; }
@@ -50,6 +50,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
 
   const waitingCount = state.patients.filter((p) => p.status === 'waiting_consultation').length;
   const todayCount = state.patients.filter((p) => new Date(p.registeredAt).toDateString() === new Date().toDateString()).length;
+  const blacklistedPatients = state.patients.filter((p) => p.blacklisted);
 
   const handleRowDoubleClick = (patient: Patient) => {
     setSelectedPatient(patient);
@@ -139,10 +140,10 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
     setSelectedPatient(null);
   };
 
+  // Le bouton principal « Blacklist » est un accès à la liste complète.
+  // L'ajout d'un patient à cette liste reste disponible depuis la colonne BL.
   const handleBlacklistClick = () => {
-    if (!selectedPatient) { setModal('blacklistList'); return; }
-    if (selectedPatient.blacklisted) { setModal('blacklistList'); return; }
-    setModal('blacklistConfirm');
+    setModal('blacklistList');
   };
 
   const confirmBlacklist = () => {
@@ -164,14 +165,35 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
     setModal('none');
   };
 
+  const restoreBlacklistedPatient = (patient: Patient) => {
+    if (!confirm(`Remettre ${patient.lastName} ${patient.firstName} dans la liste normale ?`)) return;
+
+    setState((prev) => {
+      const next = {
+        ...prev,
+        patients: prev.patients.map((p) => p.id === patient.id ? {
+          ...p,
+          blacklisted: false,
+          blacklistReason: undefined,
+          blacklistDate: undefined,
+        } : p),
+      };
+      addAuditLog(next, 'UNBLACKLIST', `${patient.dossier} remis dans la liste normale`, patient.id);
+      return next;
+    });
+
+    // Évite de conserver un objet sélectionné avec l'ancien statut.
+    setSelectedPatient((current) => current?.id === patient.id ? {
+      ...current,
+      blacklisted: false,
+      blacklistReason: undefined,
+      blacklistDate: undefined,
+    } : current);
+  };
+
   const handleBlacklistToggle = (patient: Patient) => {
     if (patient.blacklisted) {
-      if (!confirm(`Retirer ${patient.lastName} ${patient.firstName} de la blacklist ?`)) return;
-      setState((prev) => {
-        const next = { ...prev, patients: prev.patients.map((p) => p.id === patient.id ? { ...p, blacklisted: false, blacklistReason: undefined, blacklistDate: undefined } : p) };
-        addAuditLog(next, 'UNBLACKLIST', `${patient.dossier} retiré de blacklist`, patient.id);
-        return next;
-      });
+      restoreBlacklistedPatient(patient);
     } else {
       setSelectedPatient(patient);
       setBlacklistReason('');
@@ -246,7 +268,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
             <button onClick={handleDeletePatient} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Trash2 className="h-4 w-4" /> Supprimer</button>
             <div className="w-px h-6 bg-slate-300 mx-1" />
             <button onClick={() => selectedPatient && setModal('patientInfo')} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Info className="h-4 w-4" /> Info</button>
-            <button onClick={handleBlacklistClick} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-600 hover:bg-slate-700 text-white rounded text-xs font-bold shadow cursor-pointer"><UserX className="h-4 w-4" /> Blacklist</button>
+            <button onClick={handleBlacklistClick} title="Afficher les personnes blacklistées" className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-600 hover:bg-slate-700 text-white rounded text-xs font-bold shadow cursor-pointer"><UserX className="h-4 w-4" /> Blacklist{blacklistedPatients.length > 0 && <span className="ml-0.5 rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] leading-none">{blacklistedPatients.length}</span>}</button>
           </div>
         </div>
       </section>
@@ -359,8 +381,49 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
         </ModalShell>
       )}
       {modal === 'blacklistList' && (
-        <ModalShell title="Personnes en blacklist" icon={<UserX className="w-5 h-5" />} onClose={() => setModal('none')} wide>
-          <div className="max-h-[55vh] overflow-auto rounded-lg border border-red-100">{state.patients.filter(p => p.blacklisted).length ? <table className="w-full text-left text-sm"><thead className="sticky top-0 bg-red-50 text-red-800"><tr><th className="p-3">Patient</th><th className="p-3">Dossier</th><th className="p-3">Motif</th><th className="p-3">Date</th><th className="p-3 w-20"></th></tr></thead><tbody>{state.patients.filter(p => p.blacklisted).map(p => <tr key={p.id} className="border-t border-red-100 text-slate-700"><td className="p-3 font-bold">{p.lastName} {p.firstName}</td><td className="p-3 font-mono">{p.dossier}</td><td className="p-3">{p.blacklistReason || 'Motif non renseigné'}</td><td className="p-3 whitespace-nowrap">{p.blacklistDate ? new Date(p.blacklistDate).toLocaleDateString('fr-FR') : '—'}</td><td className="p-3"><button onClick={() => { if(confirm('Retirer de la blacklist ?')) { setState((prev:any) => ({...prev, patients: prev.patients.map((pp:any) => pp.id===p.id ? {...pp, blacklisted:false, blacklistReason:undefined, blacklistDate:undefined} : pp)})); } }} className="px-2 py-0.5 bg-white border border-red-300 text-red-600 rounded text-xs hover:bg-red-50">Supprimer</button></td></tr>)}</tbody></table> : <div className="p-10 text-center text-slate-500"><Users className="mx-auto mb-2 h-10 w-10 text-slate-300" />Aucune personne en blacklist.</div>}</div>
+        <ModalShell title={`Personnes en blacklist (${blacklistedPatients.length})`} icon={<UserX className="w-5 h-5" />} onClose={() => setModal('none')} wide>
+          <p className="mb-4 text-sm text-slate-500">
+            Consultez le motif de chaque mise en blacklist ou remettez une personne dans la liste normale.
+          </p>
+          <div className="max-h-[55vh] overflow-auto rounded-lg border border-red-100">
+            {blacklistedPatients.length > 0 ? (
+              <table className="w-full min-w-[720px] text-left text-sm">
+                <thead className="sticky top-0 bg-red-50 text-red-800 shadow-sm">
+                  <tr>
+                    <th className="p-3">Patient</th>
+                    <th className="p-3">Dossier</th>
+                    <th className="p-3">Motif</th>
+                    <th className="p-3">Date</th>
+                    <th className="p-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {blacklistedPatients.map((patient) => (
+                    <tr key={patient.id} className="border-t border-red-100 text-slate-700 hover:bg-red-50/40">
+                      <td className="p-3 font-bold uppercase">{patient.lastName} {patient.firstName}</td>
+                      <td className="p-3 font-mono text-blue-700">{patient.dossier}</td>
+                      <td className="max-w-sm whitespace-normal p-3">{patient.blacklistReason || 'Motif non renseigné'}</td>
+                      <td className="p-3 whitespace-nowrap">{patient.blacklistDate ? new Date(patient.blacklistDate).toLocaleDateString('fr-FR') : '—'}</td>
+                      <td className="p-3 text-right">
+                        <button
+                          onClick={() => restoreBlacklistedPatient(patient)}
+                          className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700"
+                          title="Retirer de la blacklist"
+                        >
+                          <Check className="h-4 w-4" /> Liste normale
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="p-10 text-center text-slate-500">
+                <Users className="mx-auto mb-2 h-10 w-10 text-slate-300" />
+                <p className="font-medium">Aucune personne en blacklist.</p>
+              </div>
+            )}
+          </div>
         </ModalShell>
       )}
       {modal === 'patientInfo' && selectedPatient && (
