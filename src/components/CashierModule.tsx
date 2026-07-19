@@ -456,7 +456,7 @@ export default function CashierModule({ state, setState }: Props) {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 flex flex-col">
 
 
       {/* Tabs */}
@@ -607,7 +607,7 @@ export default function CashierModule({ state, setState }: Props) {
 
       {/* === INLINE ADD PATIENT (no modal) === */}
       {hbModal === 'add_patient' && (
-        <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-4">
+        <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-0 order-first">
           <div className={`px-4 py-3 flex justify-between items-center text-white ${tab === 'hospit' ? 'bg-rose-600' : 'bg-blue-600'}`}><span className="font-bold"><UserPlus className="w-5 h-5 inline" /> Ajouter Patient — {tab === 'hospit' ? 'Hospitalisation' : 'Bloc'}</span><button onClick={() => setHbModal('none')} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button></div>
           <div className="p-4 space-y-3">
             {/* Search existing */}
@@ -649,7 +649,7 @@ export default function CashierModule({ state, setState }: Props) {
         const rec = hbRecords.find(r => r.id === hbSelRecordId);
         const recTotal = rec ? rec.lines.reduce((s, l) => s + hbLineAmt(l), 0) : 0;
         return (
-        <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-4">
+        <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-0 order-first">
             <div className="bg-emerald-600 px-4 py-3 flex justify-between items-center text-white">
               <span className="font-bold flex items-center gap-1">💊 Prescription (Saisie Sage) — {rec?.patientName} ({rec?.type === 'hospit' ? 'Hospitalisation' : 'Bloc'})</span>
               <button onClick={() => setHbModal('none')} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button>
@@ -845,7 +845,7 @@ export default function CashierModule({ state, setState }: Props) {
 
       {/* Edit Client Type — Inline (no modal) */}
       {hbModal === 'edit_client' && hbSelRecordId && (
-        <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-4">
+        <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-0 order-first">
             <div className="bg-blue-600 px-4 py-3 flex justify-between items-center text-white"><span className="font-bold"><Edit2 className="w-5 h-5 inline" /> Modifier Type Client</span><button onClick={() => setHbModal('none')} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button></div>
             <div className="p-4 space-y-3">
               <div><label className="block text-sm font-medium mb-1">Type</label><select value={hbEditClientType} onChange={e => setHbEditClientType(e.target.value as ClientType)} className="w-full px-3 py-2 border rounded-lg outline-none cursor-pointer"><option value="comptoir">Client Comptoir</option><option value="societe">Client Société</option></select></div>

@@ -302,7 +302,7 @@ export default function PharmacyModule({ state, setState }: Props) {
   const blockedCount = state.articles.filter((a) => a.saleBlocked).length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 flex flex-col">
       {/* Banner & Sélecteur : Caisse de garde EN PREMIER */}
       <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-purple-800 rounded-xl p-4 text-white shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
@@ -708,7 +708,7 @@ export default function PharmacyModule({ state, setState }: Props) {
 
       {/* Blocage vente — Inline (no modal) */}
       {blockModal && (
-        <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-4">
+        <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-0 order-first">
           <div className={`px-5 py-3 text-white font-bold flex items-center gap-2 ${blockModal.currentlyBlocked ? 'bg-emerald-600' : 'bg-orange-600'}`}>
             {blockModal.currentlyBlocked ? <Unlock className="w-5 h-5" /> : <Ban className="w-5 h-5" />}
             {blockModal.currentlyBlocked ? 'Débloquer la vente' : 'Bloquer la vente'}
@@ -752,19 +752,23 @@ export default function PharmacyModule({ state, setState }: Props) {
         </div>
       )}
 
-      <DemandeAchatForm
-        open={reapproModalOpen}
-        onClose={closeReappro}
-        articles={state.articles}
-        defaultCategory="approvisionnement"
-        initialLine={reapproEditingLine}
-        initialNotes={reapproEditingNotes}
-        initialCategory={reapproEditingCategory}
-        isEditMode={!!reapproEditingId}
-        onSubmit={submitReappro}
-        theme="purple"
-        pharmacyMode
-      />
+      {reapproModalOpen && (
+        <div className="order-first">
+        <DemandeAchatForm
+          open={reapproModalOpen}
+          onClose={closeReappro}
+          articles={state.articles}
+          defaultCategory="approvisionnement"
+          initialLine={reapproEditingLine}
+          initialNotes={reapproEditingNotes}
+          initialCategory={reapproEditingCategory}
+          isEditMode={!!reapproEditingId}
+          onSubmit={submitReappro}
+          theme="purple"
+          pharmacyMode
+        />
+        </div>
+      )}
     </div>
   );
 }
