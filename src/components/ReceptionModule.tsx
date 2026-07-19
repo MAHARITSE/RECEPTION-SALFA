@@ -7,11 +7,11 @@ import { printQueueTicket } from '../utils/printTicket';
 import {
   Search, Plus, Edit, Trash2, UserX, Activity,
   X, Check, Ban, Users, LogIn, Hospital,
-  RefreshCw, Stethoscope, MessageCircle
+  Stethoscope, MessageCircle
 } from 'lucide-react';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; onStaffLogin: () => void; onOpenMessaging: () => void; }
-type ModalType = 'none' | 'add' | 'edit' | 'vitals';
+type ModalType = 'none' | 'add' | 'edit' | 'vitals' | 'blacklistList' | 'blacklistConfirm';
 
 export default function ReceptionModule({ state, setState, onStaffLogin, onOpenMessaging }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -40,7 +40,6 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
   }, []);
 
   const filteredPatients = state.patients.filter((p) => {
-    if (p.blacklisted) return false;
     const q = searchQuery.toLowerCase();
     const ms = p.firstName.toLowerCase().includes(q) || p.lastName.toLowerCase().includes(q) ||
       p.dossier.toLowerCase().includes(q) || (p.matricule && p.matricule.toLowerCase().includes(q));
@@ -138,13 +137,20 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
   };
 
   const handleBlacklist = () => {
-    if (!selectedPatient || !confirm(`Blacklist ${selectedPatient.lastName} ?`)) return;
+    if (!selectedPatient) { setModal('blacklistList'); return; }
+    setBlacklistReason('');
+    setModal('blacklistConfirm');
+  };
+
+  const confirmBlacklist = () => {
+    if (!selectedPatient || !blacklistReason.trim()) { alert('Le motif est obligatoire'); return; }
+    const now = new Date().toISOString();
     setState((prev) => {
-      const next = { ...prev, patients: prev.patients.map((p) => p.id === selectedPatient.id ? { ...p, blacklisted: true } : p) };
-      addAuditLog(next, 'BLACKLIST', `${selectedPatient.dossier} blacklisté`, selectedPatient.id);
+      const next = { ...prev, patients: prev.patients.map((p) => p.id === selectedPatient.id ? { ...p, blacklisted: true, blacklistReason: blacklistReason.trim(), blacklistedAt: now } : p) };
+      addAuditLog(next, 'BLACKLIST', `${selectedPatient.dossier} blacklisté — Motif: ${blacklistReason.trim()}`, selectedPatient.id);
       return next;
     });
-    setSelectedPatient(null);
+    setSelectedPatient(null); setModal('none');
   };
 
   const formatLastVisit = (dateStr?: string): string => {
@@ -191,9 +197,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
             <button onClick={() => { if (!selectedPatient) return; setPatientForm({ lastName: selectedPatient.lastName, firstName: selectedPatient.firstName, dateOfBirth: selectedPatient.dateOfBirth === 'N/A' ? '' : selectedPatient.dateOfBirth, gender: selectedPatient.gender, address: selectedPatient.address, contact: selectedPatient.contact, ssn: selectedPatient.ssn, matricule: selectedPatient.matricule || '', insureName: selectedPatient.insureName || '', clientType: selectedPatient.clientType === 'externe' ? 'comptoir' : selectedPatient.clientType, company: selectedPatient.company || '', subCompany: selectedPatient.subCompany || '' }); setModal('edit'); }} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Edit className="h-4 w-4" /> Modifier</button>
             <button onClick={handleDeletePatient} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Trash2 className="h-4 w-4" /> Supprimer</button>
             <div className="w-px h-6 bg-slate-300 mx-1" />
-            <button onClick={handleBlacklist} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-600 hover:bg-slate-700 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><UserX className="h-4 w-4" /> Blacklist</button>
-            <div className="w-px h-6 bg-slate-300 mx-1" />
-            <button className="p-1.5 bg-white border border-slate-300 hover:bg-slate-50 rounded shadow-sm transition cursor-pointer" title="Actualiser"><RefreshCw className="h-4 w-4 text-slate-600" /></button>
+            <button onClick={handleBlacklist} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-600 hover:bg-slate-700 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><UserX className="h-4 w-4" /> Blacklist</button>
           </div>
         </div>
       </section>
@@ -215,7 +219,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
                   const hv = patient.vitalSigns && (patient.vitalSigns.temperature || patient.vitalSigns.weight);
                   return (
                     <tr key={patient.id} onClick={() => setSelectedPatient(patient)} onDoubleClick={() => handleRowDoubleClick(patient)}
-                      className={`cursor-pointer border-b border-slate-200 transition-colors ${isSel ? 'bg-[#cce5ff] hover:bg-[#b8daff]' : index % 2 === 0 ? 'bg-white hover:bg-slate-100' : 'bg-slate-50 hover:bg-slate-100'}`}>
+                      className={`cursor-pointer border-b border-slate-200 transition-colors ${isSel ? 'bg-[#cce5ff] hover:bg-[#b8daff]' : patient.blacklisted ? 'bg-red-50 hover:bg-red-100 text-red-700' : index % 2 === 0 ? 'bg-white hover:bg-slate-100' : 'bg-slate-50 hover:bg-slate-100'}`}>
                       <td className="p-2 border-r border-slate-200 text-center text-slate-400 font-mono">{index + 1}</td>
                       <td className="p-2 border-r border-slate-200"><span className="font-mono font-bold text-blue-700">{patient.dossier}</span></td>
                       <td className="p-2 border-r border-slate-200 font-mono text-slate-600">{patient.matricule || '—'}</td>
@@ -241,6 +245,25 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
         <div className="flex items-center gap-4"><span>📊 Total: <strong>{filteredPatients.length}</strong></span><span>|</span><span>🩺 En attente: <strong className="text-amber-700">{waitingCount}</strong></span><span>|</span><span>📅 Auj: <strong className="text-blue-700">{todayCount}</strong></span></div>
         <div className="font-semibold">MediCare HIS v2.0 © 2026</div>
       </footer>
+
+      {(modal === 'blacklistList' || modal === 'blacklistConfirm') && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl overflow-hidden border border-red-100">
+            <div className="bg-gradient-to-r from-red-600 to-rose-500 px-6 py-4 text-white flex items-center justify-between">
+              <div><h2 className="text-lg font-bold">🚫 Liste noire</h2><p className="text-red-100 text-xs">Gestion des personnes interdites</p></div>
+              <button onClick={() => setModal('none')} className="p-2 rounded-full hover:bg-white/20"><X className="w-5 h-5" /></button>
+            </div>
+            {modal === 'blacklistList' ? (
+              <div className="p-6">
+                {state.patients.filter(p => p.blacklisted).length === 0 ? <p className="py-8 text-center text-slate-500">Aucune personne en blacklist.</p> : <div className="space-y-3 max-h-[55vh] overflow-auto">{state.patients.filter(p => p.blacklisted).map(p => <div key={p.id} className="rounded-xl border border-red-200 bg-red-50 p-4"><div className="flex justify-between"><strong className="text-red-800">{p.lastName} {p.firstName}</strong><span className="text-xs text-red-600">{p.blacklistedAt ? new Date(p.blacklistedAt).toLocaleDateString('fr-FR') : 'Date inconnue'}</span></div><div className="text-xs text-slate-600 mt-1">Dossier {p.dossier} · Motif : <span className="font-medium text-red-700">{p.blacklistReason || 'Non renseigné'}</span></div></div>)}</div>}
+                <button onClick={() => setModal('none')} className="mt-5 w-full rounded-xl bg-slate-800 py-2.5 text-white font-semibold hover:bg-slate-700">Fermer</button>
+              </div>
+            ) : (
+              <div className="p-6"><p className="text-slate-700 mb-3">Voulez-vous ajouter <strong>{selectedPatient?.lastName} {selectedPatient?.firstName}</strong> à la blacklist ?</p><div className="mb-4"><label className="block text-sm font-semibold text-slate-700 mb-1">Motif de l’ajout *</label><textarea value={blacklistReason} onChange={e => setBlacklistReason(e.target.value)} autoFocus rows={3} className="w-full rounded-xl border border-slate-300 p-3 focus:border-red-500 focus:ring-2 focus:ring-red-100 outline-none" placeholder="Saisissez le motif..." /></div><div className="flex justify-end gap-3"><button onClick={() => setModal('none')} className="rounded-xl border border-slate-300 px-5 py-2 font-semibold text-slate-600">Non</button><button onClick={confirmBlacklist} className="rounded-xl bg-red-600 px-5 py-2 font-semibold text-white hover:bg-red-700">Oui, ajouter</button></div></div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* MODAL: SAISIE PATIENT */}
       {(modal === 'add' || modal === 'edit') && (
