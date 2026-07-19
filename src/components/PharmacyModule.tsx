@@ -5,13 +5,14 @@ import type { TransferCategory, StockTransfer } from '../types';
 import { addAuditLog, addNotification, formatAr, familyLabel, transferCategoryLabel, transferCategoryColor, addJourneyEvent } from '../store';
 import { printDeliveryTicket } from '../utils/printTicket';
 import DemandeAchatForm, { type ReqLine } from './DemandeAchatForm';
+import CashierModule from './CashierModule';
 import {
-  Pill, Package, CheckCircle, AlertTriangle, Clock, Search, PackageCheck, Send,
-  Plus, Trash2, FileText, Filter, Printer, Edit3
+  Pill, Package, CheckCircle, Clock, Search, Send,
+  Plus, Trash2, FileText, Filter, Printer, Edit3, CreditCard
 } from 'lucide-react';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
-type Tab = 'pending' | 'stock' | 'delivered' | 'request' | 'history';
+type Tab = 'pending' | 'stock' | 'delivered' | 'request' | 'history' | 'caisse';
 
 const CATEGORIES: TransferCategory[] = ['approvisionnement', 'hospitalisation', 'bloc', 'central'];
 
@@ -130,8 +131,6 @@ export default function PharmacyModule({ state, setState }: Props) {
   const externalInvoices = state.invoices.filter((i) => i.isExternal && i.status === 'paid');
   const allPending = [...paidConsultations, ...emergencyConsults];
 
-  const deliveredCount = state.consultations.filter((c) => c.prescriptions.length > 0 && c.prescriptions.every((p) => p.delivered)).length;
-  const lowStock = state.articles.filter((a) => a.stockPharmacie <= a.minStockPharmacie).length;
   const filtered = state.articles.filter((a) => a.name.toLowerCase().includes(searchStock.toLowerCase()));
 
   // Requests list
@@ -196,11 +195,39 @@ export default function PharmacyModule({ state, setState }: Props) {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-200"><div className="flex items-center gap-3"><div className="p-2 bg-amber-100 rounded-lg"><Clock className="w-5 h-5 text-amber-600" /></div><div><div className="text-2xl font-bold">{allPending.length}</div><div className="text-sm text-slate-500">À délivrer</div></div></div></div>
-        <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-200"><div className="flex items-center gap-3"><div className="p-2 bg-green-100 rounded-lg"><PackageCheck className="w-5 h-5 text-green-600" /></div><div><div className="text-2xl font-bold">{deliveredCount}</div><div className="text-sm text-slate-500">Délivrées</div></div></div></div>
-        <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-200"><div className="flex items-center gap-3"><div className="p-2 bg-purple-100 rounded-lg"><Package className="w-5 h-5 text-purple-600" /></div><div><div className="text-2xl font-bold">{state.articles.length}</div><div className="text-sm text-slate-500">Articles</div></div></div></div>
-        <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-200"><div className={`flex items-center gap-3 ${lowStock > 0 ? 'bg-red-100' : 'bg-green-100'} rounded-lg p-2`}><AlertTriangle className={`w-5 h-5 ${lowStock > 0 ? 'text-red-600' : 'text-green-600'}`} /><div><div className="text-2xl font-bold">{lowStock}</div><div className="text-sm text-slate-500">Alertes stock</div></div></div></div>
+      {/* Banner & Sélecteur de Module : Pharmacie & Caisse de garde */}
+      <div className="bg-gradient-to-r from-purple-900 via-indigo-900 to-purple-800 rounded-xl p-4 text-white shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="px-2.5 py-0.5 rounded-full bg-purple-500/30 border border-purple-400/30 text-xs font-semibold uppercase tracking-wider text-purple-200">
+              Service Continu & Garde
+            </span>
+            <h3 className="font-bold text-lg">Pharmacie & Caisse intégrée</h3>
+          </div>
+          <p className="text-xs text-purple-200 mt-1">
+            Intégration complète du module de Caisse pour assurer les encaissements lors des gardes de nuit et jours fériés.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 bg-black/20 p-1 rounded-lg border border-white/10 w-full sm:w-auto">
+          <button
+            onClick={() => setTab('pending')}
+            className={`flex-1 sm:flex-none px-4 py-2 rounded-md text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              tab !== 'caisse' ? 'bg-purple-600 text-white shadow' : 'text-purple-200 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Pill className="w-4 h-4" />
+            <span>Module Pharmacie</span>
+          </button>
+          <button
+            onClick={() => setTab('caisse')}
+            className={`flex-1 sm:flex-none px-4 py-2 rounded-md text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              tab === 'caisse' ? 'bg-blue-600 text-white shadow' : 'text-purple-200 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <CreditCard className="w-4 h-4" />
+            <span>Module Caisse (Garde)</span>
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
@@ -211,6 +238,7 @@ export default function PharmacyModule({ state, setState }: Props) {
             { key: 'delivered' as Tab, icon: <CheckCircle className="w-4 h-4" />, label: 'Délivrées' },
             { key: 'request' as Tab, icon: <Send className="w-4 h-4" />, label: `Demander réappro (${state.stockTransfers.filter(t=>t.status==='requested').length})` },
             { key: 'history' as Tab, icon: <FileText className="w-4 h-4" />, label: 'Historique demandes' },
+            { key: 'caisse' as Tab, icon: <CreditCard className="w-4 h-4 text-blue-600" />, label: '💳 Module Caisse (Garde)' },
           ].map((t) => (<button key={t.key} onClick={() => setTab(t.key)} className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors cursor-pointer ${tab === t.key ? 'border-purple-500 text-purple-600 bg-purple-50/50' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>{t.icon}{t.label}</button>))}
         </div>
 
@@ -389,6 +417,27 @@ export default function PharmacyModule({ state, setState }: Props) {
                     )}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+
+          {tab === 'caisse' && (
+            <div className="space-y-4">
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-100 text-blue-700 rounded-lg">
+                    <CreditCard className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-blue-900 text-base">Module de Caisse Intégré — Garde de nuit & Jours Fériés</h4>
+                    <p className="text-xs text-blue-700 mt-0.5">
+                      Ce module permet au personnel de la Pharmacie de réaliser l'intégralité des opérations de caisse (Encaissement unifié, Ventes directes externe, Hospitalisation/Bloc et Clôture journalière) pendant les périodes de permanence.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="-mx-6 -mb-6 p-6 bg-slate-50/50 border-t border-slate-200">
+                <CashierModule state={state} setState={setState} />
               </div>
             </div>
           )}
