@@ -69,18 +69,34 @@ function buildTicketHtml(t: TicketBase) {
     ${bodyHtml}
     <div class="rule-double"></div>
     <footer class="center small">${escapeHtml(footerNote || settings.footerMessage || '')}</footer>
-    <script>window.onload=()=>{ window.focus(); ${settings.autoPrint ? 'window.print();' : ''} }<\\/script>
+    <script>window.onload=()=>{ window.focus(); window.print(); }</script>
   </body></html>`;
 }
 
-function openTicketWindow(html: string, title: string) {
-  const popup = window.open('', '_blank', `width=${title.includes('80') ? 480 : 360},height=720`);
-  if (!popup) {
-    window.alert("La fenêtre d'impression a été bloquée. Autorisez les fenêtres pop-up puis réessayez.");
+function openTicketWindow(html: string, _title: string) {
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentWindow?.document || iframe.contentDocument;
+  if (!doc) {
+    if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
     return;
   }
-  popup.document.write(html);
-  popup.document.close();
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  setTimeout(() => {
+    if (iframe && iframe.parentNode) {
+      iframe.parentNode.removeChild(iframe);
+    }
+  }, 60000);
 }
 
 /* ============================================================

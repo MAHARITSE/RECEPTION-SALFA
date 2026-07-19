@@ -17,7 +17,6 @@ export default function CashierModule({ state, setState }: Props) {
   const [selConsultId, setSelConsultId] = useState<string | null>(null);
   const [selPatientId, setSelPatientId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('payment');
-  const [printTicket, setPrintTicket] = useState<string | null>(null);
 
   // External sale
   const [extSearch, setExtSearch] = useState('');
@@ -709,17 +708,6 @@ export default function CashierModule({ state, setState }: Props) {
               {hbEditClientType === 'societe' && <div><label className="block text-sm font-medium mb-1">Société</label><select value={hbEditCompany} onChange={e => setHbEditCompany(e.target.value)} className="w-full px-3 py-2 border rounded-lg outline-none cursor-pointer"><option value="">—</option>{state.companies.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}</select></div>}
               <button onClick={hbSaveClientType} className="w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer">Enregistrer</button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Print Ticket */}
-      {printTicket && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-lg shadow-2xl w-80 max-h-[80vh] overflow-auto">
-            <div className="p-3 border-b bg-slate-100 flex justify-between"><span className="font-bold text-sm">🧾 Ticket</span><button onClick={() => setPrintTicket(null)} className="cursor-pointer">✕</button></div>
-            <pre className="p-4 text-xs font-mono whitespace-pre-wrap">{printTicket}</pre>
-            <div className="p-3 border-t"><button onClick={() => { window.print(); setPrintTicket(null); }} className="w-full py-2 bg-slate-800 text-white rounded-lg cursor-pointer flex items-center justify-center gap-2"><Printer className="w-4 h-4" /> Imprimer</button></div>
           </div>
         </div>
       )}
