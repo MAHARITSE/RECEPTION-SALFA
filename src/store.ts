@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import type {
-  Patient, Consultation, Invoice, Article, Bed, AuditLog, VitalSigns, Prescription,
+  Patient, Consultation, Invoice, CashClosing, Article, Bed, AuditLog, VitalSigns, Prescription,
   Notification, HospitalizationRecord, UserRole, User, Company, Fournisseur, Famille,
   Message, StockTransfer, StockEntry, ClientType, ArticleFamily, TransferCategory,
   LabExamCatalog, LabCategory, LabRequest, PatientJourneyEvent, JourneyDepartment,
@@ -182,7 +182,7 @@ export const SEED_FAMILLES: Famille[] = [
 
 export interface AppState {
   currentUser: User | null; ticketSettings: import('./types').TicketSettings; patients: Patient[]; consultations: Consultation[];
-  invoices: Invoice[]; articles: Article[]; beds: Bed[];
+  invoices: Invoice[]; cashClosings: CashClosing[]; articles: Article[]; beds: Bed[];
   hospitalizations: HospitalizationRecord[]; stockTransfers: StockTransfer[];
   stockEntries: StockEntry[]; auditLogs: AuditLog[]; notifications: Notification[];
   messages: Message[]; users: User[]; companies: Company[];
@@ -426,7 +426,7 @@ export function createInitialState(): AppState {
       copies: 1, currency: 'Ar', paymentMethods: ['Espèces', 'Carte bancaire', 'Mobile Money', 'Virement', 'Chèque'],
       invoicePrefix: 'FAC', ticketFooter2: '', ticketHeaderColor: '#1e40af',
     },
-    patients: [...seedPatients, lea, ...demoPatients, ...morePatients], consultations: [leaConsult, ...demoConsultations], invoices: [leaInvoice, leaLabInvoice, ...demoInvoices],
+    patients: [...seedPatients, lea, ...demoPatients, ...morePatients], consultations: [leaConsult, ...demoConsultations], invoices: [leaInvoice, leaLabInvoice, ...demoInvoices], cashClosings: [],
     articles: [...seedArticles], beds: [...seedBeds], hospitalizations: [leaHosp],
     stockTransfers: [], stockEntries: [], auditLogs: [], notifications: [],
     messages: [], users: [...users], companies: [...seedCompanies],

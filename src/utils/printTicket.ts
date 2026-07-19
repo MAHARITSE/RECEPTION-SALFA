@@ -462,40 +462,61 @@ export function printClosingTicket(
   sections: { title: string; rows: { label: string; value: string }[]; total?: string }[],
   grandTotal: string,
 ) {
-  const sectionsHtml = sections
-    .map(
-      (s) => `
-      <div class="bold" style="margin-top:2mm">${escapeHtml(s.title)}</div>
-      <table>
-        ${s.rows.map((r) => `<tr><td>${escapeHtml(r.label)}</td><td class="amount">${escapeHtml(r.value)}</td></tr>`).join('')}
-        ${s.total ? `<tr class="total"><td>Total</td><td class="amount">${escapeHtml(s.total)}</td></tr>` : ''}
-      </table>
-    `,
-    )
-    .join('');
-  const bodyHtml = `
-    <div><span class="bold">Caissier :</span> ${escapeHtml(cashier.name)}</div>
-    <div><span class="bold">Date :</span> ${date.toLocaleDateString('fr-FR')}</div>
-    <div class="rule"></div>
-    ${sectionsHtml}
-    <div class="rule-double"></div>
-    <div class="total" style="display:flex;justify-content:space-between">
-      <span>TOTAL GÉNÉRAL</span><span>${escapeHtml(grandTotal)}</span>
-    </div>
-    <div class="signature">
-      <span>Caissier</span>
-      <span>Responsable</span>
-    </div>
-  `;
-  const html = buildTicketHtml({
-    settings,
-    title: 'CLÔTURE DE CAISSE (Z)',
-    reference: `Z-${date.toISOString().slice(0, 10).replace(/-/g, '')}`,
-    date,
-    bodyHtml,
-    footerNote: 'Document de contrôle — à conserver.',
-    silent: settings.autoPrint !== false,
+  /*
+   * Une imprimante thermique déroule le papier indéfiniment par défaut. Pour les
+   * Z avec beaucoup de factures, nous coupons volontairement le document en pages
+   * de hauteur A4 (297 mm). Les en-têtes et le total sont répétés : aucune ligne
+   * n'est perdue et chaque morceau peut être contrôlé séparément.
+   */
+  const maxRows = settings.paperWidth === 58 ? 22 : 30;
+  const pages: { title: string; rows: { label: string; value: string }[]; total?: string }[][] = [];
+  let page: { title: string; rows: { label: string; value: string }[]; total?: string }[] = [];
+  let rowCount = 0;
+  sections.forEach((section) => {
+    const rows = section.rows.length ? section.rows : [{ label: 'Aucune opération', value: '—' }];
+    for (let i = 0; i < rows.length; i += maxRows) {
+      const chunk = rows.slice(i, i + maxRows);
+      if (rowCount && rowCount + chunk.length > maxRows) {
+        pages.push(page); page = []; rowCount = 0;
+      }
+      page.push({ title: i ? `${section.title} (suite)` : section.title, rows: chunk, total: i + maxRows >= rows.length ? section.total : undefined });
+      rowCount += chunk.length;
+      if (rowCount >= maxRows) { pages.push(page); page = []; rowCount = 0; }
+    }
   });
+  if (page.length || !pages.length) pages.push(page);
+
+  const width = settings.paperWidth;
+  const pageHtml = pages.map((pageSections, pageIndex) => {
+    const details = pageSections.map((section) => `
+      <div class="section-title">${escapeHtml(section.title)}</div>
+      <table>${section.rows.map((row) => `<tr><td>${escapeHtml(row.label)}</td><td class="amount">${escapeHtml(row.value)}</td></tr>`).join('')}
+      ${section.total ? `<tr class="sub-total"><td>Total</td><td class="amount">${escapeHtml(section.total)}</td></tr>` : ''}</table>`).join('');
+    const isLast = pageIndex === pages.length - 1;
+    return `<section class="ticket-page">
+      <header class="center">${settings.showLogo !== false && settings.logoUrl ? `<img class="logo" src="${escapeHtml(settings.logoUrl)}" alt="Logo" />` : ''}
+        <div class="bold">${escapeHtml(settings.facilityName)}</div>
+        ${settings.address ? `<div class="small">${escapeHtml(settings.address)}</div>` : ''}
+        ${settings.phone ? `<div class="small">Tél. : ${escapeHtml(settings.phone)}</div>` : ''}
+      </header>
+      <div class="rule"></div>
+      <div class="center title">CLÔTURE DE CAISSE (Z)</div>
+      <div class="center small">Z-${date.toISOString().slice(0, 10).replace(/-/g, '')} · ${date.toLocaleString('fr-FR')} · Page ${pageIndex + 1}/${pages.length}</div>
+      <div class="rule"></div>
+      <div><b>Caissier :</b> ${escapeHtml(cashier.name)}</div>
+      ${details}
+      ${isLast ? `<div class="rule-double"></div><div class="grand-total"><span>TOTAL GÉNÉRAL</span><span>${escapeHtml(grandTotal)}</span></div><div class="signature"><span>Caissier</span><span>Responsable</span></div>` : '<div class="continued">Suite sur le ticket suivant…</div>'}
+      <footer class="center small">Document de contrôle — à conserver.</footer>
+    </section>`;
+  }).join('');
+
+  const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Clôture de caisse</title><style>
+    @page { size: ${width}mm 297mm; margin: 0; }
+    *{box-sizing:border-box} body{margin:0;font-family:"Courier New",monospace;font-size:${width === 58 ? '9.5px' : '10.5px'};line-height:1.3;color:#000}
+    .ticket-page{width:${width}mm;height:297mm;padding:${width === 58 ? '3mm' : '4mm'};break-after:page;page-break-after:always;overflow:hidden;display:flex;flex-direction:column}
+    .ticket-page:last-child{break-after:auto;page-break-after:auto}.center{text-align:center}.bold,.section-title{font-weight:700}.small{font-size:8.5px}.title{font-size:${width === 58 ? '11px' : '12.5px'};font-weight:700}.logo{max-width:${width === 58 ? '30mm' : '45mm'};max-height:16mm;object-fit:contain;margin-bottom:2mm}
+    .rule{border-top:1px dashed #000;margin:2.5mm 0}.rule-double{border-top:3px double #000;margin:2.5mm 0}.section-title{margin-top:2.5mm}table{width:100%;border-collapse:collapse}td{padding:.8mm 0;vertical-align:top}.amount{text-align:right;white-space:nowrap;padding-left:1.5mm}.sub-total{font-weight:700}.grand-total{font-size:${width === 58 ? '11.5px' : '13px'};font-weight:700;display:flex;justify-content:space-between}.signature{margin-top:6mm;display:flex;justify-content:space-between;gap:4mm;font-size:8.5px}.signature span{width:48%;border-top:1px solid #000;padding-top:1mm;text-align:center}.continued{margin-top:auto;text-align:center;font-size:8.5px;font-style:italic}.ticket-page footer{margin-top:auto}
+  </style></head><body>${pageHtml}${printScript(settings.autoPrint !== false)}</body></html>`;
   openTicketWindow(html, 'Clôture de caisse', ticketCopies(settings));
 }
 
