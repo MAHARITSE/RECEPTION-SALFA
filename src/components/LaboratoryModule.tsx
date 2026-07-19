@@ -300,7 +300,7 @@ export default function LaboratoryModule({ state, setState }: Props) {
   const openNew = () => { setShowNew(true); setSelectedPatientId(null); setPatSearch(''); setSelectedExamIds([]); setUrgent(false); setSampleType('Sang veineux'); };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 flex flex-col">
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-200">
@@ -494,7 +494,7 @@ export default function LaboratoryModule({ state, setState }: Props) {
 
       {/* NOUVELLE DEMANDE — Inline (no modal) */}
       {showNew && (
-        <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-4">
+        <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-0 order-first">
             <div className="bg-gradient-to-r from-cyan-600 to-cyan-700 px-4 py-3 flex justify-between items-center text-white">
               <span className="font-bold flex items-center gap-2"><FlaskConical className="w-5 h-5" /> Nouvelle demande d'analyse</span>
               <button onClick={() => setShowNew(false)} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button>
@@ -610,7 +610,7 @@ export default function LaboratoryModule({ state, setState }: Props) {
 
       {/* AJOUT D'EXAMEN — Inline (no modal) */}
       {showAddExam && (
-        <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-4">
+        <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-0 order-first">
             <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 px-4 py-3 flex justify-between items-center text-white">
               <span className="font-bold flex items-center gap-2"><FlaskConical className="w-5 h-5" /> Ajouter un examen au catalogue</span>
               <button onClick={() => setShowAddExam(false)} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button>
