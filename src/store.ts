@@ -279,6 +279,15 @@ export function createInitialState(): AppState {
   const rab108Req: LabRequest = { id: rab108ReqId, patientId: rab108.id, consultationId: rab108Consult.id, examType: 'Créatinine', code: 'BIO002', category: 'biochimie', parameters: ['Créatinine'], urgent: false, status: 'pending', sampleType: 'Sang veineux', requestedBy: 'DOC003', requestedAt: daysAgo(0), invoiceId: rab108LabInvId, price: 10000 };
 
   const demoPatients = [rak105, ras106, and107, rab108];
+
+  // Additional demo patients for rich base preview
+  const morePatients: Patient[] = [
+    mkPatient('KAN109', 'Aina', 'KANDRIANA', 'F', '1988-04-02', { clientType: 'societe', company: 'AIR MADAGASCAR', status: 'registered', antecedents: ['Allergie pollen'], bloodGroup: 'O-' }),
+    mkPatient('ZAF110', 'Mickael', 'ZAFY', 'M', '1975-11-30', { clientType: 'comptoir', status: 'waiting_consultation', allergies: ['Pénicilline'], vitalSigns: { temperature: '37.8', bloodPressureSystolic: '135', bloodPressureDiastolic: '85', heartRate: '82', oxygenSaturation: '97', weight: '78', height: '172' } }),
+    mkPatient('RAZ111', 'Lanto', 'RAZAFIMANANA', 'F', '2001-08-15', { clientType: 'societe', company: 'BNI MADAGASCAR', status: 'analyses_pending', bloodGroup: 'A-' }),
+    mkPatient('BEN112', 'Pierre', 'BENOIT', 'M', '1965-01-25', { clientType: 'comptoir', status: 'registered', antecedents: ['Diabète'] }),
+    mkPatient('MAN113', 'Nirina', 'MANANJARA', 'F', '1995-06-12', { clientType: 'societe', company: 'QMM / RIO TINTO', status: 'consulted_awaiting_payment', vitalSigns: { temperature: '36.9', bloodPressureSystolic: '110', bloodPressureDiastolic: '70', heartRate: '68', oxygenSaturation: '99', weight: '52', height: '160' } }),
+  ];
   const demoConsultations = [rak105Consult, ras106Consult, and107Consult, rab108Consult];
   const demoInvoices = [rak105Inv, ras106Inv, and107Inv, rab108PharmaInv, rab108LabInv];
   const demoLabs = [rak105Req, ras106Req, and107Nfs, and107Lip, rab108Req];
@@ -311,7 +320,7 @@ export function createInitialState(): AppState {
       copies: 1, currency: 'Ar', paymentMethods: ['Espèces', 'Carte bancaire', 'Mobile Money', 'Virement', 'Chèque'],
       invoicePrefix: 'FAC', ticketFooter2: '', ticketHeaderColor: '#1e40af',
     },
-    patients: [...seedPatients, lea, ...demoPatients], consultations: [leaConsult, ...demoConsultations], invoices: [leaInvoice, leaLabInvoice, ...demoInvoices],
+    patients: [...seedPatients, lea, ...demoPatients, ...morePatients], consultations: [leaConsult, ...demoConsultations], invoices: [leaInvoice, leaLabInvoice, ...demoInvoices],
     articles: [...seedArticles], beds: [...seedBeds], hospitalizations: [leaHosp],
     stockTransfers: [], stockEntries: [], auditLogs: [], notifications: [],
     messages: [], users: [...users], companies: [...seedCompanies],
