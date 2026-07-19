@@ -2,8 +2,8 @@ import { useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Invoice, InvoiceItem, ClientType } from '../types';
 import type { AppState } from '../store';
-import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber, addJourneyEvent, labCategoryLabel } from '../store';
-import { CreditCard, CheckCircle, DollarSign, Clock, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, X, UserPlus, Edit2, Plus, FlaskConical } from 'lucide-react';
+import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber, addJourneyEvent } from '../store';
+import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, X, UserPlus, Edit2, Plus } from 'lucide-react';
 import { printPaymentTicket as openThermalTicket, printClosingTicket } from '../utils/printTicket';
 
 interface HbLine { id: string; articleName: string; quantity: number; unitPrice: number; discount: number; dateSort?: string; }
@@ -75,16 +75,6 @@ export default function CashierModule({ state, setState }: Props) {
   const getConsults = (pid: string) => state.consultations.filter(c => c.patientId === pid && !state.invoices.some(inv => inv.consultationId === c.id && inv.status === 'paid'));
   const selConsult = state.consultations.find(c => c.id === selConsultId);
   const selPatient = state.patients.find(p => p.id === (selPatientId || selConsult?.patientId)) || null;
-
-  const calcItems = (): InvoiceItem[] => {
-    if (!selConsult) return [];
-    return selConsult.prescriptions.map(p => ({
-      description: `${p.articleName} × ${p.quantity}${p.discount > 0 ? ` (-${p.discount}%)` : ''}`,
-      amount: Math.round(p.unitPrice * p.quantity * (1 - p.discount / 100)), category: 'pharmacy' as const,
-    }));
-  };
-  const items = calcItems();
-  const totalAmount = items.reduce((s, it) => s + it.amount, 0);
 
   const handlePayment = () => {
     if (!selPatient) return;
@@ -294,13 +284,7 @@ export default function CashierModule({ state, setState }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-        <div className="bg-white rounded-xl p-4 shadow-sm border"><div className="flex items-center gap-3"><div className="p-2 bg-amber-100 rounded-lg"><Clock className="w-5 h-5 text-amber-600" /></div><div><div className="text-2xl font-bold">{pendingPatients.length}</div><div className="text-sm text-slate-500">En attente</div></div></div></div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border"><div className="flex items-center gap-3"><div className="p-2 bg-green-100 rounded-lg"><CheckCircle className="w-5 h-5 text-green-600" /></div><div><div className="text-2xl font-bold">{todayInvoices.length}</div><div className="text-sm text-slate-500">Factures auj.</div></div></div></div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border"><div className="flex items-center gap-3"><div className="p-2 bg-emerald-100 rounded-lg"><DollarSign className="w-5 h-5 text-emerald-600" /></div><div><div className="text-lg font-bold font-mono">{formatAr(grandTotal)}</div><div className="text-sm text-slate-500">Total auj.</div></div></div></div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border"><div className="flex items-center gap-3"><div className="p-2 bg-purple-100 rounded-lg"><ShoppingCart className="w-5 h-5 text-purple-600" /></div><div><div className="text-lg font-bold font-mono">{formatAr(todayExtTotal)}</div><div className="text-sm text-slate-500">Ventes ext.</div></div></div></div>
-      </div>
+
 
       {/* Tabs */}
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
