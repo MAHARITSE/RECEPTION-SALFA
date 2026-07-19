@@ -262,8 +262,8 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
         </div>
         <div className="flex items-center gap-6">
           <div className="flex gap-3 text-sm">
-            <div className="bg-white/10 backdrop-blur rounded-lg px-3 py-1.5 flex items-center gap-2"><Stethoscope className="w-4 h-4 text-amber-300" /><span className="text-blue-100">Attente:</span><span className="font-bold text-lg">{waitingCount}</span></div>
-            <div className="bg-white/10 backdrop-blur rounded-lg px-3 py-1.5"><span className="text-blue-100">Auj:</span><span className="font-bold ml-1">{todayCount}</span></div>
+            <div className="bg-white/10 backdrop-blur rounded-lg px-3 py-1.5 flex items-center gap-2"><Stethoscope className="w-4 h-4 text-amber-300" /><span className="font-bold text-lg">{waitingCount}</span></div>
+            <div className="bg-white/10 backdrop-blur rounded-lg px-3 py-1.5"><span className="font-bold">{todayCount}</span></div>
           </div>
           <div className="text-right bg-white/10 backdrop-blur rounded-lg px-4 py-1.5">
             <div className="text-xl font-mono font-bold">{currentTime.toLocaleTimeString('fr-FR')}</div>
@@ -357,7 +357,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
       </main>
 
       <footer className="bg-gradient-to-b from-slate-200 to-slate-300 border-t border-slate-400 px-4 py-1 flex justify-between items-center text-xs text-slate-600">
-        <div className="flex items-center gap-4"><span>📊 Total: <strong>{filteredPatients.length}</strong></span><span>|</span><span>🩺 En attente: <strong className="text-amber-700">{waitingCount}</strong></span><span>|</span><span>📅 Auj: <strong className="text-blue-700">{todayCount}</strong></span></div>
+        <div className="flex items-center gap-4"><span>📊 Total: <strong>{filteredPatients.length}</strong></span><span>|</span><span>🩺 <strong className="text-amber-700">{waitingCount}</strong></span><span>|</span><span>📅 <strong className="text-blue-700">{todayCount}</strong></span></div>
         <div className="font-semibold">MediCare HIS v2.0 © 2026</div>
       </footer>
 
