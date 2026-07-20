@@ -358,9 +358,10 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
         <div className="font-semibold">MediCare HIS v2.0 © 2026</div>
       </footer>
 
-      {/* SAISIE PATIENT — Inline (no modal) */}
+      {/* SAISIE PATIENT — fenêtre modale centrée */}
       {(modal === 'add' || modal === 'edit') && (
-        <div className="w-full max-w-xl mx-auto bg-[#f0f0f0] rounded border-2 border-slate-500 shadow-lg mt-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4">
+          <div className="w-full max-w-xl max-h-[calc(100vh-2rem)] overflow-y-auto bg-[#f0f0f0] rounded border-2 border-slate-500 shadow-2xl">
             <div className="bg-gradient-to-r from-[#4a6fa5] to-[#3d5a80] px-3 py-1.5 flex justify-between items-center"><span className="text-white text-sm font-bold flex items-center gap-2"><Plus className="w-4 h-4" />{modal === 'add' ? 'NOUVEAU PATIENT' : 'MODIFIER PATIENT'}</span><button onClick={() => setModal('none')} className="text-white/80 hover:text-white hover:bg-white/20 rounded p-0.5 px-2 transition cursor-pointer text-sm">✕</button></div>
             <div className="p-4">
               <div className="grid grid-cols-2 gap-4 text-xs">
@@ -384,6 +385,7 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
                 <button onClick={() => setModal('none')} className="flex items-center gap-2 px-6 py-2 bg-slate-500 hover:bg-slate-600 text-white rounded font-bold shadow transition cursor-pointer"><Ban className="w-4 h-4" /> ANNULER</button>
               </div>
             </div>
+          </div>
         </div>
       )}
 
@@ -452,9 +454,10 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
         </ModalShell>
       )}
 
-      {/* SAISIE PARAMÈTRES — Inline (no modal) */}
+      {/* SAISIE PARAMÈTRES — fenêtre modale centrée */}
       {modal === 'vitals' && selectedPatient && (
-        <div className="w-full max-w-lg mx-auto bg-[#f0f0f0] rounded border-2 border-slate-500 shadow-lg mt-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4">
+          <div className="w-full max-w-lg max-h-[calc(100vh-2rem)] overflow-y-auto bg-[#f0f0f0] rounded border-2 border-slate-500 shadow-2xl">
             <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 px-3 py-1.5 flex justify-between items-center">
               <span className="text-white text-sm font-bold flex items-center gap-2"><Activity className="w-4 h-4" />SAISIE PARAMÈTRES</span>
               <button onClick={() => setModal('none')} className="text-white/80 hover:text-white hover:bg-white/20 rounded p-0.5 px-2 transition cursor-pointer text-sm">✕</button>
@@ -513,11 +516,24 @@ export default function ReceptionModule({ state, setState, onStaffLogin, onOpenM
                 <button onClick={() => setModal('none')} className="flex items-center gap-2 px-6 py-2.5 bg-slate-500 hover:bg-slate-600 text-white rounded font-bold shadow transition cursor-pointer"><Ban className="w-4 h-4" /> ANNULER</button>
               </div>
             </div>
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-function ModalShell({ title, icon, onClose, children, wide = false }: { title: string; icon: React.ReactNode; onClose: () => void; children: React.ReactNode; wide?: boolean }) { return <div className={`${wide ? 'max-w-4xl' : 'max-w-lg'} mx-auto overflow-hidden rounded-2xl bg-white shadow-lg border border-slate-300 mt-3`}><div className="flex items-center justify-between bg-gradient-to-r from-slate-800 to-slate-700 px-5 py-4 text-white"><div className="flex items-center gap-2 font-bold">{icon}{title}</div><button onClick={onClose} className="rounded p-1 px-2 hover:bg-white/15 text-sm">✕ Fermer</button></div><div className="p-5">{children}</div></div>; }
+function ModalShell({ title, icon, onClose, children, wide = false }: { title: string; icon: React.ReactNode; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" role="dialog" aria-modal="true" aria-label={title}>
+      <div className={`${wide ? 'max-w-4xl' : 'max-w-lg'} max-h-[calc(100vh-2rem)] w-full overflow-y-auto rounded-2xl border border-slate-300 bg-white shadow-2xl`}>
+        <div className="flex items-center justify-between bg-gradient-to-r from-slate-800 to-slate-700 px-5 py-4 text-white">
+          <div className="flex items-center gap-2 font-bold">{icon}{title}</div>
+          <button onClick={onClose} className="rounded p-1 px-2 hover:bg-white/15 text-sm">✕ Fermer</button>
+        </div>
+        <div className="p-5">{children}</div>
+      </div>
+    </div>
+  );
+}
 function InfoLine({ label, value }: { label: string; value: string }) { return <div className="rounded-lg border border-slate-200 bg-white p-3"><p className="text-xs font-medium text-slate-400">{label}</p><p className="mt-1 font-semibold text-slate-700">{value}</p></div>; }
