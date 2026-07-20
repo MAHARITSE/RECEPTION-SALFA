@@ -120,8 +120,10 @@ Toutes les entités sont stockées dans des tableaux typés TypeScript.
 | `purchasePrice` | `number` | Prix d'achat |
 | `stockCentral` | `number` | Stock dépôt central |
 | `stockPharmacie` | `number` | Stock pharmacie |
-| `minStockCentral` | `number` | Seuil mini central |
-| `minStockPharmacie` | `number` | Seuil mini pharmacie |
+| `minStockCentral` | `number` | Stock d'alerte (seuil) central |
+| `minStockPharmacie` | `number` | Stock d'alerte (seuil) pharmacie |
+| `alertDisabledCentral` | `boolean?` | Alerte stock désactivée (central) |
+| `alertDisabledPharmacie` | `boolean?` | Alerte stock désactivée (pharmacie) |
 | `serviceStocks` | `Record<string, number>?` | Stocks par service |
 | `serviceMinStocks` | `Record<string, number>?` | Seuils mini par service |
 | `expiryDate` | `string?` | Date péremption |

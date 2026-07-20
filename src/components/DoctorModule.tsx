@@ -380,13 +380,23 @@ export default function DoctorModule({ state, setState }: Props) {
                     placeholder="🔍 Tapez le nom..." />
                   {articleSearch.length >= 1 && filteredArticles.length > 0 && (
                     <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 rounded-b shadow-xl z-30 max-h-40 overflow-y-auto">
-                      {filteredArticles.map((a, idx) => (
+                      {filteredArticles.map((a, idx) => {
+                        const isOut = a.stockPharmacie <= 0;
+                        const isLow = !isOut && a.stockPharmacie <= a.minStockPharmacie && !a.alertDisabledPharmacie;
+                        return (
                         <div key={a.id} onClick={() => handleArticleSelect(a.id)}
-                          className={`px-2 py-1 cursor-pointer text-xs flex justify-between border-b border-slate-100 ${idx === artSearchIdx ? 'bg-blue-100' : 'hover:bg-blue-50'}`}>
+                          title={isOut ? 'Rupture de stock pharmacie — non délivrable tant que non réapprovisionné' : undefined}
+                          className={`px-2 py-1 cursor-pointer text-xs flex justify-between border-b border-slate-100 ${isOut ? 'bg-red-50 text-red-700' : idx === artSearchIdx ? 'bg-blue-100' : 'hover:bg-blue-50'}`}>
                           <span><span className="text-[9px] text-slate-400 mr-1">[{a.family}]</span> {a.name}</span>
-                          <span className="font-mono text-blue-600">{formatAr(getPrice(a, clientType))}</span>
+                          <span className="flex items-center gap-2">
+                            {isOut
+                              ? <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-[9px] font-bold">🚨 RUPTURE</span>
+                              : <span className={`font-mono text-[10px] ${isLow ? 'text-amber-600 font-bold' : 'text-slate-400'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>}
+                            <span className={`font-mono ${isOut ? 'text-red-400' : 'text-blue-600'}`}>{formatAr(getPrice(a, clientType))}</span>
+                          </span>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
