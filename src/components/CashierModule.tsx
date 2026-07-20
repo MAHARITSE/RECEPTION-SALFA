@@ -337,7 +337,9 @@ export default function CashierModule({ state, setState }: Props) {
 
     const lineToSave: HbLine = {
       ...hbArtForm,
-      dateSort: new Date().toISOString().split('T')[0]
+      // La date correspond à la date d'acte / de sortie de marchandise.
+      // Elle est saisie dans le formulaire et doit être conservée lors de l'enregistrement.
+      dateSort: hbArtForm.dateSort || new Date().toISOString().split('T')[0]
     };
 
     if (hbIsNew || !rec.lines.some(l => l.id === hbArtForm.id)) {
@@ -733,6 +735,17 @@ export default function CashierModule({ state, setState }: Props) {
                         className="w-full bg-slate-200 border border-slate-300 rounded px-1.5 py-0.5 text-xs text-right font-mono font-bold text-slate-700"
                       />
                     </div>
+                    <div className="w-36">
+                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Date d'acte / de sortie</label>
+                      <input
+                        type="date"
+                        value={hbArtForm.dateSort || ''}
+                        onChange={e => setHbArtForm(prev => ({ ...prev, dateSort: e.target.value }))}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
+                        className="w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-blue-500 text-slate-800"
+                        title="Date de sortie de marchandise ou date de l'acte"
+                      />
+                    </div>
                   </div>
                   <div className="flex justify-end gap-1.5 mt-2">
                     <button
@@ -768,6 +781,7 @@ export default function CashierModule({ state, setState }: Props) {
                         <th className="p-1 font-normal text-center w-12">Rem%</th>
                         <th className="p-1 font-normal text-right w-20">P.U.</th>
                         <th className="p-1 font-normal text-right w-24">Montant</th>
+                        <th className="p-1 font-normal w-36">Date d'acte / de sortie</th>
                         <th className="p-1 font-normal w-6"></th>
                       </tr>
                     </thead>
@@ -785,6 +799,7 @@ export default function CashierModule({ state, setState }: Props) {
                             <td className="p-1 text-center">{l.discount ? `${l.discount}%` : '—'}</td>
                             <td className="p-1 text-right">{l.unitPrice.toLocaleString('fr-FR')}</td>
                             <td className="p-1 text-right font-bold">{hbLineAmt(l).toLocaleString('fr-FR')}</td>
+                            <td className="p-1 font-sans text-slate-500">{l.dateSort || '—'}</td>
                             <td className="p-1 text-center">
                               <button onClick={(e) => {
                                 e.stopPropagation();
