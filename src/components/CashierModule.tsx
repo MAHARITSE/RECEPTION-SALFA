@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing } from '../types';
 import type { AppState } from '../store';
 import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber, addJourneyEvent } from '../store';
-import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, X, UserPlus, Edit2, Plus } from 'lucide-react';
+import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus } from 'lucide-react';
 import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket } from '../utils/printTicket';
 
 interface HbLine { id: string; articleName: string; quantity: number; unitPrice: number; discount: number; dateSort?: string; }
@@ -41,7 +41,6 @@ export default function CashierModule({ state, setState }: Props) {
   const [hbArtSearch, setHbArtSearch] = useState('');
   const [hbArtIdx, setHbArtIdx] = useState(0);
   const [hbArtForm, setHbArtForm] = useState<HbLine>({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: new Date().toISOString().split('T')[0] });
-  const [hbDateSort, setHbDateSort] = useState(new Date().toISOString().split('T')[0]); // persistent date
   const hbArtRef = useRef<HTMLInputElement>(null);
   const [hbSelLineId, setHbSelLineId] = useState<string | null>(null);
   const [hbIsNew, setHbIsNew] = useState(true);
@@ -299,7 +298,7 @@ export default function CashierModule({ state, setState }: Props) {
     : [];
 
   const hbArtNew = () => {
-    setHbArtForm({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: hbDateSort });
+    setHbArtForm({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: new Date().toISOString().split('T')[0] });
     setHbSelLineId(null);
     setHbIsNew(true);
     setHbArtSearch('');
@@ -320,7 +319,7 @@ export default function CashierModule({ state, setState }: Props) {
       return;
     }
     const rec = hbRecords.find(r => r.id === hbSelRecordId);
-    setHbArtForm({ id: uuidv4(), articleName: a.name, quantity: 1, unitPrice: getPrice(a, rec?.clientType || 'comptoir'), discount: 0, dateSort: hbDateSort });
+    setHbArtForm({ id: uuidv4(), articleName: a.name, quantity: 1, unitPrice: getPrice(a, rec?.clientType || 'comptoir'), discount: 0, dateSort: new Date().toISOString().split('T')[0] });
     setHbIsNew(true);
     setHbSelLineId(null);
     setHbArtSearch('');
@@ -338,7 +337,7 @@ export default function CashierModule({ state, setState }: Props) {
 
     const lineToSave: HbLine = {
       ...hbArtForm,
-      dateSort: hbDateSort
+      dateSort: new Date().toISOString().split('T')[0]
     };
 
     if (hbIsNew || !rec.lines.some(l => l.id === hbArtForm.id)) {
@@ -561,7 +560,7 @@ export default function CashierModule({ state, setState }: Props) {
                           <div className="text-xs text-slate-500 mt-0.5">Facture: <strong>{formatAr(totalFact)}</strong> | Payé: <span className="text-green-600">{formatAr(totalPaid)}</span> | Reste: <span className="text-red-600 font-bold">{formatAr(reste)}</span></div>
                         </div>
                         <div className="flex gap-1 items-center" onClick={e => e.stopPropagation()}>
-                          <button onClick={() => { setHbSelRecordId(record.id); setHbArtSearch(''); setHbArtForm({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: hbDateSort }); setHbSelLineId(null); setHbIsNew(true); setHbModal('add_article'); }} className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs cursor-pointer transition font-medium">📋 Prescriptions</button>
+                          <button onClick={() => { setHbSelRecordId(record.id); setHbArtSearch(''); setHbArtForm({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: new Date().toISOString().split('T')[0] }); setHbSelLineId(null); setHbIsNew(true); setHbModal('add_article'); }} className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs cursor-pointer transition font-medium">📋 Prescriptions</button>
                           {reste > 0 && <>
                             <input type="number" min={1} max={reste} value={hbPayAmount || ''} onChange={e => setHbPayAmount(Math.min(parseInt(e.target.value) || 0, reste))} className="w-24 px-2 py-1 border rounded text-xs text-right outline-none" placeholder="Montant" />
                             <button onClick={() => addPartialPay(record.id)} disabled={hbPayAmount <= 0 || hbPayAmount > reste} className="px-2 py-1 bg-amber-600 text-white rounded text-xs cursor-pointer disabled:opacity-40">💰 Payer</button>
@@ -655,28 +654,10 @@ export default function CashierModule({ state, setState }: Props) {
               <button onClick={() => setHbModal('none')} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button>
             </div>
             <div className="p-4 space-y-3">
-              {/* Date de sortie — persiste entre les saisies */}
-              <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg p-2">
-                <label className="text-xs font-bold text-amber-800 whitespace-nowrap">📅 Date d'acte / de sortie :</label>
-                <input type="date" value={hbDateSort} onChange={e => {
-                  setHbDateSort(e.target.value);
-                  setHbArtForm(prev => ({ ...prev, dateSort: e.target.value }));
-                }} className="px-2 py-1 border border-amber-400 rounded text-sm outline-none focus:border-amber-600 bg-white" />
-              </div>
-
               {/* Sage-style input bar */}
               <div className="bg-[#f4f4f4] border border-slate-300 rounded text-xs select-none">
                 <div className="bg-slate-100 border-b border-slate-300 p-2 m-2 mb-0 rounded shadow-inner">
                   <div className="flex flex-wrap items-end gap-1.5">
-                    <div className="w-28">
-                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Date</label>
-                      <input
-                        type="date"
-                        value={hbArtForm.dateSort || hbDateSort}
-                        onChange={e => setHbArtForm(prev => ({ ...prev, dateSort: e.target.value }))}
-                        className="w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-blue-500 text-slate-800"
-                      />
-                    </div>
                     <div className="flex-1 min-w-[150px] relative">
                       <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Article (↑↓ Entrée)</label>
                       <input
@@ -782,7 +763,6 @@ export default function CashierModule({ state, setState }: Props) {
                   <table className="w-full text-[11px] text-left border-collapse">
                     <thead className="bg-slate-50 border-b border-slate-300 text-slate-600">
                       <tr className="divide-x divide-slate-200">
-                        <th className="p-1 font-normal w-20">Date</th>
                         <th className="p-1 font-normal min-w-[150px]">Article</th>
                         <th className="p-1 font-normal text-right w-12">Qté</th>
                         <th className="p-1 font-normal text-center w-12">Rem%</th>
@@ -800,7 +780,6 @@ export default function CashierModule({ state, setState }: Props) {
                             setHbArtForm({ ...l });
                             setHbIsNew(false);
                           }} className={`cursor-pointer divide-x divide-slate-200 transition-colors ${isSel ? 'bg-blue-500 text-white font-medium' : 'hover:bg-slate-50 text-slate-800'}`}>
-                            <td className="p-1 font-sans">{l.dateSort || '—'}</td>
                             <td className="p-1 font-sans">{l.articleName}</td>
                             <td className="p-1 text-right">{l.quantity}</td>
                             <td className="p-1 text-center">{l.discount ? `${l.discount}%` : '—'}</td>
@@ -821,13 +800,13 @@ export default function CashierModule({ state, setState }: Props) {
                         );
                       })}
                       {rec && rec.lines.length === 0 && (
-                        <tr><td colSpan={7} className="p-4 text-center text-slate-400 font-sans">Aucun article enregistré. Tapez ou recherchez un article ci-dessus.</td></tr>
+                        <tr><td colSpan={6} className="p-4 text-center text-slate-400 font-sans">Aucun article enregistré. Tapez ou recherchez un article ci-dessus.</td></tr>
                       )}
                     </tbody>
                     {rec && rec.lines.length > 0 && (
                       <tfoot className="bg-emerald-50 border-t-2 border-emerald-300 text-slate-800 font-sans">
                         <tr className="font-bold">
-                          <td colSpan={4} className="p-1.5 text-right">TOTAL PATIENT :</td>
+                          <td colSpan={3} className="p-1.5 text-right">TOTAL PATIENT :</td>
                           <td colSpan={3} className="p-1.5 text-right font-mono text-lg text-emerald-700">{formatAr(recTotal)}</td>
                         </tr>
                       </tfoot>
