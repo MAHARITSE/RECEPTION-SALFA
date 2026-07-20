@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import type { UserRole, TicketSettings } from '../types';
 import type { AppState } from '../store';
-import { formatAr, addAuditLog } from '../store';
+import { formatAr, addAuditLog, migrateLegacyToVentes } from '../store';
 import {
   Save, Trash2, Plus, X, Check, Download, Upload,
   Eye, Settings as SettingsIcon, Users, Building2,
@@ -182,7 +182,17 @@ export default function AdminModule({ state, setState }: Props) {
         const data = JSON.parse(ev.target?.result as string);
         if (!data.state) throw new Error('Fichier de sauvegarde invalide');
         setState((prev) => {
-          const next = { ...prev, ...data.state, currentUser: prev.currentUser };
+          const next = {
+            ...prev,
+            ...data.state,
+            currentUser: prev.currentUser,
+            // Garantit la présence des nouvelles tables même dans d'anciens backups.
+            ventes: data.state?.ventes || [],
+            venteLines: data.state?.venteLines || [],
+            ventePayments: data.state?.ventePayments || [],
+            factureCounter: data.state?.factureCounter || 0,
+          };
+          migrateLegacyToVentes(next);
           addAuditLog(next, 'IMPORT_BACKUP', `Restauré depuis ${data.exportedAt || 'fichier'}`);
           return next;
         });
@@ -205,6 +215,13 @@ export default function AdminModule({ state, setState }: Props) {
         stockTransfers: [], stockEntries: [],
         notifications: [], messages: [], auditLogs: [],
         stockMovements: [], inventorySessions: [], journey: [], labRequests: [],
+        hbRecords: [],
+        ventes: [],
+        venteLines: [],
+        ventePayments: [],
+        factureCounter: 0,
+        movementHeaders: [],
+        movementLines: [],
         articles: prev.articles,
         companies: prev.companies,
         users: prev.users,

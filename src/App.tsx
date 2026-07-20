@@ -1,6 +1,6 @@
-import { useState, Component, type ReactNode, type ErrorInfo } from 'react';
+import { useState, useEffect, Component, type ReactNode, type ErrorInfo } from 'react';
 import type { User } from './types';
-import { createInitialState, type AppState } from './store';
+import { createInitialState, migrateLegacyToVentes, type AppState } from './store';
 import ReceptionModule from './components/ReceptionModule';
 import LoginScreen from './components/LoginScreen';
 import Layout from './components/Layout';
@@ -93,6 +93,24 @@ function AppInner() {
   const [state, setState] = useState<AppState>(createInitialState());
   const [view, setView] = useState<AppView>('reception');
   const [showMessaging, setShowMessaging] = useState(false);
+
+  // Migration automatique idempotente : au 1er chargement, les anciennes
+  // factures + dossiers hospit/bloc sont dupliqués dans la table unifiée `ventes`.
+  useEffect(() => {
+    setState((prev) => {
+      // On vérifie s'il y a quelque chose à migrer.
+      const hasLegacy = (prev.invoices?.length || 0) + (prev.hbRecords?.length || 0) > 0;
+      const alreadyMigrated = (prev.ventes?.length || 0) > 0;
+      if (!hasLegacy || alreadyMigrated) return prev;
+      const next = { ...prev };
+      const { migratedInvoices, migratedHb } = migrateLegacyToVentes(next);
+      if (migratedInvoices === 0 && migratedHb === 0) return prev;
+      // eslint-disable-next-line no-console
+      console.info(`[ventes] migration automatique : ${migratedInvoices} facture(s), ${migratedHb} dossier(s) hospit/bloc.`);
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleLogin = (user: User) => {
     setState((prev) => ({ ...prev, currentUser: user }));
