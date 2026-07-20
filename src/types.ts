@@ -322,3 +322,33 @@ export interface MovementLine {
   purchasePrice?: number;
   reason?: string;
 }
+
+/* ====== HOSPITALISATION / BLOC (paiement partiel, saisie unifiée) ====== */
+/** Ligne article d'un dossier Hospit/Bloc (même structure que ventes externes). */
+export interface HbLine {
+  id: string;
+  articleName: string;
+  quantity: number;
+  unitPrice: number;
+  discount: number;
+  /** Date d'acte / de sortie — conservée entre validations de lignes. */
+  dateSort?: string;
+}
+
+/** Dossier Hospitalisation ou Bloc Opératoire — partagé entre Caisse et Pharmacie
+ *  (caisse de garde), car seul le paiement fait foi : qui saisit n'a pas d'importance. */
+export interface HbRecord {
+  id: string;
+  patientId?: string;
+  patientName: string;
+  clientType: ClientType;
+  company?: string;
+  type: 'hospit' | 'bloc';
+  lines: HbLine[];
+  payments: { amount: number; paidBy: string; date: string; paidByUserId?: string }[];
+  /** Date d'ouverture du dossier. */
+  openedAt?: string;
+  /** Qui a ouvert le dossier (caisse / pharmacie de garde). */
+  openedBy?: string;
+  openedByUserId?: string;
+}
