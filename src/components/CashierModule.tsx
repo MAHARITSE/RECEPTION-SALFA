@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription } from '../types';
 import type { AppState } from '../store';
-import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber, addJourneyEvent } from '../store';
+import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber, addJourneyEvent, generatePharmaClosingNumber } from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send } from 'lucide-react';
 import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket } from '../utils/printTicket';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
@@ -629,6 +629,90 @@ export default function CashierModule({ state, setState, onOpenMessagingWithReci
     const now = new Date();
     const consultationTotal = closeableInvoices.filter(i => !i.isExternal).reduce((sum, i) => sum + i.patientCharge, 0);
     const externalTotal = closeableInvoices.filter(i => i.isExternal).reduce((sum, i) => sum + i.patientCharge, 0);
+
+    // === Clôture directe des ordonnances (livraisons de garde) ===
+    const unclosedPharmaItems = (state.pharmaDeliveryItems || []).filter((item: any) => !item.closingId);
+    let pharmaClosingId: string | undefined = undefined;
+    if (unclosedPharmaItems.length > 0) {
+      const pharmaTotalAmount = unclosedPharmaItems.reduce((s: number, d: any) => s + d.quantity * d.unitPrice, 0);
+      const pharmaTotalItems = unclosedPharmaItems.reduce((s: number, d: any) => s + d.quantity, 0);
+      const pharmaResponsibleName = state.currentUser?.name || 'Responsable Pharmacie';
+      const pharmaResponsibleId = state.currentUser?.id || 'PHA001';
+      const pharmaCounter = (state.pharmaClosingCounter || 0) + 1;
+      const pharmaClosingNumber = generatePharmaClosingNumber(pharmaCounter);
+      pharmaClosingId = uuidv4();
+      const pharmaNow = new Date().toISOString();
+      const pharmaClosing: import('../types').PharmaDeliveryClosing = {
+        id: pharmaClosingId,
+        closingNumber: pharmaClosingNumber,
+        date: pharmaNow,
+        responsibleId: pharmaResponsibleId,
+        responsibleName: pharmaResponsibleName,
+        deliveryIds: unclosedPharmaItems.map((d: any) => d.id),
+        totalItems: pharmaTotalItems,
+        totalAmount: pharmaTotalAmount,
+        deliveries: unclosedPharmaItems.map((d: any) => ({ ...d, closingId: pharmaClosingId })),
+        createdAt: pharmaNow,
+      };
+      setState((prev) => {
+        const updatedItems = (prev.pharmaDeliveryItems || []).map((item: any) => item.closingId ? item : { ...item, closingId: pharmaClosingId });
+        const next = {
+          ...prev,
+          pharmaDeliveryItems: updatedItems,
+          pharmaDeliveryClosings: [pharmaClosing, ...(prev.pharmaDeliveryClosings || [])],
+          pharmaClosingCounter: pharmaCounter,
+        };
+        return next;
+      });
+      // Impression automatique du récap par article par jour après clôture
+      setTimeout(() => {
+        try {
+          const recapData = unclosedPharmaItems.map((d: any) => ({
+            date: new Date(d.deliveredAt).toLocaleDateString('fr-FR'),
+            patientName: d.patientName,
+            articleName: d.articleName,
+            quantity: d.quantity,
+            deliveredByName: d.deliveredByName,
+          }));
+          const htmlContent = `<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><title>Recap livraisons par article/jour</title>
+<style>
+body{font-family:Arial,sans-serif;font-size:12px;color:#111;padding:20px;max-width:820px;margin:0 auto}
+h1{font-size:18px;color:#0369a1;border-bottom:2px solid #0369a1;padding-bottom:6px;margin-bottom:16px}
+.table{width:100%;border-collapse:collapse;margin-top:8px}
+.table th{background:#f0f9ff;color:#0369a1;text-align:left;padding:8px 6px;border-bottom:2px solid #0369a1;font-size:11px}
+.table td{padding:6px;border-bottom:1px solid #e2e8f0;font-size:11px}
+.table .bold{font-weight:bold}
+.total{font-weight:bold;background:#f0fdf4;border-top:2px solid #10b981}
+</style>
+</head><body>
+<h1>Recapitulatif des livraisons par article par jour</h1>
+<div style="font-size:11px;color:#555;margin-bottom:12px">Clôture : ${pharmaClosingNumber} — Responsable : ${pharmaResponsibleName} — ${new Date(pharmaNow).toLocaleString('fr-FR')}</div>
+<table class="table">
+<thead><tr><th>Date</th><th>Patient / Client</th><th>Article délivré</th><th>Qté</th><th>Responsable</th></tr></thead>
+<tbody>
+${recapData.map(d => `<tr><td>${d.date}</td><td>${d.patientName}</td><td class="bold">${d.articleName}</td><td class="bold">${d.quantity}</td><td>${d.deliveredByName}</td></tr>`).join('')}
+</tbody>
+</table>
+<div class="total" style="padding:8px">Total articles livrés : ${pharmaTotalItems} — Valeur totale : ${pharmaTotalAmount.toLocaleString('fr-FR')} Ar</div>
+${(window as any).printScript ? (window as any).printScript(false) : '<script>window.onload=function(){window.print();}</script>'}
+</body></html>`;
+          const iframe = document.createElement('iframe');
+          iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+          document.body.appendChild(iframe);
+          const win = iframe.contentWindow;
+          const doc = win?.document || iframe.contentDocument;
+          if (!doc || !win) return;
+          doc.open();
+          doc.write(htmlContent);
+          doc.close();
+          const cleanup = () => { try { if (iframe.parentNode) iframe.parentNode.removeChild(iframe); } catch { } };
+          win.addEventListener?.('afterprint', cleanup);
+          setTimeout(cleanup, 45000);
+        } catch (e) { console.error('Erreur impression récap', e); }
+      }, 800);
+    }
     const closing: CashClosing = {
       id: uuidv4(), date: now.toISOString(), cashierId: currentCashierId, cashierName: state.currentUser?.name || 'Caissier',
       invoiceIds: closeableInvoices.map(i => i.id), invoiceCount: closeableInvoices.length,
