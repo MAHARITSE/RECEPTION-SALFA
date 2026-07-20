@@ -93,6 +93,7 @@ function AppInner() {
   const [state, setState] = useState<AppState>(createInitialState());
   const [view, setView] = useState<AppView>('reception');
   const [showMessaging, setShowMessaging] = useState(false);
+  const [messagingRecipientId, setMessagingRecipientId] = useState<string | null>(null);
 
   // Migration automatique idempotente : au 1er chargement, les anciennes
   // factures + dossiers hospit/bloc sont dupliqués dans la table unifiée `ventes`.
@@ -130,12 +131,22 @@ function AppInner() {
 
   const myMsgCount = state.messages.filter((m) => m.toUserId === (state.currentUser?.id || 'RECEPTION') && !m.read).length;
 
+  const handleOpenMessagingWithRecipient = (id?: string | null) => {
+    if (id) setMessagingRecipientId(id);
+    setShowMessaging(true);
+  };
+
+  const handleCloseMessaging = () => {
+    setShowMessaging(false);
+    setMessagingRecipientId(null);
+  };
+
   /* ─── Vue Réception ─── */
   if (view === 'reception') {
     return (
       <>
-        <ReceptionModule state={state} setState={setState} onStaffLogin={() => setView('login')} onOpenMessaging={() => setShowMessaging(true)} />
-        {showMessaging && <Messaging state={state} setState={setState} onClose={() => setShowMessaging(false)} />}
+        <ReceptionModule state={state} setState={setState} onStaffLogin={() => setView('login')} onOpenMessaging={() => handleOpenMessagingWithRecipient(null)} />
+        {showMessaging && <Messaging state={state} setState={setState} onClose={handleCloseMessaging} initialRecipientId={messagingRecipientId} />}
       </>
     );
   }
@@ -162,13 +173,13 @@ function AppInner() {
           notifications={state.notifications}
           onLogout={handleLogout}
           onMarkRead={handleMarkRead}
-          onOpenMessaging={() => setShowMessaging(true)}
+          onOpenMessaging={() => handleOpenMessagingWithRecipient(null)}
           onOpenMedicalRecord={handleOpenMedicalRecord}
           unreadMessages={myMsgCount}
         >
           <MedicalRecordModule state={state} onBack={() => setView('staff')} />
         </Layout>
-        {showMessaging && <Messaging state={state} setState={setState} onClose={() => setShowMessaging(false)} />}
+        {showMessaging && <Messaging state={state} setState={setState} onClose={handleCloseMessaging} initialRecipientId={messagingRecipientId} />}
       </>
     );
   }
@@ -177,8 +188,8 @@ function AppInner() {
   const renderModule = () => {
     switch (state.currentUser?.role) {
       case 'doctor': return <DoctorModule state={state} setState={setState} />;
-      case 'cashier': return <CashierModule state={state} setState={setState} />;
-      case 'pharmacy': return <PharmacyModule state={state} setState={setState} />;
+      case 'cashier': return <CashierModule state={state} setState={setState} onOpenMessagingWithRecipient={handleOpenMessagingWithRecipient} />;
+      case 'pharmacy': return <PharmacyModule state={state} setState={setState} onOpenMessagingWithRecipient={handleOpenMessagingWithRecipient} />;
       case 'magasinier': return <MagasinierModule state={state} setState={setState} />;
       case 'laboratory': return <LaboratoryModule state={state} setState={setState} />;
       case 'admin': return <AdminModule state={state} setState={setState} />;
@@ -189,7 +200,7 @@ function AppInner() {
   return (
     <>
       <Layout user={state.currentUser} notifications={state.notifications} onLogout={handleLogout} onMarkRead={handleMarkRead}
-        onOpenMessaging={() => setShowMessaging(true)} onOpenMedicalRecord={state.currentUser.role === 'doctor' ? handleOpenMedicalRecord : undefined} unreadMessages={myMsgCount}>
+        onOpenMessaging={() => handleOpenMessagingWithRecipient(null)} onOpenMedicalRecord={state.currentUser.role === 'doctor' ? handleOpenMedicalRecord : undefined} unreadMessages={myMsgCount}>
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-slate-800">{roleTitles[state.currentUser.role] || 'Module'}</h2>
           <p className="text-slate-500 text-sm mt-1">
@@ -200,7 +211,7 @@ function AppInner() {
           {renderModule()}
         </ModuleErrorBoundary>
       </Layout>
-      {showMessaging && <Messaging state={state} setState={setState} onClose={() => setShowMessaging(false)} />}
+      {showMessaging && <Messaging state={state} setState={setState} onClose={handleCloseMessaging} initialRecipientId={messagingRecipientId} />}
     </>
   );
 }
