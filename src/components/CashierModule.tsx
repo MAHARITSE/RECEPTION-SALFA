@@ -662,7 +662,6 @@ export default function CashierModule({ state, setState }: Props) {
                   setHbDateSort(e.target.value);
                   setHbArtForm(prev => ({ ...prev, dateSort: e.target.value }));
                 }} className="px-2 py-1 border border-amber-400 rounded text-sm outline-none focus:border-amber-600 bg-white" />
-                <span className="text-[10px] text-amber-600 italic">Cette date est conservée pour les prochaines lignes</span>
               </div>
 
               {/* Sage-style input bar */}
