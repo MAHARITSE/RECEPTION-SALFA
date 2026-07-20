@@ -4,7 +4,7 @@ import type { AppState } from '../store';
 import type { TransferCategory, StockTransfer } from '../types';
 import { addAuditLog, addNotification, formatAr, familyLabel, transferCategoryLabel, transferCategoryColor, addJourneyEvent, isArticleSaleable, createMovementWithLines, generatePharmaClosingNumber } from '../store';
 import type { MovementType } from '../types';
-import { printDeliveryTicket, printPharmaDeliveryClosingTicket } from '../utils/printTicket';
+import { printDeliveryTicket, printPharmaDeliveryClosingTicket, printPharmaSalesRecapTicket } from '../utils/printTicket';
 import DemandeAchatForm, { type ReqLine } from './DemandeAchatForm';
 import CashierModule from './CashierModule';
 import {
@@ -407,8 +407,26 @@ export default function PharmacyModule({ state, setState, onOpenMessagingWithRec
       return next;
     });
 
-    alert(`✅ Compilation ${closingNumber} créée et clôturée avec succès dans la base des livraisons !`);
-    printPharmaDeliveryClosingTicket(state.ticketSettings, closing);
+    alert(`✅ Compilation ${closingNumber} créée et clôturée avec succès !\n\nLe récapitulatif des ventes par article va être imprimé.`);
+
+    // Imprimer automatiquement le récapitulatif des ventes par article (ticket)
+    const byArticle: Record<string, number> = {};
+    unclosedDeliveryItems.forEach(item => {
+      byArticle[item.articleName] = (byArticle[item.articleName] || 0) + item.quantity;
+    });
+    const recap = Object.entries(byArticle)
+      .map(([articleName, totalQuantity]) => ({ articleName, totalQuantity }))
+      .sort((a, b) => b.totalQuantity - a.totalQuantity);
+    const totalQty = recap.reduce((s, r) => s + r.totalQuantity, 0);
+
+    printPharmaSalesRecapTicket(
+      state.ticketSettings,
+      recap,
+      totalQty,
+      responsibleName,
+      closingNumber,
+      new Date()
+    );
   };
 
   return (
@@ -982,77 +1000,48 @@ export default function PharmacyModule({ state, setState, onOpenMessagingWithRec
                   </div>
                 </div>
 
-                {/* Base et historique des compilations de livraisons */}
+                {/* Liste Délivrées : Heure / Patient / Article / Qté uniquement */}
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                  <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                  <div className="p-4 bg-blue-50 border-b border-blue-200 flex justify-between items-center flex-wrap gap-2">
                     <div>
                       <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                        <Package className="w-4 h-4 text-emerald-600" /> Récapitulatif des livraisons par article par jour
+                        <CheckCircle className="w-4 h-4 text-blue-600" /> Liste des Livraisons (Heure / Patient / Article / Qté)
                       </h4>
-                      <p className="text-xs text-slate-500 mt-0.5">Quantités livrées regroupées par article et par jour (avant clôture de garde)</p>
+                      <p className="text-xs text-slate-500 mt-0.5">Liste détaillée des livraisons avec heure, patient, article et quantité</p>
                     </div>
-                    <button
-                      onClick={() => {
-                        const recapRows = unclosedDeliveryItems.map(d => `
-                          <tr>
-                            <td style="padding:4px;border-bottom:1px solid #e5e7eb">${new Date(d.deliveredAt).toLocaleDateString('fr-FR')}</td>
-                            <td style="padding:4px;border-bottom:1px solid #e5e7eb">${d.patientName}</td>
-                            <td style="padding:4px;border-bottom:1px solid #e5e7eb">${d.articleName}</td>
-                            <td style="padding:4px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:bold">${d.quantity}</td>
-                            <td style="padding:4px;border-bottom:1px solid #e5e7eb">${d.deliveredByName}</td>
-                          </tr>
-                        `).join('');
-                        const html = `<!doctype html>
-<html lang="fr"><head><meta charset="utf-8"><title>Recap livraisons par article/jour</title>
-<style>body{font-family:Arial,sans-serif;padding:20px;color:#111}h1{font-size:18px;color:#0369a1;border-bottom:2px solid #0369a1;padding-bottom:6px}table{width:100%;border-collapse:collapse;margin-top:8px}th{background:#f0f9ff;color:#0369a1;padding:6px;text-align:left;border-bottom:2px solid #0369a1}td{padding:4px;border-bottom:1px solid #e5e7eb}</style>
-</head><body>
-<h1>Recapitulatif des livraisons par article par jour</h1>
-<p style="font-size:11px;color:#555">Avant clôture de garde — ${new Date().toLocaleString('fr-FR')}</p>
-<table>
-<thead><tr><th>Date</th><th>Patient / Client</th><th>Article délivré</th><th>Qté</th><th>Délivré par</th></tr></thead>
-<tbody>${recapRows}</tbody>
-</table>
-<script>window.onload=function(){window.print();}</script>
-</body></html>`;
-                        const iframe = document.createElement('iframe');
-                        iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
-                        document.body.appendChild(iframe);
-                        const win = iframe.contentWindow;
-                        const doc = win?.document || iframe.contentDocument;
-                        if (doc && win) { doc.open(); doc.write(html); doc.close(); }
-                      }}
-                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow cursor-pointer transition"
-                    >
-                      <Printer className="w-3.5 h-3.5" /> Imprimer récap article/jour
-                    </button>
                   </div>
-                  <div className="p-3 bg-white overflow-x-auto">
+                  <div className="p-3 bg-white overflow-x-auto max-h-64">
                     <table className="w-full text-xs">
-                      <thead className="bg-slate-50 border-b text-slate-600">
+                      <thead className="bg-blue-50 border-b border-blue-200 text-blue-800">
                         <tr>
-                          <th className="p-2 text-left">Date</th>
-                          <th className="p-2 text-left">Patient / Client</th>
-                          <th className="p-2 text-left">Article délivré</th>
-                          <th className="p-2 text-right">Qté</th>
-                          <th className="p-2 text-left">Délivré par</th>
+                          <th className="p-2 text-left font-semibold">Heure</th>
+                          <th className="p-2 text-left font-semibold">Patient / Client</th>
+                          <th className="p-2 text-left font-semibold">Article</th>
+                          <th className="p-2 text-right font-semibold">Qté</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {unclosedDeliveryItems.map((item) => (
-                          <tr key={item.id} className="hover:bg-emerald-50/50">
-                            <td className="p-2 font-mono text-slate-500">{new Date(item.deliveredAt).toLocaleDateString('fr-FR')}</td>
-                            <td className="p-2 font-medium text-slate-800">{item.patientName}</td>
-                            <td className="p-2 font-semibold text-emerald-900">{item.articleName}</td>
-                            <td className="p-2 text-right font-mono font-bold">{item.quantity}</td>
-                            <td className="p-2 text-slate-500">{item.deliveredByName}</td>
+                        {unclosedDeliveryItems.length === 0 ? (
+                          <tr>
+                            <td colSpan={4} className="p-4 text-center text-slate-400">Aucune livraison à afficher</td>
                           </tr>
-                        ))}
+                        ) : (
+                          unclosedDeliveryItems.map((item) => (
+                            <tr key={item.id} className="hover:bg-blue-50/30">
+                              <td className="p-2 font-mono text-slate-500">
+                                {new Date(item.deliveredAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                              </td>
+                              <td className="p-2 font-medium text-slate-800">{item.patientName}</td>
+                              <td className="p-2 font-semibold text-blue-900">{item.articleName}</td>
+                              <td className="p-2 text-right font-mono font-bold text-blue-700">{item.quantity}</td>
+                            </tr>
+                          ))
+                        )}
                       </tbody>
-                      <tfoot className="bg-emerald-50 font-bold border-t border-emerald-200">
+                      <tfoot className="bg-blue-50 font-bold border-t border-blue-200">
                         <tr>
-                          <td colSpan={3} className="p-2 text-right text-emerald-900">TOTAL QUANTITÉS :</td>
-                          <td className="p-2 text-right font-mono text-emerald-900">{unclosedDeliveryItems.reduce((s, d) => s + d.quantity, 0)}</td>
-                          <td className="p-2"></td>
+                          <td colSpan={3} className="p-2 text-right text-blue-900">TOTAL :</td>
+                          <td className="p-2 text-right font-mono text-blue-900">{unclosedDeliveryItems.reduce((s, d) => s + d.quantity, 0)}</td>
                         </tr>
                       </tfoot>
                     </table>

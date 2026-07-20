@@ -771,3 +771,69 @@ export function printTicket(
 ) {
   printPaymentTicket(settings, invoice, patient, cashier);
 }
+
+/* ============================================================
+ * 10) RÉCAPITULATIF DES VENTES PAR ARTICLE — FORMAT TICKET
+ *     (Pour clôture de garde pharmacie : article + qté uniquement, sans patient)
+ * ============================================================ */
+export function printPharmaSalesRecapTicket(
+  settings: TicketSettings,
+  recapByArticle: { articleName: string; totalQuantity: number }[],
+  totalQuantity: number,
+  responsibleName: string,
+  closingNumber: string,
+  date: Date,
+) {
+  const rows = recapByArticle
+    .map(
+      (item) => `
+      <tr>
+        <td style="padding:1mm 0;vertical-align:top">${escapeHtml(item.articleName)}</td>
+        <td style="padding:1mm 0;text-align:right;font-weight:bold;white-space:nowrap">× ${item.totalQuantity}</td>
+      </tr>
+    `,
+    )
+    .join('');
+
+  const bodyHtml = `
+    <div style="font-size:9px;margin-bottom:3mm">
+      <div><strong>Responsable :</strong> ${escapeHtml(responsibleName)}</div>
+      <div><strong>Clôture N° :</strong> ${escapeHtml(closingNumber)}</div>
+    </div>
+    <div class="rule"></div>
+    <div class="bold heading" style="margin-bottom:2mm">RÉCAPITULATIF VENTES PAR ARTICLE</div>
+    <table>
+      <thead>
+        <tr style="border-bottom:1px solid #000">
+          <th style="text-align:left;padding:1mm 0;font-size:9px">Article</th>
+          <th style="text-align:right;padding:1mm 0;font-size:9px">Qté vendue</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows || '<tr><td colspan="2" style="padding:2mm 0"><i>Aucune vente</i></td></tr>'}
+      </tbody>
+      <tfoot>
+        <tr class="total" style="border-top:2px double #000">
+          <td style="padding:1.5mm 0;font-weight:bold">TOTAL GÉNÉRAL</td>
+          <td style="padding:1.5mm 0;text-align:right;font-weight:bold">${totalQuantity}</td>
+        </tr>
+      </tfoot>
+    </table>
+    <div class="rule"></div>
+    <div class="signature">
+      <span>${escapeHtml(responsibleName)}</span>
+      <span>Contrôle / Pharmacien</span>
+    </div>
+  `;
+
+  const html = buildTicketHtml({
+    settings,
+    title: 'RÉCAP VENTES PHARMACIE',
+    reference: closingNumber,
+    date,
+    bodyHtml,
+    footerNote: settings.footerMessage || 'Récapitulatif des ventes de garde',
+    silent: settings.autoPrint !== false,
+  });
+  openTicketWindow(html, `Recap ventes pharma ${closingNumber}`, ticketCopies(settings));
+}
