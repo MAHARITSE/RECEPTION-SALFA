@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord } from '../types';
+import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription } from '../types';
 import type { AppState } from '../store';
 import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber, addJourneyEvent } from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send } from 'lucide-react';
@@ -300,17 +300,81 @@ export default function CashierModule({ state, setState, onOpenMessagingWithReci
       }).join('\n');
       if (!confirm(`⚠️ Stock insuffisant pour :\n${detail}\n\nEncaisser quand même ?`)) return;
     }
-    const inv: Invoice = { id: uuidv4(), clientName: 'Client Externe', clientType: 'externe', items: extLines.map(l => ({ description: `${l.articleName} × ${l.quantity}`, amount: extLineAmt(l), category: 'pharmacy' as const })), totalAmount: extTotal, patientCharge: extTotal, status: 'paid', paidAt: new Date().toISOString(), paidBy: state.currentUser?.id || '', createdAt: new Date().toISOString(), isExternal: true };
+
+    // Séparer les médicaments (family === 'MEDIC') des autres articles
+    const medicamentLines = extLines.filter((l) => {
+      const art = state.articles.find((a) => a.name === l.articleName);
+      return art?.family === 'MEDIC';
+    });
+    const nonMedicamentLines = extLines.filter((l) => {
+      const art = state.articles.find((a) => a.name === l.articleName);
+      return art?.family !== 'MEDIC';
+    });
+
+    let extConsultId: string | undefined = undefined;
+    let newConsultations: Consultation[] = [];
+
+    if (medicamentLines.length > 0) {
+      extConsultId = uuidv4();
+      const prescriptions: Prescription[] = medicamentLines.map((l) => ({
+        id: uuidv4(),
+        articleId: state.articles.find((a) => a.name === l.articleName)?.id || '',
+        articleName: l.articleName,
+        quantity: l.quantity,
+        posology: 'Vente externe',
+        duration: '',
+        instructions: '',
+        unitPrice: l.unitPrice,
+        discount: l.discount,
+        delivered: false,
+      }));
+      const extConsult: Consultation = {
+        id: extConsultId,
+        patientId: '',
+        doctorId: state.currentUser?.id || 'CASHIER',
+        doctorName: state.currentUser?.name ? `Vente Externe (${state.currentUser.name})` : 'Vente Externe',
+        date: new Date().toISOString(),
+        visitReason: 'Vente externe — Pharmacie',
+        diagnosis: 'Client Externe',
+        prescriptions,
+        labRequests: [],
+        hospitalizeRequested: false,
+        surgeryRequested: false,
+        isEmergency: false,
+      };
+      newConsultations.push(extConsult);
+    }
+
+    const inv: Invoice = {
+      id: uuidv4(),
+      consultationId: extConsultId,
+      clientName: 'Client Externe',
+      clientType: 'externe',
+      items: extLines.map(l => ({ description: `${l.articleName} × ${l.quantity}`, amount: extLineAmt(l), category: 'pharmacy' as const })),
+      totalAmount: extTotal,
+      patientCharge: extTotal,
+      status: 'paid',
+      paidAt: new Date().toISOString(),
+      paidBy: state.currentUser?.id || '',
+      createdAt: new Date().toISOString(),
+      isExternal: true
+    };
+
     setState(prev => {
-      // Décrémenter stock pharmacie
+      // Décrémenter stock pharmacie uniquement pour les articles NON-médicaments (les médicaments le seront lors de la délivrance pharmacie)
       let articles = [...prev.articles];
-      extLines.forEach((l) => {
+      nonMedicamentLines.forEach((l) => {
         const idx = articles.findIndex((a) => a.name === l.articleName);
         if (idx >= 0) articles[idx] = { ...articles[idx], stockPharmacie: Math.max(0, articles[idx].stockPharmacie - l.quantity) };
       });
-      const next = { ...prev, invoices: [...prev.invoices, inv], articles };
-      addAuditLog(next, 'VENTE_EXTERNE', `Client Externe — ${formatAr(extTotal)}`);
-      addNotification(next, 'pharmacy', `🛒 Client Externe — ${formatAr(extTotal)}`, 'info');
+      const next = {
+        ...prev,
+        invoices: [...prev.invoices, inv],
+        consultations: [...prev.consultations, ...newConsultations],
+        articles
+      };
+      addAuditLog(next, 'VENTE_EXTERNE', `Client Externe — ${formatAr(extTotal)}${medicamentLines.length > 0 ? ' (avec ordonnance ajoutée à la file d\'attente pharmacie)' : ''}`);
+      addNotification(next, 'pharmacy', `🛒 Client Externe — ${formatAr(extTotal)}${medicamentLines.length > 0 ? ' (Ordonnance ajoutée à la file d\'attente)' : ''}`, 'info');
       return next;
     });
     openThermalTicket(state.ticketSettings, inv, undefined, state.currentUser || undefined);

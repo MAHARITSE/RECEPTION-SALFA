@@ -146,7 +146,7 @@ export default function PharmacyModule({ state, setState, onOpenMessagingWithRec
   };
 
   const paidConsultations = state.consultations.filter((c) => {
-    const inv = state.invoices.find((i) => i.consultationId === c.id && i.status === 'paid' && !i.isExternal);
+    const inv = state.invoices.find((i) => i.consultationId === c.id && i.status === 'paid');
     const hasUndelivered = c.prescriptions.some((p) => !p.delivered);
     return inv && hasUndelivered;
   });
@@ -206,8 +206,9 @@ export default function PharmacyModule({ state, setState, onOpenMessagingWithRec
   const deliver = (consultationId: string, isExternal?: boolean) => {
     const consultation = state.consultations.find((c) => c.id === consultationId);
     if (!consultation) return;
-    const patient = isExternal ? null : state.patients.find((p) => p.id === consultation.patientId);
-    const name = patient ? `${patient.lastName} ${patient.firstName}` : 'Client externe';
+    const isExt = isExternal || !consultation.patientId || consultation.diagnosis === 'Client Externe';
+    const patient = isExt ? null : state.patients.find((p) => p.id === consultation.patientId);
+    const name = patient ? `${patient.lastName} ${patient.firstName}` : consultation.diagnosis === 'Client Externe' ? 'Client Externe' : 'Client externe';
 
     // Vérifier stock + blocages avant délivrance
     const blocked = consultation.prescriptions.filter((p) => {
@@ -318,7 +319,10 @@ export default function PharmacyModule({ state, setState, onOpenMessagingWithRec
   const printDelivery = (consultationId: string, isExternal?: boolean) => {
     const c = state.consultations.find((x) => x.id === consultationId);
     if (!c) return;
-    const patient = isExternal ? null : state.patients.find((p) => p.id === c.patientId);
+    const isExt = isExternal || !c.patientId || c.diagnosis === 'Client Externe';
+    const patient = isExt
+      ? { id: 'ext', lastName: 'Client Externe', firstName: '', dossier: 'EXT', gender: 'M', dob: '', phone: '', clientType: 'externe', createdAt: '' } as any
+      : state.patients.find((p) => p.id === c.patientId);
     if (!patient) return;
     printDeliveryTicket(
       state.ticketSettings,
@@ -492,6 +496,7 @@ export default function PharmacyModule({ state, setState, onOpenMessagingWithRec
             const selConsult = allPending.find((c) => c.id === selConsultId) || allPending[0] || null;
             const patient = selConsult ? state.patients.find((p) => p.id === selConsult.patientId) : null;
             const ext = selConsult ? externalInvoices.find((i) => i.consultationId === selConsult.id) : null;
+            const isExtSel = !!ext || (selConsult ? selConsult.diagnosis === 'Client Externe' || !selConsult.patientId : false);
             const isUrgent = selConsult ? selConsult.isEmergency && !state.invoices.find((i) => i.consultationId === selConsult.id && i.status === 'paid') : false;
 
             return (
@@ -522,7 +527,7 @@ export default function PharmacyModule({ state, setState, onOpenMessagingWithRec
                           <div className="flex justify-between items-start">
                             <div>
                               <div className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
-                                {pat ? `${pat.lastName} ${pat.firstName}` : extInv ? extInv.clientName : 'Inconnu'}
+                                {pat ? `${pat.lastName} ${pat.firstName}` : extInv ? extInv.clientName : c.diagnosis === 'Client Externe' ? 'Client Externe' : 'Inconnu'}
                                 {urg && <span className="px-1.5 py-0.2 rounded bg-red-100 text-red-700 text-[10px] font-bold">🚨 URGENT</span>}
                               </div>
                               <div className="text-xs text-slate-500 mt-0.5">{c.doctorName}</div>
@@ -533,6 +538,9 @@ export default function PharmacyModule({ state, setState, onOpenMessagingWithRec
                           </div>
                           {pat && (
                             <div className="mt-1 text-[11px] text-slate-400 font-mono">Dossier: {pat.dossier}</div>
+                          )}
+                          {!pat && (c.diagnosis === 'Client Externe' || extInv) && (
+                            <div className="mt-1 text-[11px] text-purple-600 font-mono">Vente Externe</div>
                           )}
                         </div>
                       );
@@ -553,24 +561,23 @@ export default function PharmacyModule({ state, setState, onOpenMessagingWithRec
                       <div className="p-4 bg-gradient-to-r from-slate-800 to-slate-900 text-white flex items-center justify-between flex-wrap gap-3">
                         <div>
                           <div className="font-bold text-base flex items-center gap-2">
-                            {patient ? `${patient.lastName} ${patient.firstName}` : ext ? ext.clientName : 'Inconnu'}
+                            {patient ? `${patient.lastName} ${patient.firstName}` : ext ? ext.clientName : selConsult.diagnosis === 'Client Externe' ? 'Client Externe' : 'Inconnu'}
                             {patient && <span className="text-xs font-mono bg-white/20 px-2 py-0.5 rounded text-purple-200">({patient.dossier})</span>}
+                            {isExtSel && !patient && <span className="text-xs font-mono bg-purple-500/30 px-2 py-0.5 rounded text-purple-200">(Vente Externe)</span>}
                             {isUrgent && <span className="px-2 py-0.5 bg-red-500 text-white text-xs rounded-full font-bold">🚨 URGENCE</span>}
                           </div>
                           <div className="text-xs text-slate-300 mt-1">Prescrit par : <strong className="text-white">{selConsult.doctorName}</strong> — {new Date(selConsult.date).toLocaleDateString('fr-FR')}</div>
                         </div>
                         <div className="flex gap-2 items-center">
-                          {patient && (
-                            <button
-                              onClick={() => printDelivery(selConsult.id, !!ext)}
-                              className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg font-medium text-xs flex items-center gap-1.5 cursor-pointer transition"
-                              title="Imprimer manuellement le bon de délivrance (ne s'imprime pas automatiquement au clic sur Délivrer)"
-                            >
-                              <Printer className="w-3.5 h-3.5" /> Imprimer bon
-                            </button>
-                          )}
                           <button
-                            onClick={() => deliver(selConsult.id, !!ext)}
+                            onClick={() => printDelivery(selConsult.id, isExtSel)}
+                            className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg font-medium text-xs flex items-center gap-1.5 cursor-pointer transition"
+                            title="Imprimer manuellement le bon de délivrance"
+                          >
+                            <Printer className="w-3.5 h-3.5" /> Imprimer bon
+                          </button>
+                          <button
+                            onClick={() => deliver(selConsult.id, isExtSel)}
                             className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-bold text-xs flex items-center gap-2 cursor-pointer shadow transition"
                           >
                             <CheckCircle className="w-4 h-4" /> Délivrer et Valider
