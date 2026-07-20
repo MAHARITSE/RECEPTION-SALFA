@@ -531,7 +531,42 @@ warehouseServices ──1:N──> serviceStocks (articles)
 
 ---
 
-## 📝 NOTE SUR LA DATE D'ACTE / SORTIE
+## 📝 MODIFICATION — DATE D'ACTE / DE SORTIE DANS LA SAISIE SAGE
 
-> **La date de sortie (`dateSort`) est conservée dans la table `HbLine`** (lignes de vente hospitalisation/bloc) car elle constitue **l'historique de sortie du malade**.
-> Elle a été retirée de l'interface de saisie (prescription bloc et hospitalisation) pour simplifier la saisie, mais elle reste en base pour la traçabilité.
+### Besoin fonctionnel
+Dans **Prescription (Saisie Sage)**, pour les onglets **Hospitalisation** et **Bloc**, la date est affichée immédiatement **après le montant**. Elle permet de distinguer :
+
+- la **date de sortie de marchandise** ;
+- ou la **date de l'acte / de sortie**.
+
+Le montant reste le montant calculé de la ligne : `prix unitaire × quantité − remise`.
+
+### Donnée concernée : `HbLine`
+
+`HbLine` est une ligne saisie dans le module de caisse pour un dossier d'hospitalisation ou de bloc. Elle est actuellement définie dans `src/components/CashierModule.tsx` (état local du module) :
+
+| Champ | Type | Rôle |
+|---|---|---|
+| `id` | `string` | Identifiant de la ligne |
+| `articleName` | `string` | Article ou prestation |
+| `quantity` | `number` | Quantité |
+| `unitPrice` | `number` | Prix unitaire |
+| `discount` | `number` | Remise en pourcentage |
+| `dateSort` | `string?` (`YYYY-MM-DD`) | Date d'acte / date de sortie |
+
+### Fonctionnement du code
+
+1. **Initialisation** : une nouvelle ligne reçoit par défaut la date du jour dans `dateSort`.
+2. **Saisie** : le champ HTML `type="date"` est placé après **Montant**.
+3. **Enregistrement** : `hbArtSave()` reprend la date saisie ; elle n'est plus remplacée automatiquement par la date du jour.
+4. **Modification** : cliquer sur une ligne recharge sa date dans le formulaire, ce qui permet de la corriger.
+5. **Affichage** : la colonne **Date d'acte / de sortie** est également visible après **Montant** dans le tableau.
+
+### Points à modifier plus tard
+
+- Pour changer le libellé, rechercher `Date d'acte / de sortie` dans `CashierModule.tsx`.
+- Pour renommer la propriété, modifier `dateSort` dans l'interface `HbLine`, le formulaire, la sauvegarde et les tableaux d'affichage.
+- Pour rendre la date obligatoire, ajouter une validation dans `hbArtSave()` et désactiver le bouton **Enregistrer** lorsque `dateSort` est vide.
+- Pour conserver ces lignes après fermeture de la page, déplacer `HbRecord` / `HbLine` vers `src/types.ts`, ajouter un tableau dans `AppState`, puis le sauvegarder avec l'état de l'application. Pour l'instant, ces lignes sont gérées dans l'état local du module de caisse.
+
+> **Important :** `dateSort` est une date métier saisie par l'utilisateur. Il ne faut pas la confondre avec `createdAt`, qui indique la date technique de création d'un enregistrement.
