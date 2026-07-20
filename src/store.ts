@@ -204,6 +204,9 @@ export interface AppState {
   inventorySessions: InventorySession[];   // inventaires
   movementHeaders: MovementHeader[];       // en-têtes de mouvement (achat, vente, transfert, inventaire, sortie)
   movementLines: MovementLine[];           // lignes associées aux mouvements
+  /** Dossiers Hospitalisation / Bloc — PARTAGÉS entre Caisse et Pharmacie (caisse de garde).
+   *  Peu importe qui saisit (caisse ou pharmacie) : c'est le paiement qui fait foi. */
+  hbRecords: import('./types').HbRecord[];
 }
 
 export function createInitialState(): AppState {
@@ -435,6 +438,7 @@ export function createInitialState(): AppState {
     inventorySessions: [],
     movementHeaders: [],
     movementLines: [],
+    hbRecords: [],
   };
 }
 

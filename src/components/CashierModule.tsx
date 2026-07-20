@@ -1,13 +1,10 @@
 import { useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing } from '../types';
+import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord } from '../types';
 import type { AppState } from '../store';
 import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber, addJourneyEvent } from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus } from 'lucide-react';
 import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket } from '../utils/printTicket';
-
-interface HbLine { id: string; articleName: string; quantity: number; unitPrice: number; discount: number; dateSort?: string; }
-interface HbRecord { id: string; patientId?: string; patientName: string; clientType: ClientType; company?: string; type: 'hospit' | 'bloc'; lines: HbLine[]; payments: { amount: number; paidBy: string; date: string }[]; }
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
 type Tab = 'payment' | 'external' | 'hospit' | 'bloc' | 'closing';
@@ -18,7 +15,7 @@ export default function CashierModule({ state, setState }: Props) {
   const [selPatientId, setSelPatientId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('payment');
 
-  // External sale
+  // External sale (session-local: n'a pas besoin d'être partagé)
   const [extSearch, setExtSearch] = useState('');
   const [extSearchIdx, setExtSearchIdx] = useState(0);
   const [extLines, setExtLines] = useState<HbLine[]>([]);
@@ -27,8 +24,16 @@ export default function CashierModule({ state, setState }: Props) {
   const [extIsNew, setExtIsNew] = useState(false);
   const extSearchRef = useRef<HTMLInputElement>(null);
 
-  // Hospit/Bloc
-  const [hbRecords, setHbRecords] = useState<HbRecord[]>([]);
+  // Hospit/Bloc — la liste est PARTAGÉE entre Caisse et Pharmacie (state global),
+  // car peu importe qui saisit (caisse ou pharmacie de garde), c'est le paiement qui fait foi.
+  const hbRecords: HbRecord[] = state.hbRecords || [];
+  const updateHbRecords = (updater: HbRecord[] | ((prev: HbRecord[]) => HbRecord[])) => {
+    setState(prev => {
+      const base = prev.hbRecords || [];
+      const next = typeof updater === 'function' ? (updater as (p: HbRecord[]) => HbRecord[])(base) : updater;
+      return { ...prev, hbRecords: next };
+    });
+  };
   const [hbSelRecordId, setHbSelRecordId] = useState<string | null>(null);
   const [hbPayAmount, setHbPayAmount] = useState(0);
   const [hbModal, setHbModal] = useState<HbModal>('none');
@@ -304,7 +309,13 @@ export default function CashierModule({ state, setState }: Props) {
     if (!p) return;
     const exists = hbRecords.some(r => r.patientId === p.id && r.type === tab);
     if (exists) { alert('Ce patient est déjà dans la liste'); return; }
-    setHbRecords([...hbRecords, { id: uuidv4(), patientId: p.id, patientName: `${p.lastName} ${p.firstName}`, clientType: p.clientType, company: p.company, type: tab as 'hospit' | 'bloc', lines: [], payments: [] }]);
+    const now = new Date().toISOString();
+    updateHbRecords([...hbRecords, {
+      id: uuidv4(), patientId: p.id, patientName: `${p.lastName} ${p.firstName}`,
+      clientType: p.clientType, company: p.company,
+      type: tab as 'hospit' | 'bloc', lines: [], payments: [],
+      openedAt: now, openedBy: state.currentUser?.name, openedByUserId: state.currentUser?.id,
+    }]);
     setHbPatSearch(''); setHbModal('none');
   };
 
@@ -323,8 +334,14 @@ export default function CashierModule({ state, setState }: Props) {
       allergies: [] as string[], chronicTreatments: [] as string[], antecedents: [] as string[],
       registeredAt: new Date().toISOString(), registeredBy: state.currentUser?.id || 'CAISSE', status: 'registered' as const,
     };
+    const now = new Date().toISOString();
     setState(prev => ({ ...prev, patients: [...prev.patients, np] }));
-    setHbRecords([...hbRecords, { id: uuidv4(), patientId: np.id, patientName: `${np.lastName} ${np.firstName}`, clientType: np.clientType, company: np.company, type: tab as 'hospit' | 'bloc', lines: [], payments: [] }]);
+    updateHbRecords([...hbRecords, {
+      id: uuidv4(), patientId: np.id, patientName: `${np.lastName} ${np.firstName}`,
+      clientType: np.clientType, company: np.company,
+      type: tab as 'hospit' | 'bloc', lines: [], payments: [],
+      openedAt: now, openedBy: state.currentUser?.name, openedByUserId: state.currentUser?.id,
+    }]);
     setHbNewPat({ lastName: '', firstName: '', dateOfBirth: '', gender: 'M', contact: '', address: '', matricule: '', ssn: '', insureName: '', clientType: 'comptoir', company: '', subCompany: '' });
     setHbModal('none');
   };
@@ -347,7 +364,7 @@ export default function CashierModule({ state, setState }: Props) {
 
   const hbArtDelete = () => {
     if (!hbSelRecordId || !hbSelLineId) return;
-    setHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, lines: r.lines.filter(l => l.id !== hbSelLineId) } : r));
+    updateHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, lines: r.lines.filter(l => l.id !== hbSelLineId) } : r));
     hbArtNew();
   };
 
@@ -396,9 +413,9 @@ export default function CashierModule({ state, setState }: Props) {
     };
 
     if (hbIsNew || !rec.lines.some(l => l.id === hbArtForm.id)) {
-      setHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, lines: [...r.lines, { ...lineToSave, id: uuidv4() }] } : r));
+      updateHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, lines: [...r.lines, { ...lineToSave, id: uuidv4() }] } : r));
     } else {
-      setHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, lines: r.lines.map(l => l.id === hbArtForm.id ? lineToSave : l) } : r));
+      updateHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, lines: r.lines.map(l => l.id === hbArtForm.id ? lineToSave : l) } : r));
     }
     // Après validation : la zone date n'est PAS effacée (hbArtNew conserve la date saisie)
     hbArtNew();
@@ -422,7 +439,13 @@ export default function CashierModule({ state, setState }: Props) {
     const totalPaid = rec.payments.reduce((s, p) => s + p.amount, 0);
     const reste = totalFact - totalPaid;
     if (hbPayAmount > reste) { alert(`Montant supérieur au reste à payer (${formatAr(reste)})`); return; }
-    setHbRecords(hbRecords.map(r => r.id === recordId ? { ...r, payments: [...r.payments, { amount: hbPayAmount, paidBy: state.currentUser?.name || '', date: new Date().toISOString() }] } : r));
+    const payment = {
+      amount: hbPayAmount,
+      paidBy: state.currentUser?.name || '',
+      paidByUserId: state.currentUser?.id,
+      date: new Date().toISOString(),
+    };
+    updateHbRecords((prev) => prev.map(r => r.id === recordId ? { ...r, payments: [...r.payments, payment] } : r));
     setHbPayAmount(0);
   };
 
@@ -430,7 +453,7 @@ export default function CashierModule({ state, setState }: Props) {
   const hbSaveClientType = () => {
     if (!hbSelRecordId) return;
     const rec = hbRecords.find(r => r.id === hbSelRecordId);
-    setHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, clientType: hbEditClientType, company: hbEditClientType === 'societe' ? hbEditCompany : undefined } : r));
+    updateHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, clientType: hbEditClientType, company: hbEditClientType === 'societe' ? hbEditCompany : undefined } : r));
     // Also update patient in state if linked
     if (rec?.patientId) {
       setState(prev => ({ ...prev, patients: prev.patients.map(p => p.id === rec.patientId ? { ...p, clientType: hbEditClientType === 'externe' ? 'comptoir' : hbEditClientType as 'comptoir'|'societe', company: hbEditClientType === 'societe' ? hbEditCompany : undefined } : p) }));
@@ -440,15 +463,20 @@ export default function CashierModule({ state, setState }: Props) {
 
   // Auto-add from doctor requests
   const autoAddRequests = () => {
+    const now = new Date().toISOString();
+    const openerName = state.currentUser?.name;
+    const openerId = state.currentUser?.id;
+    const additions: HbRecord[] = [];
     state.consultations.forEach(c => {
       const pat = state.patients.find(p => p.id === c.patientId);
       if (!pat) return;
       const name = `${pat.lastName} ${pat.firstName}`;
       if (c.hospitalizeRequested && !hbRecords.some(h => h.patientId === pat.id && h.type === 'hospit'))
-        setHbRecords(prev => [...prev, { id: uuidv4(), patientId: pat.id, patientName: name, clientType: pat.clientType, company: pat.company, type: 'hospit', lines: [], payments: [] }]);
+        additions.push({ id: uuidv4(), patientId: pat.id, patientName: name, clientType: pat.clientType, company: pat.company, type: 'hospit', lines: [], payments: [], openedAt: now, openedBy: openerName, openedByUserId: openerId });
       if (c.surgeryRequested && !hbRecords.some(h => h.patientId === pat.id && h.type === 'bloc'))
-        setHbRecords(prev => [...prev, { id: uuidv4(), patientId: pat.id, patientName: name, clientType: pat.clientType, company: pat.company, type: 'bloc', lines: [], payments: [] }]);
+        additions.push({ id: uuidv4(), patientId: pat.id, patientName: name, clientType: pat.clientType, company: pat.company, type: 'bloc', lines: [], payments: [], openedAt: now, openedBy: openerName, openedByUserId: openerId });
     });
+    if (additions.length > 0) updateHbRecords(prev => [...prev, ...additions]);
   };
   const switchTab = (t: Tab) => { setTab(t); if (t === 'hospit' || t === 'bloc') autoAddRequests(); };
 
@@ -607,7 +635,13 @@ export default function CashierModule({ state, setState }: Props) {
           {(tab === 'hospit' || tab === 'bloc') && (
             <div className="space-y-4">
               <div className={`p-3 rounded-lg border flex justify-between items-center ${tab === 'hospit' ? 'bg-rose-50 border-rose-200' : 'bg-blue-50 border-blue-200'}`}>
-                <h3 className="font-bold flex items-center gap-2">{tab === 'hospit' ? <><Building2 className="w-5 h-5 text-rose-600" /> Hospitalisation</> : <><Heart className="w-5 h-5 text-blue-600" /> Bloc Opératoire</>}</h3>
+                <div>
+                  <h3 className="font-bold flex items-center gap-2">{tab === 'hospit' ? <><Building2 className="w-5 h-5 text-rose-600" /> Hospitalisation</> : <><Heart className="w-5 h-5 text-blue-600" /> Bloc Opératoire</>}</h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Liste <strong>partagée</strong> entre la Caisse et la Pharmacie (caisse de garde).
+                    Peu importe qui saisit (articles/bloc/hosp) — c'est le <strong>paiement</strong> qui fait foi.
+                  </p>
+                </div>
                 <button onClick={() => { setHbPatSearch(''); setHbModal('add_patient'); }} className={`px-3 py-1.5 text-white rounded-lg cursor-pointer text-sm flex items-center gap-1 ${tab === 'hospit' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-blue-600 hover:bg-blue-700'}`}><UserPlus className="w-4 h-4" /> Ajouter Patient</button>
               </div>
 
@@ -880,7 +914,7 @@ export default function CashierModule({ state, setState }: Props) {
                             <td className="p-1 text-center">
                               <button onClick={(e) => {
                                 e.stopPropagation();
-                                setHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, lines: r.lines.filter(x => x.id !== l.id) } : r));
+                                updateHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, lines: r.lines.filter(x => x.id !== l.id) } : r));
                                 if (hbSelLineId === l.id) {
                                   hbArtNew();
                                 }
