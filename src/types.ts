@@ -352,3 +352,130 @@ export interface HbRecord {
   openedBy?: string;
   openedByUserId?: string;
 }
+
+/* ==========================================================================
+ * TABLE UNIFIÉE DES VENTES — `ventes` + `venteLines`
+ * --------------------------------------------------------------------------
+ * Toute sortie de marchandise ou prestation facturée — consultation,
+ * hospitalisation, bloc opératoire, pharmacie, laboratoire, échographie,
+ * vente externe — aboutit à UNE VENTE. Les anciennes tables `invoices`
+ * et `hbRecords` continuent d'exister pour la compatibilité ; elles
+ * peuvent être migrées/dupliquées vers `ventes` via `migrateLegacyToVentes`.
+ * ========================================================================== */
+
+/** Origine / nature de la vente (permet de filtrer les rapports). */
+export type VenteType =
+  | 'consultation'   // acte de consultation
+  | 'hospitalisation'
+  | 'bloc'
+  | 'pharmacie'      // délivrance ordonnance / vente comptoir
+  | 'labo'           // analyse laboratoire
+  | 'echo'           // échographie / imagerie
+  | 'externe';       // vente externe sans dossier patient
+
+/** Source fonctionnelle de saisie de la vente. */
+export type VenteSource = 'caisse' | 'pharmacie' | 'urgence' | 'magasin' | 'admin';
+
+/** Statut de règlement de la vente. */
+export type VenteStatus = 'pending' | 'partiel' | 'paid' | 'annule';
+
+/** Mode de règlement utilisé pour un paiement. */
+export type PaymentMethod = 'Espèces' | 'Carte bancaire' | 'Mobile Money' | 'Virement' | 'Chèque' | 'Autre';
+
+/** Ligne de vente — correspond exactement à la demande :
+ *  id, articleName, quantity, unitPrice, discount, dateSort (date d'acte/sortie). */
+export interface VenteLine {
+  /** Identifiant unique de la ligne (UUID). */
+  id: string;
+  /** FK → ventes.id */
+  venteId: string;
+  /** Nom de l'article / prestation. */
+  articleName: string;
+  /** Référence optionnelle vers le catalogue articles. */
+  articleId?: string;
+  /** Quantité. */
+  quantity: number;
+  /** Prix unitaire (avant remise). */
+  unitPrice: number;
+  /** Remise % sur la ligne. */
+  discount: number;
+  /** Catégorie (pour les états : pharmacie / labo / hospit…). */
+  category?: 'consultation' | 'lab' | 'pharmacy' | 'surgery' | 'hospitalization' | 'echo' | 'bloc' | 'externe';
+  /** 📅 Date d'acte / de sortie — conservée pour l'historique. */
+  dateSort?: string;
+}
+
+/** En-tête de vente — regroupe consultation, bloc, hospitalisation, pharmacie, externe. */
+export interface Vente {
+  /** Identifiant unique (UUID). */
+  id: string;
+  /** FK → patients.id (vide pour ventes externes sans dossier). */
+  patientId?: string;
+  /** FK → consultations.id (si la vente est rattachée à une consultation). */
+  consultationId?: string;
+  /** Numéro de facture (ex: FAC-2026-0001). Unique. */
+  numeroFacture: string;
+  /** Nature de la vente. */
+  type: VenteType;
+  /** Type de client (comptoir / societe / externe) — détermine la grille de prix. */
+  clientType: ClientType;
+  /** Nom du client (renseigné pour externes ou société). */
+  clientName?: string;
+  /** Société (pour clientType = 'societe'). */
+  company?: string;
+  /** Sous-entité / projet. */
+  subCompany?: string;
+  /** Sous-total HT/lignes (somme de quantité×prixUnitaire avant remise). */
+  subtotal: number;
+  /** Remise globale en pourcentage (appliquée sur le sous-total). */
+  remisePct?: number;
+  /** Montant de remise global (calculé ou saisi). */
+  remiseMontant?: number;
+  /** Montant TTC / final de la facture (après remise). */
+  montantFacture: number;
+  /** Montant total déjà encaissé (0 si pending, =montantFacture si paid). */
+  montantPaye: number;
+  /** Statut de règlement. */
+  status: VenteStatus;
+  /** Vente externe (sans dossier patient lié) ? */
+  isExterne: boolean;
+  /** Source de saisie. */
+  source: VenteSource;
+  /** Date de la vente / de l'acte. */
+  dateVente: string;
+  /** Date du premier paiement. */
+  datePaiement?: string;
+  /** Date de paiement intégral. */
+  paidAt?: string;
+  /** Date d'annulation éventuelle. */
+  cancelledAt?: string;
+  /** Motif d'annulation. */
+  cancelReason?: string;
+  /** Utilisateur ayant créé la vente. */
+  createdBy?: string;
+  createdByName?: string;
+  /** Utilisateur ayant finalisé le paiement. */
+  paidBy?: string;
+  paidByName?: string;
+  /** Date de création technique. */
+  createdAt: string;
+  /** Notes libres. */
+  notes?: string;
+  /** FK → cashClosings.id (lorsque la vente est clôturée en Z). */
+  closingId?: string;
+  /** Références vers les anciennes tables pour la migration. */
+  legacyInvoiceId?: string;
+  legacyHbRecordId?: string;
+}
+
+/** Paiement partiel rattaché à une vente (utile pour hospit/bloc). */
+export interface VentePayment {
+  id: string;
+  venteId: string;
+  amount: number;
+  method: PaymentMethod;
+  date: string;
+  paidBy: string;           // nom
+  paidByUserId?: string;    // id user
+  reference?: string;       // n° chèque, transaction mobile money…
+}

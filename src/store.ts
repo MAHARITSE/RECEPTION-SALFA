@@ -5,7 +5,7 @@ import type {
   Message, StockTransfer, StockEntry, ClientType, ArticleFamily, TransferCategory,
   LabExamCatalog, LabCategory, LabRequest, PatientJourneyEvent, JourneyDepartment,
   WarehouseService, StockMovement, InventorySession, StockLocation,
-  MovementHeader, MovementLine, MovementType
+  MovementHeader, MovementLine, MovementType, Vente, VenteLine, VentePayment, VenteType
 } from './types';
 
 let dossierCounter = 100;
@@ -152,6 +152,268 @@ export function stockAlertStatus(a: Article, location: 'central' | 'pharmacie'):
   return 'ok';
 }
 
+/* ====== NUMÉROTATION DES FACTURES ====== */
+/** Construit un numéro de facture de la forme "FAC-YYYY-NNNN" en utilisant le compteur persistant. */
+export function generateFactureNumber(prefix: string = 'FAC', counter: number = 1): string {
+  const year = new Date().getFullYear();
+  const seq = String(counter).padStart(4, '0');
+  return `${prefix}-${year}-${seq}`;
+}
+
+/* ====== HELPERS VENTES UNIFIÉES ====== */
+
+/** Calcule le montant HT d'une ligne (avant remise). */
+export function ligneVenteSubtotal(line: Pick<VenteLine, 'quantity' | 'unitPrice'>): number {
+  return (line.quantity || 0) * (line.unitPrice || 0);
+}
+
+/** Calcule le montant net d'une ligne après remise. */
+export function ligneVenteNet(line: Pick<VenteLine, 'quantity' | 'unitPrice' | 'discount'>): number {
+  const base = ligneVenteSubtotal(line);
+  const rem = (line.discount || 0) / 100;
+  return Math.round(base * (1 - rem));
+}
+
+/** Calcule les totaux d'une vente à partir de ses lignes + remise globale. */
+export function computeVenteTotals(
+  lines: Pick<VenteLine, 'quantity' | 'unitPrice' | 'discount'>[],
+  globalRemisePct: number = 0,
+): { subtotal: number; remiseMontant: number; montantFacture: number } {
+  const subtotal = lines.reduce((s, l) => s + ligneVenteSubtotal(l), 0);
+  const remiseLignes = lines.reduce((s, l) => s + (ligneVenteSubtotal(l) - ligneVenteNet(l)), 0);
+  const baseApresRemiseLignes = subtotal - remiseLignes;
+  const remiseGlobale = Math.round(baseApresRemiseLignes * ((globalRemisePct || 0) / 100));
+  const montantFacture = Math.max(0, baseApresRemiseLignes - remiseGlobale);
+  return {
+    subtotal,
+    remiseMontant: remiseLignes + remiseGlobale,
+    montantFacture,
+  };
+}
+
+/** Crée une vente unifiée avec ses lignes. Alimente automatiquement les totaux. */
+export function createVente(
+  state: AppState,
+  data: Omit<Vente, 'id' | 'createdAt' | 'numeroFacture' | 'subtotal' | 'remiseMontant' | 'montantFacture' | 'montantPaye' | 'status'> & { numeroFacture?: string; montantPaye?: number },
+  lines: Array<Omit<VenteLine, 'id' | 'venteId'>>,
+): { vente: Vente; venteLines: VenteLine[] } {
+  const now = new Date().toISOString();
+  const venteId = uuidv4();
+  const tot = computeVenteTotals(lines, data.remisePct || 0);
+
+  state.factureCounter = (state.factureCounter || 0) + 1;
+  const numeroFacture = data.numeroFacture || generateFactureNumber(
+    state.ticketSettings?.invoicePrefix || 'FAC',
+    state.factureCounter,
+  );
+
+  const montantPaye = data.montantPaye ?? 0;
+  let status: Vente['status'] = 'pending';
+  if (montantPaye >= tot.montantFacture && tot.montantFacture > 0) status = 'paid';
+  else if (montantPaye > 0) status = 'partiel';
+
+  const vente: Vente = {
+    ...data,
+    id: venteId,
+    numeroFacture,
+    subtotal: tot.subtotal,
+    remiseMontant: tot.remiseMontant,
+    montantFacture: tot.montantFacture,
+    montantPaye,
+    status,
+    isExterne: data.isExterne ?? data.type === 'externe',
+    source: data.source || 'caisse',
+    dateVente: data.dateVente || now,
+    createdAt: now,
+  };
+
+  const venteLines: VenteLine[] = lines.map(l => ({
+    id: uuidv4(),
+    venteId,
+    ...l,
+  }));
+
+  state.ventes = [...(state.ventes || []), vente];
+  state.venteLines = [...(state.venteLines || []), ...venteLines];
+
+  return { vente, venteLines };
+}
+
+/** Enregistre un paiement sur une vente (paiement partiel ou complet). */
+export function addVentePayment(
+  state: AppState,
+  venteId: string,
+  payment: { amount: number; method?: VentePayment['method']; date?: string; paidBy: string; paidByUserId?: string; reference?: string },
+): VentePayment | null {
+  const v = state.ventes.find(x => x.id === venteId);
+  if (!v) return null;
+  const pay: VentePayment = {
+    id: uuidv4(),
+    venteId,
+    amount: payment.amount,
+    method: payment.method || 'Espèces',
+    date: payment.date || new Date().toISOString(),
+    paidBy: payment.paidBy,
+    paidByUserId: payment.paidByUserId,
+    reference: payment.reference,
+  };
+  state.ventePayments = [...(state.ventePayments || []), pay];
+
+  const montantPaye = (v.montantPaye || 0) + payment.amount;
+  let status: Vente['status'] = v.status;
+  let paidAt = v.paidAt;
+  let datePaiement = v.datePaiement;
+  if (montantPaye >= v.montantFacture) {
+    status = 'paid';
+    paidAt = paidAt || pay.date;
+  } else if (montantPaye > 0) {
+    status = 'partiel';
+    datePaiement = datePaiement || pay.date;
+  }
+  state.ventes = state.ventes.map(x => x.id === venteId
+    ? { ...x, montantPaye, status, paidAt, datePaiement, paidBy: pay.paidByUserId, paidByName: pay.paidBy }
+    : x);
+  return pay;
+}
+
+/** Récupère les lignes d'une vente. */
+export function getVenteLines(state: AppState, venteId: string): VenteLine[] {
+  return (state.venteLines || []).filter(l => l.venteId === venteId);
+}
+
+/** Récupère les paiements d'une vente. */
+export function getVentePayments(state: AppState, venteId: string): VentePayment[] {
+  return (state.ventePayments || []).filter(p => p.venteId === venteId);
+}
+
+/** Migre les anciennes factures (`invoices`) et dossiers hospit/bloc (`hbRecords`)
+ *  vers la table unifiée `ventes` + `venteLines` (+ `ventePayments` pour les paiements partiels).
+ *  S'exécute de manière idempotente : une fois la migration faite, rien n'est dupliqué. */
+export function migrateLegacyToVentes(state: AppState): { migratedInvoices: number; migratedHb: number } {
+  let migratedInvoices = 0;
+  let migratedHb = 0;
+  const existingInvIds = new Set((state.ventes || []).map(v => v.legacyInvoiceId).filter(Boolean) as string[]);
+  const existingHbIds = new Set((state.ventes || []).map(v => v.legacyHbRecordId).filter(Boolean) as string[]);
+
+  const newVentes: Vente[] = [];
+  const newLines: VenteLine[] = [];
+  const newPaiments: VentePayment[] = [];
+  let counter = state.factureCounter || 0;
+
+  for (const inv of state.invoices) {
+    if (existingInvIds.has(inv.id)) continue;
+    counter++;
+    const vtype: VenteType = inv.isExternal ? 'externe'
+      : inv.items.some(i => i.category === 'lab') ? 'labo'
+      : inv.items.some(i => i.category === 'echo') ? 'echo'
+      : inv.items.some(i => i.category === 'hospitalization' || i.category === 'surgery') ? 'hospitalisation'
+      : inv.items.some(i => i.category === 'pharmacy') ? 'pharmacie'
+      : 'consultation';
+    const venteId = uuidv4();
+    const num = generateFactureNumber(state.ticketSettings?.invoicePrefix || 'FAC', counter);
+    const vente: Vente = {
+      id: venteId,
+      patientId: inv.patientId,
+      consultationId: inv.consultationId,
+      numeroFacture: num,
+      type: vtype,
+      clientType: inv.clientType,
+      clientName: inv.clientName,
+      subtotal: inv.totalAmount,
+      remisePct: 0,
+      remiseMontant: 0,
+      montantFacture: inv.totalAmount,
+      montantPaye: inv.status === 'paid' ? inv.totalAmount : 0,
+      status: inv.status === 'paid' ? 'paid' : 'pending',
+      isExterne: !!inv.isExternal,
+      source: 'caisse',
+      dateVente: inv.createdAt,
+      datePaiement: inv.paidAt,
+      paidAt: inv.paidAt,
+      paidBy: inv.paidBy,
+      createdAt: inv.createdAt,
+      closingId: inv.closingId,
+      legacyInvoiceId: inv.id,
+    };
+    newVentes.push(vente);
+    newLines.push(...inv.items.map((it, idx) => ({
+      id: uuidv4(),
+      venteId,
+      articleName: it.description,
+      quantity: 1,
+      unitPrice: it.amount,
+      discount: 0,
+      category: it.category as VenteLine['category'],
+      dateSort: inv.createdAt.substring(0, 10),
+    })));
+    migratedInvoices++;
+  }
+
+  for (const hb of state.hbRecords) {
+    if (existingHbIds.has(hb.id)) continue;
+    counter++;
+    const vtype: VenteType = hb.type === 'hospit' ? 'hospitalisation' : 'bloc';
+    const venteId = uuidv4();
+    const num = generateFactureNumber(state.ticketSettings?.invoicePrefix || 'FAC', counter);
+    const tot = computeVenteTotals(hb.lines.map(l => ({ quantity: l.quantity, unitPrice: l.unitPrice, discount: l.discount })), 0);
+    const totalPaye = hb.payments.reduce((s, p) => s + p.amount, 0);
+    const status: Vente['status'] = totalPaye >= tot.montantFacture && tot.montantFacture > 0 ? 'paid'
+      : totalPaye > 0 ? 'partiel' : 'pending';
+    const patient = hb.patientId ? state.patients.find(p => p.id === hb.patientId) : undefined;
+    const vente: Vente = {
+      id: venteId,
+      patientId: hb.patientId,
+      numeroFacture: num,
+      type: vtype,
+      clientType: hb.clientType,
+      clientName: patient ? `${patient.firstName} ${patient.lastName}` : hb.patientName,
+      company: hb.company,
+      subtotal: tot.subtotal,
+      remisePct: 0,
+      remiseMontant: tot.remiseMontant,
+      montantFacture: tot.montantFacture,
+      montantPaye: totalPaye,
+      status,
+      isExterne: false,
+      source: 'caisse',
+      dateVente: hb.openedAt || new Date().toISOString(),
+      datePaiement: hb.payments[0]?.date,
+      paidAt: status === 'paid' ? hb.payments[hb.payments.length - 1]?.date : undefined,
+      createdAt: hb.openedAt || new Date().toISOString(),
+      legacyHbRecordId: hb.id,
+    };
+    newVentes.push(vente);
+    newLines.push(...hb.lines.map(l => ({
+      id: uuidv4(),
+      venteId,
+      articleName: l.articleName,
+      quantity: l.quantity,
+      unitPrice: l.unitPrice,
+      discount: l.discount,
+      category: (vtype === 'bloc' ? 'bloc' : 'hospitalization') as VenteLine['category'],
+      dateSort: l.dateSort,
+    })));
+    newPaiments.push(...hb.payments.map(p => ({
+      id: uuidv4(),
+      venteId,
+      amount: p.amount,
+      method: 'Espèces' as VentePayment['method'],
+      date: p.date,
+      paidBy: p.paidBy,
+      paidByUserId: p.paidByUserId,
+    })));
+    migratedHb++;
+  }
+
+  state.ventes = [...(state.ventes || []), ...newVentes];
+  state.venteLines = [...(state.venteLines || []), ...newLines];
+  state.ventePayments = [...(state.ventePayments || []), ...newPaiments];
+  state.factureCounter = counter;
+
+  return { migratedInvoices, migratedHb };
+}
+
+
 const seedPatients: Patient[] = [
   { id: uuidv4(), dossier: 'MAR101', firstName: 'Jean', lastName: 'MARTIN', dateOfBirth: '1985-03-15', age: '39 Ans', gender: 'M', address: 'ANTANANARIVO', contact: '034 12 345 67', ssn: '', allergies: ['Pénicilline'], chronicTreatments: ['Amlodipine 5mg'], antecedents: ['Hypertension'], bloodGroup: 'O+', registeredAt: new Date().toISOString(), registeredBy: 'SYSTEM', status: 'registered', clientType: 'comptoir', blacklisted: true, blacklistReason: 'Impayés répétés — exemple de contrôle', blacklistDate: new Date(Date.now() - 3 * 86400000).toISOString() },
   { id: uuidv4(), dossier: 'DUP102', firstName: 'Marie', lastName: 'DUPONT', dateOfBirth: '1990-07-22', age: '34 Ans', gender: 'F', address: 'TOAMASINA', contact: '033 98 765 43', ssn: '', allergies: [], chronicTreatments: [], antecedents: [], bloodGroup: 'A+', registeredAt: new Date().toISOString(), registeredBy: 'SYSTEM', status: 'registered', clientType: 'societe', company: 'JIRAMA', subCompany: 'Direction Régionale' },
@@ -207,6 +469,14 @@ export interface AppState {
   /** Dossiers Hospitalisation / Bloc — PARTAGÉS entre Caisse et Pharmacie (caisse de garde).
    *  Peu importe qui saisit (caisse ou pharmacie) : c'est le paiement qui fait foi. */
   hbRecords: import('./types').HbRecord[];
+  /** Table unifiée des ventes (toutes sorties : consultation, hospit, bloc, pharmacie, labo, écho, externe). */
+  ventes: Vente[];
+  /** Lignes de vente (1:N vers ventes). */
+  venteLines: VenteLine[];
+  /** Paiements rattachés aux ventes (support des paiements partiels). */
+  ventePayments: VentePayment[];
+  /** Compteur séquentiel des numéros de facture. */
+  factureCounter: number;
 }
 
 export function createInitialState(): AppState {
@@ -439,6 +709,10 @@ export function createInitialState(): AppState {
     movementHeaders: [],
     movementLines: [],
     hbRecords: [],
+    ventes: [],
+    venteLines: [],
+    ventePayments: [],
+    factureCounter: 0,
   };
 }
 
