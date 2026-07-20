@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Consultation, VitalSigns, Prescription, LabRequest, ClientType, Invoice, EchoRequest } from '../types';
 import type { AppState } from '../store';
 import { addAuditLog, addNotification, formatAr, getPrice, addJourneyEvent, labCategoryLabel } from '../store';
+import { blockIfUnsavedDraftLine } from '../utils/validation';
 import { Stethoscope, History, Trash2, AlertTriangle, Heart, FileText, Clock, CheckCircle, Send, Search, Edit2, RotateCcw, Save, FlaskConical, Scan } from 'lucide-react';
 
 export interface EchoExamCatalog {
@@ -201,6 +202,8 @@ export default function DoctorModule({ state, setState }: Props) {
 
   const submitConsultation = () => {
     if (!selectedPatientId || !selectedPatient || !consultForm.diagnosis) { alert('Diagnostic obligatoire'); return; }
+    // Ne pas valider si une ligne d'ordonnance est en cours de saisie mais non enregistrée
+    if (blockIfUnsavedDraftLine(lineForm, lines, { entityLabel: 'le médicament' })) return;
     // Ordonnance NON obligatoire : diagnostic seul, analyses et/ou échographies suffisent
     const ct = clientType;
     const consultId = uuidv4();
