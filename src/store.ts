@@ -132,6 +132,26 @@ export function isArticleSaleable(a: Article): boolean {
   return !a.saleBlocked && a.stockPharmacie > 0;
 }
 
+/** Article en rupture de stock pharmacie — listé en rouge dans la saisie assistée des ventes, non vendable */
+export function isOutOfStockPharma(a: Article): boolean {
+  return a.stockPharmacie <= 0;
+}
+
+/** Statut d'alerte stock d'un dépôt :
+ *  - 'off' : alertes désactivées pour ce dépôt (aucun badge / notification)
+ *  - 'out' : rupture (stock ≤ 0)
+ *  - 'low' : stock bas (stock ≤ stock d'alerte)
+ *  - 'ok'  : stock suffisant */
+export function stockAlertStatus(a: Article, location: 'central' | 'pharmacie'): 'off' | 'out' | 'low' | 'ok' {
+  const disabled = location === 'central' ? a.alertDisabledCentral : a.alertDisabledPharmacie;
+  if (disabled) return 'off';
+  const stock = location === 'central' ? a.stockCentral : a.stockPharmacie;
+  const min = location === 'central' ? a.minStockCentral : a.minStockPharmacie;
+  if (stock <= 0) return 'out';
+  if (stock <= min) return 'low';
+  return 'ok';
+}
+
 const seedPatients: Patient[] = [
   { id: uuidv4(), dossier: 'MAR101', firstName: 'Jean', lastName: 'MARTIN', dateOfBirth: '1985-03-15', age: '39 Ans', gender: 'M', address: 'ANTANANARIVO', contact: '034 12 345 67', ssn: '', allergies: ['Pénicilline'], chronicTreatments: ['Amlodipine 5mg'], antecedents: ['Hypertension'], bloodGroup: 'O+', registeredAt: new Date().toISOString(), registeredBy: 'SYSTEM', status: 'registered', clientType: 'comptoir', blacklisted: true, blacklistReason: 'Impayés répétés — exemple de contrôle', blacklistDate: new Date(Date.now() - 3 * 86400000).toISOString() },
   { id: uuidv4(), dossier: 'DUP102', firstName: 'Marie', lastName: 'DUPONT', dateOfBirth: '1990-07-22', age: '34 Ans', gender: 'F', address: 'TOAMASINA', contact: '033 98 765 43', ssn: '', allergies: [], chronicTreatments: [], antecedents: [], bloodGroup: 'A+', registeredAt: new Date().toISOString(), registeredBy: 'SYSTEM', status: 'registered', clientType: 'societe', company: 'JIRAMA', subCompany: 'Direction Régionale' },

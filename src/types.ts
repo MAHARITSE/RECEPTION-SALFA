@@ -43,7 +43,12 @@ export interface Article {
   priceComptoir: number; priceSociete: number; priceExterne: number;
   purchasePrice: number; // prix d'achat
   stockCentral: number; stockPharmacie: number;
+  /** Stock d'alerte (seuil) par dépôt — en dessous, l'article est signalé "stock bas" */
   minStockCentral: number; minStockPharmacie: number;
+  /** Désactive les alertes de stock (bas / rupture) pour le dépôt central */
+  alertDisabledCentral?: boolean;
+  /** Désactive les alertes de stock (bas / rupture) pour la pharmacie */
+  alertDisabledPharmacie?: boolean;
   /** Stocks par service (hors pharmacie) — clé = WarehouseService.id */
   serviceStocks?: Record<string, number>;
   /** Seuils mini par service */

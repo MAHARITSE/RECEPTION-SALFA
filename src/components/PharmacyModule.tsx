@@ -10,7 +10,7 @@ import CashierModule from './CashierModule';
 import {
   Pill, Package, CheckCircle, Clock, Search, Send,
   Plus, Trash2, Filter, Printer, Edit3, CreditCard,
-  Ban, Unlock, AlertTriangle
+  Ban, Unlock, AlertTriangle, Bell, BellOff
 } from 'lucide-react';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
@@ -270,8 +270,12 @@ export default function PharmacyModule({ state, setState }: Props) {
         patients: patient ? prev.patients.map((p) => p.id === consultation.patientId ? { ...p, status: newStatus as any } : p) : prev.patients };
       addAuditLog(next, 'DELIVRANCE', `Médicaments délivrés: ${name}`, consultation.patientId);
       if (consultation.patientId) addJourneyEvent(next, { patientId: consultation.patientId, department: 'pharmacie', action: 'Médicaments délivrés', status: 'medications_delivered', details: consultation.prescriptions.map((p) => `${p.articleName} ×${p.quantity}`).join(', '), actorName: state.currentUser?.name });
-      updatedArticles.forEach((a) => { if (a.stockPharmacie <= 0) addNotification(next, 'pharmacy', `🚨 ${a.name} en rupture (pharmacie)`, 'critical');
-        else if (a.stockPharmacie <= a.minStockPharmacie) addNotification(next, 'pharmacy', `⚠️ Stock bas pharmacie: ${a.name} (${a.stockPharmacie})`, 'warning'); });
+      updatedArticles.forEach((a) => {
+        // Alerte désactivée pour cet article (pharmacie) → aucune notification stock
+        if (a.alertDisabledPharmacie) return;
+        if (a.stockPharmacie <= 0) addNotification(next, 'pharmacy', `🚨 ${a.name} en rupture (pharmacie)`, 'critical');
+        else if (a.stockPharmacie <= a.minStockPharmacie) addNotification(next, 'pharmacy', `⚠️ Stock bas pharmacie: ${a.name} (${a.stockPharmacie} / alerte: ${a.minStockPharmacie})`, 'warning');
+      });
       return next;
     });
     if (patient) {
@@ -297,6 +301,28 @@ export default function PharmacyModule({ state, setState }: Props) {
       c.prescriptions.filter((p) => !p.delivered).map((p) => ({ name: p.articleName, quantity: p.quantity, posology: p.posology })),
       state.currentUser?.name,
     );
+  };
+
+  // Stock d'alerte : modification du seuil pharmacie (par article)
+  const updateAlertThreshold = (articleId: string, value: number) => {
+    setState((prev) => ({
+      ...prev,
+      articles: prev.articles.map((a) => (a.id === articleId ? { ...a, minStockPharmacie: Math.max(0, Math.round(value)) } : a)),
+    }));
+  };
+
+  // Activer / désactiver l'alerte stock pour un article (pharmacie uniquement)
+  // NB : le blocage de vente en cas de rupture reste toujours actif.
+  const togglePharmaAlert = (articleId: string, name: string) => {
+    setState((prev) => {
+      const art = prev.articles.find((a) => a.id === articleId);
+      const next = {
+        ...prev,
+        articles: prev.articles.map((a) => (a.id === articleId ? { ...a, alertDisabledPharmacie: !a.alertDisabledPharmacie } : a)),
+      };
+      addAuditLog(next, art?.alertDisabledPharmacie ? 'ALERTE_STOCK_PHARMA_ACTIVEE' : 'ALERTE_STOCK_PHARMA_DESACTIVEE', name);
+      return next;
+    });
   };
 
   const blockedCount = state.articles.filter((a) => a.saleBlocked).length;
@@ -493,6 +519,10 @@ export default function PharmacyModule({ state, setState }: Props) {
                       <Ban className="w-4 h-4 text-orange-600" />
                       Bloquez la vente même si le stock est encore disponible (réservé, régularisation…).
                     </div>
+                    <div className="text-xs text-slate-500 bg-sky-50 border border-sky-200 px-3 py-2 rounded-lg flex items-center gap-2">
+                      <BellOff className="w-4 h-4 text-sky-600" />
+                      Réglez le <strong>stock d'alerte</strong> par article ou désactivez l'alerte (🔕). En rupture, l'article reste <strong>invendable</strong> même si l'alerte est désactivée.
+                    </div>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
@@ -502,6 +532,8 @@ export default function PharmacyModule({ state, setState }: Props) {
                           <th className="text-left py-3 px-3 font-semibold text-slate-600">Article</th>
                           <th className="text-center py-3 px-3 font-semibold text-slate-600">Stock Pharma</th>
                           <th className="text-center py-3 px-3 font-semibold text-slate-600">Stock Central</th>
+                          <th className="text-center py-3 px-3 font-semibold text-slate-600" title="Seuil d'alerte (stock bas) pour la pharmacie">Stock d'alerte</th>
+                          <th className="text-center py-3 px-3 font-semibold text-slate-600" title="Activer / désactiver l'alerte pour cet article">Alerte</th>
                           <th className="text-right py-3 px-3 font-semibold text-slate-600">Prix</th>
                           <th className="text-center py-3 px-3 font-semibold text-slate-600">État stock</th>
                           <th className="text-center py-3 px-3 font-semibold text-slate-600">Vente</th>
@@ -510,8 +542,9 @@ export default function PharmacyModule({ state, setState }: Props) {
                       </thead>
                       <tbody>
                         {filtered.map((a) => {
-                          const isLow = a.stockPharmacie <= a.minStockPharmacie && a.stockPharmacie > 0;
-                          const isOut = a.stockPharmacie === 0;
+                          const alertMuted = !!a.alertDisabledPharmacie;
+                          const isLow = !alertMuted && a.stockPharmacie <= a.minStockPharmacie && a.stockPharmacie > 0;
+                          const isOut = !alertMuted && a.stockPharmacie === 0;
                           const blocked = !!a.saleBlocked;
                           return (
                             <tr key={a.id} className={`border-b border-slate-100 ${blocked ? 'bg-orange-50/80' : isOut ? 'bg-red-50' : isLow ? 'bg-amber-50' : ''}`}>
@@ -526,9 +559,29 @@ export default function PharmacyModule({ state, setState }: Props) {
                               </td>
                               <td className="py-3 px-3 text-center font-mono font-bold">{a.stockPharmacie}</td>
                               <td className="py-3 px-3 text-center font-mono text-slate-500">{a.stockCentral}</td>
+                              <td className="py-3 px-3 text-center">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={a.minStockPharmacie}
+                                  onChange={(e) => updateAlertThreshold(a.id, parseInt(e.target.value) || 0)}
+                                  className="w-16 px-1.5 py-1 border border-slate-300 rounded text-center font-mono text-xs outline-none focus:border-purple-500 bg-white"
+                                  title="Stock d'alerte : en dessous, l'article est signalé « stock bas »"
+                                />
+                              </td>
+                              <td className="py-3 px-3 text-center">
+                                <button
+                                  onClick={() => togglePharmaAlert(a.id, a.name)}
+                                  className={`p-1.5 rounded-lg cursor-pointer ${alertMuted ? 'bg-slate-200 text-slate-500 hover:bg-slate-300' : 'bg-purple-100 text-purple-700 hover:bg-purple-200'}`}
+                                  title={alertMuted ? 'Alerte désactivée — cliquez pour réactiver' : 'Alerte activée — cliquez pour désactiver'}
+                                >
+                                  {alertMuted ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+                                </button>
+                              </td>
                               <td className="py-3 px-3 text-right font-mono">{formatAr(a.priceComptoir)}</td>
                               <td className="py-3 px-3 text-center">
-                                {isOut ? <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full font-medium">RUPTURE</span>
+                                {alertMuted ? <span className="px-2 py-1 bg-slate-200 text-slate-600 text-xs rounded-full font-medium" title="Alerte désactivée pour cet article">🔕 Alerte off</span>
+                                  : isOut ? <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full font-medium">RUPTURE</span>
                                   : isLow ? <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs rounded-full font-medium">Stock bas</span>
                                   : <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full font-medium">OK</span>}
                               </td>

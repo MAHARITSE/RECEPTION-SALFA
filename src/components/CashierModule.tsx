@@ -23,7 +23,7 @@ export default function CashierModule({ state, setState }: Props) {
   const [extSearchIdx, setExtSearchIdx] = useState(0);
   const [extLines, setExtLines] = useState<HbLine[]>([]);
   const [extSelLineId, setExtSelLineId] = useState<string | null>(null);
-  const [extLineForm, setExtLineForm] = useState<HbLine>({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: '' });
+  const [extLineForm, setExtLineForm] = useState<HbLine>({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: new Date().toISOString().split('T')[0] });
   const [extIsNew, setExtIsNew] = useState(false);
   const extSearchRef = useRef<HTMLInputElement>(null);
 
@@ -208,14 +208,30 @@ export default function CashierModule({ state, setState }: Props) {
       alert(`⛔ Vente bloquée pour « ${a.name} »${a.saleBlockReason ? ` — ${a.saleBlockReason}` : ''}. Débloquez l'article en pharmacie.`);
       return;
     }
-    const nl: HbLine = { id: uuidv4(), articleName: a.name, quantity: 1, unitPrice: getPrice(a, 'externe'), discount: 0 };
+    // Gestion des stocks : un article en rupture pharmacie ne peut pas faire l'objet d'une vente
+    if (a.stockPharmacie <= 0) {
+      alert(`🚨 RUPTURE DE STOCK : « ${a.name} » (stock pharmacie = 0).\n\nCet article ne peut pas être vendu. Demandez un réapprovisionnement à la pharmacie.`);
+      return;
+    }
+    // La date saisie est conservée : elle ne s'efface pas entre les lignes (plusieurs sorties le même jour)
+    const nl: HbLine = { id: uuidv4(), articleName: a.name, quantity: 1, unitPrice: getPrice(a, 'externe'), discount: 0, dateSort: extLineForm.dateSort || new Date().toISOString().split('T')[0] };
     setExtLineForm({ ...nl }); setExtSelLineId(nl.id); setExtIsNew(true); setExtSearch('');
   };
   const extSaveLine = () => {
     if (!extLineForm.articleName) return;
-    if (extIsNew || !extLines.find(l => l.id === extLineForm.id)) setExtLines([...extLines, { ...extLineForm }]);
-    else setExtLines(extLines.map(l => l.id === extLineForm.id ? { ...extLineForm } : l));
-    setExtIsNew(false); setExtLineForm({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0 }); setTimeout(() => extSearchRef.current?.focus(), 50);
+    // Contrôle stock pharmacie à la validation de la ligne
+    const art = state.articles.find(a => a.name === extLineForm.articleName);
+    if (art && art.stockPharmacie <= 0) { alert(`🚨 RUPTURE DE STOCK : « ${art.name} » (stock pharmacie = 0).\n\nVente impossible.`); return; }
+    if (art && extLineForm.quantity > art.stockPharmacie) {
+      if (!confirm(`⚠️ Stock pharmacie insuffisant pour « ${art.name} » : ${art.stockPharmacie} disponible(s), ${extLineForm.quantity} demandée(s).\n\nEnregistrer quand même ?`)) return;
+    }
+    const lineToSave: HbLine = { ...extLineForm, dateSort: extLineForm.dateSort || new Date().toISOString().split('T')[0] };
+    if (extIsNew || !extLines.find(l => l.id === extLineForm.id)) setExtLines([...extLines, lineToSave]);
+    else setExtLines(extLines.map(l => l.id === extLineForm.id ? lineToSave : l));
+    setExtIsNew(false);
+    // La date n'est PAS réinitialisée après validation : une personne peut faire sortir plusieurs médicaments le même jour
+    setExtLineForm(prev => ({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: prev.dateSort || new Date().toISOString().split('T')[0] }));
+    setTimeout(() => extSearchRef.current?.focus(), 50);
   };
   const extKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setExtSearchIdx(i => Math.min(i + 1, extFiltered.length - 1)); }
@@ -240,6 +256,27 @@ export default function CashierModule({ state, setState }: Props) {
         return `• ${l.articleName}${art?.saleBlockReason ? ` (${art.saleBlockReason})` : ''}`;
       }).join('\n')}`);
       return;
+    }
+    // Contrôle rupture : un article en rupture pharmacie ne peut pas faire l'objet d'une vente
+    const outLines = extLines.filter((l) => {
+      const art = state.articles.find((a) => a.name === l.articleName);
+      return !art || art.stockPharmacie <= 0;
+    });
+    if (outLines.length > 0) {
+      alert(`🚨 RUPTURE DE STOCK — vente impossible pour :\n${outLines.map((l) => `• ${l.articleName} (stock pharmacie = 0)`).join('\n')}\n\nRetirez ces lignes ou demandez un réapprovisionnement.`);
+      return;
+    }
+    // Contrôle quantités : avertissement si la quantité vendue dépasse le stock disponible
+    const insuffLines = extLines.filter((l) => {
+      const art = state.articles.find((a) => a.name === l.articleName);
+      return art && art.stockPharmacie < l.quantity;
+    });
+    if (insuffLines.length > 0) {
+      const detail = insuffLines.map((l) => {
+        const art = state.articles.find((a) => a.name === l.articleName);
+        return `• ${l.articleName} : ${art?.stockPharmacie ?? 0} dispo / ${l.quantity} demandé(s)`;
+      }).join('\n');
+      if (!confirm(`⚠️ Stock insuffisant pour :\n${detail}\n\nEncaisser quand même ?`)) return;
     }
     const inv: Invoice = { id: uuidv4(), clientName: 'Client Externe', clientType: 'externe', items: extLines.map(l => ({ description: `${l.articleName} × ${l.quantity}`, amount: extLineAmt(l), category: 'pharmacy' as const })), totalAmount: extTotal, patientCharge: extTotal, status: 'paid', paidAt: new Date().toISOString(), paidBy: state.currentUser?.id || '', createdAt: new Date().toISOString(), isExternal: true };
     setState(prev => {
@@ -298,7 +335,10 @@ export default function CashierModule({ state, setState }: Props) {
     : [];
 
   const hbArtNew = () => {
-    setHbArtForm({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: new Date().toISOString().split('T')[0] });
+    // La date d'acte / de sortie n'est JAMAIS effacée par "Nouveau" ni par la validation :
+    // une personne peut faire sortir plusieurs médicaments le même jour.
+    // (Elle est réinitialisée uniquement à l'ouverture du panneau de saisie.)
+    setHbArtForm(prev => ({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: prev.dateSort || new Date().toISOString().split('T')[0] }));
     setHbSelLineId(null);
     setHbIsNew(true);
     setHbArtSearch('');
@@ -318,8 +358,14 @@ export default function CashierModule({ state, setState }: Props) {
       alert(`⛔ Vente bloquée pour « ${a.name} »${a.saleBlockReason ? ` — ${a.saleBlockReason}` : ''}.`);
       return;
     }
+    // Gestion des stocks : un article en rupture pharmacie ne peut pas faire l'objet d'une vente
+    if (a.stockPharmacie <= 0) {
+      alert(`🚨 RUPTURE DE STOCK : « ${a.name} » (stock pharmacie = 0).\n\nCet article ne peut pas être vendu. Demandez un réapprovisionnement à la pharmacie.`);
+      return;
+    }
     const rec = hbRecords.find(r => r.id === hbSelRecordId);
-    setHbArtForm({ id: uuidv4(), articleName: a.name, quantity: 1, unitPrice: getPrice(a, rec?.clientType || 'comptoir'), discount: 0, dateSort: new Date().toISOString().split('T')[0] });
+    // On conserve la date déjà saisie (sorties multiples le même jour)
+    setHbArtForm(prev => ({ id: uuidv4(), articleName: a.name, quantity: 1, unitPrice: getPrice(a, rec?.clientType || 'comptoir'), discount: 0, dateSort: prev.dateSort || new Date().toISOString().split('T')[0] }));
     setHbIsNew(true);
     setHbSelLineId(null);
     setHbArtSearch('');
@@ -335,6 +381,13 @@ export default function CashierModule({ state, setState }: Props) {
     const rec = hbRecords.find(r => r.id === hbSelRecordId);
     if (!rec) return;
 
+    // Contrôle stock pharmacie à la validation de la ligne
+    const art = state.articles.find(a => a.name === hbArtForm.articleName);
+    if (art && art.stockPharmacie <= 0) { alert(`🚨 RUPTURE DE STOCK : « ${art.name} » (stock pharmacie = 0).\n\nVente impossible.`); return; }
+    if (art && hbArtForm.quantity > art.stockPharmacie) {
+      if (!confirm(`⚠️ Stock pharmacie insuffisant pour « ${art.name} » : ${art.stockPharmacie} disponible(s), ${hbArtForm.quantity} demandée(s).\n\nEnregistrer quand même ?`)) return;
+    }
+
     const lineToSave: HbLine = {
       ...hbArtForm,
       // La date correspond à la date d'acte / de sortie de marchandise.
@@ -347,6 +400,7 @@ export default function CashierModule({ state, setState }: Props) {
     } else {
       setHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, lines: r.lines.map(l => l.id === hbArtForm.id ? lineToSave : l) } : r));
     }
+    // Après validation : la zone date n'est PAS effacée (hbArtNew conserve la date saisie)
     hbArtNew();
   };
 
@@ -509,12 +563,25 @@ export default function CashierModule({ state, setState }: Props) {
                     <div className="flex-1 min-w-[140px] relative">
                       <label className="block text-[9px] text-slate-500">Article (↑↓ Entrée)</label>
                       <input ref={extSearchRef} type="text" value={extLineForm.articleName && !extSearch ? extLineForm.articleName : extSearch} onChange={e => { setExtSearch(e.target.value); setExtSearchIdx(0); }} onKeyDown={extKeyDown} className="w-full bg-white border border-blue-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-blue-600" placeholder="🔍 Tapez..." />
-                      {extSearch.length >= 1 && extFiltered.length > 0 && <div className="absolute top-full left-0 right-0 bg-white border rounded-b shadow-xl z-30 max-h-36 overflow-y-auto">{extFiltered.map((a, idx) => (<div key={a.id} onClick={() => extSelectArticle(a.id)} className={`px-2 py-1 cursor-pointer text-xs flex justify-between border-b ${idx === extSearchIdx ? 'bg-blue-100' : 'hover:bg-blue-50'}`}><span>[{a.family}] {a.name}</span><span className="font-mono text-blue-600">{formatAr(getPrice(a, 'externe'))}</span></div>))}</div>}
+                      {extSearch.length >= 1 && extFiltered.length > 0 && <div className="absolute top-full left-0 right-0 bg-white border rounded-b shadow-xl z-30 max-h-36 overflow-y-auto">{extFiltered.map((a, idx) => {
+                        const isOut = a.stockPharmacie <= 0;
+                        const isLow = !isOut && a.stockPharmacie <= a.minStockPharmacie && !a.alertDisabledPharmacie;
+                        return (<div key={a.id} onClick={() => extSelectArticle(a.id)} title={isOut ? 'Rupture de stock — vente impossible' : undefined} className={`px-2 py-1 text-xs flex justify-between border-b ${isOut ? 'bg-red-50 text-red-700 cursor-not-allowed' : `cursor-pointer ${idx === extSearchIdx ? 'bg-blue-100' : 'hover:bg-blue-50'}`}`}>
+                          <span className={isOut ? 'line-through decoration-red-400/60' : ''}>[{a.family}] {a.name}</span>
+                          <span className="flex items-center gap-2">
+                            {isOut
+                              ? <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-[9px] font-bold">🚨 RUPTURE — invendable</span>
+                              : <span className={`font-mono text-[10px] ${isLow ? 'text-amber-600 font-bold' : 'text-slate-400'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>}
+                            <span className={`font-mono ${isOut ? 'text-red-400' : 'text-blue-600'}`}>{formatAr(getPrice(a, 'externe'))}</span>
+                          </span>
+                        </div>);
+                      })}</div>}
                     </div>
                     <div className="w-14"><label className="block text-[9px] text-slate-500">Qté</label><input type="number" min={1} value={extLineForm.quantity} onChange={e => setExtLineForm({...extLineForm, quantity: parseInt(e.target.value)||1})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono outline-none" /></div>
                     <div className="w-14"><label className="block text-[9px] text-slate-500">Rem%</label><input type="number" min={0} max={100} value={extLineForm.discount} onChange={e => setExtLineForm({...extLineForm, discount: parseInt(e.target.value)||0})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono outline-none" /></div>
                     <div className="w-20"><label className="block text-[9px] text-slate-500">P.U.</label><input readOnly value={formatAr(extLineForm.unitPrice)} className="w-full bg-slate-200 border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono" /></div>
                     <div className="w-24"><label className="block text-[9px] text-slate-500">Montant</label><input readOnly value={formatAr(extLineAmt(extLineForm))} className="w-full bg-slate-200 border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono font-bold" /></div>
+                    <div className="w-32"><label className="block text-[9px] text-slate-500" title="La date est conservée après chaque validation : plusieurs sorties possibles le même jour">Date sortie 📌</label><input type="date" value={extLineForm.dateSort || ''} onChange={e => setExtLineForm({...extLineForm, dateSort: e.target.value})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs font-mono outline-none focus:border-blue-500" title="Date de sortie — conservée après validation de la ligne" /></div>
                   </div>
                   <div className="flex justify-end gap-1 mt-1">
                     <button onClick={() => { if (extSelLineId) { setExtLines(extLines.filter(l => l.id !== extSelLineId)); setExtSelLineId(null); }}} disabled={!extSelLineId} className="px-2 py-0.5 bg-white border border-slate-300 rounded text-[10px] disabled:opacity-40 cursor-pointer"><Trash2 className="h-3 w-3 text-rose-600 inline" /></button>
@@ -522,11 +589,11 @@ export default function CashierModule({ state, setState }: Props) {
                   </div>
                 </div>
                 <div className="bg-white mx-2 mb-2 border-t border-slate-300 overflow-x-auto rounded-b">
-                  <table className="w-full text-[11px]"><thead className="bg-slate-50 border-b text-slate-600"><tr className="divide-x divide-slate-200"><th className="p-1 min-w-[130px]">Article</th><th className="p-1 text-right w-12">Qté</th><th className="p-1 text-center w-12">Rem%</th><th className="p-1 text-right w-20">P.U.</th><th className="p-1 text-right w-24">Montant</th></tr></thead>
-                    <tbody className="divide-y font-mono">{extLines.map(l => (<tr key={l.id} onClick={() => { setExtSelLineId(l.id); setExtLineForm({...l}); setExtIsNew(false); }} className={`cursor-pointer divide-x divide-slate-200 ${l.id === extSelLineId ? 'bg-blue-500 text-white' : 'hover:bg-slate-50'}`}><td className="p-1 font-sans">{l.articleName}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 text-center">{l.discount > 0 ? `${l.discount}%` : '—'}</td><td className="p-1 text-right">{l.unitPrice.toLocaleString('fr-FR')}</td><td className="p-1 text-right font-bold">{extLineAmt(l).toLocaleString('fr-FR')}</td></tr>))}
-                      {extLines.length === 0 && <tr><td colSpan={5} className="p-3 text-center text-slate-400 font-sans">Tapez un article</td></tr>}
+                  <table className="w-full text-[11px]"><thead className="bg-slate-50 border-b text-slate-600"><tr className="divide-x divide-slate-200"><th className="p-1 min-w-[130px]">Article</th><th className="p-1 text-right w-12">Qté</th><th className="p-1 text-center w-12">Rem%</th><th className="p-1 text-right w-20">P.U.</th><th className="p-1 text-right w-24">Montant</th><th className="p-1 w-28">Date sortie</th></tr></thead>
+                    <tbody className="divide-y font-mono">{extLines.map(l => (<tr key={l.id} onClick={() => { setExtSelLineId(l.id); setExtLineForm({...l}); setExtIsNew(false); }} className={`cursor-pointer divide-x divide-slate-200 ${l.id === extSelLineId ? 'bg-blue-500 text-white' : 'hover:bg-slate-50'}`}><td className="p-1 font-sans">{l.articleName}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 text-center">{l.discount > 0 ? `${l.discount}%` : '—'}</td><td className="p-1 text-right">{l.unitPrice.toLocaleString('fr-FR')}</td><td className="p-1 text-right font-bold">{extLineAmt(l).toLocaleString('fr-FR')}</td><td className="p-1 font-sans text-slate-500">{l.dateSort || '—'}</td></tr>))}
+                      {extLines.length === 0 && <tr><td colSpan={6} className="p-3 text-center text-slate-400 font-sans">Tapez un article</td></tr>}
                     </tbody>
-                    {extLines.length > 0 && <tfoot className="bg-emerald-50 border-t-2 border-emerald-300"><tr><td colSpan={3} className="p-1 text-right font-bold font-sans">TOTAL:</td><td colSpan={2} className="p-1 text-right font-mono font-bold text-lg">{formatAr(extTotal)}</td></tr></tfoot>}
+                    {extLines.length > 0 && <tfoot className="bg-emerald-50 border-t-2 border-emerald-300"><tr><td colSpan={4} className="p-1 text-right font-bold font-sans">TOTAL:</td><td colSpan={2} className="p-1 text-right font-mono font-bold text-lg">{formatAr(extTotal)}</td></tr></tfoot>}
                   </table>
                 </div>
               </div>
@@ -680,16 +747,26 @@ export default function CashierModule({ state, setState }: Props) {
                       />
                       {hbArtSearch.length >= 1 && hbArtFiltered.length > 0 && (
                         <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 rounded-b shadow-2xl z-40 max-h-40 overflow-y-auto">
-                          {hbArtFiltered.map((a, idx) => (
+                          {hbArtFiltered.map((a, idx) => {
+                            const isOut = a.stockPharmacie <= 0;
+                            const isLow = !isOut && a.stockPharmacie <= a.minStockPharmacie && !a.alertDisabledPharmacie;
+                            return (
                             <div
                               key={a.id}
                               onClick={() => hbArtSelectArticle(a.id)}
-                              className={`px-3 py-1.5 cursor-pointer text-xs flex justify-between border-b border-slate-100 ${idx === hbArtIdx ? 'bg-blue-500 text-white font-medium' : 'hover:bg-slate-50 text-slate-800'}`}
+                              title={isOut ? 'Rupture de stock — vente impossible' : undefined}
+                              className={`px-3 py-1.5 text-xs flex justify-between border-b border-slate-100 ${isOut ? 'bg-red-50 text-red-700 cursor-not-allowed' : `cursor-pointer ${idx === hbArtIdx ? 'bg-blue-500 text-white font-medium' : 'hover:bg-slate-50 text-slate-800'}`}`}
                             >
-                              <span>[{a.family}] {a.name}</span>
-                              <span className={`font-mono ${idx === hbArtIdx ? 'text-white' : 'text-blue-600 font-medium'}`}>{formatAr(getPrice(a, rec?.clientType || 'comptoir'))}</span>
+                              <span className={isOut ? 'line-through decoration-red-400/60' : ''}>[{a.family}] {a.name}</span>
+                              <span className="flex items-center gap-2">
+                                {isOut
+                                  ? <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-[9px] font-bold">🚨 RUPTURE — invendable</span>
+                                  : <span className={`font-mono text-[10px] ${idx === hbArtIdx ? 'text-white/90' : isLow ? 'text-amber-600 font-bold' : 'text-slate-400'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>}
+                                <span className={`font-mono ${isOut ? 'text-red-400' : idx === hbArtIdx ? 'text-white' : 'text-blue-600 font-medium'}`}>{formatAr(getPrice(a, rec?.clientType || 'comptoir'))}</span>
+                              </span>
                             </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -736,14 +813,14 @@ export default function CashierModule({ state, setState }: Props) {
                       />
                     </div>
                     <div className="w-36">
-                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Date d'acte / de sortie</label>
+                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5" title="Cette zone n'est pas effacée après validation de la ligne : plusieurs sorties possibles le même jour">Date d'acte / de sortie 📌</label>
                       <input
                         type="date"
                         value={hbArtForm.dateSort || ''}
                         onChange={e => setHbArtForm(prev => ({ ...prev, dateSort: e.target.value }))}
                         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
-                        className="w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-blue-500 text-slate-800"
-                        title="Date de sortie de marchandise ou date de l'acte"
+                        className="w-full bg-amber-50 border border-amber-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-blue-500 text-slate-800"
+                        title="Date de sortie de marchandise ou date de l'acte — conservée après validation de la ligne"
                       />
                     </div>
                   </div>

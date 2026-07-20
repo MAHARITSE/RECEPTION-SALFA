@@ -16,7 +16,7 @@ import {
   Package, PackageCheck, PackagePlus, Search, Truck, Plus, Trash2, Save, Check,
   Filter, X, ArrowUpFromLine, ArrowLeftRight, ClipboardList,
   Building2, Settings2, Layers, Tag, DollarSign, Edit2, ShieldAlert,
-  Calendar, CreditCard, ShoppingBag, Barcode
+  Calendar, CreditCard, ShoppingBag, Barcode, Bell, BellOff
 } from 'lucide-react';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
@@ -51,12 +51,16 @@ export default function MagasinierModule({ state, setState }: Props) {
     priceExterne: number;
     minStockCentral: number;
     minStockPharmacie: number;
+    alertDisabledCentral: boolean;
+    alertDisabledPharmacie: boolean;
     saleBlocked: boolean;
     saleBlockReason: string;
   }>({
     name: '', family: 'MEDIC', unit: 'comprimé', barcode: '',
     purchasePrice: 0, priceComptoir: 0, priceSociete: 0, priceExterne: 0,
-    minStockCentral: 10, minStockPharmacie: 5, saleBlocked: false, saleBlockReason: ''
+    minStockCentral: 10, minStockPharmacie: 5,
+    alertDisabledCentral: false, alertDisabledPharmacie: false,
+    saleBlocked: false, saleBlockReason: ''
   });
 
   // Grille tarifaire directe
@@ -123,7 +127,9 @@ export default function MagasinierModule({ state, setState }: Props) {
     setArtForm({
       name: '', family: 'MEDIC', unit: 'comprimé', barcode: '',
       purchasePrice: 0, priceComptoir: 0, priceSociete: 0, priceExterne: 0,
-      minStockCentral: 10, minStockPharmacie: 5, saleBlocked: false, saleBlockReason: ''
+      minStockCentral: 10, minStockPharmacie: 5,
+      alertDisabledCentral: false, alertDisabledPharmacie: false,
+      saleBlocked: false, saleBlockReason: ''
     });
     setShowArticleModal(true);
   };
@@ -135,6 +141,7 @@ export default function MagasinierModule({ state, setState }: Props) {
       purchasePrice: a.purchasePrice, priceComptoir: a.priceComptoir,
       priceSociete: a.priceSociete, priceExterne: a.priceExterne,
       minStockCentral: a.minStockCentral, minStockPharmacie: a.minStockPharmacie,
+      alertDisabledCentral: !!a.alertDisabledCentral, alertDisabledPharmacie: !!a.alertDisabledPharmacie,
       saleBlocked: !!a.saleBlocked, saleBlockReason: a.saleBlockReason || ''
     });
     setShowArticleModal(true);
@@ -167,6 +174,8 @@ export default function MagasinierModule({ state, setState }: Props) {
         stockPharmacie: 0,
         minStockCentral: artForm.minStockCentral,
         minStockPharmacie: artForm.minStockPharmacie,
+        alertDisabledCentral: artForm.alertDisabledCentral,
+        alertDisabledPharmacie: artForm.alertDisabledPharmacie,
         saleBlocked: artForm.saleBlocked,
         saleBlockReason: artForm.saleBlockReason,
       };
@@ -202,6 +211,28 @@ export default function MagasinierModule({ state, setState }: Props) {
     });
     setEditingPricesArtId(null);
     showToast('Tarifs mis à jour');
+  };
+
+  // Stock d'alerte : modification rapide du seuil central (par article)
+  const updateCentralAlertThreshold = (articleId: string, value: number) => {
+    setState(prev => ({
+      ...prev,
+      articles: prev.articles.map(a => (a.id === articleId ? { ...a, minStockCentral: Math.max(0, Math.round(value)) } : a))
+    }));
+  };
+
+  // Activer / désactiver l'alerte stock d'un article pour le dépôt central
+  const toggleCentralAlert = (articleId: string, name: string) => {
+    setState(prev => {
+      const art = prev.articles.find(a => a.id === articleId);
+      const next = {
+        ...prev,
+        articles: prev.articles.map(a => (a.id === articleId ? { ...a, alertDisabledCentral: !a.alertDisabledCentral } : a))
+      };
+      addAuditLog(next, art?.alertDisabledCentral ? 'ALERTE_STOCK_CENTRAL_ACTIVEE' : 'ALERTE_STOCK_CENTRAL_DESACTIVEE', name);
+      return next;
+    });
+    showToast('Préférence d\'alerte mise à jour');
   };
 
   // ============ FAMILLES ============
@@ -835,7 +866,7 @@ export default function MagasinierModule({ state, setState }: Props) {
         <div className="bg-white rounded-xl p-3.5 shadow-sm border">
           <div className="text-xs text-amber-600 font-medium">Alertes Stock Bas</div>
           <div className="text-xl font-bold text-amber-700 mt-0.5">
-            {state.articles.filter(a => a.stockCentral <= a.minStockCentral).length} <span className="text-xs font-normal text-slate-400">central</span>
+            {state.articles.filter(a => !a.alertDisabledCentral && a.stockCentral <= a.minStockCentral).length} <span className="text-xs font-normal text-slate-400">central</span>
           </div>
         </div>
         <div className="bg-white rounded-xl p-3.5 shadow-sm border">
@@ -916,13 +947,16 @@ export default function MagasinierModule({ state, setState }: Props) {
                         <th key={s.id} className="p-2.5 text-center">{s.name}</th>
                       ))}
                       <th className="p-2.5 text-right">Prix d'Achat</th>
+                      <th className="p-2.5 text-center" title="Seuil d'alerte (stock bas) pour le dépôt central">Stock d'alerte</th>
+                      <th className="p-2.5 text-center" title="Activer / désactiver l'alerte pour cet article">Alerte</th>
                       <th className="p-2.5 text-center">Statut Central</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredStockArticles.map((a) => {
-                      const out = a.stockCentral <= 0;
-                      const low = a.stockCentral <= a.minStockCentral && !out;
+                      const alertMuted = !!a.alertDisabledCentral;
+                      const out = !alertMuted && a.stockCentral <= 0;
+                      const low = !alertMuted && a.stockCentral <= a.minStockCentral && a.stockCentral > 0;
                       return (
                         <tr key={a.id} className={`border-b hover:bg-slate-50/80 ${out ? 'bg-rose-50/50' : low ? 'bg-amber-50/50' : ''}`}>
                           <td className="p-2.5"><span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-[10px] font-semibold">{familyLabel(a.family)}</span></td>
@@ -937,7 +971,27 @@ export default function MagasinierModule({ state, setState }: Props) {
                           ))}
                           <td className="p-2.5 text-right font-mono text-slate-600">{formatAr(a.purchasePrice)}</td>
                           <td className="p-2.5 text-center">
-                            {out ? <span className="px-2 py-0.5 bg-rose-100 text-rose-800 text-[10px] rounded-full font-bold">RUPTURE</span>
+                            <input
+                              type="number"
+                              min={0}
+                              value={a.minStockCentral}
+                              onChange={(e) => updateCentralAlertThreshold(a.id, parseInt(e.target.value) || 0)}
+                              className="w-16 px-1.5 py-1 border border-slate-300 rounded text-center font-mono text-xs outline-none focus:border-blue-500 bg-white"
+                              title="Stock d'alerte : en dessous, l'article est signalé « stock bas »"
+                            />
+                          </td>
+                          <td className="p-2.5 text-center">
+                            <button
+                              onClick={() => toggleCentralAlert(a.id, a.name)}
+                              className={`p-1.5 rounded-lg cursor-pointer ${alertMuted ? 'bg-slate-200 text-slate-500 hover:bg-slate-300' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}
+                              title={alertMuted ? 'Alerte désactivée — cliquez pour réactiver' : 'Alerte activée — cliquez pour désactiver'}
+                            >
+                              {alertMuted ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+                            </button>
+                          </td>
+                          <td className="p-2.5 text-center">
+                            {alertMuted ? <span className="px-2 py-0.5 bg-slate-200 text-slate-600 text-[10px] rounded-full font-bold" title="Alerte désactivée pour cet article">🔕 ALERTE OFF</span>
+                              : out ? <span className="px-2 py-0.5 bg-rose-100 text-rose-800 text-[10px] rounded-full font-bold">RUPTURE</span>
                               : low ? <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] rounded-full font-bold">STOCK BAS</span>
                               : <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] rounded-full font-bold">OK</span>}
                           </td>
@@ -974,7 +1028,7 @@ export default function MagasinierModule({ state, setState }: Props) {
                       <th className="p-2.5 text-right text-blue-700">P. Comptoir</th>
                       <th className="p-2.5 text-right text-indigo-700">P. Société</th>
                       <th className="p-2.5 text-right text-purple-700">P. Externe</th>
-                      <th className="p-2.5 text-center">Seuil Mini C/P</th>
+                      <th className="p-2.5 text-center" title="Stock d'alerte Central / Pharmacie">Stock alerte C/P</th>
                       <th className="p-2.5 text-right">Actions</th>
                     </tr>
                   </thead>
@@ -1061,15 +1115,27 @@ export default function MagasinierModule({ state, setState }: Props) {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="font-bold block text-slate-700 mb-1">Seuil Mini Dépôt Central</label>
-                          <input type="number" min={0} value={artForm.minStockCentral} onChange={e => setArtForm({ ...artForm, minStockCentral: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-3">
+                        <h4 className="font-bold text-amber-900 text-xs flex items-center gap-1.5"><Bell className="w-4 h-4 text-amber-600" /> Stocks d'alerte & notifications</h4>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="font-bold block text-slate-700 mb-1">Stock d'alerte Dépôt Central</label>
+                            <input type="number" min={0} value={artForm.minStockCentral} onChange={e => setArtForm({ ...artForm, minStockCentral: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg text-sm bg-white" />
+                            <label className="mt-1.5 flex items-center gap-2 text-[11px] text-slate-600 cursor-pointer">
+                              <input type="checkbox" checked={artForm.alertDisabledCentral} onChange={e => setArtForm({ ...artForm, alertDisabledCentral: e.target.checked })} className="w-3.5 h-3.5 rounded text-amber-600" />
+                              🔕 Désactiver l'alerte (central)
+                            </label>
+                          </div>
+                          <div>
+                            <label className="font-bold block text-slate-700 mb-1">Stock d'alerte Pharmacie</label>
+                            <input type="number" min={0} value={artForm.minStockPharmacie} onChange={e => setArtForm({ ...artForm, minStockPharmacie: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg text-sm bg-white" />
+                            <label className="mt-1.5 flex items-center gap-2 text-[11px] text-slate-600 cursor-pointer">
+                              <input type="checkbox" checked={artForm.alertDisabledPharmacie} onChange={e => setArtForm({ ...artForm, alertDisabledPharmacie: e.target.checked })} className="w-3.5 h-3.5 rounded text-amber-600" />
+                              🔕 Désactiver l'alerte (pharmacie)
+                            </label>
+                          </div>
                         </div>
-                        <div>
-                          <label className="font-bold block text-slate-700 mb-1">Seuil Mini Pharmacie</label>
-                          <input type="number" min={0} value={artForm.minStockPharmacie} onChange={e => setArtForm({ ...artForm, minStockPharmacie: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                        </div>
+                        <p className="text-[10px] text-amber-800">En dessous du stock d'alerte, l'article est signalé « stock bas ». L'alerte peut être désactivée par article et par dépôt — la vente reste bloquée en cas de rupture même si l'alerte est off.</p>
                       </div>
 
                       <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl space-y-2">

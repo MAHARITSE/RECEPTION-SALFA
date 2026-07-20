@@ -71,7 +71,9 @@ STOCK CENTRAL (Magasinier)         PHARMACIE (Pharmacien)
 - Tous les achats passent par le Stock Central
 - Le Magasinier transfère vers la Pharmacie
 - La Pharmacie délivre uniquement depuis son propre stock
-- Chaque dépôt a ses propres seuils d'alerte
+- Chaque dépôt a ses propres seuils d'alerte (stock d'alerte par article, modifiable)
+- **L'alerte peut être désactivée par article et par dépôt** (🔕 central / pharmacie) — plus de badge ni notification, mais la vente reste bloquée en rupture
+- **Rupture de stock (quantité 0)** : article listé en rouge dans la saisie assistée des ventes (vente externe, hospitalisation, bloc) et **invendable**
 
 ---
 
@@ -182,7 +184,9 @@ MÉDECIN (coche hospit/bloc) → CAISSE (onglet Hospit/Bloc)
 #### Onglet 2 : 🛒 Vente Externe — Style Sage
 - Nom par défaut **"Client Externe"** (pas de champ nom)
 - Saisie identique au médecin (un champ, ↑↓ Entrée)
+- **Articles en rupture listés en rouge dans la recherche — non sélectionnables, vente bloquée à l'encaissement**
 - Barre édition + tableau avec ligne bleue
+- Champ **date de sortie** après le Montant — conservé après validation de la ligne (sorties multiples le même jour)
 - Tarif "externe" automatique
 - Encaissement + ticket 80x80
 
@@ -190,7 +194,8 @@ MÉDECIN (coche hospit/bloc) → CAISSE (onglet Hospit/Bloc)
 - **Recherche patient dans la liste de réception** (saisie assistée)
 - **Si patient absent → possibilité d'ajouter** (comme à la réception)
 - Auto-détection des demandes d'hospitalisation du médecin
-- Saisie articles **un par un** (style Sage, recherche ↑↓)
+- Saisie articles **un par un** (style Sage, recherche ↑↓) — **ruptures affichées en rouge et invendables**
+- Champ **date d'acte / de sortie** après le Montant — la zone n'est **pas effacée** après validation de la ligne (plusieurs sorties le même jour)
 - Ajout d'articles **à tout moment** (compte continu)
 - Tableau par patient : Total Facture | Paiements Reçus | Reste à Payer
 - Versement rattaché au **caissier qui reçoit** avec horodatage
