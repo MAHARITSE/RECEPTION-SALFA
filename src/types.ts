@@ -183,6 +183,40 @@ export interface CashClosing {
   grandTotal: number; createdAt: string;
 }
 
+/** Ligne individuelle de livraison de pharmacie (après validation d'une ordonnance ou vente). */
+export interface PharmaDeliveryItem {
+  id: string;
+  consultationId: string;
+  patientId?: string;
+  patientName: string;
+  doctorName?: string;
+  articleId?: string;
+  articleName: string;
+  quantity: number;
+  unitPrice: number;
+  posology?: string;
+  deliveredAt: string;
+  deliveredByUserId: string;
+  deliveredByName: string;
+  closingId?: string;
+  isExternal?: boolean;
+}
+
+/** Base compilée des livraisons de pharmacie lors de la clôture de caisse / garde du responsable. */
+export interface PharmaDeliveryClosing {
+  id: string;
+  closingNumber: string; // ex: LIV-PHARMA-2026-0001
+  date: string;
+  responsibleId: string;
+  responsibleName: string;
+  deliveryIds: string[];
+  totalItems: number;
+  totalAmount: number;
+  deliveries: PharmaDeliveryItem[];
+  createdAt: string;
+  notes?: string;
+}
+
 export type TransferCategory = 'central' | 'hospitalisation' | 'bloc' | 'approvisionnement';
 
 /** Service destinataire du dépôt (pharmacie, bloc, soins, etc.) — extensible */

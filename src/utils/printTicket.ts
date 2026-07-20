@@ -1,4 +1,4 @@
-import type { Invoice, Patient, TicketSettings, User, Prescription, LabRequest, Company, Consultation, PatientJourneyEvent, EchoRequest, HbRecord } from '../types';
+import type { Invoice, Patient, TicketSettings, User, Prescription, LabRequest, Company, Consultation, PatientJourneyEvent, EchoRequest, HbRecord, PharmaDeliveryClosing } from '../types';
 
 const escapeHtml = (value: string) =>
   value.replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#039;', '"': '&quot;' }[char] || char));
@@ -699,6 +699,65 @@ export function printHbPaymentTicket(
     silent: settings.autoPrint !== false,
   });
   openTicketWindow(html, `Reçu paiement ${typeLabel.toLowerCase()}`, ticketCopies(settings));
+}
+
+export function printPharmaDeliveryClosingTicket(
+  settings: TicketSettings,
+  closing: PharmaDeliveryClosing,
+) {
+  const date = new Date(closing.createdAt || closing.date);
+  const bodyHtml = `
+    <div className="meta" style="margin-bottom: 8px; border-bottom: 1px dashed #ccc; padding-bottom: 6px;">
+      <div><strong>Responsable garde :</strong> ${escapeHtml(closing.responsibleName)}</div>
+      <div><strong>Nombre d'articles livrés :</strong> ${closing.totalItems}</div>
+      ${closing.notes ? `<div><strong>Notes :</strong> ${escapeHtml(closing.notes)}</div>` : ''}
+    </div>
+    <div style="font-weight: bold; margin-bottom: 4px; font-size: 11px;">DÉTAIL DES LIVRAISONS :</div>
+    <table style="width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 8px;">
+      <thead>
+        <tr style="border-bottom: 1px solid #aaa;">
+          <th style="text-align: left; padding: 2px;">Heure</th>
+          <th style="text-align: left; padding: 2px;">Patient / Client</th>
+          <th style="text-align: left; padding: 2px;">Article</th>
+          <th style="text-align: right; padding: 2px;">Qté</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${closing.deliveries.map(d => `
+          <tr style="border-bottom: 1px dotted #eee;">
+            <td style="padding: 2px;">${new Date(d.deliveredAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</td>
+            <td style="padding: 2px;">${escapeHtml(d.patientName)}</td>
+            <td style="padding: 2px;">${escapeHtml(d.articleName)}</td>
+            <td style="padding: 2px; text-align: right; font-weight: bold;">${d.quantity}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    <table>
+      <tr class="total">
+        <td>TOTAL ARTICLES LIVRÉS</td>
+        <td class="amount">${closing.totalItems}</td>
+      </tr>
+      <tr>
+        <td>TOTAL VALEUR LIVRÉE</td>
+        <td class="amount">${money(closing.totalAmount)}</td>
+      </tr>
+    </table>
+    <div class="signature">
+      <span>${escapeHtml(closing.responsibleName)}</span>
+      <span>Contrôle / Caisse</span>
+    </div>
+  `;
+  const html = buildTicketHtml({
+    settings,
+    title: `CLÔTURE LIVRAISONS PHARMACIE`,
+    reference: closing.closingNumber,
+    date,
+    bodyHtml,
+    footerNote: settings.footerMessage || 'Compilation des livraisons de garde',
+    silent: settings.autoPrint !== false,
+  });
+  openTicketWindow(html, `Cloture livraisons pharmacie ${closing.closingNumber}`, ticketCopies(settings));
 }
 
 /* ============================================================

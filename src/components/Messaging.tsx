@@ -4,10 +4,15 @@ import type { Message } from '../types';
 import type { AppState } from '../store';
 import { X, Send, MessageCircle, Check } from 'lucide-react';
 
-interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; onClose: () => void; }
+interface Props {
+  state: AppState;
+  setState: React.Dispatch<React.SetStateAction<AppState>>;
+  onClose: () => void;
+  initialRecipientId?: string | null;
+}
 
-export default function Messaging({ state, setState, onClose }: Props) {
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+export default function Messaging({ state, setState, onClose, initialRecipientId }: Props) {
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(initialRecipientId || null);
   const [newMsg, setNewMsg] = useState('');
   const msgEndRef = useRef<HTMLDivElement>(null);
 

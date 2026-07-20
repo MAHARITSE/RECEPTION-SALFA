@@ -160,6 +160,13 @@ export function generateFactureNumber(prefix: string = 'FAC', counter: number = 
   return `${prefix}-${year}-${seq}`;
 }
 
+/** Construit un numéro de clôture de livraison pharmacie de la forme "LIV-YYYY-NNNN". */
+export function generatePharmaClosingNumber(counter: number = 1): string {
+  const year = new Date().getFullYear();
+  const seq = String(counter).padStart(4, '0');
+  return `LIV-${year}-${seq}`;
+}
+
 /* ====== HELPERS VENTES UNIFIÉES ====== */
 
 /** Calcule le montant HT d'une ligne (avant remise). */
@@ -466,6 +473,12 @@ export interface AppState {
   inventorySessions: InventorySession[];   // inventaires
   movementHeaders: MovementHeader[];       // en-têtes de mouvement (achat, vente, transfert, inventaire, sortie)
   movementLines: MovementLine[];           // lignes associées aux mouvements
+  /** Lignes de livraisons de pharmacie individuelles (ordonnances délivrées, etc.) */
+  pharmaDeliveryItems: import('./types').PharmaDeliveryItem[];
+  /** Clôtures et compilations des livraisons de garde de la pharmacie */
+  pharmaDeliveryClosings: import('./types').PharmaDeliveryClosing[];
+  /** Compteur séquentiel des clôtures de livraisons pharmacie */
+  pharmaClosingCounter: number;
   /** Dossiers Hospitalisation / Bloc — PARTAGÉS entre Caisse et Pharmacie (caisse de garde).
    *  Peu importe qui saisit (caisse ou pharmacie) : c'est le paiement qui fait foi. */
   hbRecords: import('./types').HbRecord[];
@@ -685,6 +698,22 @@ export function createInitialState(): AppState {
     jEv(rab108.id, 'laboratoire', 'Demande d\'analyse', 'analyses_pending', 'Créatinine, Urée — à facturer', 'Dr. Ahmed Benali', { timestamp: daysAgo(0), labRequestId: rab108ReqId, consultationId: rab108Consult.id }),
   ];
 
+  const initPharmaDeliveryItems: import('./types').PharmaDeliveryItem[] = leaConsult.prescriptions.map((p) => ({
+    id: uuidv4(),
+    consultationId: leaConsultId,
+    patientId: leaId,
+    patientName: `${lea.lastName} ${lea.firstName}`,
+    doctorName: leaConsult.doctorName,
+    articleId: p.articleId,
+    articleName: p.articleName,
+    quantity: p.quantity,
+    unitPrice: p.unitPrice,
+    posology: p.posology,
+    deliveredAt: daysAgo(4),
+    deliveredByUserId: 'PHA001',
+    deliveredByName: 'Fatima Benali',
+  }));
+
   return {
     currentUser: null,
     ticketSettings: {
@@ -708,6 +737,9 @@ export function createInitialState(): AppState {
     inventorySessions: [],
     movementHeaders: [],
     movementLines: [],
+    pharmaDeliveryItems: initPharmaDeliveryItems,
+    pharmaDeliveryClosings: [],
+    pharmaClosingCounter: 0,
     hbRecords: [],
     ventes: [],
     venteLines: [],

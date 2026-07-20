@@ -2,24 +2,28 @@ import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { AppState } from '../store';
 import type { TransferCategory, StockTransfer } from '../types';
-import { addAuditLog, addNotification, formatAr, familyLabel, transferCategoryLabel, transferCategoryColor, addJourneyEvent, isArticleSaleable, createMovementWithLines } from '../store';
+import { addAuditLog, addNotification, formatAr, familyLabel, transferCategoryLabel, transferCategoryColor, addJourneyEvent, isArticleSaleable, createMovementWithLines, generatePharmaClosingNumber } from '../store';
 import type { MovementType } from '../types';
-import { printDeliveryTicket } from '../utils/printTicket';
+import { printDeliveryTicket, printPharmaDeliveryClosingTicket } from '../utils/printTicket';
 import DemandeAchatForm, { type ReqLine } from './DemandeAchatForm';
 import CashierModule from './CashierModule';
 import {
   Pill, Package, CheckCircle, Clock, Search, Send,
   Plus, Trash2, Filter, Printer, Edit3, CreditCard,
-  Ban, Unlock, AlertTriangle, Bell, BellOff
+  Ban, Unlock, AlertTriangle, Bell, BellOff, Lock
 } from 'lucide-react';
 
-interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
+interface Props {
+  state: AppState;
+  setState: React.Dispatch<React.SetStateAction<AppState>>;
+  onOpenMessagingWithRecipient?: (recipientId: string) => void;
+}
 type Tab = 'caisse' | 'pending' | 'stock' | 'delivered' | 'request';
 
 const CATEGORIES: TransferCategory[] = ['approvisionnement', 'hospitalisation', 'bloc', 'central'];
 const PHARMA_SERVICE_ID = 'svc-pharmacie';
 
-export default function PharmacyModule({ state, setState }: Props) {
+export default function PharmacyModule({ state, setState, onOpenMessagingWithRecipient }: Props) {
   // Caisse de garde en premier par défaut
   const [tab, setTab] = useState<Tab>('caisse');
   const [searchStock, setSearchStock] = useState('');
@@ -27,6 +31,10 @@ export default function PharmacyModule({ state, setState }: Props) {
   const [stockSub, setStockSub] = useState<'articles' | 'demandes' | 'historique'>('articles');
   const [blockModal, setBlockModal] = useState<{ articleId: string; name: string; currentlyBlocked: boolean } | null>(null);
   const [blockReason, setBlockReason] = useState('');
+
+  // Nouveaux états pour affichage gauche/droite et clôtures de garde
+  const [selConsultId, setSelConsultId] = useState<string | null>(null);
+  const [closingDetailsModal, setClosingDetailsModal] = useState<import('../types').PharmaDeliveryClosing | null>(null);
 
   // Reappro Modal State
   const [reapproModalOpen, setReapproModalOpen] = useState(false);
@@ -263,11 +271,36 @@ export default function PharmacyModule({ state, setState }: Props) {
         );
       }
 
+      // === NOUVEAU : Création des PharmaDeliveryItem pour la base de compilation des livraisons ===
+      const newDeliveryItems: import('../types').PharmaDeliveryItem[] = consultation.prescriptions
+        .filter((p) => !p.delivered)
+        .map((p) => ({
+          id: uuidv4(),
+          consultationId: consultation.id,
+          patientId: consultation.patientId,
+          patientName: name,
+          doctorName: consultation.doctorName,
+          articleId: p.articleId || '',
+          articleName: p.articleName,
+          quantity: p.quantity,
+          unitPrice: p.unitPrice,
+          posology: p.posology,
+          deliveredAt: new Date().toISOString(),
+          deliveredByUserId: prev.currentUser?.id || 'PHA001',
+          deliveredByName: prev.currentUser?.name || 'Pharmacie',
+          isExternal: !!isExternal,
+        }));
+
       const hasLab = updatedConsultations.find((c) => c.id === consultationId)?.labRequests.some((lr) => lr.status !== 'completed');
       const newStatus = hasLab ? 'invoice_paid' : 'medications_delivered';
 
-      const next = { ...prev, consultations: updatedConsultations, articles: updatedArticles,
-        patients: patient ? prev.patients.map((p) => p.id === consultation.patientId ? { ...p, status: newStatus as any } : p) : prev.patients };
+      const next = {
+        ...prev,
+        consultations: updatedConsultations,
+        articles: updatedArticles,
+        pharmaDeliveryItems: [...(prev.pharmaDeliveryItems || []), ...newDeliveryItems],
+        patients: patient ? prev.patients.map((p) => p.id === consultation.patientId ? { ...p, status: newStatus as any } : p) : prev.patients,
+      };
       addAuditLog(next, 'DELIVRANCE', `Médicaments délivrés: ${name}`, consultation.patientId);
       if (consultation.patientId) addJourneyEvent(next, { patientId: consultation.patientId, department: 'pharmacie', action: 'Médicaments délivrés', status: 'medications_delivered', details: consultation.prescriptions.map((p) => `${p.articleName} ×${p.quantity}`).join(', '), actorName: state.currentUser?.name });
       updatedArticles.forEach((a) => {
@@ -278,15 +311,8 @@ export default function PharmacyModule({ state, setState }: Props) {
       });
       return next;
     });
-    if (patient) {
-      printDeliveryTicket(
-        state.ticketSettings,
-        patient,
-        new Date(),
-        consultation.prescriptions.filter((p) => !p.delivered).map((p) => ({ name: p.articleName, quantity: p.quantity, posology: p.posology })),
-        state.currentUser?.name,
-      );
-    }
+    // EXIGENCE PROMPT : dans partie pharmacie ne pas automatiquement imprimer l'ordonnance
+    // L'impression se fait uniquement manuellement par l'utilisateur via le bouton d'impression si souhaité.
   };
 
   const printDelivery = (consultationId: string, isExternal?: boolean) => {
@@ -326,6 +352,60 @@ export default function PharmacyModule({ state, setState }: Props) {
   };
 
   const blockedCount = state.articles.filter((a) => a.saleBlocked).length;
+
+  // Calcul des livraisons en cours (avant clôture de caisse / garde du responsable pharmacie)
+  const unclosedDeliveryItems = (state.pharmaDeliveryItems || []).filter((item) => !item.closingId);
+  const unclosedTotalAmt = unclosedDeliveryItems.reduce((s, d) => s + d.quantity * d.unitPrice, 0);
+
+  const handleClosePharmaDeliveries = () => {
+    if (unclosedDeliveryItems.length === 0) {
+      alert("Aucune livraison en attente de clôture de garde.");
+      return;
+    }
+    const totalAmount = unclosedTotalAmt;
+    const totalItems = unclosedDeliveryItems.reduce((s, d) => s + d.quantity, 0);
+    const responsibleName = state.currentUser?.name || 'Responsable Pharmacie';
+    const responsibleId = state.currentUser?.id || 'PHA001';
+
+    if (!confirm(`🔒 Clôturer et compiler les ${unclosedDeliveryItems.length} ligne(s) de livraison de la garde (${totalItems} articles, valeur totale ${formatAr(totalAmount)}) pour ${responsibleName} ?\n\nCette opération enregistre définitivement la compilation des livraisons de garde.`)) {
+      return;
+    }
+
+    const counter = (state.pharmaClosingCounter || 0) + 1;
+    const closingNumber = generatePharmaClosingNumber(counter);
+    const closingId = uuidv4();
+    const now = new Date().toISOString();
+
+    const closing: import('../types').PharmaDeliveryClosing = {
+      id: closingId,
+      closingNumber,
+      date: now,
+      responsibleId,
+      responsibleName,
+      deliveryIds: unclosedDeliveryItems.map((d) => d.id),
+      totalItems,
+      totalAmount,
+      deliveries: unclosedDeliveryItems.map((d) => ({ ...d, closingId })),
+      createdAt: now,
+    };
+
+    setState((prev) => {
+      const updatedItems = (prev.pharmaDeliveryItems || []).map((item) =>
+        item.closingId ? item : { ...item, closingId }
+      );
+      const next = {
+        ...prev,
+        pharmaDeliveryItems: updatedItems,
+        pharmaDeliveryClosings: [closing, ...(prev.pharmaDeliveryClosings || [])],
+        pharmaClosingCounter: counter,
+      };
+      addAuditLog(next, 'CLOTURE_LIVRAISONS_PHARMA', `Clôture garde ${closingNumber} — ${totalItems} articles (${formatAr(totalAmount)}) par ${responsibleName}`);
+      return next;
+    });
+
+    alert(`✅ Compilation ${closingNumber} créée et clôturée avec succès dans la base des livraisons !`);
+    printPharmaDeliveryClosingTicket(state.ticketSettings, closing);
+  };
 
   return (
     <div className="space-y-6 flex flex-col">
@@ -403,82 +483,210 @@ export default function PharmacyModule({ state, setState }: Props) {
                 </div>
               </div>
               <div className="-mx-6 -mb-6 p-6 bg-slate-50/50 border-t border-slate-200">
-                <CashierModule state={state} setState={setState} />
+                <CashierModule state={state} setState={setState} onOpenMessagingWithRecipient={onOpenMessagingWithRecipient} />
               </div>
             </div>
           )}
 
-          {tab === 'pending' && (
-            <div>
-              {allPending.length === 0 ? (
-                <div className="text-center py-12 text-slate-400"><Pill className="w-12 h-12 mx-auto mb-3 opacity-50" /><p>Aucune ordonnance</p></div>
-              ) : allPending.map((c) => {
-                const patient = state.patients.find((p) => p.id === c.patientId);
-                const ext = externalInvoices.find((i) => i.consultationId === c.id);
-                const isUrgent = c.isEmergency && !state.invoices.find((i) => i.consultationId === c.id && i.status === 'paid');
-                return (
-                  <div key={c.id} className={`border rounded-xl overflow-hidden mb-3 ${isUrgent ? 'border-red-300 bg-red-50/50' : 'border-slate-200'}`}>
-                    <div className="p-4 flex items-center justify-between bg-slate-50">
-                      <div>
-                        <div className="font-semibold text-slate-800">
-                          {patient ? `${patient.lastName} ${patient.firstName}` : ext ? ext.clientName : 'Inconnu'}
-                          {isUrgent && <span className="ml-2 px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full">🚨 Urgence</span>}
+          {tab === 'pending' && (() => {
+            const selConsult = allPending.find((c) => c.id === selConsultId) || allPending[0] || null;
+            const patient = selConsult ? state.patients.find((p) => p.id === selConsult.patientId) : null;
+            const ext = selConsult ? externalInvoices.find((i) => i.consultationId === selConsult.id) : null;
+            const isUrgent = selConsult ? selConsult.isEmergency && !state.invoices.find((i) => i.consultationId === selConsult.id && i.status === 'paid') : false;
+
+            return (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                {/* À GAUCHE DE L'ÉCRAN : LA FILE D'ATTENTE */}
+                <div className="divide-y border border-slate-200 rounded-xl max-h-[640px] overflow-y-auto bg-white shadow-sm">
+                  <div className="p-3.5 border-b bg-purple-50 font-semibold text-xs flex justify-between items-center text-purple-900 sticky top-0 z-10">
+                    <span className="flex items-center gap-1.5"><Clock className="w-4 h-4 text-purple-600" /> File d'attente Ordonnances</span>
+                    <span className="bg-purple-600 text-white font-mono font-bold px-2 py-0.5 rounded-full text-[10px]">{allPending.length}</span>
+                  </div>
+                  {allPending.length === 0 ? (
+                    <div className="p-12 text-center text-slate-400">
+                      <Pill className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                      <p className="text-sm font-medium">Aucune ordonnance en attente</p>
+                    </div>
+                  ) : (
+                    allPending.map((c) => {
+                      const pat = state.patients.find((p) => p.id === c.patientId);
+                      const extInv = externalInvoices.find((i) => i.consultationId === c.id);
+                      const urg = c.isEmergency && !state.invoices.find((i) => i.consultationId === c.id && i.status === 'paid');
+                      const isSelected = selConsult?.id === c.id;
+                      return (
+                        <div
+                          key={c.id}
+                          onClick={() => setSelConsultId(c.id)}
+                          className={`p-3.5 cursor-pointer transition-all ${isSelected ? 'bg-purple-50/90 border-l-4 border-purple-600 shadow-sm' : 'hover:bg-slate-50'}`}
+                        >
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <div className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
+                                {pat ? `${pat.lastName} ${pat.firstName}` : extInv ? extInv.clientName : 'Inconnu'}
+                                {urg && <span className="px-1.5 py-0.2 rounded bg-red-100 text-red-700 text-[10px] font-bold">🚨 URGENT</span>}
+                              </div>
+                              <div className="text-xs text-slate-500 mt-0.5">{c.doctorName}</div>
+                            </div>
+                            <span className="font-mono text-xs font-bold text-purple-700 bg-purple-100/70 px-2 py-0.5 rounded">
+                              {c.prescriptions.filter((p) => !p.delivered).length} art.
+                            </span>
+                          </div>
+                          {pat && (
+                            <div className="mt-1 text-[11px] text-slate-400 font-mono">Dossier: {pat.dossier}</div>
+                          )}
                         </div>
-                        <div className="text-xs text-slate-500 mt-1">{c.doctorName} — {new Date(c.date).toLocaleDateString('fr-FR')}</div>
-                      </div>
-                      <div className="flex gap-1">
-                        {patient && (
-                          <button onClick={() => printDelivery(c.id, !!ext)} className="px-3 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 font-medium text-sm flex items-center gap-1 cursor-pointer" title="Imprimer le bon de délivrance">
-                            <Printer className="w-4 h-4" />
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* À DROITE DE L'ÉCRAN : LA LISTE APRÈS VALIDATION & LE TRAITEMENT DE L'ORDONNANCE */}
+                <div className="lg:col-span-2 space-y-5">
+                  {/* 1. Zone Traitement Ordonnance Sélectionnée */}
+                  {!selConsult ? (
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center text-slate-400">
+                      <Pill className="w-16 h-16 mx-auto mb-4 opacity-30" />
+                      <p className="text-base font-medium">Sélectionnez une ordonnance à gauche pour la valider / délivrer</p>
+                    </div>
+                  ) : (
+                    <div className={`bg-white rounded-xl shadow-sm border overflow-hidden transition-all ${isUrgent ? 'border-red-300 ring-2 ring-red-100' : 'border-purple-200 ring-1 ring-purple-100'}`}>
+                      <div className="p-4 bg-gradient-to-r from-slate-800 to-slate-900 text-white flex items-center justify-between flex-wrap gap-3">
+                        <div>
+                          <div className="font-bold text-base flex items-center gap-2">
+                            {patient ? `${patient.lastName} ${patient.firstName}` : ext ? ext.clientName : 'Inconnu'}
+                            {patient && <span className="text-xs font-mono bg-white/20 px-2 py-0.5 rounded text-purple-200">({patient.dossier})</span>}
+                            {isUrgent && <span className="px-2 py-0.5 bg-red-500 text-white text-xs rounded-full font-bold">🚨 URGENCE</span>}
+                          </div>
+                          <div className="text-xs text-slate-300 mt-1">Prescrit par : <strong className="text-white">{selConsult.doctorName}</strong> — {new Date(selConsult.date).toLocaleDateString('fr-FR')}</div>
+                        </div>
+                        <div className="flex gap-2 items-center">
+                          {patient && (
+                            <button
+                              onClick={() => printDelivery(selConsult.id, !!ext)}
+                              className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg font-medium text-xs flex items-center gap-1.5 cursor-pointer transition"
+                              title="Imprimer manuellement le bon de délivrance (ne s'imprime pas automatiquement au clic sur Délivrer)"
+                            >
+                              <Printer className="w-3.5 h-3.5" /> Imprimer bon
+                            </button>
+                          )}
+                          <button
+                            onClick={() => deliver(selConsult.id, !!ext)}
+                            className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-bold text-xs flex items-center gap-2 cursor-pointer shadow transition"
+                          >
+                            <CheckCircle className="w-4 h-4" /> Délivrer et Valider
                           </button>
-                        )}
-                        <button onClick={() => deliver(c.id, !!ext)} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium text-sm flex items-center gap-2 cursor-pointer">
-                          <CheckCircle className="w-4 h-4" /> Délivrer
-                        </button>
+                        </div>
+                      </div>
+
+                      <div className="p-4">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-slate-200 text-slate-600 text-xs">
+                              <th className="text-left py-2 font-semibold">Article</th>
+                              <th className="text-center py-2 font-semibold">Qté</th>
+                              <th className="text-left py-2 font-semibold">Posologie</th>
+                              <th className="text-right py-2 font-semibold">Stock Pharma</th>
+                              <th className="text-center py-2 font-semibold">Statut</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {selConsult.prescriptions.filter((p) => !p.delivered).map((p) => {
+                              const art = state.articles.find((a) => a.name === p.articleName);
+                              const blocked = !!art?.saleBlocked;
+                              const noStock = (art?.stockPharmacie || 0) < p.quantity;
+                              return (
+                                <tr key={p.id} className={`border-b border-slate-100 ${blocked ? 'bg-orange-50' : noStock ? 'bg-red-50/60' : ''}`}>
+                                  <td className="py-2.5 font-bold text-slate-800">{p.articleName}</td>
+                                  <td className="py-2.5 text-center font-mono font-bold text-purple-700">{p.quantity}</td>
+                                  <td className="py-2.5 text-xs text-slate-600 font-sans">{p.posology || '—'}</td>
+                                  <td className={`py-2.5 text-right font-mono font-bold ${(art?.stockPharmacie || 0) <= 0 ? 'text-red-600' : 'text-slate-700'}`}>{art?.stockPharmacie || 0}</td>
+                                  <td className="py-2.5 text-center">
+                                    {blocked ? (
+                                      <span className="px-2 py-0.5 bg-orange-100 text-orange-800 text-[10px] rounded-full font-bold">⛔ Bloqué</span>
+                                    ) : noStock ? (
+                                      <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] rounded-full font-bold">Rupture</span>
+                                    ) : (
+                                      <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] rounded-full font-bold">OK pour délivrance</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
-                    <div className="p-4">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b border-slate-200">
-                            <th className="text-left py-2 text-slate-600">Article</th>
-                            <th className="text-center py-2 text-slate-600">Qté</th>
-                            <th className="text-left py-2 text-slate-600">Posologie</th>
-                            <th className="text-right py-2 text-slate-600">Stock</th>
-                            <th className="text-center py-2 text-slate-600">Vente</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {c.prescriptions.filter((p) => !p.delivered).map((p) => {
-                            const art = state.articles.find((a) => a.name === p.articleName);
-                            const blocked = !!art?.saleBlocked;
-                            const noStock = (art?.stockPharmacie || 0) < p.quantity;
-                            return (
-                              <tr key={p.id} className={`border-b border-slate-100 ${blocked ? 'bg-orange-50' : noStock ? 'bg-red-50/50' : ''}`}>
-                                <td className="py-2 font-medium">{p.articleName}</td>
-                                <td className="py-2 text-center">{p.quantity}</td>
-                                <td className="py-2">{p.posology}</td>
-                                <td className={`py-2 text-right font-mono ${(art?.stockPharmacie || 0) <= 0 ? 'text-red-600 font-bold' : ''}`}>{art?.stockPharmacie || 0}</td>
-                                <td className="py-2 text-center">
-                                  {blocked ? (
-                                    <span className="px-2 py-0.5 bg-orange-100 text-orange-800 text-[10px] rounded-full font-bold" title={art?.saleBlockReason}>⛔ Bloqué</span>
-                                  ) : noStock ? (
-                                    <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] rounded-full font-bold">Rupture</span>
-                                  ) : (
-                                    <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] rounded-full font-bold">OK</span>
-                                  )}
-                                </td>
+                  )}
+
+                  {/* 2. LISTE APRÈS VALIDATION (Livraisons de garde avant clôture) */}
+                  <div className="border border-emerald-200 rounded-xl bg-emerald-50/40 overflow-hidden shadow-sm">
+                    <div className="p-3.5 bg-gradient-to-r from-emerald-700 to-teal-800 text-white flex justify-between items-center flex-wrap gap-2">
+                      <div>
+                        <h4 className="font-bold text-sm flex items-center gap-2">
+                          <CheckCircle className="w-4 h-4 text-emerald-300" />
+                          Liste après validation : Livraisons avant clôture de garde ({unclosedDeliveryItems.length})
+                        </h4>
+                        <p className="text-[11px] text-emerald-100 mt-0.5">
+                          Ce qui reste dans cette liste après validation constitue les livraisons avant la clôture de caisse / garde du responsable.
+                        </p>
+                      </div>
+                      {unclosedDeliveryItems.length > 0 && (
+                        <button
+                          onClick={handleClosePharmaDeliveries}
+                          className="px-3.5 py-1.5 bg-white hover:bg-emerald-50 text-emerald-800 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow cursor-pointer transition whitespace-nowrap"
+                        >
+                          <Lock className="w-3.5 h-3.5 text-emerald-700" /> Clôturer et Compiler ({unclosedDeliveryItems.length})
+                        </button>
+                      )}
+                    </div>
+                    <div className="p-3 bg-white max-h-64 overflow-y-auto">
+                      {unclosedDeliveryItems.length === 0 ? (
+                        <div className="py-6 text-center text-slate-400 text-xs">
+                          Aucune livraison non clôturée. Les ordonnances validées apparaîtront ici avant la clôture du tour de garde.
+                        </div>
+                      ) : (
+                        <table className="w-full text-xs">
+                          <thead className="bg-slate-50 text-slate-600 border-b">
+                            <tr>
+                              <th className="p-2 text-left">Heure</th>
+                              <th className="p-2 text-left">Patient / Client</th>
+                              <th className="p-2 text-left">Article délivré</th>
+                              <th className="p-2 text-right">Qté</th>
+                              <th className="p-2 text-right">P.U.</th>
+                              <th className="p-2 text-right font-bold">Montant</th>
+                              <th className="p-2 text-left">Délivré par</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {unclosedDeliveryItems.map((item) => (
+                              <tr key={item.id} className="hover:bg-emerald-50/50">
+                                <td className="p-2 font-mono text-slate-500">{new Date(item.deliveredAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</td>
+                                <td className="p-2 font-medium text-slate-800">{item.patientName}</td>
+                                <td className="p-2 font-semibold text-emerald-900">{item.articleName}</td>
+                                <td className="p-2 text-right font-mono font-bold">{item.quantity}</td>
+                                <td className="p-2 text-right font-mono text-slate-600">{formatAr(item.unitPrice)}</td>
+                                <td className="p-2 text-right font-mono font-bold text-slate-800">{formatAr(item.quantity * item.unitPrice)}</td>
+                                <td className="p-2 text-slate-500">{item.deliveredByName}</td>
                               </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+                            ))}
+                          </tbody>
+                          <tfoot className="bg-emerald-50 font-bold border-t border-emerald-200">
+                            <tr>
+                              <td colSpan={3} className="p-2 text-right text-emerald-900">TOTAL LIVRAISONS AVANT CLÔTURE :</td>
+                              <td className="p-2 text-right font-mono text-emerald-900">{unclosedDeliveryItems.reduce((s, d) => s + d.quantity, 0)}</td>
+                              <td className="p-2"></td>
+                              <td className="p-2 text-right font-mono text-sm text-emerald-800">{formatAr(unclosedTotalAmt)}</td>
+                              <td className="p-2"></td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      )}
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* === STOCK PHARMACIE — réappro + historique fusionnés ici === */}
           {tab === 'stock' && (
@@ -720,19 +928,157 @@ export default function PharmacyModule({ state, setState }: Props) {
           )}
 
           {tab === 'delivered' && (
-            <div className="space-y-3">
-              <h4 className="font-semibold text-slate-700">Ordonnances délivrées</h4>
-              {state.consultations.filter(c => c.prescriptions.length > 0 && c.prescriptions.every(p => p.delivered)).length === 0
-                ? <div className="text-center py-8 text-slate-400 text-sm">Aucune ordonnance délivrée.</div>
-                : state.consultations.filter(c => c.prescriptions.length > 0 && c.prescriptions.every(p => p.delivered)).slice(-20).reverse().map(c => {
-                  const p = state.patients.find(pp => pp.id === c.patientId);
-                  return (
-                    <div key={c.id} className="border rounded-lg p-3 flex justify-between items-center">
-                      <div><div className="font-medium">{p?.lastName} {p?.firstName}</div><div className="text-xs text-slate-500">{c.doctorName} — {new Date(c.date).toLocaleDateString('fr-FR')}</div></div>
-                      <span className="text-emerald-600 font-medium text-sm flex items-center gap-1"><CheckCircle className="w-4 h-4" /> Délivrée</span>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+              {/* À GAUCHE DE L'ÉCRAN : LA FILE D'ATTENTE DES LIVRAISONS EN COURS (Avant clôture de garde) */}
+              <div className="divide-y border border-slate-200 rounded-xl max-h-[640px] overflow-y-auto bg-white shadow-sm">
+                <div className="p-3.5 border-b bg-emerald-50 font-semibold text-xs flex justify-between items-center text-emerald-900 sticky top-0 z-10">
+                  <span className="flex items-center gap-1.5"><Clock className="w-4 h-4 text-emerald-600" /> Livraisons avant clôture garde</span>
+                  <span className="bg-emerald-600 text-white font-mono font-bold px-2 py-0.5 rounded-full text-[10px]">{unclosedDeliveryItems.length} art.</span>
+                </div>
+                {unclosedDeliveryItems.length === 0 ? (
+                  <div className="p-12 text-center text-slate-400">
+                    <CheckCircle className="w-12 h-12 mx-auto mb-3 opacity-30 text-emerald-500" />
+                    <p className="text-sm font-medium">Aucune livraison non clôturée</p>
+                    <p className="text-xs text-slate-400 mt-1">Toutes les livraisons du tour de garde ont été compilées</p>
+                  </div>
+                ) : (
+                  unclosedDeliveryItems.map((item) => (
+                    <div key={item.id} className="p-3 hover:bg-emerald-50/60 transition text-xs">
+                      <div className="flex justify-between items-start font-bold text-slate-800">
+                        <span>{item.patientName}</span>
+                        <span className="font-mono text-emerald-700 font-bold">{formatAr(item.quantity * item.unitPrice)}</span>
+                      </div>
+                      <div className="flex justify-between items-center mt-1 text-[11px] text-slate-600">
+                        <span className="font-semibold text-emerald-900">💊 {item.articleName} × {item.quantity}</span>
+                        <span className="font-mono text-[10px] text-slate-400">{new Date(item.deliveredAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">Responsable: {item.deliveredByName}</div>
                     </div>
-                  );
-                })}
+                  ))
+                )}
+              </div>
+
+              {/* À DROITE DE L'ÉCRAN : BASE POUR COMPILER LES LIVRAISONS DE GARDE & ARCHIVES */}
+              <div className="lg:col-span-2 space-y-5">
+                {/* En-tête de Clôture & Compilation */}
+                <div className="bg-gradient-to-r from-emerald-800 via-teal-800 to-slate-900 rounded-xl p-5 text-white shadow-sm flex items-center justify-between flex-wrap gap-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Lock className="w-5 h-5 text-emerald-400" />
+                      <h3 className="font-bold text-base">Compilation des livraisons & Clôture de garde</h3>
+                    </div>
+                    <p className="text-xs text-emerald-100 mt-1 max-w-lg leading-relaxed">
+                      Ce qui reste dans l'onglet délivrées constitue les livraisons effectuées avant la clôture de caisse / garde de la personne responsable de la pharmacie. Créez ici la compilation définitive.
+                    </p>
+                  </div>
+                  <div>
+                    {unclosedDeliveryItems.length > 0 ? (
+                      <button
+                        onClick={handleClosePharmaDeliveries}
+                        className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg cursor-pointer transition whitespace-nowrap"
+                      >
+                        <Lock className="w-4 h-4" /> Clôturer et Compiler ({unclosedDeliveryItems.length} art. — {formatAr(unclosedTotalAmt)})
+                      </button>
+                    ) : (
+                      <div className="px-3.5 py-2 bg-white/10 rounded-lg text-xs font-medium text-emerald-200 border border-white/10">
+                        ✓ Aucune livraison à clôturer
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Base et historique des compilations de livraisons */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                  <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                    <div>
+                      <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                        <Package className="w-4 h-4 text-emerald-600" /> Base de compilation des livraisons de garde ({state.pharmaDeliveryClosings?.length || 0})
+                      </h4>
+                      <p className="text-xs text-slate-500 mt-0.5">Lots de livraisons clôturés par les responsables de pharmacie</p>
+                    </div>
+                  </div>
+                  <div className="divide-y divide-slate-200">
+                    {(!state.pharmaDeliveryClosings || state.pharmaDeliveryClosings.length === 0) ? (
+                      <div className="p-12 text-center text-slate-400 text-sm">
+                        Aucune clôture de livraison compilée à ce jour. Cliquez sur "Clôturer et Compiler" ci-dessus pour archiver un tour de garde.
+                      </div>
+                    ) : (
+                      state.pharmaDeliveryClosings.map((closing) => {
+                        const isOpen = closingDetailsModal?.id === closing.id;
+                        return (
+                          <div key={closing.id} className="transition">
+                            <div
+                              onClick={() => setClosingDetailsModal(isOpen ? null : closing)}
+                              className={`p-4 flex items-center justify-between cursor-pointer transition ${isOpen ? 'bg-emerald-50/70' : 'hover:bg-slate-50'}`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 bg-emerald-100 text-emerald-800 rounded-lg font-mono font-bold text-xs">
+                                  {closing.closingNumber}
+                                </div>
+                                <div>
+                                  <div className="font-bold text-sm text-slate-800 flex items-center gap-2">
+                                    Clôture du {new Date(closing.date).toLocaleDateString('fr-FR')} à {new Date(closing.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-200 text-slate-700">Responsable: {closing.responsibleName}</span>
+                                  </div>
+                                  <div className="text-xs text-slate-500 mt-0.5">
+                                    <strong>{closing.totalItems}</strong> article(s) livrés · Valeur totale : <strong className="text-emerald-700 font-mono">{formatAr(closing.totalAmount)}</strong>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                                <button
+                                  onClick={() => printPharmaDeliveryClosingTicket(state.ticketSettings, closing)}
+                                  className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg text-xs font-medium flex items-center gap-1.5 cursor-pointer shadow-sm text-slate-700 transition"
+                                  title="Imprimer le ticket de compilation"
+                                >
+                                  <Printer className="w-3.5 h-3.5" /> Ticket
+                                </button>
+                                <button
+                                  onClick={() => setClosingDetailsModal(isOpen ? null : closing)}
+                                  className="px-2.5 py-1.5 bg-emerald-100 text-emerald-800 hover:bg-emerald-200 rounded-lg text-xs font-semibold cursor-pointer transition"
+                                >
+                                  {isOpen ? 'Masquer' : 'Détails ↓'}
+                                </button>
+                              </div>
+                            </div>
+                            {isOpen && (
+                              <div className="p-4 bg-white border-t border-slate-150">
+                                <div className="text-xs font-bold text-slate-600 mb-2 uppercase tracking-wider">Détail des livraisons de ce tour de garde ({closing.deliveries.length}) :</div>
+                                <table className="w-full text-xs">
+                                  <thead className="bg-slate-100 text-slate-600 border-b">
+                                    <tr>
+                                      <th className="p-2 text-left">Heure</th>
+                                      <th className="p-2 text-left">Patient / Client</th>
+                                      <th className="p-2 text-left">Article</th>
+                                      <th className="p-2 text-right">Qté</th>
+                                      <th className="p-2 text-right">P.U.</th>
+                                      <th className="p-2 text-right font-bold">Montant</th>
+                                      <th className="p-2 text-left">Prescripteur</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100 font-mono">
+                                    {closing.deliveries.map((d) => (
+                                      <tr key={d.id} className="hover:bg-slate-50">
+                                        <td className="p-2 text-slate-500">{new Date(d.deliveredAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</td>
+                                        <td className="p-2 font-medium font-sans text-slate-800">{d.patientName}</td>
+                                        <td className="p-2 font-semibold font-sans text-indigo-900">{d.articleName}</td>
+                                        <td className="p-2 text-right font-bold">{d.quantity}</td>
+                                        <td className="p-2 text-right text-slate-600">{formatAr(d.unitPrice)}</td>
+                                        <td className="p-2 text-right font-bold text-slate-800">{formatAr(d.quantity * d.unitPrice)}</td>
+                                        <td className="p-2 font-sans text-slate-500">{d.doctorName || '—'}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 

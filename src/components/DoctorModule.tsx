@@ -434,115 +434,125 @@ export default function DoctorModule({ state, setState }: Props) {
             </div>
           </div>
 
-          {/* DEMANDES D'ANALYSES — LABORATOIRE (saisies par le médecin) */}
-          <div className="bg-white rounded-xl shadow-sm border p-3">
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="font-semibold text-sm flex items-center gap-2"><FlaskConical className="w-4 h-4 text-cyan-600" /> Demandes d'analyses (Laboratoire)</h4>
-              <span className="text-[10px] text-slate-400 hidden sm:block">Facturées à la caisse (onglet Laboratoire) puis transmises au labo après paiement</span>
-            </div>
-            <div className="relative mb-2">
-              <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-              <input type="text" value={labSearch} onChange={(e) => setLabSearch(e.target.value)} className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-cyan-500 text-sm" placeholder="Rechercher un examen (NFS, Glycémie, Créatinine...)" />
-              {labSearch.length >= 1 && labFiltered.length > 0 && (
-                <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 rounded-b shadow-xl z-30 max-h-48 overflow-y-auto">
-                  {labFiltered.map((e) => {
-                    const already = labDraft.some((d) => d.examId === e.id);
-                    return (
-                      <div key={e.id} onClick={() => addLabExam(e.id)} className={`px-3 py-1.5 cursor-pointer text-xs flex justify-between border-b border-slate-100 ${already ? 'opacity-40 bg-slate-50' : 'hover:bg-cyan-50'}`}>
-                        <span><span className="text-[9px] text-slate-400 mr-1">[{e.code}]</span> {e.name} <span className="text-slate-400">· {labCategoryLabel(e.category)}</span></span>
-                        <span className="font-mono text-cyan-600">{formatAr(clientType === 'societe' ? e.priceSociete : clientType === 'externe' ? e.priceExterne : e.priceComptoir)}</span>
-                      </div>
-                    );
-                  })}
+          {/* SAISIE DES EXAMENS LABORATOIRE ET ÉCHOGRAPHIE CÔTE À CÔTE */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+            {/* DEMANDES D'ANALYSES — LABORATOIRE (saisies par le médecin) */}
+            <div className="bg-white rounded-xl shadow-sm border p-3.5 flex flex-col justify-between h-full space-y-2">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-bold text-sm flex items-center gap-2 text-slate-800"><FlaskConical className="w-4 h-4 text-cyan-600" /> Demandes d'analyses (Labo)</h4>
+                  <span className="text-[10px] text-slate-400 hidden sm:block">A facturer en caisse</span>
                 </div>
-              )}
-            </div>
-            {labDraft.length > 0 ? (
-              <div className="border rounded-lg divide-y">
-                {labDraft.map((d) => {
-                  const e = state.labCatalog.find((x) => x.id === d.examId);
-                  if (!e) return null;
-                  return (
-                    <div key={d.examId} className="flex items-center justify-between p-2 text-sm">
-                      <div>
-                        <div className="font-medium text-slate-800">{e.name} <span className="text-[10px] text-slate-400">{e.code} · {labCategoryLabel(e.category)}</span></div>
-                        <div className="text-[10px] text-slate-400">{e.sampleType} · {e.durationHours}h</div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <label className="flex items-center gap-1 text-[10px] cursor-pointer"><input type="checkbox" checked={d.urgent} onChange={() => toggleLabUrgent(d.examId)} className="w-3.5 h-3.5" /> <span className="text-red-600 font-semibold">Urgent</span></label>
-                        <span className="font-mono font-bold text-slate-700 w-24 text-right">{formatAr(priceForExam(d.examId, clientType, d.urgent))}</span>
-                        <button onClick={() => removeLabExam(d.examId)} className="text-rose-600 hover:text-rose-800 cursor-pointer" title="Retirer"><Trash2 className="w-4 h-4" /></button>
-                      </div>
+                <div className="relative mb-2">
+                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                  <input type="text" value={labSearch} onChange={(e) => setLabSearch(e.target.value)} className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-cyan-500 text-sm" placeholder="Rechercher analyse (NFS, Glycémie...)" />
+                  {labSearch.length >= 1 && labFiltered.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 rounded-b shadow-xl z-30 max-h-48 overflow-y-auto">
+                      {labFiltered.map((e) => {
+                        const already = labDraft.some((d) => d.examId === e.id);
+                        return (
+                          <div key={e.id} onClick={() => addLabExam(e.id)} className={`px-3 py-1.5 cursor-pointer text-xs flex justify-between border-b border-slate-100 ${already ? 'opacity-40 bg-slate-50' : 'hover:bg-cyan-50'}`}>
+                            <span><span className="text-[9px] text-slate-400 mr-1">[{e.code}]</span> {e.name} <span className="text-slate-400">· {labCategoryLabel(e.category)}</span></span>
+                            <span className="font-mono text-cyan-600 font-semibold">{formatAr(clientType === 'societe' ? e.priceSociete : clientType === 'externe' ? e.priceExterne : e.priceComptoir)}</span>
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
-                <div className="flex justify-between items-center p-2 bg-cyan-50 text-sm font-bold">
-                  <span>Total analyses</span>
-                  <span className="font-mono">{formatAr(labTotal)}</span>
+                  )}
                 </div>
               </div>
-            ) : (
-              <p className="text-xs text-slate-400 text-center py-2 border border-dashed rounded-lg">Aucune analyse sélectionnée — recherchez un examen ci-dessus.</p>
-            )}
-          </div>
-
-
-          {/* DEMANDES D'ÉCHOGRAPHIE */}
-          <div className="bg-white rounded-xl shadow-sm border p-3">
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="font-semibold text-sm flex items-center gap-2"><Scan className="w-4 h-4 text-indigo-600" /> Demandes d'échographie</h4>
-              <span className="text-[10px] text-slate-400 hidden sm:block">Bon imprimé à la caisse après paiement</span>
-            </div>
-            <div className="relative mb-2">
-              <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-              <input type="text" value={echoSearch} onChange={(e) => setEchoSearch(e.target.value)} className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-sm" placeholder="Rechercher une échographie (Abdominale, Pelvienne, Obstétricale...)" />
-              {echoSearch.length >= 1 && echoFiltered.length > 0 && (
-                <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 rounded-b shadow-xl z-30 max-h-48 overflow-y-auto">
-                  {echoFiltered.map((e) => {
-                    const already = echoDraft.some((d) => d.examId === e.id);
-                    return (
-                      <div key={e.id} onClick={() => addEchoExam(e.id)} className={`px-3 py-1.5 cursor-pointer text-xs flex justify-between border-b border-slate-100 ${already ? 'opacity-40 bg-slate-50' : 'hover:bg-indigo-50'}`}>
-                        <span><span className="text-[9px] text-slate-400 mr-1">[{e.code}]</span> {e.name}</span>
-                        <span className="font-mono text-indigo-600">{formatAr(clientType === 'societe' ? e.priceSociete : clientType === 'externe' ? e.priceExterne : e.priceComptoir)}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-            {echoDraft.length > 0 ? (
-              <div className="border rounded-lg divide-y">
-                {echoDraft.map((d) => {
-                  const e = ECHO_CATALOG.find((x) => x.id === d.examId);
-                  if (!e) return null;
-                  return (
-                    <div key={d.examId} className="flex items-center justify-between p-2 text-sm">
-                      <div className="flex-1 mr-4">
-                        <div className="font-medium text-slate-800">{e.name} <span className="text-[10px] text-slate-400">{e.code}</span></div>
-                        <input
-                          type="text"
-                          placeholder="Notes / indication clinique..."
-                          value={d.notes || ''}
-                          onChange={(evt) => updateEchoNotes(d.examId, evt.target.value)}
-                          className="w-full text-xs text-slate-500 border-b border-dashed border-slate-200 outline-none focus:border-indigo-500 py-0.5 mt-0.5"
-                        />
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <label className="flex items-center gap-1 text-[10px] cursor-pointer"><input type="checkbox" checked={d.urgent} onChange={() => toggleEchoUrgent(d.examId)} className="w-3.5 h-3.5" /> <span className="text-red-600 font-semibold">Urgent</span></label>
-                        <span className="font-mono font-bold text-slate-700 w-24 text-right">{formatAr(echoPriceForExam(d.examId, clientType, d.urgent))}</span>
-                        <button onClick={() => removeEchoExam(d.examId)} className="text-rose-600 hover:text-rose-800 cursor-pointer" title="Retirer"><Trash2 className="w-4 h-4" /></button>
-                      </div>
+              <div>
+                {labDraft.length > 0 ? (
+                  <div className="border border-slate-200 rounded-lg divide-y bg-slate-50/40">
+                    {labDraft.map((d) => {
+                      const e = state.labCatalog.find((x) => x.id === d.examId);
+                      if (!e) return null;
+                      return (
+                        <div key={d.examId} className="flex items-center justify-between p-2 text-xs">
+                          <div className="mr-2">
+                            <div className="font-bold text-slate-800">{e.name} <span className="text-[10px] text-slate-400 font-normal">[{e.code}]</span></div>
+                            <div className="text-[10px] text-slate-400">{e.sampleType} · {e.durationHours}h</div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <label className="flex items-center gap-1 text-[10px] cursor-pointer"><input type="checkbox" checked={d.urgent} onChange={() => toggleLabUrgent(d.examId)} className="w-3.5 h-3.5" /> <span className="text-red-600 font-semibold">Urgent</span></label>
+                            <span className="font-mono font-bold text-slate-700 w-20 text-right">{formatAr(priceForExam(d.examId, clientType, d.urgent))}</span>
+                            <button onClick={() => removeLabExam(d.examId)} className="text-rose-600 hover:text-rose-800 cursor-pointer p-0.5" title="Retirer"><Trash2 className="w-3.5 h-3.5" /></button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div className="flex justify-between items-center p-2 bg-cyan-100/70 text-xs font-bold text-cyan-900 rounded-b-lg">
+                      <span>Total analyses</span>
+                      <span className="font-mono text-sm">{formatAr(labTotal)}</span>
                     </div>
-                  );
-                })}
-                <div className="flex justify-between items-center p-2 bg-indigo-50 text-sm font-bold">
-                  <span>Total échographies</span>
-                  <span className="font-mono">{formatAr(echoTotal)}</span>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 text-center py-4 border border-dashed border-slate-200 rounded-lg bg-slate-50/50">Aucune analyse sélectionnée — recherchez ci-dessus.</p>
+                )}
+              </div>
+            </div>
+
+            {/* DEMANDES D'ÉCHOGRAPHIE (saisies par le médecin) */}
+            <div className="bg-white rounded-xl shadow-sm border p-3.5 flex flex-col justify-between h-full space-y-2">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-bold text-sm flex items-center gap-2 text-slate-800"><Scan className="w-4 h-4 text-indigo-600" /> Demandes d'échographie</h4>
+                  <span className="text-[10px] text-slate-400 hidden sm:block">A facturer en caisse</span>
+                </div>
+                <div className="relative mb-2">
+                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                  <input type="text" value={echoSearch} onChange={(e) => setEchoSearch(e.target.value)} className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-sm" placeholder="Rechercher échographie (Abdominale, Pelvienne...)" />
+                  {echoSearch.length >= 1 && echoFiltered.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 rounded-b shadow-xl z-30 max-h-48 overflow-y-auto">
+                      {echoFiltered.map((e) => {
+                        const already = echoDraft.some((d) => d.examId === e.id);
+                        return (
+                          <div key={e.id} onClick={() => addEchoExam(e.id)} className={`px-3 py-1.5 cursor-pointer text-xs flex justify-between border-b border-slate-100 ${already ? 'opacity-40 bg-slate-50' : 'hover:bg-indigo-50'}`}>
+                            <span><span className="text-[9px] text-slate-400 mr-1">[{e.code}]</span> {e.name}</span>
+                            <span className="font-mono text-indigo-600 font-semibold">{formatAr(clientType === 'societe' ? e.priceSociete : clientType === 'externe' ? e.priceExterne : e.priceComptoir)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
-            ) : (
-              <p className="text-xs text-slate-400 text-center py-2 border border-dashed rounded-lg">Aucune échographie sélectionnée — recherchez un examen ci-dessus.</p>
-            )}
+              <div>
+                {echoDraft.length > 0 ? (
+                  <div className="border border-slate-200 rounded-lg divide-y bg-slate-50/40">
+                    {echoDraft.map((d) => {
+                      const e = ECHO_CATALOG.find((x) => x.id === d.examId);
+                      if (!e) return null;
+                      return (
+                        <div key={d.examId} className="flex items-center justify-between p-2 text-xs">
+                          <div className="flex-1 mr-2">
+                            <div className="font-bold text-slate-800">{e.name} <span className="text-[10px] text-slate-400 font-normal">[{e.code}]</span></div>
+                            <input
+                              type="text"
+                              placeholder="Notes / indication clinique..."
+                              value={d.notes || ''}
+                              onChange={(evt) => updateEchoNotes(d.examId, evt.target.value)}
+                              className="w-full text-[11px] text-slate-600 border-b border-dashed border-slate-200 outline-none focus:border-indigo-500 py-0.5 mt-0.5 bg-transparent"
+                            />
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <label className="flex items-center gap-1 text-[10px] cursor-pointer"><input type="checkbox" checked={d.urgent} onChange={() => toggleEchoUrgent(d.examId)} className="w-3.5 h-3.5" /> <span className="text-red-600 font-semibold">Urgent</span></label>
+                            <span className="font-mono font-bold text-slate-700 w-20 text-right">{formatAr(echoPriceForExam(d.examId, clientType, d.urgent))}</span>
+                            <button onClick={() => removeEchoExam(d.examId)} className="text-rose-600 hover:text-rose-800 cursor-pointer p-0.5" title="Retirer"><Trash2 className="w-3.5 h-3.5" /></button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div className="flex justify-between items-center p-2 bg-indigo-100/70 text-xs font-bold text-indigo-900 rounded-b-lg">
+                      <span>Total échographies</span>
+                      <span className="font-mono text-sm">{formatAr(echoTotal)}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 text-center py-4 border border-dashed border-slate-200 rounded-lg bg-slate-50/50">Aucune échographie sélectionnée — recherchez ci-dessus.</p>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="flex gap-2">
