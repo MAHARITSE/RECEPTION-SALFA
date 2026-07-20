@@ -637,13 +637,10 @@ export default function PharmacyModule({ state, setState, onOpenMessagingWithRec
                           Ce qui reste dans cette liste après validation constitue les livraisons avant la clôture de caisse / garde du responsable.
                         </p>
                       </div>
-                      {unclosedDeliveryItems.length > 0 && (
-                        <button
-                          onClick={handleClosePharmaDeliveries}
-                          className="px-3.5 py-1.5 bg-white hover:bg-emerald-50 text-emerald-800 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow cursor-pointer transition whitespace-nowrap"
-                        >
-                          <Lock className="w-3.5 h-3.5 text-emerald-700" /> Clôturer et Compiler ({unclosedDeliveryItems.length})
-                        </button>
+                      {unclosedDeliveryItems.length > 0 ? (
+                        <div className="text-[10px] font-bold text-emerald-700">{unclosedDeliveryItems.length} ligne(s) non clôturée(s) · {formatAr(unclosedTotalAmt)}</div>
+                      ) : (
+                        <div />
                       )}
                     </div>
                     <div className="p-3 bg-white max-h-64 overflow-y-auto">
@@ -659,9 +656,6 @@ export default function PharmacyModule({ state, setState, onOpenMessagingWithRec
                               <th className="p-2 text-left">Patient / Client</th>
                               <th className="p-2 text-left">Article délivré</th>
                               <th className="p-2 text-right">Qté</th>
-                              <th className="p-2 text-right">P.U.</th>
-                              <th className="p-2 text-right font-bold">Montant</th>
-                              <th className="p-2 text-left">Délivré par</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
@@ -671,19 +665,13 @@ export default function PharmacyModule({ state, setState, onOpenMessagingWithRec
                                 <td className="p-2 font-medium text-slate-800">{item.patientName}</td>
                                 <td className="p-2 font-semibold text-emerald-900">{item.articleName}</td>
                                 <td className="p-2 text-right font-mono font-bold">{item.quantity}</td>
-                                <td className="p-2 text-right font-mono text-slate-600">{formatAr(item.unitPrice)}</td>
-                                <td className="p-2 text-right font-mono font-bold text-slate-800">{formatAr(item.quantity * item.unitPrice)}</td>
-                                <td className="p-2 text-slate-500">{item.deliveredByName}</td>
                               </tr>
                             ))}
                           </tbody>
                           <tfoot className="bg-emerald-50 font-bold border-t border-emerald-200">
                             <tr>
-                              <td colSpan={3} className="p-2 text-right text-emerald-900">TOTAL LIVRAISONS AVANT CLÔTURE :</td>
-                              <td className="p-2 text-right font-mono text-emerald-900">{unclosedDeliveryItems.reduce((s, d) => s + d.quantity, 0)}</td>
-                              <td className="p-2"></td>
-                              <td className="p-2 text-right font-mono text-sm text-emerald-800">{formatAr(unclosedTotalAmt)}</td>
-                              <td className="p-2"></td>
+                              <td colSpan={2} className="p-2 text-right text-emerald-900">TOTAL :</td>
+                              <td className="p-2 text-right font-mono text-sm text-emerald-800">{unclosedDeliveryItems.reduce((s, d) => s + d.quantity, 0)}</td>
                             </tr>
                           </tfoot>
                         </table>
@@ -999,90 +987,75 @@ export default function PharmacyModule({ state, setState, onOpenMessagingWithRec
                   <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
                     <div>
                       <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                        <Package className="w-4 h-4 text-emerald-600" /> Base de compilation des livraisons de garde ({state.pharmaDeliveryClosings?.length || 0})
+                        <Package className="w-4 h-4 text-emerald-600" /> Récapitulatif des livraisons par article par jour
                       </h4>
-                      <p className="text-xs text-slate-500 mt-0.5">Lots de livraisons clôturés par les responsables de pharmacie</p>
+                      <p className="text-xs text-slate-500 mt-0.5">Quantités livrées regroupées par article et par jour (avant clôture de garde)</p>
                     </div>
+                    <button
+                      onClick={() => {
+                        const recapRows = unclosedDeliveryItems.map(d => `
+                          <tr>
+                            <td style="padding:4px;border-bottom:1px solid #e5e7eb">${new Date(d.deliveredAt).toLocaleDateString('fr-FR')}</td>
+                            <td style="padding:4px;border-bottom:1px solid #e5e7eb">${d.patientName}</td>
+                            <td style="padding:4px;border-bottom:1px solid #e5e7eb">${d.articleName}</td>
+                            <td style="padding:4px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:bold">${d.quantity}</td>
+                            <td style="padding:4px;border-bottom:1px solid #e5e7eb">${d.deliveredByName}</td>
+                          </tr>
+                        `).join('');
+                        const html = `<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Recap livraisons par article/jour</title>
+<style>body{font-family:Arial,sans-serif;padding:20px;color:#111}h1{font-size:18px;color:#0369a1;border-bottom:2px solid #0369a1;padding-bottom:6px}table{width:100%;border-collapse:collapse;margin-top:8px}th{background:#f0f9ff;color:#0369a1;padding:6px;text-align:left;border-bottom:2px solid #0369a1}td{padding:4px;border-bottom:1px solid #e5e7eb}</style>
+</head><body>
+<h1>Recapitulatif des livraisons par article par jour</h1>
+<p style="font-size:11px;color:#555">Avant clôture de garde — ${new Date().toLocaleString('fr-FR')}</p>
+<table>
+<thead><tr><th>Date</th><th>Patient / Client</th><th>Article délivré</th><th>Qté</th><th>Délivré par</th></tr></thead>
+<tbody>${recapRows}</tbody>
+</table>
+<script>window.onload=function(){window.print();}</script>
+</body></html>`;
+                        const iframe = document.createElement('iframe');
+                        iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+                        document.body.appendChild(iframe);
+                        const win = iframe.contentWindow;
+                        const doc = win?.document || iframe.contentDocument;
+                        if (doc && win) { doc.open(); doc.write(html); doc.close(); }
+                      }}
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow cursor-pointer transition"
+                    >
+                      <Printer className="w-3.5 h-3.5" /> Imprimer récap article/jour
+                    </button>
                   </div>
-                  <div className="divide-y divide-slate-200">
-                    {(!state.pharmaDeliveryClosings || state.pharmaDeliveryClosings.length === 0) ? (
-                      <div className="p-12 text-center text-slate-400 text-sm">
-                        Aucune clôture de livraison compilée à ce jour. Cliquez sur "Clôturer et Compiler" ci-dessus pour archiver un tour de garde.
-                      </div>
-                    ) : (
-                      state.pharmaDeliveryClosings.map((closing) => {
-                        const isOpen = closingDetailsModal?.id === closing.id;
-                        return (
-                          <div key={closing.id} className="transition">
-                            <div
-                              onClick={() => setClosingDetailsModal(isOpen ? null : closing)}
-                              className={`p-4 flex items-center justify-between cursor-pointer transition ${isOpen ? 'bg-emerald-50/70' : 'hover:bg-slate-50'}`}
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="p-2 bg-emerald-100 text-emerald-800 rounded-lg font-mono font-bold text-xs">
-                                  {closing.closingNumber}
-                                </div>
-                                <div>
-                                  <div className="font-bold text-sm text-slate-800 flex items-center gap-2">
-                                    Clôture du {new Date(closing.date).toLocaleDateString('fr-FR')} à {new Date(closing.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-200 text-slate-700">Responsable: {closing.responsibleName}</span>
-                                  </div>
-                                  <div className="text-xs text-slate-500 mt-0.5">
-                                    <strong>{closing.totalItems}</strong> article(s) livrés · Valeur totale : <strong className="text-emerald-700 font-mono">{formatAr(closing.totalAmount)}</strong>
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
-                                <button
-                                  onClick={() => printPharmaDeliveryClosingTicket(state.ticketSettings, closing)}
-                                  className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg text-xs font-medium flex items-center gap-1.5 cursor-pointer shadow-sm text-slate-700 transition"
-                                  title="Imprimer le ticket de compilation"
-                                >
-                                  <Printer className="w-3.5 h-3.5" /> Ticket
-                                </button>
-                                <button
-                                  onClick={() => setClosingDetailsModal(isOpen ? null : closing)}
-                                  className="px-2.5 py-1.5 bg-emerald-100 text-emerald-800 hover:bg-emerald-200 rounded-lg text-xs font-semibold cursor-pointer transition"
-                                >
-                                  {isOpen ? 'Masquer' : 'Détails ↓'}
-                                </button>
-                              </div>
-                            </div>
-                            {isOpen && (
-                              <div className="p-4 bg-white border-t border-slate-150">
-                                <div className="text-xs font-bold text-slate-600 mb-2 uppercase tracking-wider">Détail des livraisons de ce tour de garde ({closing.deliveries.length}) :</div>
-                                <table className="w-full text-xs">
-                                  <thead className="bg-slate-100 text-slate-600 border-b">
-                                    <tr>
-                                      <th className="p-2 text-left">Heure</th>
-                                      <th className="p-2 text-left">Patient / Client</th>
-                                      <th className="p-2 text-left">Article</th>
-                                      <th className="p-2 text-right">Qté</th>
-                                      <th className="p-2 text-right">P.U.</th>
-                                      <th className="p-2 text-right font-bold">Montant</th>
-                                      <th className="p-2 text-left">Prescripteur</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-slate-100 font-mono">
-                                    {closing.deliveries.map((d) => (
-                                      <tr key={d.id} className="hover:bg-slate-50">
-                                        <td className="p-2 text-slate-500">{new Date(d.deliveredAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</td>
-                                        <td className="p-2 font-medium font-sans text-slate-800">{d.patientName}</td>
-                                        <td className="p-2 font-semibold font-sans text-indigo-900">{d.articleName}</td>
-                                        <td className="p-2 text-right font-bold">{d.quantity}</td>
-                                        <td className="p-2 text-right text-slate-600">{formatAr(d.unitPrice)}</td>
-                                        <td className="p-2 text-right font-bold text-slate-800">{formatAr(d.quantity * d.unitPrice)}</td>
-                                        <td className="p-2 font-sans text-slate-500">{d.doctorName || '—'}</td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })
-                    )}
+                  <div className="p-3 bg-white overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead className="bg-slate-50 border-b text-slate-600">
+                        <tr>
+                          <th className="p-2 text-left">Date</th>
+                          <th className="p-2 text-left">Patient / Client</th>
+                          <th className="p-2 text-left">Article délivré</th>
+                          <th className="p-2 text-right">Qté</th>
+                          <th className="p-2 text-left">Délivré par</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {unclosedDeliveryItems.map((item) => (
+                          <tr key={item.id} className="hover:bg-emerald-50/50">
+                            <td className="p-2 font-mono text-slate-500">{new Date(item.deliveredAt).toLocaleDateString('fr-FR')}</td>
+                            <td className="p-2 font-medium text-slate-800">{item.patientName}</td>
+                            <td className="p-2 font-semibold text-emerald-900">{item.articleName}</td>
+                            <td className="p-2 text-right font-mono font-bold">{item.quantity}</td>
+                            <td className="p-2 text-slate-500">{item.deliveredByName}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-emerald-50 font-bold border-t border-emerald-200">
+                        <tr>
+                          <td colSpan={3} className="p-2 text-right text-emerald-900">TOTAL QUANTITÉS :</td>
+                          <td className="p-2 text-right font-mono text-emerald-900">{unclosedDeliveryItems.reduce((s, d) => s + d.quantity, 0)}</td>
+                          <td className="p-2"></td>
+                        </tr>
+                      </tfoot>
+                    </table>
                   </div>
                 </div>
               </div>
