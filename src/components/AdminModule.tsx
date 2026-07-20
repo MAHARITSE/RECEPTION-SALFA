@@ -552,7 +552,7 @@ export default function AdminModule({ state, setState }: Props) {
                       Lancer l'impression automatique lors de la validation
                     </label>
                     <p className="text-xs text-slate-500 pl-7">
-                      Pour supprimer l'aperçu Chrome/Edge, démarrez l'application avec <code className="px-1.5 py-0.5 bg-slate-200 rounded font-mono text-[11px]">lancer-impression-directe.bat</code> ou <code className="px-1.5 py-0.5 bg-slate-200 rounded font-mono text-[11px]">clientwamp.bat</code> : ils lancent le navigateur avec <code className="px-1.5 py-0.5 bg-slate-200 rounded font-mono text-[11px]">--kiosk-printing</code> et un profil dédié.
+                      Pour contourner le dialogue d'impression Chrome, démarrez le navigateur avec le flag <code className="px-1.5 py-0.5 bg-slate-200 rounded font-mono text-[11px]">--kiosk-printing</code>.
                     </p>
                     <label className="text-sm font-semibold flex items-center gap-2.5 cursor-pointer">
                       <input type="checkbox" checked={state.ticketSettings.showBarcode} onChange={e => updateTicket({ showBarcode: e.target.checked })} className="w-4 h-4 rounded text-blue-600" />
