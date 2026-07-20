@@ -4,7 +4,7 @@ import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, C
 import type { AppState } from '../store';
 import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber, addJourneyEvent } from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus } from 'lucide-react';
-import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket } from '../utils/printTicket';
+import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket } from '../utils/printTicket';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
 type Tab = 'payment' | 'external' | 'hospit' | 'bloc' | 'closing';
@@ -446,6 +446,22 @@ export default function CashierModule({ state, setState }: Props) {
       date: new Date().toISOString(),
     };
     updateHbRecords((prev) => prev.map(r => r.id === recordId ? { ...r, payments: [...r.payments, payment] } : r));
+
+    // Imprimer le ticket de paiement pour hospitalisation/bloc
+    const newTotalPaid = totalPaid + hbPayAmount;
+    const newReste = totalFact - newTotalPaid;
+    const patient = rec.patientId ? state.patients.find(p => p.id === rec.patientId) : undefined;
+    printHbPaymentTicket(
+      state.ticketSettings,
+      rec,
+      payment,
+      totalFact,
+      newTotalPaid,
+      newReste,
+      state.currentUser || undefined,
+      patient,
+    );
+
     setHbPayAmount(0);
   };
 
@@ -480,22 +496,30 @@ export default function CashierModule({ state, setState }: Props) {
   };
   const switchTab = (t: Tab) => { setTab(t); if (t === 'hospit' || t === 'bloc') autoAddRequests(); };
 
-  // Stats
+  // Stats — FILTRÉES PAR LE CAISSIER CONNECTÉ
+  // Les paiements se font individuellement et au nom de la personne qui a reçu l'argent.
+  // La clôture affiche UNIQUEMENT la caisse du caissier connecté, pas la totalité du jour.
+  const currentCashierId = state.currentUser?.id || 'SYS';
+
   const paidInvoices = state.invoices.filter(inv => inv.status === 'paid');
   const todayInvoices = paidInvoices.filter(inv => new Date(inv.paidAt || '').toDateString() === new Date().toDateString());
-  const todayTotal = todayInvoices.reduce((s, inv) => s + inv.patientCharge, 0);
-  const todayExtTotal = todayInvoices.filter(i => i.isExternal).reduce((s, i) => s + i.patientCharge, 0);
-  const todayPartialTotal = hbRecords.reduce((s, h) => s + h.payments.filter(p => new Date(p.date).toDateString() === new Date().toDateString()).reduce((ss, p) => ss + p.amount, 0), 0);
-  const grandTotal = todayTotal + todayPartialTotal;
+  // Factures du caissier connecté uniquement
+  const myTodayInvoices = todayInvoices.filter(inv => inv.paidBy === currentCashierId);
+  const myTodayTotal = myTodayInvoices.reduce((s, inv) => s + inv.patientCharge, 0);
+  const myTodayExtTotal = myTodayInvoices.filter(i => i.isExternal).reduce((s, i) => s + i.patientCharge, 0);
+  // Paiements Hospit/Bloc du caissier connecté uniquement
+  const myTodayPartialTotal = hbRecords.reduce((s, h) => s + h.payments.filter(p => new Date(p.date).toDateString() === new Date().toDateString() && p.paidByUserId === currentCashierId).reduce((ss, p) => ss + p.amount, 0), 0);
+
+  const myGrandTotal = myTodayTotal + myTodayPartialTotal;
 
   const curHbRecords = hbRecords.filter(h => h.type === tab);
   const closingDateKey = new Date().toDateString();
-  const currentCashierId = state.currentUser?.id || 'SYS';
   const existingClosing = state.cashClosings.find(c => new Date(c.date).toDateString() === closingDateKey && c.cashierId === currentCashierId);
   // Une facture déjà intégrée dans un Z ne peut jamais être comptée une seconde fois.
-  const closeableInvoices = todayInvoices.filter(inv => !inv.closingId && (!inv.paidBy || inv.paidBy === currentCashierId));
+  // On ne clôture que les factures du caissier connecté.
+  const closeableInvoices = myTodayInvoices.filter(inv => !inv.closingId);
 
-  const closingSections = (invoices: Invoice[], hospitalizationTotal = todayPartialTotal) => {
+  const closingSections = (invoices: Invoice[], hospitalizationTotal = myTodayPartialTotal) => {
     const consultTotal = invoices.filter(i => !i.isExternal).reduce((sum, i) => sum + i.patientCharge, 0);
     const externalTotal = invoices.filter(i => i.isExternal).reduce((sum, i) => sum + i.patientCharge, 0);
     const hospitTotal = hospitalizationTotal;
@@ -519,16 +543,16 @@ export default function CashierModule({ state, setState }: Props) {
 
   const finalizeClosing = () => {
     if (existingClosing) { alert('La caisse de ce caissier est déjà clôturée pour aujourd’hui. Vous pouvez réimprimer le ticket Z ci-dessous.'); return; }
-    if (closeableInvoices.length === 0 && todayPartialTotal === 0) { alert('Aucun encaissement à clôturer aujourd’hui.'); return; }
-    if (!confirm(`Clôturer ${closeableInvoices.length} facture(s) pour ${formatAr(closeableInvoices.reduce((sum, i) => sum + i.patientCharge, 0) + todayPartialTotal)} ? Cette opération verrouille les factures dans le Z.`)) return;
+    if (closeableInvoices.length === 0 && myTodayPartialTotal === 0) { alert('Aucun encaissement à clôturer aujourd’hui.'); return; }
+    if (!confirm(`Clôturer ${closeableInvoices.length} facture(s) pour ${formatAr(closeableInvoices.reduce((sum, i) => sum + i.patientCharge, 0) + myTodayPartialTotal)} ? Cette opération verrouille les factures dans le Z.`)) return;
     const now = new Date();
     const consultationTotal = closeableInvoices.filter(i => !i.isExternal).reduce((sum, i) => sum + i.patientCharge, 0);
     const externalTotal = closeableInvoices.filter(i => i.isExternal).reduce((sum, i) => sum + i.patientCharge, 0);
     const closing: CashClosing = {
       id: uuidv4(), date: now.toISOString(), cashierId: currentCashierId, cashierName: state.currentUser?.name || 'Caissier',
       invoiceIds: closeableInvoices.map(i => i.id), invoiceCount: closeableInvoices.length,
-      consultationTotal, externalTotal, hospitalizationTotal: todayPartialTotal,
-      grandTotal: consultationTotal + externalTotal + todayPartialTotal, createdAt: now.toISOString(),
+      consultationTotal, externalTotal, hospitalizationTotal: myTodayPartialTotal,
+      grandTotal: consultationTotal + externalTotal + myTodayPartialTotal, createdAt: now.toISOString(),
     };
     setState(prev => {
       const next = { ...prev, cashClosings: [...prev.cashClosings, closing], invoices: prev.invoices.map(i => closing.invoiceIds.includes(i.id) ? { ...i, closingId: closing.id } : i) };
@@ -686,7 +710,7 @@ export default function CashierModule({ state, setState }: Props) {
           {/* CLOSING */}
           {tab === 'closing' && (
             <div className="max-w-3xl mx-auto space-y-4">
-              <div className="p-4 bg-slate-800 text-white rounded-lg flex justify-between items-center"><div><h3 className="font-bold text-lg"><Lock className="w-5 h-5 inline" /> Clôture — {new Date().toLocaleDateString('fr-FR')}</h3><p className="text-slate-300 text-sm">{state.currentUser?.name}</p></div>
+              <div className="p-4 bg-slate-800 text-white rounded-lg flex justify-between items-center"><div><h3 className="font-bold text-lg"><Lock className="w-5 h-5 inline" /> Clôture — {new Date().toLocaleDateString('fr-FR')}</h3><p className="text-slate-300 text-sm">{state.currentUser?.name} — Ma caisse personnelle</p></div>
                 {existingClosing ? (
                   <button onClick={() => printSavedClosing(existingClosing)} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg text-sm cursor-pointer flex items-center gap-2"><Printer className="w-4 h-4" /> Réimprimer Z</button>
                 ) : (
@@ -695,13 +719,36 @@ export default function CashierModule({ state, setState }: Props) {
               </div>
               {existingClosing && <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm text-emerald-800 flex justify-between items-center"><span>✓ Caisse clôturée à {new Date(existingClosing.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} — {existingClosing.invoiceCount} facture(s)</span><button onClick={() => printSavedClosing(existingClosing)} className="underline font-semibold cursor-pointer">Réimprimer</button></div>}
               {!existingClosing && <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">{closeableInvoices.length} facture(s) non clôturée(s) à intégrer au ticket Z.</div>}
-              <div className="bg-white border rounded-lg p-4"><h4 className="font-bold text-sm mb-2">1. Versements par famille</h4><div className="grid grid-cols-3 gap-2"><div className="p-3 bg-green-50 rounded flex justify-between"><span>Consultations</span><span className="font-mono font-bold">{formatAr(todayTotal - todayExtTotal)}</span></div><div className="p-3 bg-purple-50 rounded flex justify-between"><span>Ventes Ext.</span><span className="font-mono font-bold">{formatAr(todayExtTotal)}</span></div><div className="p-3 bg-rose-50 rounded flex justify-between"><span>Hospit/Bloc</span><span className="font-mono font-bold">{formatAr(todayPartialTotal)}</span></div></div></div>
-              {hbRecords.filter(h => h.payments.length > 0).length > 0 && <div className="bg-white border rounded-lg p-4"><h4 className="font-bold text-sm mb-2">2. Hospitalisation & Bloc</h4><table className="w-full text-xs"><thead className="bg-slate-100"><tr><th className="p-2 text-left">Patient</th><th className="p-2">Type</th><th className="p-2 text-right">Facture</th><th className="p-2 text-right">Reçu</th><th className="p-2 text-right">Reste</th><th className="p-2">Caissier</th></tr></thead><tbody>{hbRecords.filter(h => h.payments.length > 0).map(h => { const tf = h.lines.reduce((s,l) => s+hbLineAmt(l),0); const tp = h.payments.reduce((s,p) => s+p.amount,0); return (<tr key={h.id} className="border-b"><td className="p-2">{h.patientName}</td><td className="p-2 text-center"><span className={`px-1 py-0.5 rounded text-[10px] font-bold ${h.type==='hospit'?'bg-rose-100 text-rose-700':'bg-blue-100 text-blue-700'}`}>{h.type==='hospit'?'Hosp.':'Bloc'}</span></td><td className="p-2 text-right font-mono">{formatAr(tf)}</td><td className="p-2 text-right font-mono text-green-600">{formatAr(tp)}</td><td className="p-2 text-right font-mono text-red-600">{formatAr(tf-tp)}</td><td className="p-2">{h.payments.map(p => p.paidBy).filter((v,i,a) => a.indexOf(v)===i).join(', ')}</td></tr>); })}</tbody></table></div>}
-              <div className="bg-gradient-to-r from-emerald-50 to-green-50 border-2 border-emerald-300 rounded-lg p-6 text-center"><div className="text-sm text-slate-600">3. TOTAL GÉNÉRAL</div><div className="text-4xl font-bold font-mono text-emerald-700">{formatAr(grandTotal)}</div></div>
-              <div className="bg-white border rounded-lg p-4"><h4 className="font-bold text-sm mb-2">4. Liste clients</h4><table className="w-full text-xs"><thead className="bg-slate-100"><tr><th className="p-2 text-left">Heure</th><th className="p-2 text-left">Client</th><th className="p-2">Type</th><th className="p-2 text-right">Montant</th></tr></thead><tbody>
-                {todayInvoices.map(inv => { const pat = inv.patientId ? state.patients.find(p => p.id === inv.patientId) : null; return (<tr key={inv.id} className="border-b"><td className="p-2 font-mono">{new Date(inv.paidAt || '').toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</td><td className="p-2">{pat ? `${pat.lastName} ${pat.firstName}` : inv.clientName || 'Ext.'}</td><td className="p-2 text-center"><span className={`px-1 py-0.5 rounded text-[10px] font-bold ${inv.isExternal ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>{inv.isExternal ? 'Externe' : 'Consult.'}</span></td><td className="p-2 text-right font-mono font-bold">{formatAr(inv.patientCharge)}</td></tr>); })}
-                {hbRecords.filter(h => h.payments.length > 0).map(h => { const tp = h.payments.reduce((s,p) => s+p.amount,0); return (<tr key={h.id} className="border-b"><td className="p-2">—</td><td className="p-2">{h.patientName}</td><td className="p-2 text-center"><span className={`px-1 py-0.5 rounded text-[10px] font-bold ${h.type==='hospit'?'bg-rose-100 text-rose-700':'bg-blue-100 text-blue-700'}`}>{h.type==='hospit'?'Hosp.':'Bloc'}</span></td><td className="p-2 text-right font-mono font-bold">{formatAr(tp)}</td></tr>); })}
-              </tbody><tfoot className="bg-emerald-50"><tr><td colSpan={3} className="p-2 text-right font-bold">TOTAL:</td><td className="p-2 text-right font-mono font-bold text-lg">{formatAr(grandTotal)}</td></tr></tfoot></table></div>
+
+              {/* Section 1: Versements par famille */}
+              <div className="bg-white border rounded-lg p-4"><h4 className="font-bold text-sm mb-2">1. Versements par famille (ma caisse)</h4><div className="grid grid-cols-3 gap-2"><div className="p-3 bg-green-50 rounded flex justify-between"><span>Consultations</span><span className="font-mono font-bold">{formatAr(myTodayTotal - myTodayExtTotal)}</span></div><div className="p-3 bg-purple-50 rounded flex justify-between"><span>Ventes Ext.</span><span className="font-mono font-bold">{formatAr(myTodayExtTotal)}</span></div><div className="p-3 bg-rose-50 rounded flex justify-between"><span>Hospit/Bloc</span><span className="font-mono font-bold">{formatAr(myTodayPartialTotal)}</span></div></div></div>
+
+              {/* Section 2: Hospitalisation & Bloc */}
+              {hbRecords.filter(h => h.payments.some(p => p.paidByUserId === currentCashierId && new Date(p.date).toDateString() === new Date().toDateString())).length > 0 && (
+                <div className="bg-white border rounded-lg p-4"><h4 className="font-bold text-sm mb-2">2. Hospitalisation & Bloc (mes encaissements)</h4>
+                  <table className="w-full text-xs"><thead className="bg-slate-100"><tr><th className="p-2 text-left">Patient</th><th className="p-2">Type</th><th className="p-2 text-right">Facture</th><th className="p-2 text-right">Reçu</th><th className="p-2 text-right">Reste</th><th className="p-2">Caissier</th></tr></thead>
+                    <tbody>
+                      {hbRecords.filter(h => h.payments.some(p => p.paidByUserId === currentCashierId && new Date(p.date).toDateString() === new Date().toDateString())).map(h => {
+                        const tf = h.lines.reduce((s,l) => s+hbLineAmt(l),0);
+                        const tp = h.payments.filter(p => p.paidByUserId === currentCashierId && new Date(p.date).toDateString() === new Date().toDateString()).reduce((s,p) => s+p.amount,0);
+                        const tpAll = h.payments.reduce((s,p) => s+p.amount,0);
+                        return (<tr key={h.id} className="border-b"><td className="p-2">{h.patientName}</td><td className="p-2 text-center"><span className={`px-1 py-0.5 rounded text-[10px] font-bold ${h.type==='hospit'?'bg-rose-100 text-rose-700':'bg-blue-100 text-blue-700'}`}>{h.type==='hospit'?'Hosp.':'Bloc'}</span></td><td className="p-2 text-right font-mono">{formatAr(tf)}</td><td className="p-2 text-right font-mono text-green-600">{formatAr(tp)}</td><td className="p-2 text-right font-mono text-red-600">{formatAr(tf-tpAll)}</td><td className="p-2">{h.payments.filter(p => p.paidByUserId === currentCashierId).map(p => p.paidBy).filter((v,i,a) => a.indexOf(v)===i).join(', ')}</td></tr>);
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Section 3: Total Général */}
+              <div className="bg-gradient-to-r from-emerald-50 to-green-50 border-2 border-emerald-300 rounded-lg p-6 text-center"><div className="text-sm text-slate-600">3. TOTAL GÉNÉRAL (ma caisse)</div><div className="text-4xl font-bold font-mono text-emerald-700">{formatAr(myGrandTotal)}</div></div>
+
+              {/* Section 4: Liste clients */}
+              <div className="bg-white border rounded-lg p-4"><h4 className="font-bold text-sm mb-2">4. Liste clients (mes encaissements)</h4>
+                <table className="w-full text-xs"><thead className="bg-slate-100"><tr><th className="p-2 text-left">Heure</th><th className="p-2 text-left">Client</th><th className="p-2">Type</th><th className="p-2 text-right">Montant</th></tr></thead><tbody>
+                  {myTodayInvoices.map(inv => { const pat = inv.patientId ? state.patients.find(p => p.id === inv.patientId) : null; return (<tr key={inv.id} className="border-b"><td className="p-2 font-mono">{new Date(inv.paidAt || '').toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</td><td className="p-2">{pat ? `${pat.lastName} ${pat.firstName}` : inv.clientName || 'Ext.'}</td><td className="p-2 text-center"><span className={`px-1 py-0.5 rounded text-[10px] font-bold ${inv.isExternal ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>{inv.isExternal ? 'Externe' : 'Consult.'}</span></td><td className="p-2 text-right font-mono font-bold">{formatAr(inv.patientCharge)}</td></tr>); })}
+                  {hbRecords.filter(h => h.payments.some(p => p.paidByUserId === currentCashierId && new Date(p.date).toDateString() === new Date().toDateString())).map(h => { const tp = h.payments.filter(p => p.paidByUserId === currentCashierId && new Date(p.date).toDateString() === new Date().toDateString()).reduce((s,p) => s+p.amount,0); return (<tr key={h.id} className="border-b"><td className="p-2 font-mono">{h.payments.filter(p => p.paidByUserId === currentCashierId && new Date(p.date).toDateString() === new Date().toDateString()).map(p => new Date(p.date).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})).join(', ')}</td><td className="p-2">{h.patientName}</td><td className="p-2 text-center"><span className={`px-1 py-0.5 rounded text-[10px] font-bold ${h.type==='hospit'?'bg-rose-100 text-rose-700':'bg-blue-100 text-blue-700'}`}>{h.type==='hospit'?'Hosp.':'Bloc'}</span></td><td className="p-2 text-right font-mono font-bold">{formatAr(tp)}</td></tr>); })}
+                </tbody><tfoot className="bg-emerald-50"><tr><td colSpan={3} className="p-2 text-right font-bold">TOTAL:</td><td className="p-2 text-right font-mono font-bold text-lg">{formatAr(myGrandTotal)}</td></tr></tfoot></table>
+              </div>
             </div>
           )}
         </div>

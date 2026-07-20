@@ -1,4 +1,4 @@
-import type { Invoice, Patient, TicketSettings, User, Prescription, LabRequest, Company, Consultation, PatientJourneyEvent, EchoRequest } from '../types';
+import type { Invoice, Patient, TicketSettings, User, Prescription, LabRequest, Company, Consultation, PatientJourneyEvent, EchoRequest, HbRecord } from '../types';
 
 const escapeHtml = (value: string) =>
   value.replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#039;', '"': '&quot;' }[char] || char));
@@ -633,6 +633,72 @@ export function printDossierTicket(
   ${printScript(settings.autoPrint !== false)}
   </body></html>`;
   openTicketWindow(html, `Dossier ${patient.dossier}`, ticketCopies(settings));
+}
+
+/* ============================================================
+ * 9) REÇU DE PAIEMENT HOSPITALISATION / BLOC
+ * ============================================================ */
+export function printHbPaymentTicket(
+  settings: TicketSettings,
+  record: HbRecord,
+  payment: { amount: number; paidBy: string; date: string },
+  totalFacture: number,
+  totalPaye: number,
+  reste: number,
+  cashier?: User,
+  patient?: Patient,
+) {
+  const date = new Date(payment.date);
+  const typeLabel = record.type === 'hospit' ? 'HOSPITALISATION' : 'BLOC OPÉRATOIRE';
+  const patientName = patient
+    ? `${patient.lastName} ${patient.firstName}`
+    : record.patientName;
+  const patientDossier = patient?.dossier || '';
+
+  const detailRows = [
+    patientDossier ? `<div>Dossier : ${escapeHtml(patientDossier)}</div>` : '',
+    record.company ? `<div>Société : ${escapeHtml(record.company)}</div>` : '',
+    cashier ? `<div>Caissier : ${escapeHtml(cashier.name)}</div>` : '',
+    `<div>Type : ${escapeHtml(typeLabel)}</div>`,
+  ].filter(Boolean).join('');
+
+  // Lignes d'articles facturés
+  const articleRows = record.lines.length > 0
+    ? record.lines.map(l => {
+        const lineAmt = Math.round(l.unitPrice * l.quantity * (1 - l.discount / 100));
+        return `<tr><td>${escapeHtml(l.articleName)} × ${l.quantity}${l.discount > 0 ? ` (-${l.discount}%)` : ''}</td><td class="amount">${money(lineAmt)}</td></tr>`;
+      }).join('')
+    : '<tr><td><i>Aucun article</i></td><td class="amount">—</td></tr>';
+
+  const bodyHtml = `
+    <div class="bold">${escapeHtml(patientName)}</div>
+    ${detailRows}
+    <div class="rule"></div>
+    <div class="bold heading">DÉTAIL FACTURE</div>
+    <table>${articleRows}</table>
+    <div class="rule"></div>
+    <table>
+      <tr><td>Total facture</td><td class="amount">${money(totalFacture)}</td></tr>
+      <tr><td>Total déjà payé</td><td class="amount">${money(totalPaye - payment.amount)}</td></tr>
+      <tr class="total"><td>VERSEMENT REÇU</td><td class="amount">${money(payment.amount)}</td></tr>
+      <tr><td>Total payé à ce jour</td><td class="amount">${money(totalPaye)}</td></tr>
+      <tr><td>Reste à payer</td><td class="amount">${money(reste)}</td></tr>
+    </table>
+    <div class="signature">
+      <span>${escapeHtml(cashier?.name || payment.paidBy)}</span>
+      <span>Client</span>
+    </div>
+  `;
+  const html = buildTicketHtml({
+    settings,
+    title: `REÇU DE PAIEMENT — ${typeLabel}`,
+    reference: record.id.slice(0, 8).toUpperCase(),
+    date,
+    bodyHtml,
+    footerNote: settings.footerMessage,
+    silent: settings.autoPrint !== false,
+  });
+  openTicketWindow(html, `Reçu paiement ${typeLabel.toLowerCase()}`, ticketCopies(settings));
 }
 
 /* ============================================================
