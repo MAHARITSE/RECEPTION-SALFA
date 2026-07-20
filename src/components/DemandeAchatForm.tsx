@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Article, TransferCategory } from '../types';
 import { familyLabel, formatAr, transferCategoryLabel, transferCategoryColor, TRANSFER_CATEGORIES } from '../store';
+import { blockIfUnsavedDraftLine } from '../utils/validation';
 import { Plus, Trash2, Save, X, Send, Edit3 } from 'lucide-react';
 
 export interface ReqLine {
@@ -169,6 +170,8 @@ export default function DemandeAchatForm({
 
   const handleSubmit = () => {
     if (reqLines.length === 0) { alert('Ajoutez au moins un article.'); return; }
+    // Ne pas valider l'envoi si une ligne est en cours de saisie mais non enregistrée
+    if (blockIfUnsavedDraftLine(reqLineForm, reqLines, { entityLabel: 'l\'article' })) return;
     // En mode pharmacie : demande d'appro interne (pas d'achat fournisseur)
     if (!pharmacyMode) {
       if (!reqSupplier.trim() && !isEditMode) { alert('Fournisseur requis.'); return; }

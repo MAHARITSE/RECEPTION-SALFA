@@ -5,6 +5,7 @@ import type { AppState } from '../store';
 import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber, addJourneyEvent } from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send } from 'lucide-react';
 import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket } from '../utils/printTicket';
+import { blockIfUnsavedDraftLine } from '../utils/validation';
 
 interface Props {
   state: AppState;
@@ -264,6 +265,8 @@ export default function CashierModule({ state, setState, onOpenMessagingWithReci
   };
   const extPay = () => {
     if (extLines.length === 0) return;
+    // Ne pas valider l'encaissement si une ligne de vente est en cours de saisie mais non enregistrée
+    if (blockIfUnsavedDraftLine(extLineForm, extLines, { entityLabel: 'l\'article' })) return;
     // Contrôle blocage vente au moment de l'encaissement
     const blockedLines = extLines.filter((l) => {
       const art = state.articles.find((a) => a.name === l.articleName);
@@ -1039,7 +1042,7 @@ export default function CashierModule({ state, setState, onOpenMessagingWithReci
                 </div>
               </div>
 
-              <button onClick={() => setHbModal('none')} className="w-full py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 cursor-pointer font-medium transition text-sm">✅ Terminer et fermer</button>
+              <button onClick={() => { if (rec && blockIfUnsavedDraftLine(hbArtForm, rec.lines, { entityLabel: 'l\'article' })) return; setHbModal('none'); }} className="w-full py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 cursor-pointer font-medium transition text-sm">✅ Terminer et fermer</button>
             </div>
         </div>
         );

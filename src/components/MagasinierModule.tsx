@@ -12,6 +12,7 @@ import {
   applyStockDelta, getArticleStock, locationLabel,
   createMovementWithLines,
 } from '../store';
+import { blockIfUnsavedDraftLine } from '../utils/validation';
 import {
   Package, PackageCheck, PackagePlus, Search, Truck, Plus, Trash2, Save, Check,
   Filter, X, ArrowUpFromLine, ArrowLeftRight, ClipboardList,
@@ -390,6 +391,8 @@ export default function MagasinierModule({ state, setState }: Props) {
 
   const validatePurchase = () => {
     if (purchaseLines.length === 0) return;
+    // Ne pas valider l'entrée d'achat si une ligne est en cours de saisie mais non enregistrée
+    if (blockIfUnsavedDraftLine(purchaseForm, purchaseLines, { entityLabel: 'l\'article' })) return;
     if (!selectedSupplierId) { alert('Veuillez sélectionner un fournisseur dans la base'); return; }
     if (!invoiceRef.trim()) { alert('Référence du BL / Facture obligatoire'); return; }
 
