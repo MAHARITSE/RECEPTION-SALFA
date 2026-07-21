@@ -15,7 +15,19 @@ const last = ['Andriamanitra','Razanakoto','Rakotondrabe','Ravelomanana','Rabets
 const companies: Company[] = ['Orion Santé Services','Baobab Logistique','Vahana Technologies','Mada Horizon Mining','Tropic Textile','Asteria Banque','Cobalt Énergies','Sakalava Transport','Nexus Assurance','Lemuria Agro'].map((name, i) => ({ id:id('company',i), name, paymentMode:'Crédit', settlementMode:i%2?'per_invoice':'monthly_global', createdAt:iso(730-i) }));
 const users: User[] = [
  ['USR-ADMIN','Admin Démonstration','admin'],['USR-REC','Aina Rakoto','receptionist'],['USR-DOC','Dr. Feno Rasoana','doctor'],['USR-CASH','Miora Kanto','cashier'],['USR-PHA','Tiana Soa','pharmacy'],['USR-LAB','Hery Lanto','laboratory'],['USR-MAG','Niry Tahina','magasinier'],['USR-BIL','Lova Sitraka','billing'],
-].map(([id,name,role])=>({id,name,role:role as User['role'],password:'demo'}));
+].map(([id,name,role])=>{
+  const passwords: Record<string,string> = {
+    'admin': 'admin123',
+    'receptionist': 'rec123',
+    'doctor': 'doc123',
+    'cashier': 'caisse123',
+    'pharmacy': 'pharma123',
+    'laboratory': 'labo123',
+    'magasinier': 'mag123',
+    'billing': 'fact123'
+  };
+  return {id,name,role:role as User['role'],password:passwords[role]||'demo'};
+});
 const articleNames = ['Paracétamol 500 mg','Amoxicilline 500 mg','Ibuprofène 400 mg','Oméprazole 20 mg','Metformine 850 mg','Amlodipine 5 mg','Ceftriaxone 1 g','Sérum physiologique','Gants examen','Tube EDTA','Réactif glycémie','Bandelette urinaire','Gel échographie','Papier thermique','Composite dentaire','Anesthésique dentaire','Masque chirurgical','Compresses stériles','Solution antiseptique','Vitamine C 500 mg'];
 const articles: Article[] = articleNames.map((name,i)=>({id:id('art',i),name,family:i<10||i>15?'MEDIC':i<13?'LABO':i<15?'ECHO':'DENT',unit:i===7?'poche':i===9?'unité':'boîte',barcode:`619${String(i).padStart(9,'0')}`,priceComptoir:500+(i+1)*550,priceSociete:450+(i+1)*480,priceExterne:650+(i+1)*620,purchasePrice:250+(i+1)*260,stockCentral:1000+i*79,stockPharmacie:180+i*13,minStockCentral:80,minStockPharmacie:30,supplier:`Fournisseur Synthèse ${i%12+1}`,expiryDate:'2027-12-31'}));
 const labCatalog: LabExamCatalog[] = ['NFS','Glycémie à jeun','Créatinine','Bilan lipidique','CRP','ECBU','Goutte épaisse','TSH'].map((name,i)=>({id:id('exam',i),code:`LAB${String(i+1).padStart(3,'0')}`,name,category:i<2?'hematologie':'biochimie',parameters:[name],sampleType:'Sang veineux',priceComptoir:8000+i*1800,priceSociete:7000+i*1500,priceExterne:10000+i*2000,urgentPrice:13000+i*2500,durationHours:4}));
