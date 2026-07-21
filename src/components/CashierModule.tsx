@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription } from '../types';
 import type { AppState } from '../store';
 import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber, addJourneyEvent, generatePharmaClosingNumber, purgePatientFromQueue } from '../store';
-import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, History, Receipt, UserCheck } from 'lucide-react';
+import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send } from 'lucide-react';
 import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket } from '../utils/printTicket';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
 
@@ -51,9 +51,7 @@ export default function CashierModule({ state, setState, onOpenMessagingWithReci
     });
   };
   const [hbSelRecordId, setHbSelRecordId] = useState<string | null>(null);
-  // ✅ Paiement partiel indépendant par dossier : évite que la saisie d'un patient remplisse les autres
-  const [hbPayAmounts, setHbPayAmounts] = useState<Record<string, number>>({});
-  const [hbHistoryRecordId, setHbHistoryRecordId] = useState<string | null>(null);
+  const [hbPayAmount, setHbPayAmount] = useState(0);
   const [hbModal, setHbModal] = useState<HbModal>('none');
 
   // HB Modal: patient search/add (ALL fields like reception)
@@ -548,22 +546,21 @@ export default function CashierModule({ state, setState, onOpenMessagingWithReci
 
   const addPartialPay = (recordId: string) => {
     const rec = hbRecords.find(r => r.id === recordId);
-    const payAmount = hbPayAmounts[recordId] ?? 0;
-    if (!rec || payAmount <= 0) return;
+    if (!rec || hbPayAmount <= 0) return;
     const totalFact = rec.lines.reduce((s, l) => s + hbLineAmt(l), 0);
     const totalPaid = rec.payments.reduce((s, p) => s + p.amount, 0);
     const reste = totalFact - totalPaid;
-    if (payAmount > reste) { alert(`Montant supérieur au reste à payer (${formatAr(reste)})`); return; }
+    if (hbPayAmount > reste) { alert(`Montant supérieur au reste à payer (${formatAr(reste)})`); return; }
     const payment = {
-      amount: payAmount,
+      amount: hbPayAmount,
       paidBy: state.currentUser?.name || '',
       paidByUserId: state.currentUser?.id,
       date: new Date().toISOString(),
     };
     updateHbRecords((prev) => prev.map(r => r.id === recordId ? { ...r, payments: [...r.payments, payment] } : r));
 
-    // Imprimer le ticket de paiement pour hospitalisation/bloc — reçu simplifié (total / reçu / reste + NB poli)
-    const newTotalPaid = totalPaid + payAmount;
+    // Imprimer le ticket de paiement pour hospitalisation/bloc
+    const newTotalPaid = totalPaid + hbPayAmount;
     const newReste = totalFact - newTotalPaid;
     const patient = rec.patientId ? state.patients.find(p => p.id === rec.patientId) : undefined;
     printHbPaymentTicket(
@@ -577,7 +574,7 @@ export default function CashierModule({ state, setState, onOpenMessagingWithReci
       patient,
     );
 
-    setHbPayAmounts(prev => ({ ...prev, [recordId]: 0 }));
+    setHbPayAmount(0);
   };
 
   // Edit client type
@@ -936,55 +933,19 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                           </div>
                           <div className="text-xs text-slate-500 mt-0.5">Facture: <strong>{formatAr(totalFact)}</strong> | Payé: <span className="text-green-600">{formatAr(totalPaid)}</span> | Reste: <span className="text-red-600 font-bold">{formatAr(reste)}</span></div>
                         </div>
-                        <div className="flex gap-1 items-center flex-wrap" onClick={e => e.stopPropagation()}>
+                        <div className="flex gap-1 items-center" onClick={e => e.stopPropagation()}>
                           <button onClick={() => { setHbSelRecordId(record.id); setHbArtSearch(''); setHbArtForm({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: new Date().toISOString().split('T')[0] }); setHbSelLineId(null); setHbIsNew(true); setHbModal('add_article'); }} className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs cursor-pointer transition font-medium">📋 Prescriptions</button>
-                          {record.payments.length > 0 && (
-                            <button onClick={() => setHbHistoryRecordId(record.id)} className="px-2 py-1 bg-slate-700 hover:bg-slate-800 text-white rounded text-xs cursor-pointer flex items-center gap-1"><History className="w-3 h-3" /> Historique ({record.payments.length})</button>
-                          )}
                           {reste > 0 && <>
-                            <input type="number" min={1} max={reste} value={hbPayAmounts[record.id] || ''} onChange={e => { const v = Math.min(parseInt(e.target.value) || 0, reste); setHbPayAmounts(prev => ({ ...prev, [record.id]: v })); }} className="w-24 px-2 py-1 border rounded text-xs text-right outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500" placeholder="Montant" />
-                            <button onClick={() => addPartialPay(record.id)} disabled={(hbPayAmounts[record.id] ?? 0) <= 0 || (hbPayAmounts[record.id] ?? 0) > reste} className="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded text-xs cursor-pointer disabled:opacity-40 flex items-center gap-1"><CreditCard className="w-3 h-3" /> Payer</button>
+                            <input type="number" min={1} max={reste} value={hbPayAmount || ''} onChange={e => setHbPayAmount(Math.min(parseInt(e.target.value) || 0, reste))} className="w-24 px-2 py-1 border rounded text-xs text-right outline-none" placeholder="Montant" />
+                            <button onClick={() => addPartialPay(record.id)} disabled={hbPayAmount <= 0 || hbPayAmount > reste} className="px-2 py-1 bg-amber-600 text-white rounded text-xs cursor-pointer disabled:opacity-40">💰 Payer</button>
                           </>}
-                          {reste <= 0 && record.lines.length > 0 && (
-                            <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-[10px] font-bold flex items-center gap-1"><Receipt className="w-3 h-3" /> Soldé</span>
-                          )}
                         </div>
                       </div>
-                                            {isOpen && (
-                        <div className="p-3 border-t bg-white space-y-3">
+                      {isOpen && (
+                        <div className="p-3 border-t bg-white">
                           {record.lines.length > 0 && <table className="w-full text-[11px] mb-2"><thead className="bg-slate-100"><tr><th className="p-1 text-left w-16">Date</th><th className="p-1 text-left">Article</th><th className="p-1 text-right">Qté</th><th className="p-1 text-right">P.U.</th><th className="p-1 text-right">Montant</th></tr></thead><tbody>{record.lines.map(l => (<tr key={l.id} className="border-b border-slate-100"><td className="p-1 text-slate-500">{l.dateSort || '—'}</td><td className="p-1">{l.articleName}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 text-right font-mono">{l.unitPrice.toLocaleString('fr-FR')}</td><td className="p-1 text-right font-mono font-bold">{hbLineAmt(l).toLocaleString('fr-FR')}</td></tr>))}</tbody></table>}
                           {record.lines.length === 0 && <p className="text-slate-400 text-xs text-center py-2">Aucun article — cliquez "+ Article"</p>}
-                          {record.payments.length > 0 && (
-                            <div className="mt-3 border rounded-lg overflow-hidden">
-                              <div className="p-2 bg-slate-50 flex justify-between items-center">
-                                <div className="font-bold text-xs flex items-center gap-1.5"><History className="w-4 h-4 text-slate-600" /> Historique des paiements ({record.payments.length})</div>
-                                <button onClick={() => setHbHistoryRecordId(record.id)} className="text-[10px] px-2 py-1 bg-slate-700 text-white rounded hover:bg-slate-800 cursor-pointer">Voir détails</button>
-                              </div>
-                              <div className="divide-y max-h-40 overflow-y-auto">
-                                {record.payments.map((p, i) => {
-                                  const u = state.users.find(x => x.id === p.paidByUserId);
-                                  const roleLabel = u?.role === 'pharmacy' ? 'Pharmacie' : u?.role === 'cashier' ? 'Caisse' : u?.role || 'Caisse/Pharmacie';
-                                  return (
-                                    <div key={i} className="p-2 flex justify-between items-center text-[11px] hover:bg-slate-50">
-                                      <div className="flex items-center gap-2">
-                                        <span className="font-mono text-slate-500">{new Date(p.date).toLocaleString('fr-FR',{hour:'2-digit',minute:'2-digit', day:'2-digit', month:'2-digit'})}</span>
-                                        <span className="font-bold text-emerald-700">{formatAr(p.amount)}</span>
-                                      </div>
-                                      <div className="flex items-center gap-1.5">
-                                        <UserCheck className="w-3 h-3 text-slate-400" />
-                                        <span className="font-medium text-slate-700">{p.paidBy}</span>
-                                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${roleLabel === 'Pharmacie' ? 'bg-purple-100 text-purple-700' : 'bg-amber-100 text-amber-800'}`}>{roleLabel}</span>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                              <div className="p-2 bg-emerald-50 border-t text-[11px] flex justify-between font-bold">
-                                <span>Total reçu :</span>
-                                <span className="font-mono text-emerald-700">{formatAr(record.payments.reduce((s, pp) => s + pp.amount, 0))}</span>
-                              </div>
-                            </div>
-                          )}
+                          {record.payments.length > 0 && <div className="mt-2 text-[10px] text-slate-500 border-t pt-1"><div className="font-bold mb-1">Historique paiements :</div>{record.payments.map((p, i) => (<div key={i}>{new Date(p.date).toLocaleString('fr-FR',{hour:'2-digit',minute:'2-digit'})} — {formatAr(p.amount)} — {p.paidBy}</div>))}</div>}
                         </div>
                       )}
                     </div>
@@ -1291,75 +1252,6 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
             </div>
         </div>
       )}
-
-
-      {/* === HISTORIQUE PAIEMENTS MODAL — affiche personne caisse/pharmacie qui a reçu === */}
-      {hbHistoryRecordId && (() => {
-        const rec = hbRecords.find(r => r.id === hbHistoryRecordId);
-        if (!rec) return null;
-        const totalFact = rec.lines.reduce((s, l) => s + hbLineAmt(l), 0);
-        const totalPaye = rec.payments.reduce((s, p) => s + p.amount, 0);
-        const reste = totalFact - totalPaye;
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="w-full max-w-lg bg-white rounded-xl shadow-2xl border border-slate-300 overflow-hidden flex flex-col max-h-[85vh]">
-              <div className="bg-slate-800 px-4 py-3 flex justify-between items-center text-white">
-                <span className="font-bold text-sm flex items-center gap-2"><History className="w-4 h-4" /> Historique paiements — {rec.patientName}</span>
-                <button onClick={() => setHbHistoryRecordId(null)} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button>
-              </div>
-              <div className="p-4 space-y-3 overflow-y-auto">
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div className="p-2 bg-slate-50 rounded border"><div className="text-slate-500 text-[10px]">Total facture</div><div className="font-bold font-mono">{formatAr(totalFact)}</div></div>
-                  <div className="p-2 bg-emerald-50 rounded border border-emerald-200"><div className="text-emerald-700 text-[10px]">Total reçu</div><div className="font-bold font-mono text-emerald-700">{formatAr(totalPaye)}</div></div>
-                  <div className="p-2 bg-rose-50 rounded border border-rose-200"><div className="text-rose-700 text-[10px]">Reste à payer</div><div className="font-bold font-mono text-rose-700">{formatAr(reste)}</div></div>
-                </div>
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-[11px] text-amber-900 leading-relaxed">
-                  <div className="font-bold flex items-center gap-1"><Receipt className="w-4 h-4" /> Reçu simplifié</div>
-                  <div className="mt-1">Le reçu remis ne détaille que le montant total, la somme déjà reçue et le reste à payer, afin de rester clair et lisible.</div>
-                  <div className="mt-1 p-2 bg-white/60 rounded border border-amber-100 text-amber-800">
-                    <strong>NB :</strong> Nous vous informons aimablement que le montant indiqué sur ce reçu est susceptible d'évoluer au cours de la journée en fonction des saisies complémentaires liées à votre prise en charge. Merci pour votre compréhension.
-                  </div>
-                </div>
-                <div className="border rounded-lg overflow-hidden">
-                  <div className="p-2 bg-slate-100 text-xs font-bold flex items-center gap-2"><UserCheck className="w-4 h-4" /> Détail des encaissements — qui a reçu ?</div>
-                  {rec.payments.length === 0 ? (
-                    <div className="p-4 text-center text-slate-400 text-xs">Aucun paiement enregistré.</div>
-                  ) : (
-                    <table className="w-full text-xs">
-                      <thead className="bg-slate-50 text-slate-600">
-                        <tr><th className="p-2 text-left">Date / Heure</th><th className="p-2 text-right">Montant</th><th className="p-2 text-left">Encaissé par</th><th className="p-2 text-center">Service</th></tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {rec.payments.map((p, i) => {
-                          const u = state.users.find(x => x.id === p.paidByUserId);
-                          const roleLabel = u?.role === 'pharmacy' ? 'Pharmacie' : u?.role === 'cashier' ? 'Caisse' : u?.role || 'Caisse/Pharmacie';
-                          return (
-                            <tr key={i} className="hover:bg-slate-50">
-                              <td className="p-2 font-mono text-slate-500">{new Date(p.date).toLocaleString('fr-FR')}</td>
-                              <td className="p-2 text-right font-mono font-bold text-emerald-700">{formatAr(p.amount)}</td>
-                              <td className="p-2 font-medium">{p.paidBy}</td>
-                              <td className="p-2 text-center"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${roleLabel === 'Pharmacie' ? 'bg-purple-100 text-purple-700' : 'bg-amber-100 text-amber-800'}`}>{roleLabel}</span></td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                      <tfoot className="bg-emerald-50 font-bold">
-                        <tr><td className="p-2 text-right" colSpan={1}>Total reçu :</td><td className="p-2 text-right font-mono">{formatAr(totalPaye)}</td><td colSpan={2} className="p-2"></td></tr>
-                        <tr><td className="p-2 text-right" colSpan={1}>Reste :</td><td className="p-2 text-right font-mono text-rose-700">{formatAr(reste)}</td><td colSpan={2}></td></tr>
-                      </tfoot>
-                    </table>
-                  )}
-                </div>
-              </div>
-              <div className="p-3 border-t bg-slate-50 flex justify-end gap-2">
-                <button onClick={() => setHbHistoryRecordId(null)} className="px-4 py-2 border border-slate-300 rounded-lg text-sm cursor-pointer hover:bg-white">Fermer</button>
-                {reste <= 0 && <span className="px-3 py-2 bg-green-600 text-white rounded-lg text-xs font-bold flex items-center gap-1">✓ Soldé</span>}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
 
       {/* Modal Message Rectification Prescription */}
       {rectificationModal && (

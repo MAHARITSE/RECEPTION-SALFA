@@ -655,7 +655,7 @@ export function printDossierTicket(
 export function printHbPaymentTicket(
   settings: TicketSettings,
   record: HbRecord,
-  payment: { amount: number; paidBy: string; date: string; paidByUserId?: string },
+  payment: { amount: number; paidBy: string; date: string },
   totalFacture: number,
   totalPaye: number,
   reste: number,
@@ -669,37 +669,43 @@ export function printHbPaymentTicket(
     : record.patientName;
   const patientDossier = patient?.dossier || '';
 
-  const encaisseurRole = cashier?.role === 'pharmacy' ? 'Pharmacie' : cashier?.role === 'cashier' ? 'Caisse' : (cashier?.role ? cashier.role : 'Caisse/Pharmacie');
-
   const detailRows = [
-    patientDossier ? `<div style="font-size:10px">Dossier : ${escapeHtml(patientDossier)}</div>` : '',
-    cashier ? `<div style="font-size:10px">Encaissé par : ${escapeHtml(cashier.name || payment.paidBy)} — ${escapeHtml(encaisseurRole)}</div>` : `<div style="font-size:10px">Encaissé par : ${escapeHtml(payment.paidBy)} — Caisse/Pharmacie</div>`,
-    `<div style="font-size:10px">Type : ${escapeHtml(typeLabel)}</div>`,
-    `<div style="font-size:10px">Date : ${date.toLocaleString('fr-FR')}</div>`,
+    patientDossier ? `<div>Dossier : ${escapeHtml(patientDossier)}</div>` : '',
+    record.company ? `<div>Société : ${escapeHtml(record.company)}</div>` : '',
+    cashier ? `<div>Caissier : ${escapeHtml(cashier.name)}</div>` : '',
+    `<div>Type : ${escapeHtml(typeLabel)}</div>`,
   ].filter(Boolean).join('');
 
+  // Lignes d'articles facturés
+  const articleRows = record.lines.length > 0
+    ? record.lines.map(l => {
+        const lineAmt = Math.round(l.unitPrice * l.quantity * (1 - l.discount / 100));
+        return `<tr><td>${escapeHtml(l.articleName)} × ${l.quantity}${l.discount > 0 ? ` (-${l.discount}%)` : ''}</td><td class="amount">${money(lineAmt)}</td></tr>`;
+      }).join('')
+    : '<tr><td><i>Aucun article</i></td><td class="amount">—</td></tr>';
+
   const bodyHtml = `
-    <div class="bold" style="font-size:12px">${escapeHtml(patientName)}</div>
+    <div class="bold">${escapeHtml(patientName)}</div>
     ${detailRows}
     <div class="rule"></div>
-    <table style="font-size:11px">
-      <tr><td>Montant total de la facture</td><td class="amount bold">${money(totalFacture)}</td></tr>
-      <tr><td>Dernier versement reçu</td><td class="amount">${money(payment.amount)}</td></tr>
-      <tr><td>Somme totale déjà reçue</td><td class="amount bold">${money(totalPaye)}</td></tr>
-      <tr class="total" style="background:#f0fdf4"><td>Reste à payer</td><td class="amount">${money(reste)}</td></tr>
+    <div class="bold heading">DÉTAIL FACTURE</div>
+    <table>${articleRows}</table>
+    <div class="rule"></div>
+    <table>
+      <tr><td>Total facture</td><td class="amount">${money(totalFacture)}</td></tr>
+      <tr><td>Total déjà payé</td><td class="amount">${money(totalPaye - payment.amount)}</td></tr>
+      <tr class="total"><td>VERSEMENT REÇU</td><td class="amount">${money(payment.amount)}</td></tr>
+      <tr><td>Total payé à ce jour</td><td class="amount">${money(totalPaye)}</td></tr>
+      <tr><td>Reste à payer</td><td class="amount">${money(reste)}</td></tr>
     </table>
-    <div style="margin-top:4mm;padding:2mm 2.5mm;background:#fefce8;border:1px dashed #eab308;border-radius:2mm;font-size:8.5px;line-height:1.35;color:#713f12">
-      <div class="bold" style="margin-bottom:0.8mm">NB :</div>
-      Nous vous informons aimablement que le montant indiqué sur ce reçu est susceptible d'évoluer au cours de la journée en fonction des saisies complémentaires liées à votre prise en charge. Nous vous remercions de bien vouloir conserver ce reçu et de vous rapprocher de l'accueil en cas de question. Merci pour votre compréhension.
-    </div>
-    <div class="signature" style="margin-top:5mm">
+    <div class="signature">
       <span>${escapeHtml(cashier?.name || payment.paidBy)}</span>
-      <span>Patient / Famille</span>
+      <span>Client</span>
     </div>
   `;
   const html = buildTicketHtml({
     settings,
-    title: `REÇU ${typeLabel}`,
+    title: `REÇU DE PAIEMENT — ${typeLabel}`,
     reference: record.id.slice(0, 8).toUpperCase(),
     date,
     bodyHtml,
