@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1100" font-family="Arial, Helvetica, sans-serif">
+  <desc>Modèle relationnel : sociétés au crédit, sous-modes règlement global mensuel et individuel par facture, relevés mensuels et règlements associés.</desc>
   <defs>
     <style>
       .title { font-size: 22px; font-weight: bold; fill: #0f172a; }

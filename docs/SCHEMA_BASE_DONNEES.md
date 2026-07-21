@@ -100,3 +100,28 @@ Utilisateurs (1) ──< (N) Messages (expéditeur & destinataire)
 4. **Le relevé mensuel** ne peut être soldé qu'après saisie du montant, de la date, du mode de paiement, de la référence et de l'observation ; le responsable facturation qui valide est enregistré.
 5. **Paiements partiels** supportés sur les factures *individuelles société* et les dossiers hospitalisation/bloc.
 6. **Le dossier patient**, ses paramètres vitaux et l'historique réglé sont **toujours conservés**.
+
+---
+
+## Jeu de démonstration massif et facturation crédit
+
+L'état de démonstration est construit par `src/data/massiveDemoData.ts`. Il ne contient aucune identité réelle : un générateur pseudo-aléatoire à graine fixe (`0x51af1a`) fabrique des identifiants, dossiers, matricules, contacts et adresses synthétiques. Les identifiants, dates et relations sont donc reproductibles à chaque restauration de la démo.
+
+Le générateur couvre 24 mois (du 21 juillet 2024 au 21 juillet 2026) et produit notamment 3 000 patients aux couples nom/prénom uniques, 4 500 consultations, factures et ventes, plus de 9 000 lignes de ventes, des paiements, demandes/résultats de laboratoire, délivrances, achats/entrées et mouvements. Les listes doivent être filtrées ou paginées par les écrans avant rendu complet.
+
+### Relations crédit société
+
+```text
+companies (paymentMode = Crédit, settlementMode)
+  1 ─── N patients (patient.company)
+  1 ─── N invoices / ventes (company)
+  1 ─── N companyBillingAccounts (company, month)
+companyBillingAccounts.invoiceIds ─── N invoices
+companyBillingAccounts.payments ─── N règlements de relevé
+ventePayments.venteId ─── 1 ventes
+venteLines.venteId ─── 1 ventes
+```
+
+- `monthly_global` : les factures du mois sont regroupées dans `companyBillingAccounts`; les règlements sont portés par `CompanyBillingPayment`.
+- `per_invoice` : la facture/vente est réglée individuellement, éventuellement avec plusieurs `ventePayments`.
+- Les données de démonstration sont uniquement le retour de `createInitialState`; elles ne constituent pas une commande de suppression des données saisies.
