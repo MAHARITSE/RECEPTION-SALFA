@@ -46,6 +46,7 @@ export default function DoctorModule({ state, setState }: Props) {
   const [lineForm, setLineForm] = useState<Prescription>({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
   const [isNewLine, setIsNewLine] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const submittingRef = useRef(false);
 
   // ---- Demandes d'analyses (Laboratoire) saisies par le médecin ----
   const [labSearch, setLabSearch] = useState('');
@@ -129,6 +130,7 @@ export default function DoctorModule({ state, setState }: Props) {
 
   const selectPatient = (pid: string) => {
     const p = state.patients.find((x) => x.id === pid);
+    submittingRef.current = false;
     setSelectedPatientId(pid); setLines([]); setSelectedLineId(null); setIsNewLine(false); setView('consultation');
     setLabDraft([]); setLabSearch(''); setEchoDraft([]); setEchoSearch('');
     setLabDraftIdx(-1); setEchoDraftIdx(-1);
@@ -321,6 +323,9 @@ export default function DoctorModule({ state, setState }: Props) {
     if (!selectedPatientId || !selectedPatient || !consultForm.diagnosis) { alert('Diagnostic obligatoire'); return; }
     // Ne pas valider si une ligne d'ordonnance est en cours de saisie mais non enregistrée
     if (blockIfUnsavedDraftLine(lineForm, lines, { entityLabel: 'le médicament' })) return;
+    // Garde anti double-soumission : évite les doublons de factures labo/écho
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     // Ordonnance NON obligatoire : diagnostic seul, analyses et/ou échographies suffisent
     const ct = clientType;
     const consultId = uuidv4();
@@ -419,6 +424,7 @@ export default function DoctorModule({ state, setState }: Props) {
     setLabDraft([]); setLabSearch(''); setEchoDraft([]); setEchoSearch('');
     setLabDraftIdx(-1); setEchoDraftIdx(-1);
     setView('queue');
+    submittingRef.current = false;
   };
 
   return (

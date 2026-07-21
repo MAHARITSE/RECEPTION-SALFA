@@ -19,6 +19,7 @@ export default function CashierModule({ state, setState, onOpenMessagingWithReci
   const [selConsultId, setSelConsultId] = useState<string | null>(null);
   const [selPatientId, setSelPatientId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('payment');
+  const payingRef = useRef(false);
 
   // Rectification modal state
   const [rectificationModal, setRectificationModal] = useState<{
@@ -100,6 +101,9 @@ export default function CashierModule({ state, setState, onOpenMessagingWithReci
 
   const handlePayment = () => {
     if (!selPatient) return;
+    // Garde anti double-paiement
+    if (payingRef.current) return;
+    payingRef.current = true;
     const unpaidConsults = getConsults(selPatient.id);
     const medicationItems: InvoiceItem[] = unpaidConsults.flatMap(c => c.prescriptions.map(p => ({
       description: `${p.articleName} × ${p.quantity}${p.discount > 0 ? ` (-${p.discount}%)` : ''}`,
@@ -107,9 +111,17 @@ export default function CashierModule({ state, setState, onOpenMessagingWithReci
     })));
     const serviceInvoices = pendingServiceInvoices.filter(i => i.patientId === selPatient.id);
     const serviceItems = serviceInvoices.flatMap(i => i.items);
-    const unifiedItems = [...medicationItems, ...serviceItems];
+    // Déduplication des items service par description + montant (sécurité anti-doublon)
+    const seen = new Set<string>();
+    const dedupedServiceItems = serviceItems.filter(item => {
+      const key = `${item.description}|${item.amount}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    const unifiedItems = [...medicationItems, ...dedupedServiceItems];
     const total = unifiedItems.reduce((sum, item) => sum + item.amount, 0);
-    if (!unifiedItems.length) return;
+    if (!unifiedItems.length) { payingRef.current = false; return; }
     const paidAt = new Date().toISOString();
     const inv: Invoice = { id: uuidv4(), patientId: selPatient.id, consultationId: unpaidConsults[0]?.id, clientType: selPatient.clientType, items: unifiedItems, totalAmount: total, patientCharge: total, status: 'paid', paidAt, paidBy: state.currentUser?.id || '', createdAt: paidAt, isExternal: false };
 
@@ -209,6 +221,7 @@ export default function CashierModule({ state, setState, onOpenMessagingWithReci
     }
 
     setSelConsultId(null); setSelPatientId(null);
+    payingRef.current = false;
   };
 
   // LAB items merged: invoices containing lab items are processed in payment queue (no separate lab tab)

@@ -1,7 +1,19 @@
 import type { Invoice, Patient, TicketSettings, User, Prescription, LabRequest, Company, Consultation, PatientJourneyEvent, EchoRequest, HbRecord, PharmaDeliveryClosing } from '../types';
 
-const escapeHtml = (value: string) =>
-  value.replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#039;', '"': '&quot;' }[char] || char));
+/** Échappe les caractères HTML réservés dans une chaîne.
+ *  Décode d'abord les entités HTML déjà présentes pour éviter le
+ *  double-encodage (ex. `Groupe Sanguin &amp; Rhésus` → `&amp;amp;`). */
+const escapeHtml = (value: string) => {
+  // Décoder les entités HTML courantes déjà présentes dans la chaîne
+  const decoded = value
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#039;/g, "'")
+    .replace(/&quot;/g, '"');
+  return decoded.replace(/[&<>'"]/g, (char) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#039;', '"': '&quot;' }[char] || char));
+};
 
 const money = (amount: number) => `${amount.toLocaleString('fr-FR')} Ar`;
 
