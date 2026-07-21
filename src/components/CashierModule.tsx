@@ -51,7 +51,10 @@ export default function CashierModule({ state, setState, onOpenMessagingWithReci
     });
   };
   const [hbSelRecordId, setHbSelRecordId] = useState<string | null>(null);
-  const [hbPayAmount, setHbPayAmount] = useState(0);
+  // 💡 Saisie du montant INDÉPENDANTE par dossier (chaque patient a sa propre saisie)
+  const [hbPayAmounts, setHbPayAmounts] = useState<Record<string, number>>({});
+  // 💡 Historique des paiements (affiché via un bouton dédié)
+  const [hbHistoryId, setHbHistoryId] = useState<string | null>(null);
   const [hbModal, setHbModal] = useState<HbModal>('none');
 
   // HB Modal: patient search/add (ALL fields like reception)
@@ -546,35 +549,38 @@ export default function CashierModule({ state, setState, onOpenMessagingWithReci
 
   const addPartialPay = (recordId: string) => {
     const rec = hbRecords.find(r => r.id === recordId);
-    if (!rec || hbPayAmount <= 0) return;
+    const amount = hbPayAmounts[recordId] || 0;
+    if (!rec || amount <= 0) return;
     const totalFact = rec.lines.reduce((s, l) => s + hbLineAmt(l), 0);
     const totalPaid = rec.payments.reduce((s, p) => s + p.amount, 0);
     const reste = totalFact - totalPaid;
-    if (hbPayAmount > reste) { alert(`Montant supérieur au reste à payer (${formatAr(reste)})`); return; }
+    if (amount > reste) { alert(`Montant supérieur au reste à payer (${formatAr(reste)})`); return; }
+    // 💡 On conserve qui a reçu l'argent : caisse ou pharmacie (selon le rôle de l'utilisateur connecté)
+    const receivedBy: 'caisse' | 'pharmacie' = state.currentUser?.role === 'pharmacy' ? 'pharmacie' : 'caisse';
     const payment = {
-      amount: hbPayAmount,
+      amount,
       paidBy: state.currentUser?.name || '',
       paidByUserId: state.currentUser?.id,
       date: new Date().toISOString(),
+      receivedBy,
     };
     updateHbRecords((prev) => prev.map(r => r.id === recordId ? { ...r, payments: [...r.payments, payment] } : r));
 
     // Imprimer le ticket de paiement pour hospitalisation/bloc
-    const newTotalPaid = totalPaid + hbPayAmount;
+    const newTotalPaid = totalPaid + amount;
     const newReste = totalFact - newTotalPaid;
     const patient = rec.patientId ? state.patients.find(p => p.id === rec.patientId) : undefined;
     printHbPaymentTicket(
       state.ticketSettings,
       rec,
       payment,
-      totalFact,
-      newTotalPaid,
       newReste,
       state.currentUser || undefined,
       patient,
     );
 
-    setHbPayAmount(0);
+    // 💡 Réinitialiser UNIQUEMENT la saisie de CE dossier (les autres restent indépendants)
+    setHbPayAmounts(prev => ({ ...prev, [recordId]: 0 }));
   };
 
   // Edit client type
@@ -933,11 +939,12 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                           </div>
                           <div className="text-xs text-slate-500 mt-0.5">Facture: <strong>{formatAr(totalFact)}</strong> | Payé: <span className="text-green-600">{formatAr(totalPaid)}</span> | Reste: <span className="text-red-600 font-bold">{formatAr(reste)}</span></div>
                         </div>
-                        <div className="flex gap-1 items-center" onClick={e => e.stopPropagation()}>
+                        <div className="flex gap-1 items-center flex-wrap" onClick={e => e.stopPropagation()}>
+                          <button onClick={() => setHbHistoryId(record.id)} title="Historique des paiements" className="px-2 py-1 bg-slate-600 hover:bg-slate-700 text-white rounded text-xs cursor-pointer transition font-medium">📜 Historique{record.payments.length > 0 ? ` (${record.payments.length})` : ''}</button>
                           <button onClick={() => { setHbSelRecordId(record.id); setHbArtSearch(''); setHbArtForm({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: new Date().toISOString().split('T')[0] }); setHbSelLineId(null); setHbIsNew(true); setHbModal('add_article'); }} className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs cursor-pointer transition font-medium">📋 Prescriptions</button>
                           {reste > 0 && <>
-                            <input type="number" min={1} max={reste} value={hbPayAmount || ''} onChange={e => setHbPayAmount(Math.min(parseInt(e.target.value) || 0, reste))} className="w-24 px-2 py-1 border rounded text-xs text-right outline-none" placeholder="Montant" />
-                            <button onClick={() => addPartialPay(record.id)} disabled={hbPayAmount <= 0 || hbPayAmount > reste} className="px-2 py-1 bg-amber-600 text-white rounded text-xs cursor-pointer disabled:opacity-40">💰 Payer</button>
+                            <input type="number" min={1} max={reste} value={hbPayAmounts[record.id] || ''} onChange={e => setHbPayAmounts(prev => ({ ...prev, [record.id]: Math.max(0, Math.min(parseInt(e.target.value) || 0, reste)) }))} className="w-24 px-2 py-1 border rounded text-xs text-right outline-none" placeholder="Montant" />
+                            <button onClick={() => addPartialPay(record.id)} disabled={!hbPayAmounts[record.id] || hbPayAmounts[record.id] > reste} className="px-2 py-1 bg-amber-600 text-white rounded text-xs cursor-pointer disabled:opacity-40">💰 Payer</button>
                           </>}
                         </div>
                       </div>
@@ -945,7 +952,7 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                         <div className="p-3 border-t bg-white">
                           {record.lines.length > 0 && <table className="w-full text-[11px] mb-2"><thead className="bg-slate-100"><tr><th className="p-1 text-left w-16">Date</th><th className="p-1 text-left">Article</th><th className="p-1 text-right">Qté</th><th className="p-1 text-right">P.U.</th><th className="p-1 text-right">Montant</th></tr></thead><tbody>{record.lines.map(l => (<tr key={l.id} className="border-b border-slate-100"><td className="p-1 text-slate-500">{l.dateSort || '—'}</td><td className="p-1">{l.articleName}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 text-right font-mono">{l.unitPrice.toLocaleString('fr-FR')}</td><td className="p-1 text-right font-mono font-bold">{hbLineAmt(l).toLocaleString('fr-FR')}</td></tr>))}</tbody></table>}
                           {record.lines.length === 0 && <p className="text-slate-400 text-xs text-center py-2">Aucun article — cliquez "+ Article"</p>}
-                          {record.payments.length > 0 && <div className="mt-2 text-[10px] text-slate-500 border-t pt-1"><div className="font-bold mb-1">Historique paiements :</div>{record.payments.map((p, i) => (<div key={i}>{new Date(p.date).toLocaleString('fr-FR',{hour:'2-digit',minute:'2-digit'})} — {formatAr(p.amount)} — {p.paidBy}</div>))}</div>}
+                          {record.payments.length > 0 && <div className="mt-2 text-[10px] text-slate-500 border-t pt-1"><div className="font-bold mb-1">Historique paiements :</div>{record.payments.map((p, i) => (<div key={i}>{new Date(p.date).toLocaleString('fr-FR',{hour:'2-digit',minute:'2-digit'})} — {formatAr(p.amount)} — {p.receivedBy === 'pharmacie' ? '🏥 Pharmacie' : '💵 Caisse'} : {p.paidBy}</div>))}</div>}
                         </div>
                       )}
                     </div>
@@ -1330,6 +1337,52 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
           </div>
         </div>
       )}
+
+      {/* Modal Historique des paiements (Hospitalisation / Bloc) */}
+      {hbHistoryId && (() => {
+        const rec = hbRecords.find(r => r.id === hbHistoryId);
+        if (!rec) return null;
+        const totalFact = rec.lines.reduce((s, l) => s + hbLineAmt(l), 0);
+        const totalPaid = rec.payments.reduce((s, p) => s + p.amount, 0);
+        const titleColor = rec.type === 'hospit' ? 'bg-rose-600' : 'bg-blue-600';
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-md bg-white rounded-xl shadow-2xl border border-slate-300 overflow-hidden flex flex-col">
+              <div className={`${titleColor} px-4 py-3 flex justify-between items-center text-white`}>
+                <span className="font-bold text-sm">📜 Historique des paiements — {rec.patientName}</span>
+                <button onClick={() => setHbHistoryId(null)} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button>
+              </div>
+              <div className="p-4 space-y-3">
+                <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                  <div className="p-2 bg-slate-50 rounded"><div className="text-slate-500">Facture</div><div className="font-mono font-bold text-slate-800">{formatAr(totalFact)}</div></div>
+                  <div className="p-2 bg-green-50 rounded"><div className="text-slate-500">Reçu</div><div className="font-mono font-bold text-green-700">{formatAr(totalPaid)}</div></div>
+                  <div className="p-2 bg-red-50 rounded"><div className="text-slate-500">Reste</div><div className="font-mono font-bold text-red-700">{formatAr(totalFact - totalPaid)}</div></div>
+                </div>
+                {rec.payments.length === 0 ? (
+                  <p className="text-center text-slate-400 text-sm py-6">Aucun paiement enregistré pour ce dossier.</p>
+                ) : (
+                  <div className="space-y-2 max-h-[55vh] overflow-y-auto">
+                    {rec.payments.slice().reverse().map((p, i) => (
+                      <div key={i} className="border rounded-lg p-3 bg-white shadow-sm">
+                        <div className="flex justify-between items-center">
+                          <span className="font-mono font-bold text-emerald-700">{formatAr(p.amount)}</span>
+                          <span className="text-[10px] text-slate-400">{new Date(p.date).toLocaleString('fr-FR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}</span>
+                        </div>
+                        <div className="text-xs text-slate-600 mt-1.5 flex items-center gap-1.5">
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${p.receivedBy === 'pharmacie' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                            {p.receivedBy === 'pharmacie' ? '🏥 Pharmacie' : '💵 Caisse'}
+                          </span>
+                          <span>Reçu par : <strong>{p.paidBy || '—'}</strong></span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

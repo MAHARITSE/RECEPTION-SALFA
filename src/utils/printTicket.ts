@@ -655,9 +655,7 @@ export function printDossierTicket(
 export function printHbPaymentTicket(
   settings: TicketSettings,
   record: HbRecord,
-  payment: { amount: number; paidBy: string; date: string },
-  totalFacture: number,
-  totalPaye: number,
+  payment: { amount: number; paidBy: string; date: string; receivedBy?: 'caisse' | 'pharmacie' },
   reste: number,
   cashier?: User,
   patient?: Patient,
@@ -669,37 +667,29 @@ export function printHbPaymentTicket(
     : record.patientName;
   const patientDossier = patient?.dossier || '';
 
+  const receiverRoleLabel = payment.receivedBy === 'pharmacie' ? 'Pharmacie' : 'Caisse';
+  const receiverName = cashier?.name || payment.paidBy;
   const detailRows = [
     patientDossier ? `<div>Dossier : ${escapeHtml(patientDossier)}</div>` : '',
     record.company ? `<div>Société : ${escapeHtml(record.company)}</div>` : '',
-    cashier ? `<div>Caissier : ${escapeHtml(cashier.name)}</div>` : '',
     `<div>Type : ${escapeHtml(typeLabel)}</div>`,
+    `<div>Reçu par (${escapeHtml(receiverRoleLabel)}) : ${escapeHtml(receiverName)}</div>`,
   ].filter(Boolean).join('');
 
-  // Lignes d'articles facturés
-  const articleRows = record.lines.length > 0
-    ? record.lines.map(l => {
-        const lineAmt = Math.round(l.unitPrice * l.quantity * (1 - l.discount / 100));
-        return `<tr><td>${escapeHtml(l.articleName)} × ${l.quantity}${l.discount > 0 ? ` (-${l.discount}%)` : ''}</td><td class="amount">${money(lineAmt)}</td></tr>`;
-      }).join('')
-    : '<tr><td><i>Aucun article</i></td><td class="amount">—</td></tr>';
-
+  // Reçu volontairement minimal : somme reçue + reste à payer,
+  // avec rappel que le montant peut évoluer jour après jour (nouvelles saisies).
   const bodyHtml = `
     <div class="bold">${escapeHtml(patientName)}</div>
     ${detailRows}
     <div class="rule"></div>
-    <div class="bold heading">DÉTAIL FACTURE</div>
-    <table>${articleRows}</table>
-    <div class="rule"></div>
     <table>
-      <tr><td>Total facture</td><td class="amount">${money(totalFacture)}</td></tr>
-      <tr><td>Total déjà payé</td><td class="amount">${money(totalPaye - payment.amount)}</td></tr>
-      <tr class="total"><td>VERSEMENT REÇU</td><td class="amount">${money(payment.amount)}</td></tr>
-      <tr><td>Total payé à ce jour</td><td class="amount">${money(totalPaye)}</td></tr>
-      <tr><td>Reste à payer</td><td class="amount">${money(reste)}</td></tr>
+      <tr class="total"><td>SOMME REÇUE</td><td class="amount">${money(payment.amount)}</td></tr>
+      <tr><td>RESTE À PAYER</td><td class="amount">${money(reste)}</td></tr>
     </table>
+    <div class="rule"></div>
+    <div class="center small">NB : Le montant de ce reçu peut changer chaque jour selon les nouvelles saisies.</div>
     <div class="signature">
-      <span>${escapeHtml(cashier?.name || payment.paidBy)}</span>
+      <span>${escapeHtml(receiverName)}</span>
       <span>Client</span>
     </div>
   `;

@@ -383,7 +383,7 @@ export interface HbRecord {
   company?: string;
   type: 'hospit' | 'bloc';
   lines: HbLine[];
-  payments: { amount: number; paidBy: string; date: string; paidByUserId?: string }[];
+  payments: { amount: number; paidBy: string; date: string; paidByUserId?: string; receivedBy?: 'caisse' | 'pharmacie' }[];
   /** Date d'ouverture du dossier. */
   openedAt?: string;
   /** Qui a ouvert le dossier (caisse / pharmacie de garde). */
