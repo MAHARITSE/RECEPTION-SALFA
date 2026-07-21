@@ -21,10 +21,11 @@ const roleLabels: Record<string, string> = {
   pharmacy: 'Pharmacie',
   magasinier: 'Magasinier',
   laboratory: 'Laboratoire',
+  billing: 'Responsable facturation',
   admin: 'Admin'
 };
 
-const ALL_ROLES: UserRole[] = ['doctor', 'cashier', 'pharmacy', 'magasinier', 'laboratory', 'admin'];
+const ALL_ROLES: UserRole[] = ['doctor', 'cashier', 'pharmacy', 'magasinier', 'laboratory', 'billing', 'admin'];
 
 const LOGO_EMOJIS = ['🍺', '🍻', '🍷', '🍸', '☕', '🍽️', '🏥', '⚕️', '💊', '🔬', '🏨', '🏢', '🩺', '⭐', '❤️', '🛡️'];
 
@@ -683,6 +684,7 @@ export default function AdminModule({ state, setState }: Props) {
                             u.role === 'admin' ? 'bg-purple-100 text-purple-800'
                               : u.role === 'doctor' ? 'bg-blue-100 text-blue-800'
                               : u.role === 'magasinier' ? 'bg-amber-100 text-amber-800'
+                              : u.role === 'billing' ? 'bg-indigo-100 text-indigo-800'
                               : 'bg-slate-100 text-slate-700'
                           }`}>
                             {roleLabels[u.role] || u.role}

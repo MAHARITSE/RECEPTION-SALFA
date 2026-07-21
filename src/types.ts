@@ -1,4 +1,4 @@
-export type UserRole = 'receptionist' | 'doctor' | 'cashier' | 'pharmacy' | 'magasinier' | 'laboratory' | 'admin';
+export type UserRole = 'receptionist' | 'doctor' | 'cashier' | 'pharmacy' | 'magasinier' | 'laboratory' | 'admin' | 'billing';
 export type ClientType = 'comptoir' | 'societe' | 'externe';
 export type ArticleFamily = 'MEDIC' | 'LABO' | 'DENT' | 'ECHO';
 export type PatientStatus = 'registered' | 'waiting_consultation' | 'in_consultation' | 'consulted_awaiting_payment' | 'invoice_paid' | 'medications_delivered' | 'analyses_pending' | 'analyses_complete' | 'completed';
