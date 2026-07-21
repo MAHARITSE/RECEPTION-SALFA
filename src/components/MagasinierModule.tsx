@@ -3,20 +3,21 @@ import { v4 as uuidv4 } from 'uuid';
 import type {
   StockEntry, StockMovement, WarehouseService, InventorySession, InventoryLine,
   StockLocation, Article, ArticleFamily, Fournisseur, Famille,
-  MovementType
+  MovementHeader, MovementLine, MovementType
 } from '../types';
 import type { AppState } from '../store';
 import {
   addAuditLog, addNotification, formatAr, ARTICLE_FAMILIES, familyLabel,
+  transferCategoryLabel, TRANSFER_CATEGORIES,
   applyStockDelta, getArticleStock, locationLabel,
   createMovementWithLines,
 } from '../store';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
 import {
-  Package, PackageCheck, PackagePlus, Search, Truck, Plus, Trash2, Check,
-  Filter, X, ClipboardList,
-  Settings2, Tag, DollarSign, Edit2,
-  Bell, BellOff
+  Package, PackageCheck, PackagePlus, Search, Truck, Plus, Trash2, Save, Check,
+  Filter, X, ArrowUpFromLine, ArrowLeftRight, ClipboardList,
+  Building2, Settings2, Layers, Tag, DollarSign, Edit2, ShieldAlert,
+  Calendar, CreditCard, ShoppingBag, Barcode, Bell, BellOff
 } from 'lucide-react';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
@@ -64,8 +65,8 @@ export default function MagasinierModule({ state, setState }: Props) {
   });
 
   // Grille tarifaire directe
-  // const [editingPricesArtId, setEditingPricesArtId] = useState<string | null>(null);
-  // const [editPrices, _setEditPrices] = useState({ purchasePrice: 0, priceComptoir: 0, priceSociete: 0, priceExterne: 0 });
+  const [editingPricesArtId, setEditingPricesArtId] = useState<string | null>(null);
+  const [editPrices, setEditPrices] = useState({ purchasePrice: 0, priceComptoir: 0, priceSociete: 0, priceExterne: 0 });
 
   // === FAMILLES ===
   const [showFamModal, setShowFamModal] = useState(false);
@@ -82,13 +83,13 @@ export default function MagasinierModule({ state, setState }: Props) {
   const [selectedSupplierId, setSelectedSupplierId] = useState('');
   const [invoiceRef, setInvoiceRef] = useState('');
   const [purchaseLines, setPurchaseLines] = useState<{ id: string; articleId: string; articleName: string; family: any; quantity: number; purchasePrice: number; expiryDate: string; amount: number; }[]>([]);
-  // const [purchaseSelLineId, setPurchaseSelLineId] = useState<string | null>(null);
+  const [purchaseSelLineId, setPurchaseSelLineId] = useState<string | null>(null);
   const [purchaseIsNew, setPurchaseIsNew] = useState(true);
   const [purchaseForm, setPurchaseForm] = useState({ id: '', articleId: '', articleName: '', family: 'MEDIC', quantity: 1, purchasePrice: 0, expiryDate: '' });
   const [purchaseSearch, setPurchaseSearch] = useState('');
   const [purchaseSearchIdx, setPurchaseSearchIdx] = useState(0);
   const purchaseSearchRef = useRef<HTMLInputElement>(null);
-  const [entryCatFilter, _setEntryCatFilter] = useState<string>('all');
+  const [entryCatFilter, setEntryCatFilter] = useState<string>('all');
 
   // Demandes & dispersion
   const [reqFilter, setReqFilter] = useState<'all' | 'pharmacy' | 'other'>('all');
@@ -103,7 +104,7 @@ export default function MagasinierModule({ state, setState }: Props) {
   const [exitReason, setExitReason] = useState('');
   const [exitFrom, setExitFrom] = useState<StockLocation>('central');
   const [movSub, setMovSub] = useState<'transfer' | 'exit' | 'history'>('transfer');
-  const [movFilter, _setMovFilter] = useState<'all' | StockMovement['type']>('all');
+  const [movFilter, setMovFilter] = useState<'all' | StockMovement['type']>('all');
 
   // Inventaire
   const [invLocation, setInvLocation] = useState<StockLocation>('central');
@@ -199,8 +200,7 @@ export default function MagasinierModule({ state, setState }: Props) {
     showToast('Article supprimé');
   };
 
-  /*
-  const _saveQuickPrices = () => {
+  const saveQuickPrices = () => {
     if (!editingPricesArtId) return;
     setState(prev => {
       const next = {
@@ -213,7 +213,6 @@ export default function MagasinierModule({ state, setState }: Props) {
     setEditingPricesArtId(null);
     showToast('Tarifs mis à jour');
   };
-  */
 
   // Stock d'alerte : modification rapide du seuil central (par article)
   const updateCentralAlertThreshold = (articleId: string, value: number) => {
@@ -345,7 +344,7 @@ export default function MagasinierModule({ state, setState }: Props) {
       expiryDate: a.expiryDate || '',
     });
     setPurchaseIsNew(true);
-    // setPurchaseSelLineId(null);
+    setPurchaseSelLineId(null);
     setPurchaseSearch('');
     setTimeout(() => {
       const qtyInput = document.getElementById('purchase-qty-input');
@@ -378,19 +377,17 @@ export default function MagasinierModule({ state, setState }: Props) {
 
   const purchaseNew = () => {
     setPurchaseForm({ id: '', articleId: '', articleName: '', family: 'MEDIC', quantity: 1, purchasePrice: 0, expiryDate: '' });
-    // setPurchaseSelLineId(null);
+    setPurchaseSelLineId(null);
     setPurchaseIsNew(true);
     setPurchaseSearch('');
     setTimeout(() => purchaseSearchRef.current?.focus(), 50);
   };
 
-  /*
-  const _purchaseDeleteLine = () => {
+  const purchaseDeleteLine = () => {
     if (!purchaseSelLineId) return;
     setPurchaseLines(purchaseLines.filter((l) => l.id !== purchaseSelLineId));
     purchaseNew();
   };
-  */
 
   const validatePurchase = () => {
     if (purchaseLines.length === 0) return;
@@ -416,7 +413,7 @@ export default function MagasinierModule({ state, setState }: Props) {
         reason: `Achat ${supName}`,
       }));
 
-      const { header: _achatHeader } = createMovementWithLines(
+      const { header: achatHeader } = createMovementWithLines(
         prev,
         {
           type: 'achat' as MovementType,
