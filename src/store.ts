@@ -1464,6 +1464,35 @@ export const seedLabCatalog: LabExamCatalog[] = [
   { id: uuidv4(), code: 'IMM002', name: 'IgE totales', category: 'immunologie', parameters: ['IgE'], sampleType: 'Sang (sérum)', priceComptoir: 15000, priceSociete: 13000, priceExterne: 18000, urgentPrice: 24000, durationHours: 24 },
 ];
 
+/**
+ * Suppression définitive d'un patient depuis une file d'attente (médecin ou caisse).
+ * Le dossier patient est supprimé AVEC ses paramètres vitaux, ainsi que tout ce qui
+ * n'est pas encore encaissé : factures en attente, demandes d'analyses non payées et
+ * consultations non réglées (leurs demandes labo/écho embarquées partent avec).
+ * Les éléments déjà payés (historique financier / clôture Z) sont conservés.
+ */
+export function purgePatientFromQueue(state: AppState, patientId: string): void {
+  // Consultations déjà réglées (facture payée liée) — l'historique financier est conservé
+  const paidConsultIds = new Set(
+    state.invoices
+      .filter((i) => i.patientId === patientId && i.status === 'paid' && i.consultationId)
+      .map((i) => i.consultationId as string)
+  );
+  // Factures jamais encaissées : supprimées (aucune écriture de caisse à préserver)
+  state.invoices = state.invoices.filter((i) => !(i.patientId === patientId && i.status === 'pending'));
+  // Demandes d'analyses non payées : supprimées (elles n'attendent plus en caisse/labo)
+  state.labRequests = state.labRequests.filter((lr) => !(lr.patientId === patientId && lr.status === 'pending'));
+  // Consultations non réglées : supprimées avec leurs éventuelles demandes labo/écho
+  state.consultations = state.consultations.filter((c) => !(c.patientId === patientId && !paidConsultIds.has(c.id)));
+  // Miroir unifié des ventes : on ne retire que les ventes encore en attente du patient
+  const pendingVenteIds = new Set(state.ventes.filter((v) => v.patientId === patientId && v.status === 'pending').map((v) => v.id));
+  state.ventes = state.ventes.filter((v) => !pendingVenteIds.has(v.id));
+  state.venteLines = state.venteLines.filter((l) => !pendingVenteIds.has(l.venteId));
+  state.ventePayments = state.ventePayments.filter((p) => !pendingVenteIds.has(p.venteId));
+  // Le dossier patient (avec ses paramètres vitaux) est supprimé
+  state.patients = state.patients.filter((p) => p.id !== patientId);
+}
+
 /** Ajoute un événement au parcours patient (timeline). */
 export function addJourneyEvent(
   s: AppState,
