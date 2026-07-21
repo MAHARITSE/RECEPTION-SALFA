@@ -63,7 +63,36 @@ export default function ModuleMedecin({ state, setState }: Props) {
   const [echoSearchIdx, setEchoSearchIdx] = useState(0);
   const echoSearchRef = useRef<HTMLInputElement>(null);
 
-  const myWaiting = state.patients.filter((p) => (!p.assignedDoctor || p.assignedDoctor === state.currentUser?.id) && p.status === 'waiting_consultation');
+  const getPatientStatusBadge = (status: PatientStatus) => {
+    switch (status) {
+      case 'waiting_consultation': return { label: 'En attente', color: 'bg-amber-100 text-amber-700' };
+      case 'in_consultation': return { label: 'En consultation', color: 'bg-blue-100 text-blue-700' };
+      case 'consulted_awaiting_payment': return { label: 'Attente Paiement', color: 'bg-purple-100 text-purple-700' };
+      case 'invoice_paid': return { label: 'Payé', color: 'bg-emerald-100 text-emerald-700' };
+      case 'analyses_pending': return { label: 'Analyses en cours', color: 'bg-cyan-100 text-cyan-700' };
+      case 'analyses_complete': return { label: 'Analyses terminées', color: 'bg-green-100 text-green-700' };
+      case 'medications_delivered': return { label: 'Médicaments livrés', color: 'bg-emerald-100 text-emerald-700' };
+      case 'completed': return { label: 'Terminé', color: 'bg-slate-100 text-slate-700' };
+      default: return { label: status, color: 'bg-slate-100 text-slate-600' };
+    }
+  };
+
+  const myWaiting = state.patients
+    .filter((p) => (!p.assignedDoctor || p.assignedDoctor === state.currentUser?.id) && p.status !== 'registered')
+    .sort((a, b) => {
+      const score = (s: PatientStatus) => {
+        if (s === 'waiting_consultation') return 1;
+        if (s === 'analyses_complete') return 2;
+        if (s === 'in_consultation') return 3;
+        if (s === 'analyses_pending') return 4;
+        if (s === 'consulted_awaiting_payment') return 5;
+        if (s === 'invoice_paid') return 6;
+        if (s === 'medications_delivered') return 7;
+        if (s === 'completed') return 8;
+        return 9;
+      };
+      return score(a.status) - score(b.status);
+    });
   const searchResults = searchQuery.length >= 2 ? state.patients.filter((p) => { const q = searchQuery.toLowerCase(); return p.firstName.toLowerCase().includes(q) || p.lastName.toLowerCase().includes(q) || p.dossier.toLowerCase().includes(q); }) : [];
   const selectedPatient = state.patients.find((p) => p.id === selectedPatientId);
   const patientConsultations = selectedPatientId ? state.consultations.filter((c) => c.patientId === selectedPatientId) : [];
@@ -132,6 +161,10 @@ export default function ModuleMedecin({ state, setState }: Props) {
   const totalPres = lines.reduce((s, l) => s + lineAmount(l), 0);
 
   const selectPatient = (pid: string) => {
+    if (pid === selectedPatientId) {
+      setView('consultation');
+      return;
+    }
     const p = state.patients.find((x) => x.id === pid);
     submittingRef.current = false;
     editSnapshotRef.current = null;
@@ -531,20 +564,26 @@ export default function ModuleMedecin({ state, setState }: Props) {
             <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
               <div className="p-3 border-b bg-amber-50"><h3 className="font-semibold text-sm"><Clock className="w-4 h-4 inline text-amber-500" /> File ({myWaiting.length})</h3></div>
               <div className="divide-y max-h-[500px] overflow-y-auto">{myWaiting.length === 0 ? <div className="p-6 text-center text-slate-400 text-sm">Aucun</div>
-                : myWaiting.map((p) => (
-                  <div key={p.id} onClick={() => selectPatient(p.id)} className="p-3 cursor-pointer hover:bg-emerald-50 flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="font-medium text-sm">{p.lastName} {p.firstName}</div>
-                      <div className="text-xs text-slate-500">{p.dossier}{p.company ? ` • ${p.company}` : ''}</div>
-                      {p.allergies.length > 0 && <div className="text-xs text-red-600"><AlertTriangle className="w-3 h-3 inline" /> {p.allergies.join(', ')}</div>}
+                : myWaiting.map((p) => {
+                  const stBadge = getPatientStatusBadge(p.status);
+                  return (
+                    <div key={p.id} onClick={() => selectPatient(p.id)} className="p-3 cursor-pointer hover:bg-emerald-50 flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <div className="font-medium text-sm">{p.lastName} {p.firstName}</div>
+                          <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${stBadge.color}`}>{stBadge.label}</span>
+                        </div>
+                        <div className="text-xs text-slate-500">{p.dossier}{p.company ? ` • ${p.company}` : ''}</div>
+                        {p.allergies.length > 0 && <div className="text-xs text-red-600"><AlertTriangle className="w-3 h-3 inline" /> {p.allergies.join(', ')}</div>}
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); deleteWaitingPatient(p.id); }}
+                        className="shrink-0 p-1.5 rounded-lg text-rose-500 hover:bg-rose-100 hover:text-rose-700 cursor-pointer transition"
+                        title="Retirer la consultation de la file — dossier conservé"
+                      ><Trash2 className="w-4 h-4" /></button>
                     </div>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); deleteWaitingPatient(p.id); }}
-                      className="shrink-0 p-1.5 rounded-lg text-rose-500 hover:bg-rose-100 hover:text-rose-700 cursor-pointer transition"
-                      title="Retirer la consultation de la file — dossier conservé"
-                    ><Trash2 className="w-4 h-4" /></button>
-                  </div>
-                ))}</div>
+                  );
+                })}</div>
             </div>
           </div>
           <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border p-12 text-center text-slate-400"><Stethoscope className="w-16 h-16 mx-auto mb-4 opacity-30" /><p>Sélectionnez un patient</p></div>
