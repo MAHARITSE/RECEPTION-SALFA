@@ -9,7 +9,7 @@ import {
 import { printLabResultTicket } from '../utils/printTicket';
 import {
   FlaskConical, Clock, CheckCircle, AlertTriangle, Send, Microscope, FileSearch,
-  Plus, Search, X, Printer, Syringe, Check,
+  Plus, Search, Printer, Syringe, Check,
 } from 'lucide-react';
 
 interface Props {

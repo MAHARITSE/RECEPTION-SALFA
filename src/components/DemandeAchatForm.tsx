@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Article, TransferCategory } from '../types';
 import { familyLabel, formatAr, transferCategoryLabel, transferCategoryColor, TRANSFER_CATEGORIES } from '../store';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
-import { Plus, Trash2, Save, X, Send, Edit3 } from 'lucide-react';
+import { Plus, Trash2, Save, Send, Edit3 } from 'lucide-react';
 
 export interface ReqLine {
   id: string;
