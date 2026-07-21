@@ -674,3 +674,22 @@ ventes ──N:1──> users (createdBy, paidBy)
 - Pour basculer un module de `invoices` vers `ventes`, remplacer les accès `state.invoices` par `state.ventes` et utiliser `createVente` / `addVentePayment`.
 - Lorsqu'un module crée une vente, il lui est recommandé d'écrire en double dans `invoices` le temps de la migration complète (ou d'utiliser le helper `createVente` et de conserver une référence croisée via `legacyInvoiceId`).
 - `dateSort` reste une date métier saisie par l'utilisateur. Il ne faut pas la confondre avec `createdAt` (date technique de création).
+
+---
+
+## 26. Démonstration synthétique déterministe et crédit société
+
+`src/data/massiveDemoData.ts` est la seule source du jeu de démonstration initial. Il utilise une graine fixe et des IDs déterministes; aucune donnée personnelle réelle n'est intégrée. Les couples `patients.lastName + patients.firstName`, les dossiers (`DOS-…`), matricules et numéros de facture sont uniques. Les données sont distribuées entre le 21/07/2024 et le 21/07/2026.
+
+### Facturation société / crédit
+
+| Structure | Relations et rôle |
+|---|---|
+| `companies` | `paymentMode = Crédit` obligatoire; `settlementMode` vaut `monthly_global` ou `per_invoice`. |
+| `patients.company` | FK logique vers une société pour un salarié conventionné; `matricule` identifie le salarié fictif. |
+| `invoices` / `ventes` | Référencent le patient, la consultation et, pour le crédit, la société. |
+| `companyBillingAccounts` | Relevé mensuel : `company`, `month`, `invoiceIds`, totaux, solde et statut. |
+| `CompanyBillingPayment` | Règlement d'un relevé global mensuel, avec mode, référence, date et factures concernées. |
+| `ventePayments` | Règlements individuels/partiels des ventes ou factures. |
+
+Les tableaux de l'interface doivent appliquer recherche, filtres de date et pagination/limitation avant d'afficher ce volume de démonstration.
