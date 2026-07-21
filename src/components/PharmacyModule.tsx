@@ -4,7 +4,7 @@ import type { AppState } from '../store';
 import type { TransferCategory, StockTransfer } from '../types';
 import { addAuditLog, addNotification, formatAr, familyLabel, transferCategoryLabel, transferCategoryColor, addJourneyEvent, isArticleSaleable, createMovementWithLines, generatePharmaClosingNumber } from '../store';
 import type { MovementType } from '../types';
-import { printDeliveryTicket, printPharmaSalesRecapTicket } from '../utils/printTicket';
+import { printDeliveryTicket, printPharmaDeliveryClosingTicket, printPharmaSalesRecapTicket } from '../utils/printTicket';
 import DemandeAchatForm, { type ReqLine } from './DemandeAchatForm';
 import CashierModule from './CashierModule';
 import {
@@ -36,6 +36,7 @@ export default function PharmacyModule({ state, setState, onOpenMessagingWithRec
   const [selConsultId, setSelConsultId] = useState<string | null>(null);
   // Sous-onglets de la "Liste après validation" : récap par article (défaut) / livraisons détaillées
   const [deliverySub, setDeliverySub] = useState<'recap' | 'detail'>('recap');
+  const [closingDetailsModal, setClosingDetailsModal] = useState<import('../types').PharmaDeliveryClosing | null>(null);
 
   // Reappro Modal State
   const [reapproModalOpen, setReapproModalOpen] = useState(false);
