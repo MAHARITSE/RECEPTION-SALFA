@@ -50,10 +50,14 @@ export default function DoctorModule({ state, setState }: Props) {
   // ---- Demandes d'analyses (Laboratoire) saisies par le médecin ----
   const [labSearch, setLabSearch] = useState('');
   const [labDraft, setLabDraft] = useState<{ examId: string; urgent: boolean }[]>([]);
+  const [labSearchIdx, setLabSearchIdx] = useState(0);
+  const labSearchRef = useRef<HTMLInputElement>(null);
 
   // ---- Demandes d'échographie ----
   const [echoSearch, setEchoSearch] = useState('');
   const [echoDraft, setEchoDraft] = useState<{ examId: string; urgent: boolean; notes?: string }[]>([]);
+  const [echoSearchIdx, setEchoSearchIdx] = useState(0);
+  const echoSearchRef = useRef<HTMLInputElement>(null);
 
   const myWaiting = state.patients.filter((p) => (!p.assignedDoctor || p.assignedDoctor === state.currentUser?.id) && p.status === 'waiting_consultation');
   const searchResults = searchQuery.length >= 2 ? state.patients.filter((p) => { const q = searchQuery.toLowerCase(); return p.firstName.toLowerCase().includes(q) || p.lastName.toLowerCase().includes(q) || p.dossier.toLowerCase().includes(q); }) : [];
@@ -152,6 +156,34 @@ export default function DoctorModule({ state, setState }: Props) {
     else if (e.key === 'Escape') { setArticleSearch(''); }
   };
 
+  // Keyboard navigation in lab search dropdown
+  const handleLabSearchKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setLabSearchIdx(i => Math.min(i + 1, labFiltered.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setLabSearchIdx(i => Math.max(i - 1, 0)); }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (labFiltered.length > 0 && labSearch) {
+        const ex = labFiltered[labSearchIdx];
+        if (ex) addLabExam(ex.id);
+      }
+    }
+    else if (e.key === 'Escape') { setLabSearch(''); }
+  };
+
+  // Keyboard navigation in echo search dropdown
+  const handleEchoSearchKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setEchoSearchIdx(i => Math.min(i + 1, echoFiltered.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setEchoSearchIdx(i => Math.max(i - 1, 0)); }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (echoFiltered.length > 0 && echoSearch) {
+        const ex = echoFiltered[echoSearchIdx];
+        if (ex) addEchoExam(ex.id);
+      }
+    }
+    else if (e.key === 'Escape') { setEchoSearch(''); }
+  };
+
   const handleArticleSelect = (articleId: string) => {
     const a = state.articles.find((x) => x.id === articleId);
     if (!a) return;
@@ -197,6 +229,18 @@ export default function DoctorModule({ state, setState }: Props) {
     if (!c) return;
     setSelectedPatientId(c.patientId); setConsultForm({ visitReason: c.visitReason, diagnosis: c.diagnosis, notes: c.notes, isEmergency: c.isEmergency, hospitalizeRequested: c.hospitalizeRequested, surgeryRequested: c.surgeryRequested });
     setVitals({ ...c.vitalSigns }); setLines([...c.prescriptions]); setView('consultation');
+    // Restaurer les demandes d'analyses labo dans le brouillon
+    const restoredLabDraft = (c.labRequests || []).map((lr) => {
+      const catalogMatch = state.labCatalog.find((e) => e.name === lr.examType && e.code === lr.code);
+      return catalogMatch ? { examId: catalogMatch.id, urgent: lr.urgent } : null;
+    }).filter((d): d is { examId: string; urgent: boolean } => d !== null);
+    setLabDraft(restoredLabDraft); setLabSearch(''); setLabSearchIdx(0);
+    // Restaurer les demandes d'échographie dans le brouillon
+    const restoredEchoDraft = (c.echoRequests || []).map((er) => {
+      const catalogMatch = ECHO_CATALOG.find((e) => e.name === er.examType);
+      return catalogMatch ? { examId: catalogMatch.id, urgent: er.urgent, notes: er.notes || '' } : null;
+    }).filter((d): d is { examId: string; urgent: boolean; notes: string } => d !== null);
+    setEchoDraft(restoredEchoDraft); setEchoSearch(''); setEchoSearchIdx(0);
     setState((prev) => ({ ...prev, consultations: prev.consultations.filter((x) => x.id !== cid), patients: prev.patients.map((p) => p.id === c.patientId ? { ...p, status: 'in_consultation' as const } : p) }));
   };
 
@@ -448,13 +492,13 @@ export default function DoctorModule({ state, setState }: Props) {
                 </div>
                 <div className="relative mb-2">
                   <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-                  <input type="text" value={labSearch} onChange={(e) => setLabSearch(e.target.value)} className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-cyan-500 text-sm" placeholder="Rechercher analyse (NFS, Glycémie...)" />
+                  <input ref={labSearchRef} type="text" value={labSearch} onChange={(e) => { setLabSearch(e.target.value); setLabSearchIdx(0); }} onKeyDown={handleLabSearchKeyDown} className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-cyan-500 text-sm" placeholder="Rechercher analyse (NFS, Glycémie...) ↑↓ ↵" />
                   {labSearch.length >= 1 && labFiltered.length > 0 && (
                     <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 rounded-b shadow-xl z-30 max-h-48 overflow-y-auto">
-                      {labFiltered.map((e) => {
+                      {labFiltered.map((e, idx) => {
                         const already = labDraft.some((d) => d.examId === e.id);
                         return (
-                          <div key={e.id} onClick={() => addLabExam(e.id)} className={`px-3 py-1.5 cursor-pointer text-xs flex justify-between border-b border-slate-100 ${already ? 'opacity-40 bg-slate-50' : 'hover:bg-cyan-50'}`}>
+                          <div key={e.id} onClick={() => addLabExam(e.id)} className={`px-3 py-1.5 cursor-pointer text-xs flex justify-between border-b border-slate-100 ${already ? 'opacity-40 bg-slate-50' : idx === labSearchIdx ? 'bg-cyan-100' : 'hover:bg-cyan-50'}`}>
                             <span><span className="text-[9px] text-slate-400 mr-1">[{e.code}]</span> {e.name} <span className="text-slate-400">· {labCategoryLabel(e.category)}</span></span>
                             <span className="font-mono text-cyan-600 font-semibold">{formatAr(clientType === 'societe' ? e.priceSociete : clientType === 'externe' ? e.priceExterne : e.priceComptoir)}</span>
                           </div>
@@ -504,13 +548,13 @@ export default function DoctorModule({ state, setState }: Props) {
                 </div>
                 <div className="relative mb-2">
                   <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-                  <input type="text" value={echoSearch} onChange={(e) => setEchoSearch(e.target.value)} className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-sm" placeholder="Rechercher échographie (Abdominale, Pelvienne...)" />
+                  <input ref={echoSearchRef} type="text" value={echoSearch} onChange={(e) => { setEchoSearch(e.target.value); setEchoSearchIdx(0); }} onKeyDown={handleEchoSearchKeyDown} className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-sm" placeholder="Rechercher échographie (Abdominale, Pelvienne...) ↑↓ ↵" />
                   {echoSearch.length >= 1 && echoFiltered.length > 0 && (
                     <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 rounded-b shadow-xl z-30 max-h-48 overflow-y-auto">
-                      {echoFiltered.map((e) => {
+                      {echoFiltered.map((e, idx) => {
                         const already = echoDraft.some((d) => d.examId === e.id);
                         return (
-                          <div key={e.id} onClick={() => addEchoExam(e.id)} className={`px-3 py-1.5 cursor-pointer text-xs flex justify-between border-b border-slate-100 ${already ? 'opacity-40 bg-slate-50' : 'hover:bg-indigo-50'}`}>
+                          <div key={e.id} onClick={() => addEchoExam(e.id)} className={`px-3 py-1.5 cursor-pointer text-xs flex justify-between border-b border-slate-100 ${already ? 'opacity-40 bg-slate-50' : idx === echoSearchIdx ? 'bg-indigo-100' : 'hover:bg-indigo-50'}`}>
                             <span><span className="text-[9px] text-slate-400 mr-1">[{e.code}]</span> {e.name}</span>
                             <span className="font-mono text-indigo-600 font-semibold">{formatAr(clientType === 'societe' ? e.priceSociete : clientType === 'externe' ? e.priceExterne : e.priceComptoir)}</span>
                           </div>
