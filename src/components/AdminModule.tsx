@@ -3,11 +3,11 @@ import type { UserRole, TicketSettings } from '../types';
 import { formatAr, addAuditLog, migrateLegacyToVentes, createInitialState } from '../store';
 import type { AppState } from '../store';
 import {
-  Save, Trash2, Plus, X, Check, Download, Upload,
+  Trash2, Plus, X, Check, Download, Upload,
   Eye, Settings as SettingsIcon, Users, Building2,
   Receipt, FileText, Shield, Database, Printer, Image as ImageIcon,
   CreditCard, AlertCircle, Search, RefreshCw, Copy, Activity,
-  Key, Edit2, Smile
+  Key
 } from 'lucide-react';
 import { WINDEV_PROMPT, WEB_PROMPT } from '../data/promptsData';
 
@@ -815,6 +815,16 @@ export default function AdminModule({ state, setState }: Props) {
                     <Upload className="w-4 h-4" /> Sélectionner un fichier
                   </button>
                 </div>
+              </div>
+
+              <div className="p-5 border-2 border-emerald-400 rounded-xl bg-gradient-to-br from-emerald-50 to-teal-100 space-y-3 shadow-sm">
+                <h4 className="font-bold text-emerald-900 flex items-center gap-2 text-sm"><Database className="w-5 h-5 text-emerald-700" /> 🚀 Grand jeu de données de démonstration (+100 enregistrements)</h4>
+                <p className="text-xs text-emerald-800 leading-relaxed">
+                  Recharge ou injecte le jeu complet de données de démonstration dans l'application : <strong>120+ dossiers patients</strong>, <strong>100+ consultations</strong>, <strong>80+ factures et ventes unifiées</strong>, <strong>45+ analyses de laboratoire</strong> avec résultats, dossiers d'hospitalisation et bloc, livraisons pharmacie, mouvements de stock et historique complet.
+                </p>
+                <button onClick={resetAllDatabase} className="px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-bold text-xs cursor-pointer flex items-center gap-2 shadow-md border border-emerald-600">
+                  <RefreshCw className="w-4 h-4" /> Charger / Recharger les +100 données de démonstration
+                </button>
               </div>
 
               <div className="p-5 border-2 border-rose-200 rounded-xl bg-rose-50 space-y-3">

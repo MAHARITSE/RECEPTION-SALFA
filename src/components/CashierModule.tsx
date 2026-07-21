@@ -349,6 +349,8 @@ export default function CashierModule({ state, setState, onOpenMessagingWithReci
         date: new Date().toISOString(),
         visitReason: 'Vente externe — Pharmacie',
         diagnosis: 'Client Externe',
+        notes: 'Vente directe sans consultation',
+        vitalSigns: { temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' },
         prescriptions,
         labRequests: [],
         hospitalizeRequested: false,

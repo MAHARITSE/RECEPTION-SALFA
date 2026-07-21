@@ -6,7 +6,7 @@ import { printDossierTicket, printLabResultTicket } from '../utils/printTicket';
 import PatientJourney from './PatientJourney';
 import {
   ArrowLeft, Printer, Search, FileText, FlaskConical, Stethoscope,
-  Building2, Receipt, Route, AlertTriangle, Droplets, Pill,
+  Receipt, Route, AlertTriangle, Droplets, Pill,
 } from 'lucide-react';
 
 interface Props {

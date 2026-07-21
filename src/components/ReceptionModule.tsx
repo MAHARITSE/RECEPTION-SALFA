@@ -6,7 +6,7 @@ import { generateDossierNumber, calculateAge, addAuditLog, addNotification, addJ
 import { printQueueTicket } from '../utils/printTicket';
 import {
   Search, Plus, Edit, Trash2, UserX, Activity,
-  X, Check, Ban, Users, LogIn, Hospital,
+  Check, Ban, Users, LogIn, Hospital,
   Stethoscope, MessageCircle, Info, FileWarning
 } from 'lucide-react';
 

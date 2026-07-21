@@ -217,12 +217,6 @@ export default function DoctorModule({ state, setState }: Props) {
     // Si on est en mode édition d'une ligne existante, on met à jour cette ligne (même id) au lieu de créer un doublon
     if (!isNewLine && selectedLineId && lines.find(l => l.id === selectedLineId)) {
       const existing = lines.find(l => l.id === selectedLineId)!;
-      const updated: Prescription = {
-        ...existing,
-        articleId: a.id,
-        articleName: a.name,
-        unitPrice: getPrice(a, clientType),
-      };
       // On garde la quantité / posologie déjà saisies si l'utilisateur était en train d'éditer
       // Mais si lineForm est déjà l'édition de cette ligne, on préfère garder les valeurs de lineForm pour quantité etc.
       // Pour éviter toute confusion, on met à jour lineForm directement avec le nouvel article tout en conservant l'id d'origine
