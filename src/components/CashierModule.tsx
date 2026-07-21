@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription } from '../types';
 import type { AppState } from '../store';
-import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber, addJourneyEvent, generatePharmaClosingNumber } from '../store';
+import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber, addJourneyEvent, generatePharmaClosingNumber, purgePatientFromQueue } from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send } from 'lucide-react';
 import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket } from '../utils/printTicket';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
@@ -98,6 +98,22 @@ export default function CashierModule({ state, setState, onOpenMessagingWithReci
   );
   const selConsult = state.consultations.find(c => c.id === selConsultId);
   const selPatient = state.patients.find(p => p.id === (selPatientId || selConsult?.patientId)) || null;
+
+  // Suppression définitive d'un patient de la file caisse — avec ses paramètres vitaux,
+  // ses consultations non réglées et ses factures en attente (le payé est conservé).
+  const removePendingPatient = (pid: string) => {
+    const p = state.patients.find((x) => x.id === pid);
+    if (!p) return;
+    if (!confirm(`Supprimer définitivement ${p.lastName} ${p.firstName} (${p.dossier}) de la file caisse ?\n\n⚠️ Le dossier sera supprimé avec ses paramètres, ses consultations non réglées et ses factures en attente.`)) return;
+    setState((prev) => {
+      const next = { ...prev };
+      purgePatientFromQueue(next, pid);
+      addAuditLog(next, 'SUPPRESSION_FILE_CAISSE', `${p.lastName} ${p.firstName} (${p.dossier}) supprimé de la file caisse — paramètres + factures en attente inclus`, pid);
+      addJourneyEvent(next, { patientId: pid, department: 'caisse', action: 'Supprimé de la file caisse', details: `Facturation en attente annulée — dossier supprimé par ${prev.currentUser?.name || 'la caisse'}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name });
+      return next;
+    });
+    if (selPatientId === pid) { setSelPatientId(null); setSelConsultId(null); }
+  };
 
   const handlePayment = () => {
     if (!selPatient) return;
@@ -769,7 +785,17 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                     const unpaid = getConsults(p.id);
                     const amount = getPendingAmount(p);
                     return <div key={p.id} className={`p-3 cursor-pointer hover:bg-slate-50 ${selPatientId === p.id ? 'bg-amber-50 border-l-4 border-amber-500' : ''}`} onClick={() => { setSelPatientId(p.id); setSelConsultId(unpaid[0]?.id || null); }}>
-                      <div className="flex justify-between items-start"><div><div className="font-medium text-sm">{p.lastName} {p.firstName}</div><div className="text-xs text-slate-500">{unpaid[0]?.doctorName || 'Analyses laboratoire'}</div></div><div className="font-mono font-bold text-sm text-amber-700">{formatAr(amount)}</div></div>
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="min-w-0"><div className="font-medium text-sm">{p.lastName} {p.firstName}</div><div className="text-xs text-slate-500">{unpaid[0]?.doctorName || 'Analyses laboratoire'}</div></div>
+                        <div className="flex items-start gap-1 shrink-0">
+                          <div className="font-mono font-bold text-sm text-amber-700">{formatAr(amount)}</div>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); removePendingPatient(p.id); }}
+                            className="p-1 rounded-lg text-rose-500 hover:bg-rose-100 hover:text-rose-700 cursor-pointer transition"
+                            title="Supprimer de la file caisse — dossier + paramètres + factures en attente supprimés"
+                          ><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                      </div>
                       <div className="flex gap-1 mt-1 flex-wrap">
                         <span className="px-1 py-0.5 bg-cyan-100 text-cyan-700 text-[10px] rounded">Médicaments</span>
                         <span className="px-1 py-0.5 bg-teal-100 text-teal-700 text-[10px] rounded">Analyses</span>

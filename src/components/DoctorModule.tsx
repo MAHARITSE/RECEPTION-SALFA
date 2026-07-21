@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { Consultation, VitalSigns, Prescription, LabRequest, ClientType, Invoice, EchoRequest } from '../types';
+import type { Consultation, VitalSigns, Prescription, LabRequest, ClientType, Invoice, EchoRequest, PatientStatus } from '../types';
 import type { AppState } from '../store';
-import { addAuditLog, addNotification, formatAr, getPrice, addJourneyEvent, labCategoryLabel } from '../store';
+import { addAuditLog, addNotification, formatAr, getPrice, addJourneyEvent, labCategoryLabel, purgePatientFromQueue } from '../store';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
 import { Stethoscope, History, Trash2, AlertTriangle, Heart, FileText, Clock, CheckCircle, Send, Search, Edit2, RotateCcw, Save, FlaskConical, Scan } from 'lucide-react';
 
@@ -47,6 +47,9 @@ export default function DoctorModule({ state, setState }: Props) {
   const [isNewLine, setIsNewLine] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const submittingRef = useRef(false);
+  // Snapshot de la consultation ouverte via le bouton « Mod. » : permet de la
+  // restaurer si l'utilisateur quitte par « Retour » sans rien valider.
+  const editSnapshotRef = useRef<{ consultation: Consultation; invoices: Invoice[]; labRequests: LabRequest[]; previousStatus: PatientStatus } | null>(null);
 
   // ---- Demandes d'analyses (Laboratoire) saisies par le médecin ----
   const [labSearch, setLabSearch] = useState('');
@@ -131,6 +134,7 @@ export default function DoctorModule({ state, setState }: Props) {
   const selectPatient = (pid: string) => {
     const p = state.patients.find((x) => x.id === pid);
     submittingRef.current = false;
+    editSnapshotRef.current = null;
     setSelectedPatientId(pid); setLines([]); setSelectedLineId(null); setIsNewLine(false); setView('consultation');
     setLabDraft([]); setLabSearch(''); setEchoDraft([]); setEchoSearch('');
     setLabDraftIdx(-1); setEchoDraftIdx(-1);
@@ -141,6 +145,68 @@ export default function DoctorModule({ state, setState }: Props) {
     setState((prev) => {
       const next = { ...prev, patients: prev.patients.map((x) => x.id === pid ? { ...x, status: 'in_consultation' as const, assignedDoctor: prev.currentUser?.id } : x) };
       addJourneyEvent(next, { patientId: pid, department: 'consultation', action: 'Consultation', status: 'in_consultation', details: `Dr. ${prev.currentUser?.name || ''}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name });
+      return next;
+    });
+  };
+
+  // Retour à la file SANS valider : le patient ne doit JAMAIS disparaître des files.
+  // - Consultation fraîchement ouverte     → remis dans la file d'attente médecin.
+  // - Modification (bouton « Mod. ») annulée → consultation d'origine restaurée.
+  const handleBackToQueue = () => {
+    const pid = selectedPatientId;
+    const snap = editSnapshotRef.current;
+    editSnapshotRef.current = null;
+    if (pid) {
+      setState((prev) => {
+        const pat = prev.patients.find((x) => x.id === pid);
+        if (!pat || pat.status !== 'in_consultation') return prev;
+        let next: AppState = { ...prev };
+        let restoredStatus: PatientStatus = 'waiting_consultation';
+        if (snap && !prev.consultations.some((c) => c.id === snap.consultation.id)) {
+          // Annulation d'une « Mod. » : consultation d'origine + factures/demandes restaurées
+          restoredStatus = snap.previousStatus;
+          next = {
+            ...next,
+            consultations: [...next.consultations, snap.consultation],
+            invoices: [...next.invoices, ...snap.invoices],
+            labRequests: [...next.labRequests, ...snap.labRequests],
+          };
+          addAuditLog(next, 'MODIF_ANNULEE', `${pat.dossier} — modification annulée, consultation restaurée`, pid);
+          addJourneyEvent(next, { patientId: pid, department: 'consultation', action: 'Modification annulée', status: restoredStatus, details: `Consultation d'origine restaurée (retour sans validation)`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId: snap.consultation.id });
+        } else {
+          addAuditLog(next, 'RETOUR_FILE_ATTENTE', `${pat.dossier} — remis dans la file médecin (retour sans prescription)`, pid);
+          addJourneyEvent(next, { patientId: pid, department: 'consultation', action: 'Consultation non validée', status: 'waiting_consultation', details: `Remis dans la file d'attente médecin`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name });
+        }
+        next = {
+          ...next,
+          patients: next.patients.map((x) => x.id === pid
+            ? { ...x, status: restoredStatus, assignedDoctor: restoredStatus === 'waiting_consultation' ? undefined : x.assignedDoctor }
+            : x),
+        };
+        return next;
+      });
+    }
+    // Réinitialiser le formulaire local (identique à la fin de validation)
+    setSelectedPatientId(null); setConsultForm({ visitReason: '', diagnosis: '', notes: '', isEmergency: false, hospitalizeRequested: false, surgeryRequested: false });
+    setVitals({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' });
+    setLines([]); setShowHistory(false); setSearchQuery(''); setSelectedLineId(null); setIsNewLine(false);
+    setArticleSearch(''); setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
+    setLabDraft([]); setLabSearch(''); setEchoDraft([]); setEchoSearch('');
+    setLabDraftIdx(-1); setEchoDraftIdx(-1);
+    setView('queue');
+    submittingRef.current = false;
+  };
+
+  // Suppression définitive d'un patient de la file médecin — avec ses paramètres vitaux
+  const deleteWaitingPatient = (pid: string) => {
+    const p = state.patients.find((x) => x.id === pid);
+    if (!p) return;
+    if (!confirm(`Supprimer définitivement ${p.lastName} ${p.firstName} (${p.dossier}) de la file d'attente ?\n\n⚠️ Le dossier sera supprimé avec ses paramètres saisis à la réception.`)) return;
+    setState((prev) => {
+      const next: AppState = { ...prev };
+      purgePatientFromQueue(next, pid);
+      addAuditLog(next, 'SUPPRESSION_FILE_MEDECIN', `${p.lastName} ${p.firstName} (${p.dossier}) supprimé de la file médecin — paramètres inclus`, pid);
+      addJourneyEvent(next, { patientId: pid, department: 'consultation', action: 'Supprimé de la file médecin', details: `Dossier + paramètres supprimés par Dr. ${prev.currentUser?.name || ''}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name });
       return next;
     });
   };
@@ -284,6 +350,13 @@ export default function DoctorModule({ state, setState }: Props) {
   const reEditConsultation = (cid: string) => {
     const c = state.consultations.find((x) => x.id === cid);
     if (!c) return;
+    // Snapshot : si le médecin quitte par « Retour » sans valider, tout est restauré
+    editSnapshotRef.current = {
+      consultation: c,
+      invoices: state.invoices.filter((inv) => inv.consultationId === cid),
+      labRequests: state.labRequests.filter((lr) => lr.consultationId === cid),
+      previousStatus: state.patients.find((p) => p.id === c.patientId)?.status || 'consulted_awaiting_payment',
+    };
     setSelectedPatientId(c.patientId); setConsultForm({ visitReason: c.visitReason, diagnosis: c.diagnosis, notes: c.notes, isEmergency: c.isEmergency, hospitalizeRequested: c.hospitalizeRequested, surgeryRequested: c.surgeryRequested });
     setVitals({ ...c.vitalSigns }); setLines([...c.prescriptions]); setView('consultation');
     // Réinitialiser le formulaire de ligne pour éviter doublon (bug montant qui se dédouble)
@@ -320,6 +393,8 @@ export default function DoctorModule({ state, setState }: Props) {
     // Garde anti double-soumission : évite les doublons de factures labo/écho
     if (submittingRef.current) return;
     submittingRef.current = true;
+    // Consultation validée : le snapshot d'annulation n'est plus nécessaire
+    editSnapshotRef.current = null;
     // Ordonnance NON obligatoire : diagnostic seul, analyses et/ou échographies suffisent
     const ct = clientType;
     const consultId = uuidv4();
@@ -450,7 +525,20 @@ export default function DoctorModule({ state, setState }: Props) {
             <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
               <div className="p-3 border-b bg-amber-50"><h3 className="font-semibold text-sm"><Clock className="w-4 h-4 inline text-amber-500" /> File ({myWaiting.length})</h3></div>
               <div className="divide-y max-h-[500px] overflow-y-auto">{myWaiting.length === 0 ? <div className="p-6 text-center text-slate-400 text-sm">Aucun</div>
-                : myWaiting.map((p) => (<div key={p.id} onClick={() => selectPatient(p.id)} className="p-3 cursor-pointer hover:bg-emerald-50"><div className="font-medium text-sm">{p.lastName} {p.firstName}</div><div className="text-xs text-slate-500">{p.dossier}{p.company ? ` • ${p.company}` : ''}</div>{p.allergies.length > 0 && <div className="text-xs text-red-600"><AlertTriangle className="w-3 h-3 inline" /> {p.allergies.join(', ')}</div>}</div>))}</div>
+                : myWaiting.map((p) => (
+                  <div key={p.id} onClick={() => selectPatient(p.id)} className="p-3 cursor-pointer hover:bg-emerald-50 flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-medium text-sm">{p.lastName} {p.firstName}</div>
+                      <div className="text-xs text-slate-500">{p.dossier}{p.company ? ` • ${p.company}` : ''}</div>
+                      {p.allergies.length > 0 && <div className="text-xs text-red-600"><AlertTriangle className="w-3 h-3 inline" /> {p.allergies.join(', ')}</div>}
+                    </div>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); deleteWaitingPatient(p.id); }}
+                      className="shrink-0 p-1.5 rounded-lg text-rose-500 hover:bg-rose-100 hover:text-rose-700 cursor-pointer transition"
+                      title="Supprimer de la file — dossier + paramètres supprimés"
+                    ><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                ))}</div>
             </div>
           </div>
           <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border p-12 text-center text-slate-400"><Stethoscope className="w-16 h-16 mx-auto mb-4 opacity-30" /><p>Sélectionnez un patient</p></div>
@@ -464,7 +552,7 @@ export default function DoctorModule({ state, setState }: Props) {
           <div className="bg-white rounded-xl shadow-sm border p-3">
             <div className="flex justify-between items-start">
               <div><h3 className="font-bold text-lg">{selectedPatient.lastName} {selectedPatient.firstName} <span className="text-sm font-mono text-blue-600">({selectedPatient.dossier})</span>{selectedPatient.company && <span className="ml-2 px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700">{selectedPatient.company}</span>}</h3><div className="text-sm text-slate-500">{selectedPatient.gender === 'M' ? 'H' : 'F'} | {selectedPatient.age}</div></div>
-              <div className="flex gap-2"><button onClick={() => setShowHistory(!showHistory)} className="px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded text-xs cursor-pointer"><History className="w-3 h-3 inline" /> ({patientConsultations.length})</button><button onClick={() => setView('queue')} className="px-2 py-1 bg-slate-200 rounded text-xs cursor-pointer">← Retour</button></div>
+              <div className="flex gap-2"><button onClick={() => setShowHistory(!showHistory)} className="px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded text-xs cursor-pointer"><History className="w-3 h-3 inline" /> ({patientConsultations.length})</button><button onClick={handleBackToQueue} className="px-2 py-1 bg-slate-200 rounded text-xs cursor-pointer" title="Retour à la file — le patient est remis en attente s'il n'a pas été validé">← Retour</button></div>
             </div>
             {selectedPatient.allergies.length > 0 && <div className="mt-1 p-1.5 bg-red-50 border border-red-200 rounded text-xs text-red-700"><AlertTriangle className="w-3 h-3 inline" /> {selectedPatient.allergies.join(', ')}</div>}
           </div>
