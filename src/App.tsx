@@ -96,6 +96,7 @@ function AppInner() {
   const [view, setView] = useState<AppView>('reception');
   const [showMessaging, setShowMessaging] = useState(false);
   const [messagingRecipientId, setMessagingRecipientId] = useState<string | null>(null);
+  const [medicalRecordPatientId, setMedicalRecordPatientId] = useState<string | null>(null);
 
   // Migration automatique idempotente : au 1er chargement, les anciennes
   // factures + dossiers hospit/bloc sont dupliqués dans la table unifiée `ventes`.
@@ -124,7 +125,10 @@ function AppInner() {
     setView('reception');
   };
 
-  const handleOpenMedicalRecord = () => setView('medicalRecord');
+  const handleOpenMedicalRecord = (patientId?: string) => {
+    setMedicalRecordPatientId(patientId || null);
+    setView('medicalRecord');
+  };
 
   const handleMarkRead = (notifId: string) => {
     setState((prev) => ({ ...prev, notifications: prev.notifications.map((n) => n.id === notifId ? { ...n, read: true } : n) }));
@@ -174,10 +178,10 @@ function AppInner() {
           onLogout={handleLogout}
           onMarkRead={handleMarkRead}
           onOpenMessaging={() => handleOpenMessagingWithRecipient(null)}
-          onOpenMedicalRecord={handleOpenMedicalRecord}
+          onOpenMedicalRecord={() => handleOpenMedicalRecord()}
           unreadMessages={myMsgCount}
         >
-          <ModuleDossierMedical state={state} onBack={() => setView('staff')} />
+          <ModuleDossierMedical state={state} patientId={medicalRecordPatientId} onBack={() => { setView('staff'); setMedicalRecordPatientId(null); }} />
         </MiseEnPage>
         {showMessaging && <Messagerie state={state} setState={setState} onClose={handleCloseMessaging} initialRecipientId={messagingRecipientId} />}
       </>
@@ -186,7 +190,7 @@ function AppInner() {
 
   const renderModule = () => {
     switch (state.currentUser?.role) {
-      case 'doctor': return <ModuleMedecin state={state} setState={setState} />;
+      case 'doctor': return <ModuleMedecin state={state} setState={setState} onOpenMedicalRecord={handleOpenMedicalRecord} />;
       case 'cashier': return <ModuleCaisse state={state} setState={setState} onOpenMessagingWithRecipient={handleOpenMessagingWithRecipient} />;
       case 'pharmacy': return <ModulePharmacie state={state} setState={setState} onOpenMessagingWithRecipient={handleOpenMessagingWithRecipient} />;
       case 'magasinier': return <ModuleMagasinier state={state} setState={setState} />;

@@ -270,7 +270,7 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
                     </div>
                     {c.isEmergency && <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full font-bold">🚨 Urgence</span>}
                   </div>
-                  <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] divide-y lg:divide-y-0 lg:divide-x divide-slate-200">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-slate-200">
                     {/* Détails de la consultation */}
                     <div className="p-3 text-sm space-y-1">
                       {c.visitReason && <div><span className="font-medium text-slate-600">Motif :</span> {c.visitReason}</div>}
@@ -284,29 +284,37 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
                     </div>
                     {/* Colonne prestations : articles + quantité + posologie */}
                     <div className="bg-slate-50 p-3">
-                      {c.prescriptions.length > 0 ? (
-                        <div>
-                          <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">Prestations ({c.prescriptions.length} article{c.prescriptions.length > 1 ? 's' : ''})</div>
-                          <div className="space-y-1.5">
-                            {c.prescriptions.map((p) => (
-                              <div key={p.id} className="flex items-start justify-between gap-2 text-xs border-b border-slate-200 last:border-0 pb-1.5 last:pb-0">
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-medium text-slate-700">{p.articleName}</div>
-                                  {p.posology && <div className="text-[10px] text-slate-400 mt-0.5">{p.posology}</div>}
+                      {(() => {
+                        const prest = [
+                          ...c.prescriptions.map(p => ({ id: p.id, name: p.articleName, info: p.posology, qty: p.quantity, sTxt: p.delivered ? '✓ délivré' : 'à délivrer', sCol: p.delivered ? 'text-emerald-600' : 'text-amber-600' })),
+                          ...c.labRequests.map(l => ({ id: l.id, name: l.examType, info: l.sampleType, qty: 1, sTxt: l.status === 'completed' ? '✓ fait' : 'en attente', sCol: l.status === 'completed' ? 'text-emerald-600' : 'text-amber-600' })),
+                          ...(c.echoRequests || []).map(e => ({ id: e.id, name: e.examType, info: e.notes, qty: 1, sTxt: e.status === 'completed' ? '✓ fait' : 'en attente', sCol: e.status === 'completed' ? 'text-emerald-600' : 'text-amber-600' }))
+                        ];
+                        if (c.hospitalizeRequested) prest.push({ id: `hosp-${c.id}`, name: 'Hospitalisation demandée', info: undefined, qty: 1, sTxt: 'Demande', sCol: 'text-blue-600' });
+                        if (c.surgeryRequested) prest.push({ id: `surg-${c.id}`, name: 'Intervention bloc demandée', info: undefined, qty: 1, sTxt: 'Demande', sCol: 'text-blue-600' });
+
+                        return prest.length > 0 ? (
+                          <div>
+                            <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">Prestations ({prest.length} acte{prest.length > 1 ? 's' : ''})</div>
+                            <div className="space-y-1.5">
+                              {prest.map((p) => (
+                                <div key={p.id} className="flex items-start justify-between gap-2 text-xs border-b border-slate-200 last:border-0 pb-1.5 last:pb-0">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-medium text-slate-700">{p.name}</div>
+                                    {p.info && <div className="text-[10px] text-slate-400 mt-0.5">{p.info}</div>}
+                                  </div>
+                                  <div className="shrink-0 text-right">
+                                    <span className="font-mono font-bold text-slate-600">×{p.qty}</span>
+                                    <span className={`block text-[9px] ${p.sCol}`}>{p.sTxt}</span>
+                                  </div>
                                 </div>
-                                <div className="shrink-0 text-right">
-                                  <span className="font-mono font-bold text-slate-600">×{p.quantity}</span>
-                                  {p.delivered
-                                    ? <span className="block text-[9px] text-emerald-600">✓ délivré</span>
-                                    : <span className="block text-[9px] text-amber-600">à délivrer</span>}
-                                </div>
-                              </div>
-                            ))}
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      ) : (
-                        <div className="text-xs text-slate-400 italic text-center py-4">Aucune prescription</div>
-                      )}
+                        ) : (
+                          <div className="text-xs text-slate-400 italic text-center py-4">Aucune prestation</div>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>
