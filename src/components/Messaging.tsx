@@ -66,7 +66,7 @@ export default function Messaging({ state, setState, onClose, initialRecipientId
 
   const roleLabels: Record<string, string> = {
     doctor: 'Médecin', cashier: 'Caisse', pharmacy: 'Pharmacie',
-    magasinier: 'Magasin', laboratory: 'Labo', admin: 'Admin',
+    magasinier: 'Magasin', laboratory: 'Labo', billing: 'Facturation', admin: 'Admin',
   };
 
 

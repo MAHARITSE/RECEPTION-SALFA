@@ -439,6 +439,7 @@ const users: User[] = [
   { id: 'MAG001', name: 'Ali Rasolofo', role: 'magasinier', password: 'mag123' },
   { id: 'LAB001', name: 'Thomas Nguyen', role: 'laboratory', password: 'labo123' },
   { id: 'ADM001', name: 'Admin Système', role: 'admin', password: 'admin123' },
+  { id: 'FAC001', name: 'Hanta RASOA', role: 'billing', password: 'fact123' },
 ];
 
 export const CONSULTATION_FEE = 10000;
@@ -755,16 +756,58 @@ export function createInitialState(): AppState {
 
   const allDemoPatients = [...seedPatients, lea, ...demoPatients, ...morePatients, ...bulkPatients];
   const allDemoInvoices = [leaInvoice, leaLabInvoice, ...demoInvoices, ...bulkInvoices];
-  // Quelques comptes déjà regroupés pour visualiser le suivi mensuel dès le démarrage.
-  const companyBillingAccounts: CompanyBillingAccount[] = ['2026-05', '2026-06'].flatMap((month, idx) => companyNames.slice(0, 4).map(company => {
-    const invoiceIds = allDemoInvoices.filter(inv => {
-      const p = allDemoPatients.find(x => x.id === inv.patientId);
-      return p?.company === company && inv.createdAt.slice(0, 7) === month;
-    }).map(inv => inv.id);
-    const totalAmount = allDemoInvoices.filter(inv => invoiceIds.includes(inv.id)).reduce((sum, inv) => sum + inv.totalAmount, 0);
-    const paidAmount = idx === 0 ? totalAmount : Math.round(totalAmount * 0.45);
-    return { id: uuidv4(), company, month, invoiceIds, totalAmount, paidAmount, status: paidAmount >= totalAmount ? 'paid' as const : paidAmount > 0 ? 'partial' as const : 'open' as const, createdAt: `${month}-28T17:00:00.000Z`, payments: paidAmount ? [{ id: uuidv4(), amount: paidAmount, date: `${month}-28T17:00:00.000Z`, method: 'Virement', receivedBy: 'Pierre Duval' }] : [] };
-  }));
+  // Comptes de facturation sociétés de démonstration — regroupés sur PLUSIEURS mois
+  // (relatifs à la date du jour) afin de tester les regroupements mensuels, les
+  // paiements partiels/complets, les références de règlement et les soldes.
+  // Les 2 derniers mois (mois dernier + mois en cours) sont volontairement laissés
+  // « à regrouper » pour permettre de tester la création de regroupements.
+  const monthKeyOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  const demoBillingMonths: string[] = [];
+  for (let m = 6; m >= 2; m--) { const d = new Date(now); d.setDate(1); d.setMonth(d.getMonth() - m); demoBillingMonths.push(monthKeyOf(d)); }
+  const demoBillingMethods = ['Virement', 'Chèque', 'Mobile Money', 'Espèces'];
+  const companyBillingAccounts: CompanyBillingAccount[] = demoBillingMonths.flatMap((month, monthIdx) =>
+    companyNames.slice(0, 6).map((company, compIdx): CompanyBillingAccount | null => {
+      const invoiceIds = allDemoInvoices.filter(inv => {
+        const p = allDemoPatients.find(x => x.id === inv.patientId);
+        return p?.company === company && inv.createdAt.slice(0, 7) === month;
+      }).map(inv => inv.id);
+      if (!invoiceIds.length) return null;
+      const totalAmount = allDemoInvoices.filter(inv => invoiceIds.includes(inv.id)).reduce((sum, inv) => sum + inv.totalAmount, 0);
+      if (totalAmount <= 0) return null;
+      // Scénarios variés selon l'ancienneté du mois : soldé → partiel → impayé.
+      const age = demoBillingMonths.length - 1 - monthIdx; // 0 = mois pré-regroupé le plus récent
+      const payments: CompanyBillingAccount['payments'] = [];
+      const mkPay = (amount: number, day: string, method: string, reference: string) =>
+        payments.push({ id: uuidv4(), amount, date: `${month}-${day}T10:30:00.000Z`, method, reference, receivedBy: 'Hanta RASOA' });
+      let paidAmount = 0;
+      if (age >= 3) {
+        // Mois anciens : compte soldé, souvent en deux règlements (acompte + solde).
+        const first = Math.round(totalAmount * 0.6);
+        mkPay(first, '10', demoBillingMethods[(compIdx + monthIdx) % demoBillingMethods.length], `${month.replace('-', '')}-VIR-${String(101 + compIdx)}`);
+        if (totalAmount - first > 0) mkPay(totalAmount - first, '25', 'Chèque', `${month.replace('-', '')}-CHQ-${String(201 + compIdx)}`);
+        paidAmount = totalAmount;
+      } else if (age === 2) {
+        // Partiellement payé (~60 %).
+        paidAmount = Math.round(totalAmount * 0.6);
+        if (paidAmount > 0) mkPay(paidAmount, '15', demoBillingMethods[(compIdx + 1) % demoBillingMethods.length], `${month.replace('-', '')}-REG-${String(301 + compIdx)}`);
+      } else if (age === 1) {
+        // Partiel (35 %) ou impayé selon la société.
+        paidAmount = compIdx % 2 === 0 ? Math.round(totalAmount * 0.35) : 0;
+        if (paidAmount > 0) mkPay(paidAmount, '20', 'Mobile Money', `${month.replace('-', '')}-MM-${String(401 + compIdx)}`);
+      } else {
+        // Mois pré-regroupé le plus récent : mélange soldé / partiel / impayé.
+        // (les sociétés suivantes ne sont PAS pré-regroupées → test du bouton Regrouper)
+        if (compIdx >= 3) return null;
+        paidAmount = compIdx === 0 ? totalAmount : compIdx % 3 === 0 ? Math.round(totalAmount * 0.5) : 0;
+        if (paidAmount > 0) mkPay(paidAmount, '05', 'Virement', `${month.replace('-', '')}-VIR-${String(501 + compIdx)}`);
+      }
+      return {
+        id: uuidv4(), company, month, invoiceIds, totalAmount, paidAmount,
+        status: (paidAmount >= totalAmount ? 'paid' : paidAmount > 0 ? 'partial' : 'open') as CompanyBillingAccount['status'],
+        createdAt: `${month}-01T08:00:00.000Z`, payments,
+      };
+    }).filter((a): a is CompanyBillingAccount => a !== null),
+  );
 
   return {
     currentUser: null,
@@ -915,6 +958,53 @@ export function purgePatientFromQueue(state: AppState, patientId: string): void 
   state.patients = state.patients.map((p) => p.id === patientId
     ? { ...p, status: 'registered' as const, assignedDoctor: undefined, assignedSpecialty: undefined }
     : p);
+}
+
+/* ====== FACTURATION SOCIÉTÉS (rôle Responsable facturation) ====== */
+
+/** Libellé d'affichage du statut d'un compte de facturation société. */
+export function billingStatusLabel(status: CompanyBillingAccount['status']): string {
+  return status === 'paid' ? 'Soldé' : status === 'partial' ? 'Partiellement payé' : 'Impayé';
+}
+
+/** Classes Tailwind du badge de statut d'un compte de facturation société. */
+export function billingStatusClasses(status: CompanyBillingAccount['status']): string {
+  return status === 'paid' ? 'bg-emerald-100 text-emerald-700'
+    : status === 'partial' ? 'bg-amber-100 text-amber-700'
+    : 'bg-rose-100 text-rose-700';
+}
+
+/** Factures d'un mois rattachées à une société (via le dossier patient). */
+export function getCompanyInvoicesForMonth(state: AppState, company: string | 'all', month: string): Invoice[] {
+  return state.invoices.filter(inv => {
+    const patient = inv.patientId ? state.patients.find(p => p.id === inv.patientId) : undefined;
+    if (!patient?.company) return false;
+    if (company !== 'all' && patient.company !== company) return false;
+    return inv.createdAt.slice(0, 7) === month;
+  });
+}
+
+/** Numéro de facture unifié (table `ventes`) lié à une facture historique, le cas échéant. */
+export function invoiceNumero(state: AppState, invoiceId: string): string {
+  return state.ventes.find(v => v.legacyInvoiceId === invoiceId)?.numeroFacture || '—';
+}
+
+/** Ajoute un règlement (partiel ou complet) sur un compte de facturation société
+ *  et met à jour son statut : impayé → partiellement payé → soldé. */
+export function addCompanyBillingPayment(
+  state: AppState,
+  accountId: string,
+  payment: { amount: number; date: string; method: string; reference?: string; receivedBy?: string },
+): void {
+  state.companyBillingAccounts = state.companyBillingAccounts.map(a => {
+    if (a.id !== accountId) return a;
+    const paidAmount = a.paidAmount + payment.amount;
+    const status: CompanyBillingAccount['status'] = paidAmount >= a.totalAmount ? 'paid' : 'partial';
+    return {
+      ...a, paidAmount, status,
+      payments: [...a.payments, { id: uuidv4(), amount: payment.amount, date: payment.date, method: payment.method, reference: payment.reference, receivedBy: payment.receivedBy }],
+    };
+  });
 }
 
 /** Ajoute un événement au parcours patient (timeline). */

@@ -10,6 +10,7 @@ import PharmacyModule from './components/PharmacyModule';
 import MagasinierModule from './components/MagasinierModule';
 import LaboratoryModule from './components/LaboratoryModule';
 import AdminModule from './components/AdminModule';
+import BillingModule from './components/BillingModule';
 import MedicalRecordModule from './components/MedicalRecordModule';
 import Messaging from './components/Messaging';
 
@@ -20,6 +21,7 @@ const roleTitles: Record<string, string> = {
   magasinier: '📦 Magasinier — Stock Central, Achats & Transferts',
   laboratory: '🔬 Laboratoire — Analyses & Résultats',
   admin: '⚙️ Administration — Configuration système',
+  billing: '🏢 Facturation sociétés — Suivi des comptes conventionnés',
 };
 
 type AppView = 'reception' | 'login' | 'staff' | 'medicalRecord';
@@ -197,6 +199,7 @@ function AppInner() {
       case 'magasinier': return <MagasinierModule state={state} setState={setState} />;
       case 'laboratory': return <LaboratoryModule state={state} setState={setState} />;
       case 'admin': return <AdminModule state={state} setState={setState} />;
+      case 'billing': return <BillingModule state={state} setState={setState} />;
       default: return <div>Module non trouvé</div>;
     }
   };
