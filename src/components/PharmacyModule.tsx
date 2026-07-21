@@ -34,6 +34,9 @@ export default function PharmacyModule({ state, setState, onOpenMessagingWithRec
 
   // Nouveaux états pour affichage gauche/droite et clôtures de garde
   const [selConsultId, setSelConsultId] = useState<string | null>(null);
+  // Onglets pour la liste après validation : récap par article (défaut) vs détails heure/patient/article/qté
+  const [pendingDeliveryView, setPendingDeliveryView] = useState<'recap' | 'details'>('recap');
+  const [deliveredDeliveryView, setDeliveredDeliveryView] = useState<'recap' | 'details'>('recap');
 
   // Reappro Modal State
   const [reapproModalOpen, setReapproModalOpen] = useState(false);
@@ -646,7 +649,7 @@ export default function PharmacyModule({ state, setState, onOpenMessagingWithRec
                     </div>
                   )}
 
-                  {/* 2. LISTE APRÈS VALIDATION (Livraisons de garde avant clôture) */}
+                  {/* 2. LISTE APRÈS VALIDATION (Livraisons de garde avant clôture) — DEUX ONGLETS */}
                   <div className="border border-emerald-200 rounded-xl bg-emerald-50/40 overflow-hidden shadow-sm">
                     <div className="p-3.5 bg-gradient-to-r from-emerald-700 to-teal-800 text-white flex justify-between items-center flex-wrap gap-2">
                       <div>
@@ -658,18 +661,82 @@ export default function PharmacyModule({ state, setState, onOpenMessagingWithRec
                           Ce qui reste dans cette liste après validation constitue les livraisons avant la clôture de caisse / garde du responsable.
                         </p>
                       </div>
-                      {unclosedDeliveryItems.length > 0 ? (
-                        <div className="text-[10px] font-bold text-emerald-700">{unclosedDeliveryItems.length} ligne(s) non clôturée(s) · {formatAr(unclosedTotalAmt)}</div>
-                      ) : (
-                        <div />
-                      )}
+                      <div className="flex items-center gap-2">
+                        {unclosedDeliveryItems.length > 0 ? (
+                          <div className="text-[10px] font-bold bg-white/20 px-2 py-1 rounded-full">{unclosedDeliveryItems.length} ligne(s) · {formatAr(unclosedTotalAmt)}</div>
+                        ) : null}
+                      </div>
                     </div>
-                    <div className="p-3 bg-white max-h-64 overflow-y-auto">
+
+                    {/* Onglets : Récap par article (défaut) / Détails Heure Patient Article Qté */}
+                    <div className="flex border-b border-emerald-100 bg-white">
+                      <button
+                        onClick={() => setPendingDeliveryView('recap')}
+                        className={`flex-1 px-3 py-2 text-xs font-semibold cursor-pointer transition flex items-center justify-center gap-1.5 ${pendingDeliveryView === 'recap' ? 'bg-emerald-600 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
+                      >
+                        📊 Récap de vente par articles
+                      </button>
+                      <button
+                        onClick={() => setPendingDeliveryView('details')}
+                        className={`flex-1 px-3 py-2 text-xs font-semibold cursor-pointer transition flex items-center justify-center gap-1.5 ${pendingDeliveryView === 'details' ? 'bg-emerald-600 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
+                      >
+                        🕒 Heure / Patient / Article / Qté
+                      </button>
+                    </div>
+
+                    <div className="p-3 bg-white max-h-80 overflow-y-auto">
                       {unclosedDeliveryItems.length === 0 ? (
                         <div className="py-6 text-center text-slate-400 text-xs">
                           Aucune livraison non clôturée. Les ordonnances validées apparaîtront ici avant la clôture du tour de garde.
                         </div>
+                      ) : pendingDeliveryView === 'recap' ? (
+                        // Récap par article — default
+                        (() => {
+                          const byArticle: Record<string, { qty: number; totalAmt: number; lastTime: string }> = {};
+                          unclosedDeliveryItems.forEach(it => {
+                            if (!byArticle[it.articleName]) byArticle[it.articleName] = { qty: 0, totalAmt: 0, lastTime: it.deliveredAt };
+                            byArticle[it.articleName].qty += it.quantity;
+                            byArticle[it.articleName].totalAmt += it.quantity * it.unitPrice;
+                            if (new Date(it.deliveredAt) > new Date(byArticle[it.articleName].lastTime)) byArticle[it.articleName].lastTime = it.deliveredAt;
+                          });
+                          const recap = Object.entries(byArticle).map(([articleName, v]) => ({ articleName, ...v })).sort((a, b) => b.qty - a.qty);
+                          const totalQ = recap.reduce((s, r) => s + r.qty, 0);
+                          return (
+                            <div>
+                              <table className="w-full text-xs">
+                                <thead className="bg-emerald-50 text-emerald-800 border-b border-emerald-200">
+                                  <tr>
+                                    <th className="p-2 text-left">Article délivré</th>
+                                    <th className="p-2 text-right">Qté totale</th>
+                                    <th className="p-2 text-right">Valeur</th>
+                                    <th className="p-2 text-center">Dernière délivrance</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                  {recap.map((r) => (
+                                    <tr key={r.articleName} className="hover:bg-emerald-50/60">
+                                      <td className="p-2 font-bold text-emerald-900">{r.articleName}</td>
+                                      <td className="p-2 text-right font-mono font-bold text-emerald-700">{r.qty}</td>
+                                      <td className="p-2 text-right font-mono text-slate-600">{formatAr(r.totalAmt)}</td>
+                                      <td className="p-2 text-center font-mono text-[11px] text-slate-500">{new Date(r.lastTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                                <tfoot className="bg-emerald-100 font-bold border-t-2 border-emerald-300">
+                                  <tr>
+                                    <td className="p-2 text-right">TOTAL :</td>
+                                    <td className="p-2 text-right font-mono">{totalQ}</td>
+                                    <td className="p-2 text-right font-mono">{formatAr(unclosedTotalAmt)}</td>
+                                    <td></td>
+                                  </tr>
+                                </tfoot>
+                              </table>
+                              <div className="mt-2 text-[10px] text-slate-500 italic">📌 Premier onglet par défaut : récapitulatif des ventes par article — prêt pour clôture de garde.</div>
+                            </div>
+                          );
+                        })()
                       ) : (
+                        // Détails Heure / Patient / Article / Qté
                         <table className="w-full text-xs">
                           <thead className="bg-slate-50 text-slate-600 border-b">
                             <tr>
@@ -680,18 +747,21 @@ export default function PharmacyModule({ state, setState, onOpenMessagingWithRec
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
-                            {unclosedDeliveryItems.map((item) => (
-                              <tr key={item.id} className="hover:bg-emerald-50/50">
-                                <td className="p-2 font-mono text-slate-500">{new Date(item.deliveredAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</td>
-                                <td className="p-2 font-medium text-slate-800">{item.patientName}</td>
-                                <td className="p-2 font-semibold text-emerald-900">{item.articleName}</td>
-                                <td className="p-2 text-right font-mono font-bold">{item.quantity}</td>
-                              </tr>
-                            ))}
+                            {unclosedDeliveryItems
+                              .slice()
+                              .sort((a, b) => new Date(a.deliveredAt).getTime() - new Date(b.deliveredAt).getTime())
+                              .map((item) => (
+                                <tr key={item.id} className="hover:bg-emerald-50/50">
+                                  <td className="p-2 font-mono text-slate-500 font-bold">{new Date(item.deliveredAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</td>
+                                  <td className="p-2 font-medium text-slate-800">{item.patientName}</td>
+                                  <td className="p-2 font-semibold text-emerald-900">{item.articleName}</td>
+                                  <td className="p-2 text-right font-mono font-bold">{item.quantity}</td>
+                                </tr>
+                              ))}
                           </tbody>
                           <tfoot className="bg-emerald-50 font-bold border-t border-emerald-200">
                             <tr>
-                              <td colSpan={2} className="p-2 text-right text-emerald-900">TOTAL :</td>
+                              <td colSpan={3} className="p-2 text-right text-emerald-900">TOTAL :</td>
                               <td className="p-2 text-right font-mono text-sm text-emerald-800">{unclosedDeliveryItems.reduce((s, d) => s + d.quantity, 0)}</td>
                             </tr>
                           </tfoot>
@@ -1003,51 +1073,97 @@ export default function PharmacyModule({ state, setState, onOpenMessagingWithRec
                   </div>
                 </div>
 
-                {/* Liste Délivrées : Heure / Patient / Article / Qté uniquement */}
+                {/* Liste Délivrées — DEUX ONGLETS : Récap par article (défaut) / Détails Heure Patient Article Qté */}
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                  <div className="p-4 bg-blue-50 border-b border-blue-200 flex justify-between items-center flex-wrap gap-2">
+                  <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-200 flex justify-between items-center flex-wrap gap-3">
                     <div>
                       <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                        <CheckCircle className="w-4 h-4 text-blue-600" /> Liste des Livraisons (Heure / Patient / Article / Qté)
+                        <CheckCircle className="w-4 h-4 text-blue-600" /> Livraisons avant clôture — Récap & Détails
                       </h4>
-                      <p className="text-xs text-slate-500 mt-0.5">Liste détaillée des livraisons avec heure, patient, article et quantité</p>
+                      <p className="text-xs text-slate-500 mt-0.5">Premier onglet par défaut : récap de vente par articles. Second onglet : heure / patient / article / qté.</p>
+                    </div>
+                    <div className="flex rounded-lg overflow-hidden border border-blue-200 text-xs font-semibold">
+                      <button
+                        onClick={() => setDeliveredDeliveryView('recap')}
+                        className={`px-3 py-1.5 cursor-pointer transition ${deliveredDeliveryView === 'recap' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                      >
+                        📊 Récap par articles
+                      </button>
+                      <button
+                        onClick={() => setDeliveredDeliveryView('details')}
+                        className={`px-3 py-1.5 cursor-pointer transition border-l border-blue-200 ${deliveredDeliveryView === 'details' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                      >
+                        🕒 Heure / Patient / Article / Qté
+                      </button>
                     </div>
                   </div>
-                  <div className="p-3 bg-white overflow-x-auto max-h-64">
-                    <table className="w-full text-xs">
-                      <thead className="bg-blue-50 border-b border-blue-200 text-blue-800">
-                        <tr>
-                          <th className="p-2 text-left font-semibold">Heure</th>
-                          <th className="p-2 text-left font-semibold">Patient / Client</th>
-                          <th className="p-2 text-left font-semibold">Article</th>
-                          <th className="p-2 text-right font-semibold">Qté</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {unclosedDeliveryItems.length === 0 ? (
+                  <div className="p-3 bg-white overflow-x-auto max-h-80">
+                    {unclosedDeliveryItems.length === 0 ? (
+                      <div className="py-8 text-center text-slate-400 text-xs">Aucune livraison non clôturée à afficher.</div>
+                    ) : deliveredDeliveryView === 'recap' ? (
+                      (() => {
+                        const byArticle: Record<string, number> = {};
+                        unclosedDeliveryItems.forEach(it => {
+                          byArticle[it.articleName] = (byArticle[it.articleName] || 0) + it.quantity;
+                        });
+                        const recap = Object.entries(byArticle).map(([articleName, totalQuantity]) => ({ articleName, totalQuantity })).sort((a, b) => b.totalQuantity - a.totalQuantity);
+                        const totalQ = recap.reduce((s, r) => s + r.totalQuantity, 0);
+                        return (
+                          <table className="w-full text-xs">
+                            <thead className="bg-blue-50 border-b border-blue-200 text-blue-800">
+                              <tr>
+                                <th className="p-2 text-left font-semibold">Article délivré</th>
+                                <th className="p-2 text-right font-semibold">Qté totale vendue</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {recap.map((r) => (
+                                <tr key={r.articleName} className="hover:bg-blue-50/40">
+                                  <td className="p-2 font-bold text-blue-900">{r.articleName}</td>
+                                  <td className="p-2 text-right font-mono font-bold text-blue-700">{r.totalQuantity}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot className="bg-blue-100 font-bold border-t-2 border-blue-300">
+                              <tr>
+                                <td className="p-2 text-right text-blue-900">TOTAL GÉNÉRAL :</td>
+                                <td className="p-2 text-right font-mono text-blue-900 text-sm">{totalQ}</td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        );
+                      })()
+                    ) : (
+                      <table className="w-full text-xs">
+                        <thead className="bg-slate-50 border-b text-slate-600">
                           <tr>
-                            <td colSpan={4} className="p-4 text-center text-slate-400">Aucune livraison à afficher</td>
+                            <th className="p-2 text-left font-semibold">Heure</th>
+                            <th className="p-2 text-left font-semibold">Patient / Client</th>
+                            <th className="p-2 text-left font-semibold">Article délivré</th>
+                            <th className="p-2 text-right font-semibold">Qté</th>
                           </tr>
-                        ) : (
-                          unclosedDeliveryItems.map((item) => (
-                            <tr key={item.id} className="hover:bg-blue-50/30">
-                              <td className="p-2 font-mono text-slate-500">
-                                {new Date(item.deliveredAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-                              </td>
-                              <td className="p-2 font-medium text-slate-800">{item.patientName}</td>
-                              <td className="p-2 font-semibold text-blue-900">{item.articleName}</td>
-                              <td className="p-2 text-right font-mono font-bold text-blue-700">{item.quantity}</td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                      <tfoot className="bg-blue-50 font-bold border-t border-blue-200">
-                        <tr>
-                          <td colSpan={3} className="p-2 text-right text-blue-900">TOTAL :</td>
-                          <td className="p-2 text-right font-mono text-blue-900">{unclosedDeliveryItems.reduce((s, d) => s + d.quantity, 0)}</td>
-                        </tr>
-                      </tfoot>
-                    </table>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {unclosedDeliveryItems
+                            .slice()
+                            .sort((a, b) => new Date(a.deliveredAt).getTime() - new Date(b.deliveredAt).getTime())
+                            .map((item) => (
+                              <tr key={item.id} className="hover:bg-blue-50/30">
+                                <td className="p-2 font-mono text-slate-500 font-bold">{new Date(item.deliveredAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</td>
+                                <td className="p-2 font-medium text-slate-800">{item.patientName}</td>
+                                <td className="p-2 font-semibold text-blue-900">{item.articleName}</td>
+                                <td className="p-2 text-right font-mono font-bold text-blue-700">{item.quantity}</td>
+                              </tr>
+                            ))}
+                        </tbody>
+                        <tfoot className="bg-blue-50 font-bold border-t border-blue-200">
+                          <tr>
+                            <td colSpan={3} className="p-2 text-right text-blue-900">TOTAL :</td>
+                            <td className="p-2 text-right font-mono text-blue-900">{unclosedDeliveryItems.reduce((s, d) => s + d.quantity, 0)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    )}
                   </div>
                 </div>
               </div>
