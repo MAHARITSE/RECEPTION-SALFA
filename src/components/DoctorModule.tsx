@@ -115,7 +115,7 @@ export default function DoctorModule({ state, setState }: Props) {
   useEffect(() => {
     const line = lines.find(l => l.id === selectedLineId);
     if (line && !isNewLine) setLineForm({ ...line });
-  }, [selectedLineId]);
+  }, [selectedLineId, lines, isNewLine]);
 
   const updateLineForm = (key: string, val: any) => {
     setLineForm(prev => {
@@ -132,6 +132,8 @@ export default function DoctorModule({ state, setState }: Props) {
     setSelectedPatientId(pid); setLines([]); setSelectedLineId(null); setIsNewLine(false); setView('consultation');
     setLabDraft([]); setLabSearch(''); setEchoDraft([]); setEchoSearch('');
     setLabDraftIdx(-1); setEchoDraftIdx(-1);
+    setArticleSearch('');
+    setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
     setConsultForm({ visitReason: '', diagnosis: '', notes: '', isEmergency: false, hospitalizeRequested: false, surgeryRequested: false });
     if (p?.vitalSigns) setVitals({ ...p.vitalSigns }); else setVitals({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' });
     setState((prev) => {
@@ -210,16 +212,52 @@ export default function DoctorModule({ state, setState }: Props) {
   const handleArticleSelect = (articleId: string) => {
     const a = state.articles.find((x) => x.id === articleId);
     if (!a) return;
+    // Si on est en mode édition d'une ligne existante, on met à jour cette ligne (même id) au lieu de créer un doublon
+    if (!isNewLine && selectedLineId && lines.find(l => l.id === selectedLineId)) {
+      const existing = lines.find(l => l.id === selectedLineId)!;
+      const updated: Prescription = {
+        ...existing,
+        articleId: a.id,
+        articleName: a.name,
+        unitPrice: getPrice(a, clientType),
+      };
+      // On garde la quantité / posologie déjà saisies si l'utilisateur était en train d'éditer
+      // Mais si lineForm est déjà l'édition de cette ligne, on préfère garder les valeurs de lineForm pour quantité etc.
+      // Pour éviter toute confusion, on met à jour lineForm directement avec le nouvel article tout en conservant l'id d'origine
+      const merged: Prescription = {
+        ...lineForm,
+        id: selectedLineId,
+        articleId: a.id,
+        articleName: a.name,
+        unitPrice: getPrice(a, clientType),
+      };
+      // Si lineForm ne correspondait pas à la ligne sélectionnée (cas stale), on utilise existing comme base
+      const finalForm = lineForm.id === selectedLineId ? merged : { ...existing, articleId: a.id, articleName: a.name, unitPrice: getPrice(a, clientType) };
+      setLineForm(finalForm);
+      setArticleSearch('');
+      setArtSearchIdx(0);
+      // On reste en mode édition (pas de nouvelle ligne)
+      return;
+    }
     const nl: Prescription = { id: uuidv4(), articleId: a.id, articleName: a.name, quantity: 1, posology: '', duration: '', instructions: '', unitPrice: getPrice(a, clientType), discount: 0, delivered: false };
     setLineForm({ ...nl }); setSelectedLineId(nl.id); setIsNewLine(true); setArticleSearch(''); setArtSearchIdx(0);
   };
 
   const handleSaveLine = () => {
     if (!lineForm.articleName) return;
-    if (isNewLine || !lines.find(l => l.id === lineForm.id)) {
-      setLines([...lines, { ...lineForm }]);
+    const currentId = lineForm.id;
+    const exists = lines.some(l => l.id === currentId);
+    if (isNewLine || !exists) {
+      // Ajout : éviter les doublons si le même article existe déjà avec un autre id mais qu'on est en édition
+      // On s'assure qu'on n'ajoute pas une deuxième fois la même ligne en mode édition
+      if (!isNewLine && selectedLineId && exists) {
+        // Cas incohérent : on était censé être en édition mais isNewLine est resté true -> on corrige en remplaçant
+        setLines(prev => prev.map(l => l.id === currentId ? { ...lineForm } : l));
+      } else {
+        setLines(prev => [...prev, { ...lineForm }]);
+      }
     } else {
-      setLines(lines.map(l => l.id === lineForm.id ? { ...lineForm } : l));
+      setLines(prev => prev.map(l => l.id === currentId ? { ...lineForm } : l));
     }
     setIsNewLine(false);
     // Focus back to search
@@ -228,7 +266,7 @@ export default function DoctorModule({ state, setState }: Props) {
 
   const handleDeleteLine = () => {
     if (!selectedLineId) return;
-    setLines(lines.filter(l => l.id !== selectedLineId));
+    setLines(prev => prev.filter(l => l.id !== selectedLineId));
     setSelectedLineId(null);
     setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
   };
@@ -252,6 +290,11 @@ export default function DoctorModule({ state, setState }: Props) {
     if (!c) return;
     setSelectedPatientId(c.patientId); setConsultForm({ visitReason: c.visitReason, diagnosis: c.diagnosis, notes: c.notes, isEmergency: c.isEmergency, hospitalizeRequested: c.hospitalizeRequested, surgeryRequested: c.surgeryRequested });
     setVitals({ ...c.vitalSigns }); setLines([...c.prescriptions]); setView('consultation');
+    // Réinitialiser le formulaire de ligne pour éviter doublon (bug montant qui se dédouble)
+    setSelectedLineId(null);
+    setIsNewLine(false);
+    setArticleSearch('');
+    setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
     // Restaurer les demandes d'analyses labo dans le brouillon
     const restoredLabDraft = (c.labRequests || []).map((lr) => {
       const catalogMatch = state.labCatalog.find((e) => e.name === lr.examType && e.code === lr.code);
@@ -264,7 +307,14 @@ export default function DoctorModule({ state, setState }: Props) {
       return catalogMatch ? { examId: catalogMatch.id, urgent: er.urgent, notes: er.notes || '' } : null;
     }).filter((d): d is { examId: string; urgent: boolean; notes: string } => d !== null);
     setEchoDraft(restoredEchoDraft); setEchoSearch(''); setEchoSearchIdx(0);
-    setState((prev) => ({ ...prev, consultations: prev.consultations.filter((x) => x.id !== cid), patients: prev.patients.map((p) => p.id === c.patientId ? { ...p, status: 'in_consultation' as const } : p) }));
+    setState((prev) => ({
+      ...prev,
+      consultations: prev.consultations.filter((x) => x.id !== cid),
+      // IMPORTANT : supprimer aussi les factures et demandes labo liées à cette consultation pour éviter le double comptage
+      invoices: prev.invoices.filter((inv) => inv.consultationId !== cid),
+      labRequests: prev.labRequests.filter((lr) => lr.consultationId !== cid),
+      patients: prev.patients.map((p) => p.id === c.patientId ? { ...p, status: 'in_consultation' as const } : p)
+    }));
   };
 
   const submitConsultation = () => {
@@ -319,312 +369,8 @@ export default function DoctorModule({ state, setState }: Props) {
           ? { ...p, status: nextStatus, lastVisitAt: new Date().toISOString() }
           : p),
 
-// --- DEBUT DES LIGNES D'EXEMPLE ---
-// Example line 1: This is a dummy line added for example purposes.
-// Example line 2: This is a dummy line added for example purposes.
-// Example line 3: This is a dummy line added for example purposes.
-// Example line 4: This is a dummy line added for example purposes.
-// Example line 5: This is a dummy line added for example purposes.
-// Example line 6: This is a dummy line added for example purposes.
-// Example line 7: This is a dummy line added for example purposes.
-// Example line 8: This is a dummy line added for example purposes.
-// Example line 9: This is a dummy line added for example purposes.
-// Example line 10: This is a dummy line added for example purposes.
-// Example line 11: This is a dummy line added for example purposes.
-// Example line 12: This is a dummy line added for example purposes.
-// Example line 13: This is a dummy line added for example purposes.
-// Example line 14: This is a dummy line added for example purposes.
-// Example line 15: This is a dummy line added for example purposes.
-// Example line 16: This is a dummy line added for example purposes.
-// Example line 17: This is a dummy line added for example purposes.
-// Example line 18: This is a dummy line added for example purposes.
-// Example line 19: This is a dummy line added for example purposes.
-// Example line 20: This is a dummy line added for example purposes.
-// Example line 21: This is a dummy line added for example purposes.
-// Example line 22: This is a dummy line added for example purposes.
-// Example line 23: This is a dummy line added for example purposes.
-// Example line 24: This is a dummy line added for example purposes.
-// Example line 25: This is a dummy line added for example purposes.
-// Example line 26: This is a dummy line added for example purposes.
-// Example line 27: This is a dummy line added for example purposes.
-// Example line 28: This is a dummy line added for example purposes.
-// Example line 29: This is a dummy line added for example purposes.
-// Example line 30: This is a dummy line added for example purposes.
-// Example line 31: This is a dummy line added for example purposes.
-// Example line 32: This is a dummy line added for example purposes.
-// Example line 33: This is a dummy line added for example purposes.
-// Example line 34: This is a dummy line added for example purposes.
-// Example line 35: This is a dummy line added for example purposes.
-// Example line 36: This is a dummy line added for example purposes.
-// Example line 37: This is a dummy line added for example purposes.
-// Example line 38: This is a dummy line added for example purposes.
-// Example line 39: This is a dummy line added for example purposes.
-// Example line 40: This is a dummy line added for example purposes.
-// Example line 41: This is a dummy line added for example purposes.
-// Example line 42: This is a dummy line added for example purposes.
-// Example line 43: This is a dummy line added for example purposes.
-// Example line 44: This is a dummy line added for example purposes.
-// Example line 45: This is a dummy line added for example purposes.
-// Example line 46: This is a dummy line added for example purposes.
-// Example line 47: This is a dummy line added for example purposes.
-// Example line 48: This is a dummy line added for example purposes.
-// Example line 49: This is a dummy line added for example purposes.
-// Example line 50: This is a dummy line added for example purposes.
-// Example line 51: This is a dummy line added for example purposes.
-// Example line 52: This is a dummy line added for example purposes.
-// Example line 53: This is a dummy line added for example purposes.
-// Example line 54: This is a dummy line added for example purposes.
-// Example line 55: This is a dummy line added for example purposes.
-// Example line 56: This is a dummy line added for example purposes.
-// Example line 57: This is a dummy line added for example purposes.
-// Example line 58: This is a dummy line added for example purposes.
-// Example line 59: This is a dummy line added for example purposes.
-// Example line 60: This is a dummy line added for example purposes.
-// Example line 61: This is a dummy line added for example purposes.
-// Example line 62: This is a dummy line added for example purposes.
-// Example line 63: This is a dummy line added for example purposes.
-// Example line 64: This is a dummy line added for example purposes.
-// Example line 65: This is a dummy line added for example purposes.
-// Example line 66: This is a dummy line added for example purposes.
-// Example line 67: This is a dummy line added for example purposes.
-// Example line 68: This is a dummy line added for example purposes.
-// Example line 69: This is a dummy line added for example purposes.
-// Example line 70: This is a dummy line added for example purposes.
-// Example line 71: This is a dummy line added for example purposes.
-// Example line 72: This is a dummy line added for example purposes.
-// Example line 73: This is a dummy line added for example purposes.
-// Example line 74: This is a dummy line added for example purposes.
-// Example line 75: This is a dummy line added for example purposes.
-// Example line 76: This is a dummy line added for example purposes.
-// Example line 77: This is a dummy line added for example purposes.
-// Example line 78: This is a dummy line added for example purposes.
-// Example line 79: This is a dummy line added for example purposes.
-// Example line 80: This is a dummy line added for example purposes.
-// Example line 81: This is a dummy line added for example purposes.
-// Example line 82: This is a dummy line added for example purposes.
-// Example line 83: This is a dummy line added for example purposes.
-// Example line 84: This is a dummy line added for example purposes.
-// Example line 85: This is a dummy line added for example purposes.
-// Example line 86: This is a dummy line added for example purposes.
-// Example line 87: This is a dummy line added for example purposes.
-// Example line 88: This is a dummy line added for example purposes.
-// Example line 89: This is a dummy line added for example purposes.
-// Example line 90: This is a dummy line added for example purposes.
-// Example line 91: This is a dummy line added for example purposes.
-// Example line 92: This is a dummy line added for example purposes.
-// Example line 93: This is a dummy line added for example purposes.
-// Example line 94: This is a dummy line added for example purposes.
-// Example line 95: This is a dummy line added for example purposes.
-// Example line 96: This is a dummy line added for example purposes.
-// Example line 97: This is a dummy line added for example purposes.
-// Example line 98: This is a dummy line added for example purposes.
-// Example line 99: This is a dummy line added for example purposes.
-// Example line 100: This is a dummy line added for example purposes.
 
-// --- DEBUT DU BLOC D'EXEMPLE ---
-// Ligne d'exemple 1 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 2 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 3 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 4 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 5 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 6 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 7 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 8 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 9 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 10 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 11 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 12 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 13 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 14 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 15 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 16 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 17 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 18 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 19 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 20 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 21 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 22 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 23 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 24 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 25 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 26 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 27 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 28 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 29 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 30 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 31 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 32 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 33 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 34 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 35 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 36 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 37 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 38 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 39 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 40 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 41 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 42 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 43 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 44 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 45 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 46 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 47 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 48 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 49 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 50 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 51 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 52 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 53 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 54 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 55 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 56 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 57 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 58 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 59 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 60 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 61 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 62 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 63 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 64 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 65 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 66 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 67 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 68 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 69 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 70 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 71 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 72 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 73 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 74 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 75 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 76 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 77 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 78 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 79 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 80 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 81 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 82 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 83 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 84 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 85 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 86 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 87 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 88 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 89 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 90 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 91 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 92 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 93 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 94 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 95 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 96 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 97 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 98 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 99 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// Ligne d'exemple 100 : Ceci est une ligne de remplissage pour illustrer l'expansion du fichier.
-// --- FIN DU BLOC D'EXEMPLE ---
 
-// Example line 101: This is a dummy line added for example purposes.
-// Example line 102: This is a dummy line added for example purposes.
-// Example line 103: This is a dummy line added for example purposes.
-// Example line 104: This is a dummy line added for example purposes.
-// Example line 105: This is a dummy line added for example purposes.
-// Example line 106: This is a dummy line added for example purposes.
-// Example line 107: This is a dummy line added for example purposes.
-// Example line 108: This is a dummy line added for example purposes.
-// Example line 109: This is a dummy line added for example purposes.
-// Example line 110: This is a dummy line added for example purposes.
-// Example line 111: This is a dummy line added for example purposes.
-// Example line 112: This is a dummy line added for example purposes.
-// Example line 113: This is a dummy line added for example purposes.
-// Example line 114: This is a dummy line added for example purposes.
-// Example line 115: This is a dummy line added for example purposes.
-// Example line 116: This is a dummy line added for example purposes.
-// Example line 117: This is a dummy line added for example purposes.
-// Example line 118: This is a dummy line added for example purposes.
-// Example line 119: This is a dummy line added for example purposes.
-// Example line 120: This is a dummy line added for example purposes.
-// Example line 121: This is a dummy line added for example purposes.
-// Example line 122: This is a dummy line added for example purposes.
-// Example line 123: This is a dummy line added for example purposes.
-// Example line 124: This is a dummy line added for example purposes.
-// Example line 125: This is a dummy line added for example purposes.
-// Example line 126: This is a dummy line added for example purposes.
-// Example line 127: This is a dummy line added for example purposes.
-// Example line 128: This is a dummy line added for example purposes.
-// Example line 129: This is a dummy line added for example purposes.
-// Example line 130: This is a dummy line added for example purposes.
-// Example line 131: This is a dummy line added for example purposes.
-// Example line 132: This is a dummy line added for example purposes.
-// Example line 133: This is a dummy line added for example purposes.
-// Example line 134: This is a dummy line added for example purposes.
-// Example line 135: This is a dummy line added for example purposes.
-// Example line 136: This is a dummy line added for example purposes.
-// Example line 137: This is a dummy line added for example purposes.
-// Example line 138: This is a dummy line added for example purposes.
-// Example line 139: This is a dummy line added for example purposes.
-// Example line 140: This is a dummy line added for example purposes.
-// Example line 141: This is a dummy line added for example purposes.
-// Example line 142: This is a dummy line added for example purposes.
-// Example line 143: This is a dummy line added for example purposes.
-// Example line 144: This is a dummy line added for example purposes.
-// Example line 145: This is a dummy line added for example purposes.
-// Example line 146: This is a dummy line added for example purposes.
-// Example line 147: This is a dummy line added for example purposes.
-// Example line 148: This is a dummy line added for example purposes.
-// Example line 149: This is a dummy line added for example purposes.
-// Example line 150: This is a dummy line added for example purposes.
-// Example line 151: This is a dummy line added for example purposes.
-// Example line 152: This is a dummy line added for example purposes.
-// Example line 153: This is a dummy line added for example purposes.
-// Example line 154: This is a dummy line added for example purposes.
-// Example line 155: This is a dummy line added for example purposes.
-// Example line 156: This is a dummy line added for example purposes.
-// Example line 157: This is a dummy line added for example purposes.
-// Example line 158: This is a dummy line added for example purposes.
-// Example line 159: This is a dummy line added for example purposes.
-// Example line 160: This is a dummy line added for example purposes.
-// Example line 161: This is a dummy line added for example purposes.
-// Example line 162: This is a dummy line added for example purposes.
-// Example line 163: This is a dummy line added for example purposes.
-// Example line 164: This is a dummy line added for example purposes.
-// Example line 165: This is a dummy line added for example purposes.
-// Example line 166: This is a dummy line added for example purposes.
-// Example line 167: This is a dummy line added for example purposes.
-// Example line 168: This is a dummy line added for example purposes.
-// Example line 169: This is a dummy line added for example purposes.
-// Example line 170: This is a dummy line added for example purposes.
-// Example line 171: This is a dummy line added for example purposes.
-// Example line 172: This is a dummy line added for example purposes.
-// Example line 173: This is a dummy line added for example purposes.
-// Example line 174: This is a dummy line added for example purposes.
-// Example line 175: This is a dummy line added for example purposes.
-// Example line 176: This is a dummy line added for example purposes.
-// Example line 177: This is a dummy line added for example purposes.
-// Example line 178: This is a dummy line added for example purposes.
-// Example line 179: This is a dummy line added for example purposes.
-// Example line 180: This is a dummy line added for example purposes.
-// Example line 181: This is a dummy line added for example purposes.
-// Example line 182: This is a dummy line added for example purposes.
-// Example line 183: This is a dummy line added for example purposes.
-// Example line 184: This is a dummy line added for example purposes.
-// Example line 185: This is a dummy line added for example purposes.
-// Example line 186: This is a dummy line added for example purposes.
-// Example line 187: This is a dummy line added for example purposes.
-// Example line 188: This is a dummy line added for example purposes.
-// Example line 189: This is a dummy line added for example purposes.
-// Example line 190: This is a dummy line added for example purposes.
-// Example line 191: This is a dummy line added for example purposes.
-// Example line 192: This is a dummy line added for example purposes.
-// Example line 193: This is a dummy line added for example purposes.
-// Example line 194: This is a dummy line added for example purposes.
-// Example line 195: This is a dummy line added for example purposes.
-// Example line 196: This is a dummy line added for example purposes.
-// Example line 197: This is a dummy line added for example purposes.
-// Example line 198: This is a dummy line added for example purposes.
-// Example line 199: This is a dummy line added for example purposes.
-// Example line 200: This is a dummy line added for example purposes.
-// --- FIN DES LIGNES D'EXEMPLE ---
 
       };
       if (newLabRequests.length > 0 && labInvoiceId) {
@@ -669,6 +415,7 @@ export default function DoctorModule({ state, setState }: Props) {
     setSelectedPatientId(null); setConsultForm({ visitReason: '', diagnosis: '', notes: '', isEmergency: false, hospitalizeRequested: false, surgeryRequested: false });
     setVitals({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' });
     setLines([]); setShowHistory(false); setSearchQuery(''); setSelectedLineId(null); setIsNewLine(false);
+    setArticleSearch(''); setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
     setLabDraft([]); setLabSearch(''); setEchoDraft([]); setEchoSearch('');
     setLabDraftIdx(-1); setEchoDraftIdx(-1);
     setView('queue');
@@ -752,7 +499,7 @@ export default function DoctorModule({ state, setState }: Props) {
               <div className="flex flex-wrap items-end gap-1">
                 <div className="flex-1 min-w-[140px] relative">
                   <label className="block text-[9px] text-slate-500">Article (tapez + ↑↓ + Entrée)</label>
-                  <input ref={searchRef} type="text" value={isNewLine && lineForm.articleName ? lineForm.articleName : articleSearch}
+                  <input ref={searchRef} type="text" value={articleSearch ? articleSearch : lineForm.articleName}
                     onChange={(e) => { setArticleSearch(e.target.value); setArtSearchIdx(0); }}
                     onKeyDown={handleSearchKeyDown}
                     className="w-full bg-white border border-blue-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500"
