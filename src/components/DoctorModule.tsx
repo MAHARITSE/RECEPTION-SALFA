@@ -131,6 +131,7 @@ export default function DoctorModule({ state, setState }: Props) {
     const p = state.patients.find((x) => x.id === pid);
     setSelectedPatientId(pid); setLines([]); setSelectedLineId(null); setIsNewLine(false); setView('consultation');
     setLabDraft([]); setLabSearch(''); setEchoDraft([]); setEchoSearch('');
+    setLabDraftIdx(-1); setEchoDraftIdx(-1);
     setConsultForm({ visitReason: '', diagnosis: '', notes: '', isEmergency: false, hospitalizeRequested: false, surgeryRequested: false });
     if (p?.vitalSigns) setVitals({ ...p.vitalSigns }); else setVitals({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' });
     setState((prev) => {
@@ -168,6 +169,17 @@ export default function DoctorModule({ state, setState }: Props) {
       }
     }
     else if (e.key === 'Escape') { setLabSearch(''); }
+    else if (e.key === 'Tab' && !e.shiftKey && !labSearch) { e.preventDefault(); echoSearchRef.current?.focus(); }
+  };
+
+  // Lab draft item keyboard navigation (select item + toggle urgent with U key)
+  const [labDraftIdx, setLabDraftIdx] = useState(-1);
+  const handleLabDraftKeyDown = (e: React.KeyboardEvent) => {
+    if (labDraft.length === 0) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); setLabDraftIdx(i => Math.min(i + 1, labDraft.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setLabDraftIdx(i => Math.max(i - 1, 0)); }
+    else if (e.key === 'u' || e.key === 'U') { e.preventDefault(); if (labDraftIdx >= 0 && labDraftIdx < labDraft.length) toggleLabUrgent(labDraft[labDraftIdx].examId); }
+    else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); if (labDraftIdx >= 0 && labDraftIdx < labDraft.length) { removeLabExam(labDraft[labDraftIdx].examId); setLabDraftIdx(i => Math.max(0, i - 1)); } }
   };
 
   // Keyboard navigation in echo search dropdown
@@ -182,6 +194,17 @@ export default function DoctorModule({ state, setState }: Props) {
       }
     }
     else if (e.key === 'Escape') { setEchoSearch(''); }
+    else if (e.key === 'Tab' && e.shiftKey && !echoSearch) { e.preventDefault(); labSearchRef.current?.focus(); }
+  };
+
+  // Echo draft item keyboard navigation (select item + toggle urgent with U key)
+  const [echoDraftIdx, setEchoDraftIdx] = useState(-1);
+  const handleEchoDraftKeyDown = (e: React.KeyboardEvent) => {
+    if (echoDraft.length === 0) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); setEchoDraftIdx(i => Math.min(i + 1, echoDraft.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setEchoDraftIdx(i => Math.max(i - 1, 0)); }
+    else if (e.key === 'u' || e.key === 'U') { e.preventDefault(); if (echoDraftIdx >= 0 && echoDraftIdx < echoDraft.length) toggleEchoUrgent(echoDraft[echoDraftIdx].examId); }
+    else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); if (echoDraftIdx >= 0 && echoDraftIdx < echoDraft.length) { removeEchoExam(echoDraft[echoDraftIdx].examId); setEchoDraftIdx(i => Math.max(0, i - 1)); } }
   };
 
   const handleArticleSelect = (articleId: string) => {
@@ -339,6 +362,7 @@ export default function DoctorModule({ state, setState }: Props) {
     setVitals({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' });
     setLines([]); setShowHistory(false); setSearchQuery(''); setSelectedLineId(null); setIsNewLine(false);
     setLabDraft([]); setLabSearch(''); setEchoDraft([]); setEchoSearch('');
+    setLabDraftIdx(-1); setEchoDraftIdx(-1);
     setView('queue');
   };
 
@@ -355,8 +379,8 @@ export default function DoctorModule({ state, setState }: Props) {
           <div className="p-3 border-b bg-emerald-50 flex justify-between"><h3 className="font-semibold text-emerald-800"><FileText className="w-5 h-5 inline" /> Consultations du jour</h3><button onClick={() => setView('queue')} className="px-3 py-1 bg-slate-200 hover:bg-slate-300 rounded text-sm cursor-pointer">← File</button></div>
           <div className="overflow-auto"><table className="w-full text-sm"><thead className="bg-slate-100 sticky top-0"><tr><th className="p-2 text-left">Heure</th><th className="p-2 text-left">Patient</th><th className="p-2 text-right">Montant</th><th className="p-2 text-center">Statut</th><th className="p-2 text-center">Action</th></tr></thead>
             <tbody>{myTodayConsults.length === 0 ? <tr><td colSpan={5} className="p-8 text-center text-slate-400">Aucune</td></tr>
-              : myTodayConsults.map((c) => { const pat = state.patients.find((p) => p.id === c.patientId); const st = getConsultStatus(c); const total = c.prescriptions.reduce((s, p) => s + Math.round(p.unitPrice * p.quantity * (1 - p.discount / 100)), 0);
-                return (<tr key={c.id} className="border-b hover:bg-slate-50"><td className="p-2 font-mono">{new Date(c.date).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</td><td className="p-2 font-medium">{pat?.lastName} {pat?.firstName} <span className="text-xs text-slate-400">({pat?.dossier})</span></td><td className="p-2 text-right font-mono font-bold">{formatAr(total)}</td><td className="p-2 text-center"><span className={`px-2 py-1 rounded-full text-xs font-bold ${st.color}`}>{st.label}</span></td><td className="p-2 text-center flex gap-1 justify-center flex-wrap">{st.canEdit && <button onClick={() => reEditConsultation(c.id)} className="px-2 py-1 bg-blue-500 text-white rounded text-xs cursor-pointer"><Edit2 className="w-3 h-3 inline" /> Mod.</button>}{st.canReturn && <button onClick={() => returnToCashier(c.id)} className="px-2 py-1 bg-amber-500 text-white rounded text-xs cursor-pointer"><RotateCcw className="w-3 h-3 inline" /> Caisse</button>}</td></tr>); })}</tbody>
+              : myTodayConsults.map((c) => { const pat = state.patients.find((p) => p.id === c.patientId); const st = getConsultStatus(c); const prescTotal = c.prescriptions.reduce((s, p) => s + Math.round(p.unitPrice * p.quantity * (1 - p.discount / 100)), 0); const labTotal = (c.labRequests || []).reduce((s, lr) => s + (lr.price || 0), 0); const echoTotal = (c.echoRequests || []).reduce((s, er) => s + (er.price || 0), 0); const total = prescTotal + labTotal + echoTotal;
+                return (<tr key={c.id} className="border-b hover:bg-slate-50"><td className="p-2 font-mono">{new Date(c.date).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</td><td className="p-2 font-medium">{pat?.lastName} {pat?.firstName} <span className="text-xs text-slate-400">({pat?.dossier})</span></td><td className="p-2 text-right font-mono font-bold">{formatAr(total)}{labTotal > 0 || echoTotal > 0 ? <span className="block text-[10px] font-normal text-slate-400">{prescTotal > 0 ? `💊${formatAr(prescTotal)} ` : ''}{labTotal > 0 ? `🧪${formatAr(labTotal)} ` : ''}{echoTotal > 0 ? `📡${formatAr(echoTotal)}` : ''}</span> : ''}</td><td className="p-2 text-center"><span className={`px-2 py-1 rounded-full text-xs font-bold ${st.color}`}>{st.label}</span></td><td className="p-2 text-center flex gap-1 justify-center flex-wrap">{st.canEdit && <button onClick={() => reEditConsultation(c.id)} className="px-2 py-1 bg-blue-500 text-white rounded text-xs cursor-pointer"><Edit2 className="w-3 h-3 inline" /> Mod.</button>}{st.canReturn && <button onClick={() => returnToCashier(c.id)} className="px-2 py-1 bg-amber-500 text-white rounded text-xs cursor-pointer"><RotateCcw className="w-3 h-3 inline" /> Caisse</button>}</td></tr>); })}</tbody>
           </table></div>
         </div>
       )}
@@ -510,12 +534,13 @@ export default function DoctorModule({ state, setState }: Props) {
               </div>
               <div>
                 {labDraft.length > 0 ? (
-                  <div className="border border-slate-200 rounded-lg divide-y bg-slate-50/40">
+                  <div className="border border-slate-200 rounded-lg divide-y bg-slate-50/40" tabIndex={0} onKeyDown={handleLabDraftKeyDown} onFocus={() => setLabDraftIdx(0)}>
                     {labDraft.map((d) => {
                       const e = state.labCatalog.find((x) => x.id === d.examId);
                       if (!e) return null;
+                      const isDraftSel = labDraft.indexOf(d) === labDraftIdx;
                       return (
-                        <div key={d.examId} className="flex items-center justify-between p-2 text-xs">
+                        <div key={d.examId} className={`flex items-center justify-between p-2 text-xs ${isDraftSel ? 'bg-cyan-100 border-l-2 border-cyan-500' : ''}`}>
                           <div className="mr-2">
                             <div className="font-bold text-slate-800">{e.name} <span className="text-[10px] text-slate-400 font-normal">[{e.code}]</span></div>
                             <div className="text-[10px] text-slate-400">{e.sampleType} · {e.durationHours}h</div>
@@ -566,12 +591,13 @@ export default function DoctorModule({ state, setState }: Props) {
               </div>
               <div>
                 {echoDraft.length > 0 ? (
-                  <div className="border border-slate-200 rounded-lg divide-y bg-slate-50/40">
+                  <div className="border border-slate-200 rounded-lg divide-y bg-slate-50/40" tabIndex={0} onKeyDown={handleEchoDraftKeyDown} onFocus={() => setEchoDraftIdx(0)}>
                     {echoDraft.map((d) => {
                       const e = ECHO_CATALOG.find((x) => x.id === d.examId);
                       if (!e) return null;
+                      const isDraftSel = echoDraft.indexOf(d) === echoDraftIdx;
                       return (
-                        <div key={d.examId} className="flex items-center justify-between p-2 text-xs">
+                        <div key={d.examId} className={`flex items-center justify-between p-2 text-xs ${isDraftSel ? 'bg-indigo-100 border-l-2 border-indigo-500' : ''}`}>
                           <div className="flex-1 mr-2">
                             <div className="font-bold text-slate-800">{e.name} <span className="text-[10px] text-slate-400 font-normal">[{e.code}]</span></div>
                             <input

@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import type { UserRole, TicketSettings } from '../types';
+import { formatAr, addAuditLog, migrateLegacyToVentes, createInitialState } from '../store';
 import type { AppState } from '../store';
-import { formatAr, addAuditLog, migrateLegacyToVentes } from '../store';
 import {
   Save, Trash2, Plus, X, Check, Download, Upload,
   Eye, Settings as SettingsIcon, Users, Building2,
@@ -233,6 +233,17 @@ export default function AdminModule({ state, setState }: Props) {
       return fresh;
     });
     showToast('Système réinitialisé');
+  };
+
+  const resetAllDatabase = () => {
+    if (!confirm('⚠️ RÉINITIALISATION COMPLÈTE : TOUTES les données seront effacées et remplacées par les données de démonstration initiales.\n\nCela inclut : patients, consultations, factures, articles, utilisateurs, sociétés, fournisseurs, tout.\n\nContinuer ?')) return;
+    if (!confirm('⚠️ DERNIÈRE CONFIRMATION : Cette action est IRRÉVERSIBLE. Toutes les données saisies seront perdues.\n\nConfirmer la réinitialisation totale ?')) return;
+    // Effacer le localStorage s'il existe
+    try { localStorage.clear(); } catch { /* ignore */ }
+    // Réinitialiser complètement l'état avec les données de seed initiales
+    const freshState = createInitialState();
+    setState(() => freshState);
+    showToast('✅ Base de données entièrement réinitialisée');
   };
 
   const copyPromptText = (text: string) => {
@@ -809,6 +820,16 @@ export default function AdminModule({ state, setState }: Props) {
                 </p>
                 <button onClick={resetSystem} className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-xs cursor-pointer flex items-center gap-2 shadow">
                   <RefreshCw className="w-4 h-4" /> Réinitialiser les données opérationnelles
+                </button>
+              </div>
+
+              <div className="p-5 border-2 border-red-400 rounded-xl bg-gradient-to-br from-red-50 to-rose-100 space-y-3">
+                <h4 className="font-bold text-red-900 flex items-center gap-2 text-sm"><AlertCircle className="w-5 h-5 text-red-700" /> ⛔ Réinitialisation TOTALE de la base</h4>
+                <p className="text-xs text-red-700 leading-relaxed">
+                  Supprime <strong>TOUTES</strong> les données (patients, consultations, factures, articles, utilisateurs, sociétés, fournisseurs, catalogue labo, etc.) et restaure l'état initial de démonstration. <strong>Cette action est irréversible.</strong>
+                </p>
+                <button onClick={resetAllDatabase} className="px-5 py-2.5 bg-red-700 hover:bg-red-800 text-white rounded-lg font-bold text-xs cursor-pointer flex items-center gap-2 shadow-lg border border-red-600">
+                  <RefreshCw className="w-4 h-4" /> Réinitialiser TOUTE la base de données
                 </button>
               </div>
             </div>
