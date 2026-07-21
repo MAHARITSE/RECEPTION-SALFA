@@ -6,7 +6,7 @@ import {
   Lock, User as UserIcon, AlertCircle
 } from 'lucide-react';
 
-interface LoginScreenProps {
+interface EcranConnexionProps {
   users: User[];
   onLogin: (user: User) => void;
   onBack: () => void;
@@ -42,7 +42,7 @@ const roleColors: Record<string, string> = {
   admin: 'bg-slate-700 hover:bg-slate-800',
 };
 
-export default function LoginScreen({ users, onLogin, onBack }: LoginScreenProps) {
+export default function EcranConnexion({ users, onLogin, onBack }: EcranConnexionProps) {
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');

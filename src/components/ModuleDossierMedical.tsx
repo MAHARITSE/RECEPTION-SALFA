@@ -30,7 +30,7 @@ const statusCfg: Record<string, { label: string; bg: string; text: string }> = {
   completed: { label: '✅ Terminé', bg: 'bg-emerald-200', text: 'text-emerald-800' },
 };
 
-export default function MedicalRecordModule({ state, patientId, onBack }: Props) {
+export default function ModuleDossierMedical({ state, patientId, onBack }: Props) {
   const [localId, setLocalId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<Tab>('parcours');

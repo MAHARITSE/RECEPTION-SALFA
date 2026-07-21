@@ -30,7 +30,7 @@ interface DispLab {
 
 type Tab = 'to_bill' | 'awaiting' | 'in_progress' | 'completed' | 'all';
 
-export default function LaboratoryModule({ state, setState }: Props) {
+export default function ModuleLaboratoire({ state, setState }: Props) {
   const [tab, setTab] = useState<Tab>('to_bill');
   const [search, setSearch] = useState('');
   const [filterCat, setFilterCat] = useState<string>('all');

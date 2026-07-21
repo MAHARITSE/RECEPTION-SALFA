@@ -13,11 +13,11 @@ interface Props {
   onOpenMessagingWithRecipient?: (recipientId: string) => void;
 }
 // L'ancien onglet « Comptes sociétés » a été déplacé vers le module dédié
-// du rôle Responsable facturation (BillingModule).
+// du rôle Responsable facturation (ModuleFacturationSocietes).
 type Tab = 'payment' | 'external' | 'hospit' | 'bloc' | 'closing';
 type HbModal = 'none' | 'add_patient' | 'add_article' | 'edit_client';
 
-export default function CashierModule({ state, setState, onOpenMessagingWithRecipient }: Props) {
+export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecipient }: Props) {
   const [selConsultId, setSelConsultId] = useState<string | null>(null);
   const [selPatientId, setSelPatientId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('payment');
@@ -76,16 +76,24 @@ export default function CashierModule({ state, setState, onOpenMessagingWithReci
   const [hbEditCompany, setHbEditCompany] = useState('');
 
   // Data
-  // Unified: patients with pharmacy awaiting payment OR pending lab/echo invoices
+  // Unified: patients with pharmacy awaiting payment OR pending lab/echo invoices.
+  // ⚠️ Règle : les patients rattachés à une société sont systématiquement EN CRÉDIT et
+  // ne sont pas réglables en caisse (espèces) — leur règlement relève du module
+  // « Facturation sociétés » (rôle Responsable facturation).
   const pendingPatients = state.patients.filter(p =>
-    p.status === 'consulted_awaiting_payment' ||
-    state.invoices.some(i => i.patientId === p.id && i.status === 'pending' && i.items.some(it => it.category === 'lab' || it.category === 'echo'))
+    p.clientType !== 'societe' && (
+      p.status === 'consulted_awaiting_payment' ||
+      state.invoices.some(i => i.patientId === p.id && i.status === 'pending' && i.items.some(it => it.category === 'lab' || it.category === 'echo'))
+    )
   );
 
-  // Pending lab + echo invoices (merge with pharmacy)
-  const pendingServiceInvoices = state.invoices.filter(
-    (i) => i.status === 'pending' && i.items.some((it) => it.category === 'lab' || it.category === 'echo'),
-  );
+  // Pending lab + echo invoices (merge with pharmacy) — exclus également les factures société.
+  const pendingServiceInvoices = state.invoices.filter((i) => {
+    if (i.status !== 'pending') return false;
+    if (!i.items.some((it) => it.category === 'lab' || it.category === 'echo')) return false;
+    const patient = i.patientId ? state.patients.find(p => p.id === i.patientId) : undefined;
+    return patient?.clientType !== 'societe';
+  });
 
   // Helper: get all pending items for a patient (pharmacy + lab + echo)
   const getPendingAmount = (p: any) => {

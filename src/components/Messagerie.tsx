@@ -11,7 +11,7 @@ interface Props {
   initialRecipientId?: string | null;
 }
 
-export default function Messaging({ state, setState, onClose, initialRecipientId }: Props) {
+export default function Messagerie({ state, setState, onClose, initialRecipientId }: Props) {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(initialRecipientId || null);
   const [newMsg, setNewMsg] = useState('');
   const msgEndRef = useRef<HTMLDivElement>(null);

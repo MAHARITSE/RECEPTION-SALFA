@@ -1,0 +1,375 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1100" font-family="Arial, Helvetica, sans-serif">
+  <defs>
+    <style>
+      .title { font-size: 22px; font-weight: bold; fill: #0f172a; }
+      .entity { fill: #ffffff; stroke: #1e40af; stroke-width: 2; rx: 10; }
+      .entity-title { fill: #1e40af; font-size: 14px; font-weight: bold; }
+      .pk { fill: #fde68a; font-size: 11px; font-weight: bold; }
+      .fk { fill: #bfdbfe; font-size: 11px; }
+      .field { fill: #334155; font-size: 11px; }
+      .rel { stroke: #475569; stroke-width: 1.5; fill: none; marker-end: url(#arrow); }
+      .rel-label { fill: #475569; font-size: 10px; }
+      .card { fill: #475569; font-size: 11px; font-weight: bold; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569" />
+    </marker>
+  </defs>
+
+  <rect width="1600" height="1100" fill="#f8fafc" />
+  <text x="800" y="30" text-anchor="middle" class="title">Schéma relationnel — Base de données Réception SALFA (version française)</text>
+  <text x="800" y="50" text-anchor="middle" font-size="12" fill="#64748b">Utilisateurs · Patients · Sociétés · Consultations · Factures · Paiements · Articles · Stocks · Achats · Laboratoire · Pharmacie · Hospitalisation · Bloc</text>
+
+  <!-- UTILISATEURS -->
+  <g transform="translate(40,80)">
+    <rect width="220" height="120" class="entity"/>
+    <text x="110" y="22" text-anchor="middle" class="entity-title">UTILISATEURS</text>
+    <line x1="0" y1="30" x2="220" y2="30" stroke="#1e40af"/>
+    <text x="10" y="48" class="pk">PK id (DOC001, CAS001…)</text>
+    <text x="10" y="64" class="field">nom</text>
+    <text x="10" y="80" class="field">rôle: doctor|cashier|pharmacy|…|billing|admin</text>
+    <text x="10" y="96" class="field">mot de passe</text>
+  </g>
+
+  <!-- SOCIÉTÉS -->
+  <g transform="translate(40,260)">
+    <rect width="240" height="140" class="entity"/>
+    <text x="120" y="22" text-anchor="middle" class="entity-title">SOCIÉTÉS</text>
+    <line x1="0" y1="30" x2="240" y2="30" stroke="#1e40af"/>
+    <text x="10" y="48" class="pk">PK id</text>
+    <text x="10" y="64" class="field">nom (raison sociale)</text>
+    <text x="10" y="80" class="field">mode_paiement = « Crédit »</text>
+    <text x="10" y="96" class="field">sous_mode: global_mensuel | indiv_facture</text>
+    <text x="10" y="112" class="field">notes, date_création</text>
+  </g>
+
+  <!-- PATIENTS -->
+  <g transform="translate(330,80)">
+    <rect width="260" height="240" class="entity"/>
+    <text x="130" y="22" text-anchor="middle" class="entity-title">PATIENTS</text>
+    <line x1="0" y1="30" x2="260" y2="30" stroke="#1e40af"/>
+    <text x="10" y="48" class="pk">PK id</text>
+    <text x="10" y="64" class="fk">FK société_id → SOCIÉTÉS</text>
+    <text x="10" y="80" class="field">n° dossier, matricule</text>
+    <text x="10" y="96" class="field">nom, prénom, date_naissance, âge</text>
+    <text x="10" y="112" class="field">sexe, adresse, contact</text>
+    <text x="10" y="128" class="field">groupe_sanguin, allergie, antécédents</text>
+    <text x="10" y="144" class="field">paramètres_vitraux (JSON)</text>
+    <text x="10" y="160" class="field">type_client: comptoir|société|externe</text>
+    <text x="10" y="176" class="field">sous-société, médecin_traitant</text>
+    <text x="10" y="192" class="field">statut (file d’attente)</text>
+    <text x="10" y="208" class="field">date_enregistrement, enregistré_par</text>
+    <text x="10" y="224" class="field">dernière_visite</text>
+  </g>
+
+  <!-- CONSULTATIONS -->
+  <g transform="translate(640,80)">
+    <rect width="260" height="180" class="entity"/>
+    <text x="130" y="22" text-anchor="middle" class="entity-title">CONSULTATIONS</text>
+    <line x1="0" y1="30" x2="260" y2="30" stroke="#1e40af"/>
+    <text x="10" y="48" class="pk">PK id</text>
+    <text x="10" y="64" class="fk">FK patient_id → PATIENTS</text>
+    <text x="10" y="80" class="fk">FK medecin_id → UTILISATEURS</text>
+    <text x="10" y="96" class="field">date, constantes_vitales</text>
+    <text x="10" y="112" class="field">motif, diagnostic, notes</text>
+    <text x="10" y="128" class="field">hospitalisation_demandée, chirurgie, urgence</text>
+    <text x="10" y="144" class="field">— ordonnances (Prescriptions)*</text>
+    <text x="10" y="160" class="field">— demandes labo / écho *</text>
+  </g>
+
+  <!-- FACTURES / VENTES -->
+  <g transform="translate(950,80)">
+    <rect width="270" height="230" class="entity"/>
+    <text x="135" y="22" text-anchor="middle" class="entity-title">FACTURES / VENTES</text>
+    <line x1="0" y1="30" x2="270" y2="30" stroke="#1e40af"/>
+    <text x="10" y="48" class="pk">PK id</text>
+    <text x="10" y="64" class="fk">FK patient_id → PATIENTS</text>
+    <text x="10" y="80" class="fk">FK consultation_id → CONSULTATIONS</text>
+    <text x="10" y="96" class="fk">FK société (via patient)</text>
+    <text x="10" y="112" class="field">n° facture (FAC-YYYY-NNNN)</text>
+    <text x="10" y="128" class="field">type: consultation|labo|pharmacie|écho|hospi|bloc|externe</text>
+    <text x="10" y="144" class="field">sous-total, remise, montant_facturé</text>
+    <text x="10" y="160" class="field">montant_réglé, statut: impayée|partielle|payée</text>
+    <text x="10" y="176" class="field">date, créé_par, réglé_par</text>
+    <text x="10" y="192" class="field">vente_externe, source (caisse|pharma|urgence…)</text>
+    <text x="10" y="208" class="field">clôture_id</text>
+  </g>
+
+  <!-- Lignes facture -->
+  <g transform="translate(950,350)">
+    <rect width="270" height="120" class="entity"/>
+    <text x="135" y="22" text-anchor="middle" class="entity-title">LIGNES FACTURE</text>
+    <line x1="0" y1="30" x2="270" y2="30" stroke="#1e40af"/>
+    <text x="10" y="48" class="pk">PK id</text>
+    <text x="10" y="64" class="fk">FK facture_id → FACTURES</text>
+    <text x="10" y="80" class="field">article, quantité, prix_unitaire</text>
+    <text x="10" y="96" class="field">remise %, catégorie, date de sortie</text>
+  </g>
+
+  <!-- PAIEMENTS -->
+  <g transform="translate(1270,80)">
+    <rect width="280" height="150" class="entity"/>
+    <text x="140" y="22" text-anchor="middle" class="entity-title">PAIEMENTS</text>
+    <line x1="0" y1="30" x2="280" y2="30" stroke="#1e40af"/>
+    <text x="10" y="48" class="pk">PK id</text>
+    <text x="10" y="64" class="fk">FK facture_id → FACTURES</text>
+    <text x="10" y="80" class="fk">FK encaissé_par → UTILISATEURS</text>
+    <text x="10" y="96" class="field">montant, date</text>
+    <text x="10" y="112" class="field">mode (Espèces/Virement/Chèque/MM/Carte)</text>
+    <text x="10" y="128" class="field">référence, observation</text>
+  </g>
+
+  <!-- COMPTES / RELEVÉS SOCIÉTÉ -->
+  <g transform="translate(40,450)">
+    <rect width="280" height="210" class="entity"/>
+    <text x="140" y="22" text-anchor="middle" class="entity-title">RELEVÉS / COMPTES SOCIÉTÉ</text>
+    <line x1="0" y1="30" x2="280" y2="30" stroke="#1e40af"/>
+    <text x="10" y="48" class="pk">PK id</text>
+    <text x="10" y="64" class="fk">FK société → SOCIÉTÉS</text>
+    <text x="10" y="80" class="field">mois (YYYY-MM)</text>
+    <text x="10" y="96" class="field">liste facture_ids []</text>
+    <text x="10" y="112" class="field">total_facturé, total_réglé</text>
+    <text x="10" y="128" class="field">statut: impayé|partiel|soldé</text>
+    <text x="10" y="144" class="field">date/mode/référence/observation du règlement final</text>
+    <text x="10" y="160" class="field">validé_par (Responsable facturation)</text>
+    <text x="10" y="176" class="field">— paiements[] (règlements partiels)</text>
+    <text x="10" y="192" class="field">date_création</text>
+  </g>
+
+  <!-- ARTICLES -->
+  <g transform="translate(350,450)">
+    <rect width="250" height="210" class="entity"/>
+    <text x="125" y="22" text-anchor="middle" class="entity-title">ARTICLES</text>
+    <line x1="0" y1="30" x2="250" y2="30" stroke="#1e40af"/>
+    <text x="10" y="48" class="pk">PK id</text>
+    <text x="10" y="64" class="field">nom, famille (MEDIC|LABO|DENT|ECHO)</text>
+    <text x="10" y="80" class="field">unité, code-barres</text>
+    <text x="10" y="96" class="field">prix_comptoir, prix_société, prix_externe</text>
+    <text x="10" y="112" class="field">prix_achat, seuil_alerte central/pharma</text>
+    <text x="10" y="128" class="field">stock_central, stock_pharmacie</text>
+    <text x="10" y="144" class="field">stocks_par_service (JSON)</text>
+    <text x="10" y="160" class="field">date_péremption, fournisseur</text>
+    <text x="10" y="176" class="field">vente_bloquée, motif</text>
+  </g>
+
+  <!-- STOCKS / MOUVEMENTS -->
+  <g transform="translate(630,450)">
+    <rect width="280" height="210" class="entity"/>
+    <text x="140" y="22" text-anchor="middle" class="entity-title">MOUVEMENTS DE STOCK</text>
+    <line x1="0" y1="30" x2="280" y2="30" stroke="#1e40af"/>
+    <text x="10" y="48" class="pk">PK id (entête)</text>
+    <text x="10" y="64" class="field">type: entrée|sortie|transfert|inventaire|achat</text>
+    <text x="10" y="80" class="field">référence (BL, facture, n° transfert)</text>
+    <text x="10" y="96" class="fk">FK utilisateur_id → UTILISATEURS</text>
+    <text x="10" y="112" class="field">origine / destination (central|pharmacie|service)</text>
+    <text x="10" y="128" class="field">date, statut, notes</text>
+    <text x="10" y="144" class="field">— lignes_mouvement *</text>
+    <text x="10" y="160" class="field">   FK article_id → ARTICLES</text>
+    <text x="10" y="176" class="field">   quantité, prix_achat/vente, motif</text>
+  </g>
+
+  <!-- FOURNISSEURS -->
+  <g transform="translate(350,700)">
+    <rect width="250" height="160" class="entity"/>
+    <text x="125" y="22" text-anchor="middle" class="entity-title">FOURNISSEURS</text>
+    <line x1="0" y1="30" x2="250" y2="30" stroke="#1e40af"/>
+    <text x="10" y="48" class="pk">PK id</text>
+    <text x="10" y="64" class="field">nom, contact, téléphone</text>
+    <text x="10" y="80" class="field">email, adresse</text>
+    <text x="10" y="96" class="field">NIF, STAT, notes</text>
+  </g>
+
+  <!-- ACHATS -->
+  <g transform="translate(630,700)">
+    <rect width="280" height="160" class="entity"/>
+    <text x="140" y="22" text-anchor="middle" class="entity-title">ACHATS</text>
+    <line x1="0" y1="30" x2="280" y2="30" stroke="#1e40af"/>
+    <text x="10" y="48" class="pk">PK id</text>
+    <text x="10" y="64" class="fk">FK fournisseur_id → FOURNISSEURS</text>
+    <text x="10" y="80" class="field">n° facture fournisseur</text>
+    <text x="10" y="96" class="field">date, montant_total</text>
+    <text x="10" y="112" class="field">— lignes_achat * : article, qté, prix_achat, péremption</text>
+    <text x="10" y="128" class="field">créé_par → UTILISATEURS</text>
+  </g>
+
+  <!-- LIVRAISONS PHARMA -->
+  <g transform="translate(950,700)">
+    <rect width="280" height="160" class="entity"/>
+    <text x="140" y="22" text-anchor="middle" class="entity-title">LIVRAISONS PHARMACIE</text>
+    <line x1="0" y1="30" x2="280" y2="30" stroke="#1e40af"/>
+    <text x="10" y="48" class="pk">PK id</text>
+    <text x="10" y="64" class="fk">FK patient_id, FK consultation_id</text>
+    <text x="10" y="80" class="field">article, quantité, prix_unitaire</text>
+    <text x="10" y="96" class="field">posologie, date_livraison</text>
+    <text x="10" y="112" class="fk">livré_par → UTILISATEURS</text>
+    <text x="10" y="128" class="field">n° clôture_livraison</text>
+  </g>
+
+  <!-- LABORATOIRE -->
+  <g transform="translate(40,700)">
+    <rect width="270" height="200" class="entity"/>
+    <text x="135" y="22" text-anchor="middle" class="entity-title">LABORATOIRE</text>
+    <line x1="0" y1="30" x2="270" y2="30" stroke="#1e40af"/>
+    <text x="10" y="48" class="pk">PK catalogue_examen_id</text>
+    <text x="10" y="64" class="field">code, nom, catégorie, échantillon</text>
+    <text x="10" y="80" class="field">paramètres[], prix_comptoir/société/externe/urgent</text>
+    <text x="10" y="100" class="pk">PK demande_id</text>
+    <text x="10" y="116" class="fk">FK patient_id, FK consultation_id</text>
+    <text x="10" y="132" class="fk">FK facture_id</text>
+    <text x="10" y="148" class="field">statut: en_attente|payé|prélevé|en_cours|terminé</text>
+    <text x="10" y="164" class="field">urgence, résultats[] (paramètre+v.normale+anormal)</text>
+    <text x="10" y="180" class="field">validé_par → UTILISATEURS</text>
+  </g>
+
+  <!-- ORDONNANCES -->
+  <g transform="translate(1270,270)">
+    <rect width="280" height="130" class="entity"/>
+    <text x="140" y="22" text-anchor="middle" class="entity-title">ORDONNANCES / PRESCRIPTIONS</text>
+    <line x1="0" y1="30" x2="280" y2="30" stroke="#1e40af"/>
+    <text x="10" y="48" class="pk">PK id</text>
+    <text x="10" y="64" class="fk">FK consultation_id → CONSULTATIONS</text>
+    <text x="10" y="80" class="field">article, quantité, posologie</text>
+    <text x="10" y="96" class="field">durée, instructions, remise, délivrée</text>
+  </g>
+
+  <!-- HOSPITALISATION -->
+  <g transform="translate(950,900)">
+    <rect width="280" height="150" class="entity"/>
+    <text x="140" y="22" text-anchor="middle" class="entity-title">HOSPITALISATION</text>
+    <line x1="0" y1="30" x2="280" y2="30" stroke="#1e40af"/>
+    <text x="10" y="48" class="pk">PK id dossier</text>
+    <text x="10" y="64" class="fk">FK patient_id → PATIENTS</text>
+    <text x="10" y="80" class="field">date_ouverture, ouvert_par</text>
+    <text x="10" y="96" class="field">— lignes: article, qté, prix, date_sortie</text>
+    <text x="10" y="112" class="field">— paiements[] (partiels) → PAIEMENTS</text>
+    <text x="10" y="128" class="field">société, type_client</text>
+  </g>
+
+  <!-- BLOC OPERATOIRE -->
+  <g transform="translate(1270,900)">
+    <rect width="280" height="150" class="entity"/>
+    <text x="140" y="22" text-anchor="middle" class="entity-title">BLOC OPÉRATOIRE</text>
+    <line x1="0" y1="30" x2="280" y2="30" stroke="#1e40af"/>
+    <text x="10" y="48" class="pk">PK id dossier</text>
+    <text x="10" y="64" class="fk">FK patient_id → PATIENTS</text>
+    <text x="10" y="80" class="field">date_ouverture, ouvert_par</text>
+    <text x="10" y="96" class="field">— lignes: article, qté, prix, date_sortie</text>
+    <text x="10" y="112" class="field">— paiements[] (partiels)</text>
+    <text x="10" y="128" class="field">société, type_client</text>
+  </g>
+
+  <!-- MESSAGES -->
+  <g transform="translate(1270,450)">
+    <rect width="280" height="120" class="entity"/>
+    <text x="140" y="22" text-anchor="middle" class="entity-title">MESSAGES</text>
+    <line x1="0" y1="30" x2="280" y2="30" stroke="#1e40af"/>
+    <text x="10" y="48" class="pk">PK id</text>
+    <text x="10" y="64" class="fk">expéditeur/destinataire → UTILISATEURS</text>
+    <text x="10" y="80" class="field">contenu, date, lu</text>
+  </g>
+
+  <!-- NOTIFICATIONS -->
+  <g transform="translate(1270,600)">
+    <rect width="280" height="90" class="entity"/>
+    <text x="140" y="22" text-anchor="middle" class="entity-title">NOTIFICATIONS</text>
+    <line x1="0" y1="30" x2="280" y2="30" stroke="#1e40af"/>
+    <text x="10" y="48" class="pk">PK id</text>
+    <text x="10" y="64" class="field">rôle_cible, utilisateur_cible, message, date, lu</text>
+  </g>
+
+  <!-- PARCOURS PATIENT -->
+  <g transform="translate(40,920)">
+    <rect width="270" height="140" class="entity"/>
+    <text x="135" y="22" text-anchor="middle" class="entity-title">PARCOURS PATIENT (timeline)</text>
+    <line x1="0" y1="30" x2="270" y2="30" stroke="#1e40af"/>
+    <text x="10" y="48" class="pk">PK id</text>
+    <text x="10" y="64" class="fk">FK patient_id → PATIENTS</text>
+    <text x="10" y="80" class="field">service (réception|consult|labo|pharma|caisse|admin|…)</text>
+    <text x="10" y="96" class="field">action, détails, horodatage</text>
+    <text x="10" y="112" class="fk">acteur → UTILISATEURS</text>
+    <text x="10" y="128" class="field">FK consultation/facture/demande_labo/hospi</text>
+  </g>
+
+  <!-- RELATIONS -->
+  <!-- Société -> Patient (1,N) -->
+  <path class="rel" d="M220,320 C280,320 280,200 330,200" />
+  <text x="240" y="250" class="rel-label">1 — N</text>
+  <text x="240" y="264" class="rel-label">patients rattachés</text>
+
+  <!-- Patient -> Consultation (1,N) -->
+  <path class="rel" d="M590,200 C620,200 620,200 640,200" />
+  <text x="600" y="190" class="rel-label">1 — N</text>
+
+  <!-- Patient -> Facture (1,N) -->
+  <path class="rel" d="M590,200 C780,200 830,200 950,200" />
+  <text x="730" y="190" class="rel-label">1 — N</text>
+
+  <!-- Consultation -> Facture (1,N) -->
+  <path class="rel" d="M900,200 C920,200 930,200 950,200" />
+
+  <!-- Facture -> Lignes (1,N) -->
+  <path class="rel" d="M1080,310 L1080,350" />
+  <text x="1085" y="340" class="rel-label">1 — N</text>
+
+  <!-- Facture -> Paiements (1,N) -->
+  <path class="rel" d="M1220,200 C1245,200 1245,200 1270,200" />
+  <text x="1230" y="190" class="rel-label">1 — N</text>
+
+  <!-- Utilisateur -> Consultation/Facture/Paiements etc. 1,N -->
+  <path class="rel" d="M260,120 C480,120 560,120 640,140" />
+  <text x="400" y="110" class="rel-label">1 — N (médecin)</text>
+  <path class="rel" d="M260,150 C600,150 900,160 1270,160" />
+  <text x="700" y="155" class="rel-label">1 — N (encaissé / validé par)</text>
+
+  <!-- Société -> Relevé 1,N -->
+  <path class="rel" d="M160,400 L160,450" />
+  <text x="170" y="430" class="rel-label">1 — N</text>
+
+  <!-- Facture -> Relevé (N,N via invoiceIds) -->
+  <path class="rel" d="M950,280 C800,280 400,400 320,540" stroke-dasharray="4,4" />
+  <text x="540" y="380" class="rel-label">N — N (factures du mois)</text>
+
+  <!-- Article -> Mouvement -->
+  <path class="rel" d="M600,550 C615,550 615,550 630,550" />
+  <text x="605" y="540" class="rel-label">1 — N</text>
+
+  <!-- Fournisseur -> Achat -->
+  <path class="rel" d="M600,780 C615,780 615,780 630,780" />
+  <text x="605" y="770" class="rel-label">1 — N</text>
+
+  <!-- Article -> Facture/ligne -->
+  <path class="rel" d="M600,500 C800,450 900,430 950,400" stroke-dasharray="4,4"/>
+  <text x="760" y="460" class="rel-label">référence article dans ligne_facture</text>
+
+  <!-- Patient -> Labo -->
+  <path class="rel" d="M310,780 C200,780 180,400 360,300" stroke-dasharray="4,4" />
+
+  <!-- Consultation -> Ordonnances -->
+  <path class="rel" d="M900,260 C1100,260 1200,270 1270,300" />
+  <text x="1080" y="255" class="rel-label">1 — N ordonnances</text>
+
+  <!-- Patient -> Hospitalisation/Bloc -->
+  <path class="rel" d="M460,320 C700,700 900,900 950,960" stroke-dasharray="4,4"/>
+  <path class="rel" d="M500,320 C900,700 1100,900 1270,960" stroke-dasharray="4,4"/>
+
+  <!-- Patient -> Parcours -->
+  <path class="rel" d="M330,300 C180,600 180,900 180,920" stroke-dasharray="4,4"/>
+  <text x="180" y="600" class="rel-label">1 — N événements</text>
+
+  <!-- Utilisateurs -> Messages/Notifications -->
+  <path class="rel" d="M260,180 C700,400 1100,460 1270,500" stroke-dasharray="4,4"/>
+
+  <!-- LÉGENDE -->
+  <g transform="translate(630,980)">
+    <rect width="280" height="90" fill="#ffffff" stroke="#cbd5e1" rx="8"/>
+    <text x="140" y="20" text-anchor="middle" font-weight="bold" fill="#0f172a" font-size="12">Légende</text>
+    <rect x="15" y="30" width="20" height="12" class="pk"/>
+    <text x="42" y="40" class="field">Clé primaire (PK)</text>
+    <rect x="15" y="48" width="20" height="12" class="fk"/>
+    <text x="42" y="58" class="field">Clé étrangère (FK)</text>
+    <line x1="15" y1="72" x2="35" y2="72" class="rel"/>
+    <text x="42" y="76" class="field">Relation 1 — N</text>
+    <line x1="145" y1="72" x2="165" y2="72" stroke="#475569" stroke-dasharray="4,4"/>
+    <text x="172" y="76" class="field">Relation indirecte</text>
+  </g>
+</svg>

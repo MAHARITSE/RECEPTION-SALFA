@@ -331,10 +331,23 @@ export interface Famille {
   order?: number;
 }
 
-export interface Company { id: string; name: string; }
+/** Sous-mode de règlement des factures société */
+export type CompanySettlementMode = 'monthly_global' | 'per_invoice';
+
+export interface Company {
+  id: string;
+  name: string;
+  /** Mode général : les sociétés sont systématiquement en Crédit. */
+  paymentMode: 'Crédit';
+  /** Sous-mode : règlement global mensuel ou individuel par facture */
+  settlementMode: CompanySettlementMode;
+  notes?: string;
+  createdAt?: string;
+}
 
 /** Compte de facturation mensuel d'une société. Il consolide les factures du mois
- * afin de suivre le solde dû et les règlements de chaque client conventionné. */
+ * afin de suivre le solde dû et les règlements de chaque client conventionné.
+ * Ce regroupement est utilisé pour le sous-mode `monthly_global`. */
 export interface CompanyBillingAccount {
   id: string;
   company: string;
@@ -344,7 +357,28 @@ export interface CompanyBillingAccount {
   paidAmount: number;
   status: 'open' | 'partial' | 'paid';
   createdAt: string;
-  payments: { id: string; amount: number; date: string; method?: string; reference?: string; receivedBy?: string }[];
+  /** Montant versé via l'action « Régler toutes les factures du mois » (=solde lors de la validation) */
+  finalSettlementAmount?: number;
+  finalSettlementDate?: string;
+  finalSettlementMethod?: string;
+  finalSettlementReference?: string;
+  finalSettlementObservation?: string;
+  settledBy?: string;         // user id responsable facturation
+  settledByName?: string;
+  payments: CompanyBillingPayment[];
+}
+
+export interface CompanyBillingPayment {
+  id: string;
+  amount: number;
+  date: string;
+  method?: string;
+  reference?: string;
+  observation?: string;
+  /** Liste des factures (ids) réglées par ce règlement (utile en individuel) */
+  invoiceIds?: string[];
+  receivedBy?: string;       // nom
+  receivedByUserId?: string; // id user
 }
 
 /* ====== MOUVEMENTS AVEC EN-TÊTE + LIGNES (pour interface propre) ====== */

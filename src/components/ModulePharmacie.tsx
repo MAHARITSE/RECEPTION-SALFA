@@ -6,7 +6,7 @@ import { addAuditLog, addNotification, formatAr, familyLabel, transferCategoryLa
 import type { MovementType } from '../types';
 import { printDeliveryTicket, printPharmaDeliveryClosingTicket, printPharmaSalesRecapTicket } from '../utils/printTicket';
 import DemandeAchatForm, { type ReqLine } from './DemandeAchatForm';
-import CashierModule from './CashierModule';
+import ModuleCaisse from './ModuleCaisse';
 import {
   Pill, Package, CheckCircle, Clock, Search, Send,
   Plus, Trash2, Filter, Printer, Edit3, CreditCard,
@@ -23,7 +23,7 @@ type Tab = 'caisse' | 'pending' | 'stock' | 'delivered' | 'request';
 const CATEGORIES: TransferCategory[] = ['approvisionnement', 'hospitalisation', 'bloc', 'central'];
 const PHARMA_SERVICE_ID = 'svc-pharmacie';
 
-export default function PharmacyModule({ state, setState, onOpenMessagingWithRecipient }: Props) {
+export default function ModulePharmacie({ state, setState, onOpenMessagingWithRecipient }: Props) {
   // Caisse de garde en premier par défaut
   const [tab, setTab] = useState<Tab>('caisse');
   const [searchStock, setSearchStock] = useState('');
@@ -518,7 +518,7 @@ export default function PharmacyModule({ state, setState, onOpenMessagingWithRec
                 </div>
               </div>
               <div className="-mx-6 -mb-6 p-6 bg-slate-50/50 border-t border-slate-200">
-                <CashierModule state={state} setState={setState} onOpenMessagingWithRecipient={onOpenMessagingWithRecipient} />
+                <ModuleCaisse state={state} setState={setState} onOpenMessagingWithRecipient={onOpenMessagingWithRecipient} />
               </div>
             </div>
           )}

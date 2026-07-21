@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import type { UserRole, TicketSettings } from '../types';
+import type { UserRole, TicketSettings, Company, CompanySettlementMode } from '../types';
 import { formatAr, addAuditLog, migrateLegacyToVentes, createInitialState } from '../store';
 import type { AppState } from '../store';
 import {
@@ -41,7 +41,7 @@ const TABS: { key: Tab; label: string; icon: any; desc: string }[] = [
   { key: 'prompts', label: 'Prompts & Specs', icon: FileText, desc: 'Spécifications techniques WinDev & Web' },
 ];
 
-export default function AdminModule({ state, setState }: Props) {
+export default function ModuleAdministration({ state, setState }: Props) {
   const [tab, setTab] = useState<Tab>('dashboard');
   
   // Utilisateurs
@@ -51,7 +51,9 @@ export default function AdminModule({ state, setState }: Props) {
 
   // Sociétés / Clients conventionnés
   const [addCompany, setAddCompany] = useState(false);
-  const [newCompany, setNewCompany] = useState('');
+  const [newCompany, setNewCompany] = useState({ name: '', settlementMode: 'monthly_global' as CompanySettlementMode });
+  const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null);
+  const [editCompany, setEditCompany] = useState<{ name: string; settlementMode: CompanySettlementMode }>({ name: '', settlementMode: 'monthly_global' });
 
   // Aperçu Ticket
   const [showPreview, setShowPreview] = useState(false);
@@ -132,21 +134,47 @@ export default function AdminModule({ state, setState }: Props) {
 
   // ============ COMPANIES ============
   const saveCompany = () => {
-    if (!newCompany.trim()) return;
-    const name = newCompany.trim().toUpperCase();
+    const name = newCompany.name.trim().toUpperCase();
+    if (!name) { alert('Veuillez saisir le nom de la société.'); return; }
     if (state.companies.some(c => c.name === name)) { alert('Cette société existe déjà'); return; }
+    const company: Company = {
+      id: `comp-${Date.now()}`,
+      name,
+      paymentMode: 'Crédit',
+      settlementMode: newCompany.settlementMode,
+      createdAt: new Date().toISOString(),
+    };
     setState((prev) => {
-      const next = { ...prev, companies: [...prev.companies, { id: `comp-${Date.now()}`, name }] };
-      addAuditLog(next, 'AJOUT_SOCIETE_PARTENAIRE', name);
+      const next = { ...prev, companies: [...prev.companies, company] };
+      addAuditLog(next, 'AJOUT_SOCIETE_PARTENAIRE', `${name} (sous-mode: ${newCompany.settlementMode === 'monthly_global' ? 'Global mensuel' : 'Individuel par facture'})`);
       return next;
     });
-    setNewCompany('');
+    setNewCompany({ name: '', settlementMode: 'monthly_global' });
     setAddCompany(false);
     showToast('Société ajoutée');
   };
 
+  const startEditCompany = (c: Company) => {
+    setEditingCompanyId(c.id);
+    setEditCompany({ name: c.name, settlementMode: c.settlementMode });
+  };
+
+  const saveEditCompany = () => {
+    if (!editingCompanyId) return;
+    const name = editCompany.name.trim().toUpperCase();
+    if (!name) { alert('Nom invalide'); return; }
+    if (state.companies.some(c => c.name === name && c.id !== editingCompanyId)) { alert('Une autre société porte déjà ce nom'); return; }
+    setState((prev) => {
+      const next = { ...prev, companies: prev.companies.map(c => c.id === editingCompanyId ? { ...c, name, settlementMode: editCompany.settlementMode } : c) };
+      addAuditLog(next, 'MODIFICATION_SOCIETE_PARTENAIRE', `${name} — sous-mode: ${editCompany.settlementMode === 'monthly_global' ? 'Global mensuel' : 'Individuel par facture'}`);
+      return next;
+    });
+    setEditingCompanyId(null);
+    showToast('Société mise à jour');
+  };
+
   const deleteCompany = (id: string) => {
-    if (!confirm('Supprimer cette société partenaires ?')) return;
+    if (!confirm('Supprimer cette société partenaire ?')) return;
     setState((prev) => ({ ...prev, companies: prev.companies.filter((c) => c.id !== id) }));
     showToast('Société supprimée');
   };
@@ -723,22 +751,69 @@ export default function AdminModule({ state, setState }: Props) {
               </div>
 
               {addCompany && (
-                <div className="flex gap-2 p-3 bg-indigo-50 border border-indigo-200 rounded-xl">
-                  <input type="text" value={newCompany} onChange={(e) => setNewCompany(e.target.value)} className="flex-1 px-3 py-2 border rounded-lg text-sm uppercase bg-white outline-none" placeholder="Nom de l'entreprise (ex: ORANGE MADAGASCAR)" />
-                  <button onClick={saveCompany} className="px-4 py-2 bg-indigo-600 text-white rounded-lg cursor-pointer font-semibold text-xs flex items-center gap-1"><Check className="w-4 h-4" /> Enregistrer</button>
-                  <button onClick={() => setAddCompany(false)} className="px-3 py-2 bg-slate-200 text-slate-700 rounded-lg cursor-pointer font-semibold text-xs"><X className="w-4 h-4" /></button>
+                <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-xl space-y-2">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <input type="text" value={newCompany.name} onChange={(e) => setNewCompany({ ...newCompany, name: e.target.value })} className="md:col-span-2 px-3 py-2 border rounded-lg text-sm uppercase bg-white outline-none" placeholder="Nom de la société (ex: ORANGE MADAGASCAR)" />
+                    <select value={newCompany.settlementMode} onChange={(e) => setNewCompany({ ...newCompany, settlementMode: e.target.value as CompanySettlementMode })} className="px-3 py-2 border rounded-lg text-sm bg-white outline-none cursor-pointer">
+                      <option value="monthly_global">Règlement global mensuel</option>
+                      <option value="per_invoice">Règlement individuel par facture</option>
+                    </select>
+                  </div>
+                  <div className="text-xs text-indigo-700 flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> Les sociétés sont systématiquement en <strong>Crédit</strong>. Les clients comptoir sont réglés en espèces.</div>
+                  <div className="flex gap-2 justify-end">
+                    <button onClick={saveCompany} className="px-4 py-2 bg-indigo-600 text-white rounded-lg cursor-pointer font-semibold text-xs flex items-center gap-1"><Check className="w-4 h-4" /> Enregistrer</button>
+                    <button onClick={() => { setAddCompany(false); setNewCompany({ name: '', settlementMode: 'monthly_global' }); }} className="px-3 py-2 bg-slate-200 text-slate-700 rounded-lg cursor-pointer font-semibold text-xs">Annuler</button>
+                  </div>
                 </div>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {state.companies.map((c) => (
-                  <div key={c.id} className="p-3.5 bg-white border rounded-xl flex justify-between items-center shadow-sm hover:border-indigo-300">
-                    <div className="font-bold text-sm text-slate-800 flex items-center gap-2">
-                      <Building2 className="w-4 h-4 text-indigo-500" /> {c.name}
-                    </div>
-                    <button onClick={() => deleteCompany(c.id)} className="text-rose-500 hover:text-rose-700 p-1 cursor-pointer"><Trash2 className="w-4 h-4" /></button>
-                  </div>
-                ))}
+              <div className="overflow-x-auto border rounded-xl bg-white shadow-sm">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                    <tr>
+                      <th className="p-3 text-left">Nom de la société</th>
+                      <th className="p-3 text-left">Mode général</th>
+                      <th className="p-3 text-left">Sous-mode de règlement</th>
+                      <th className="p-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {state.companies.map((c) => (
+                      <tr key={c.id} className="border-t hover:bg-slate-50">
+                        {editingCompanyId === c.id ? (
+                          <>
+                            <td className="p-2"><input type="text" value={editCompany.name} onChange={e => setEditCompany({ ...editCompany, name: e.target.value })} className="w-full px-2 py-1.5 border rounded text-sm uppercase" /></td>
+                            <td className="p-2"><span className="px-2 py-1 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold">Crédit</span></td>
+                            <td className="p-2">
+                              <select value={editCompany.settlementMode} onChange={e => setEditCompany({ ...editCompany, settlementMode: e.target.value as CompanySettlementMode })} className="w-full px-2 py-1.5 border rounded text-sm bg-white cursor-pointer">
+                                <option value="monthly_global">Règlement global mensuel</option>
+                                <option value="per_invoice">Règlement individuel par facture</option>
+                              </select>
+                            </td>
+                            <td className="p-2 text-right space-x-1">
+                              <button onClick={saveEditCompany} className="px-2 py-1 bg-emerald-600 text-white rounded text-xs font-semibold cursor-pointer">Enregistrer</button>
+                              <button onClick={() => setEditingCompanyId(null)} className="px-2 py-1 bg-slate-200 text-slate-700 rounded text-xs font-semibold cursor-pointer">Annuler</button>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="p-3 font-bold text-slate-800 flex items-center gap-2"><Building2 className="w-4 h-4 text-indigo-500" /> {c.name}</td>
+                            <td className="p-3"><span className="px-2 py-1 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold">Crédit</span></td>
+                            <td className="p-3 text-xs">
+                              {c.settlementMode === 'monthly_global'
+                                ? <span className="px-2 py-1 rounded-full bg-blue-100 text-blue-700 font-semibold">📅 Global mensuel</span>
+                                : <span className="px-2 py-1 rounded-full bg-purple-100 text-purple-700 font-semibold">🧾 Individuel par facture</span>}
+                            </td>
+                            <td className="p-3 text-right space-x-1">
+                              <button onClick={() => startEditCompany(c)} className="text-indigo-600 hover:text-indigo-800 p-1 cursor-pointer" title="Modifier"><Edit2 className="w-4 h-4" /></button>
+                              <button onClick={() => deleteCompany(c.id)} className="text-rose-500 hover:text-rose-700 p-1 cursor-pointer" title="Supprimer"><Trash2 className="w-4 h-4" /></button>
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}

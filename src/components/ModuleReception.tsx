@@ -13,7 +13,7 @@ import {
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; onStaffLogin: () => void; onOpenMessaging: () => void; }
 type ModalType = 'none' | 'add' | 'edit' | 'vitals' | 'blacklistConfirm' | 'blacklistReason' | 'blacklistList' | 'patientInfo';
 
-export default function ReceptionModule({ state, setState, onStaffLogin, onOpenMessaging }: Props) {
+export default function ModuleReception({ state, setState, onStaffLogin, onOpenMessaging }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [modal, setModal] = useState<ModalType>('none');
