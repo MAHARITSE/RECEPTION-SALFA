@@ -5,7 +5,7 @@ import type {
   Message, StockTransfer, StockEntry, ClientType, ArticleFamily, TransferCategory,
   LabExamCatalog, LabCategory, LabRequest, PatientJourneyEvent, JourneyDepartment,
   WarehouseService, StockMovement, InventorySession, StockLocation,
-  MovementHeader, MovementLine, MovementType, Vente, VenteLine, VentePayment, VenteType
+  MovementHeader, MovementLine, MovementType, Vente, VenteLine, VentePayment, VenteType, CompanyBillingAccount
 } from './types';
 
 let dossierCounter = 100;
@@ -466,6 +466,8 @@ export interface AppState {
   stockTransfers: StockTransfer[];
   stockEntries: StockEntry[]; auditLogs: AuditLog[]; notifications: Notification[];
   messages: Message[]; users: User[]; companies: Company[];
+  /** Regroupements mensuels des factures société et suivi des règlements. */
+  companyBillingAccounts: CompanyBillingAccount[];
   fournisseurs: Fournisseur[];
   familles: Famille[];
   journey: PatientJourneyEvent[];          // parcours patient (timeline)
@@ -681,6 +683,40 @@ export function createInitialState(): AppState {
   const demoConsultations = [rak105Consult, ras106Consult, and107Consult, rab108Consult];
   const demoInvoices = [rak105Inv, ras106Inv, and107Inv, rab108PharmaInv, rab108LabInv];
   const demoLabs = [rak105Req, ras106Req, and107Nfs, and107Lip, rab108Req];
+
+  // Jeu de démonstration volumineux : 150 passages répartis sur les 6 derniers mois.
+  // Il permet d'illustrer les listes, les recherches et les regroupements mensuels société.
+  const familyNames = ['RABEARISOA', 'RANDRIANARISOA', 'RAKOTONDRABE', 'ANDRIAMBOLOLONA', 'RASOLO', 'RAVELO', 'RANAIVO', 'RAZAFINDRAKOTO'];
+  const firstNames = ['Hery', 'Mialy', 'Tiana', 'Fara', 'Toky', 'Nomena', 'Soa', 'Kanto'];
+  const companyNames = seedCompanies.map(c => c.name);
+  const bulkPatients: Patient[] = [];
+  const bulkConsultations: Consultation[] = [];
+  const bulkInvoices: Invoice[] = [];
+  for (let i = 0; i < 150; i++) {
+    const date = daysAgo(4 + (i % 175));
+    const isCompany = i % 3 !== 0;
+    const patientId = uuidv4();
+    const consultationId = uuidv4();
+    const company = isCompany ? companyNames[i % companyNames.length] : undefined;
+    const dossier = `DEM${String(200 + i).padStart(3, '0')}`;
+    const patient: Patient = {
+      id: patientId, dossier, firstName: firstNames[i % firstNames.length], lastName: familyNames[i % familyNames.length],
+      dateOfBirth: `${1970 + (i % 32)}-${String(1 + (i % 12)).padStart(2, '0')}-15`, age: `${25 + (i % 45)} Ans`, gender: i % 2 ? 'F' : 'M',
+      address: i % 2 ? 'ANTANANARIVO' : 'TOAMASINA', contact: `03${2 + (i % 3)} ${String(10000000 + i).slice(0, 2)} ${String(10000000 + i).slice(2, 5)} ${String(10000000 + i).slice(5, 8)}`,
+      ssn: '', allergies: [], chronicTreatments: [], antecedents: [], registeredAt: date, registeredBy: 'SYSTEM', lastVisitAt: date,
+      status: 'completed', clientType: isCompany ? 'societe' : 'comptoir', company,
+    };
+    const amount = 10000 + (i % 5) * 2500;
+    bulkPatients.push(patient);
+    bulkConsultations.push({ id: consultationId, patientId, doctorId: `DOC00${1 + (i % 3)}`, doctorName: ['Dr. Jean Martin', 'Dr. Sophie Leclerc', 'Dr. Ahmed Benali'][i % 3], date,
+      vitalSigns: { temperature: '36.8', bloodPressureSystolic: '120', bloodPressureDiastolic: '80', heartRate: '72', oxygenSaturation: '98', weight: '65', height: '168' },
+      visitReason: ['Consultation générale', 'Contrôle annuel', 'Douleur abdominale', 'Suivi traitement'][i % 4], diagnosis: ['Syndrome grippal', 'RAS', 'Gastrite', 'Hypertension stabilisée'][i % 4], notes: 'Passage de démonstration', prescriptions: [], labRequests: [], hospitalizeRequested: false, surgeryRequested: false, isEmergency: false,
+    });
+    bulkInvoices.push({ id: uuidv4(), patientId, consultationId, clientName: `${patient.lastName} ${patient.firstName}`, clientType: patient.clientType,
+      items: [{ description: 'Consultation médicale', amount, category: 'consultation' }], totalAmount: amount, patientCharge: amount,
+      status: i % 7 === 0 ? 'pending' : 'paid', paidAt: i % 7 === 0 ? undefined : date, paidBy: i % 7 === 0 ? undefined : 'CAS001', createdAt: date, isExternal: false,
+    });
+  }
   const demoJourney: PatientJourneyEvent[] = [
     jEv(rak105.id, 'reception', 'Enregistrement patient', 'registered', `Dossier RAK105 créé — JIRAMA`, 'Réception', { timestamp: daysAgo(2) }),
     jEv(rak105.id, 'consultation', 'Consultation terminée', 'consulted_awaiting_payment', 'Dr. Sophie Leclerc — Diabète type 2', 'Dr. Sophie Leclerc', { timestamp: daysAgo(2), consultationId: rak105Consult.id }),
@@ -717,6 +753,19 @@ export function createInitialState(): AppState {
     deliveredByName: 'Fatima Benali',
   }));
 
+  const allDemoPatients = [...seedPatients, lea, ...demoPatients, ...morePatients, ...bulkPatients];
+  const allDemoInvoices = [leaInvoice, leaLabInvoice, ...demoInvoices, ...bulkInvoices];
+  // Quelques comptes déjà regroupés pour visualiser le suivi mensuel dès le démarrage.
+  const companyBillingAccounts: CompanyBillingAccount[] = ['2026-05', '2026-06'].flatMap((month, idx) => companyNames.slice(0, 4).map(company => {
+    const invoiceIds = allDemoInvoices.filter(inv => {
+      const p = allDemoPatients.find(x => x.id === inv.patientId);
+      return p?.company === company && inv.createdAt.slice(0, 7) === month;
+    }).map(inv => inv.id);
+    const totalAmount = allDemoInvoices.filter(inv => invoiceIds.includes(inv.id)).reduce((sum, inv) => sum + inv.totalAmount, 0);
+    const paidAmount = idx === 0 ? totalAmount : Math.round(totalAmount * 0.45);
+    return { id: uuidv4(), company, month, invoiceIds, totalAmount, paidAmount, status: paidAmount >= totalAmount ? 'paid' as const : paidAmount > 0 ? 'partial' as const : 'open' as const, createdAt: `${month}-28T17:00:00.000Z`, payments: paidAmount ? [{ id: uuidv4(), amount: paidAmount, date: `${month}-28T17:00:00.000Z`, method: 'Virement', receivedBy: 'Pierre Duval' }] : [] };
+  }));
+
   return {
     currentUser: null,
     ticketSettings: {
@@ -726,10 +775,10 @@ export function createInitialState(): AppState {
       copies: 1, currency: 'Ar', paymentMethods: ['Espèces', 'Carte bancaire', 'Mobile Money', 'Virement', 'Chèque'],
       invoicePrefix: 'FAC', ticketFooter2: '', ticketHeaderColor: '#1e40af',
     },
-    patients: [...seedPatients, lea, ...demoPatients, ...morePatients], consultations: [leaConsult, ...demoConsultations], invoices: [leaInvoice, leaLabInvoice, ...demoInvoices], cashClosings: [],
+    patients: allDemoPatients, consultations: [leaConsult, ...demoConsultations, ...bulkConsultations], invoices: allDemoInvoices, cashClosings: [],
     articles: [...seedArticles],
     stockTransfers: [], stockEntries: [], auditLogs: [], notifications: [],
-    messages: [], users: [...users], companies: [...seedCompanies],
+    messages: [], users: [...users], companies: [...seedCompanies], companyBillingAccounts,
     fournisseurs: [...SEED_FOURNISSEURS],
     familles: [...SEED_FAMILLES],
     journey: [...baseJourney, ...leaJourney, ...demoJourney],
@@ -840,11 +889,9 @@ export const seedLabCatalog: LabExamCatalog[] = [
 ];
 
 /**
- * Suppression définitive d'un patient depuis une file d'attente (médecin ou caisse).
- * Le dossier patient est supprimé AVEC ses paramètres vitaux, ainsi que tout ce qui
- * n'est pas encore encaissé : factures en attente, demandes d'analyses non payées et
- * consultations non réglées (leurs demandes labo/écho embarquées partent avec).
- * Les éléments déjà payés (historique financier / clôture Z) sont conservés.
+ * Retire un passage de la file d'attente sans jamais supprimer le dossier patient.
+ * Seules les consultations non encaissées et leurs éléments de facturation en attente
+ * sont annulés. Le patient, ses paramètres et l'historique déjà réglé restent accessibles.
  */
 export function purgePatientFromQueue(state: AppState, patientId: string): void {
   // Consultations déjà réglées (facture payée liée) — l'historique financier est conservé
@@ -864,8 +911,10 @@ export function purgePatientFromQueue(state: AppState, patientId: string): void 
   state.ventes = state.ventes.filter((v) => !pendingVenteIds.has(v.id));
   state.venteLines = state.venteLines.filter((l) => !pendingVenteIds.has(l.venteId));
   state.ventePayments = state.ventePayments.filter((p) => !pendingVenteIds.has(p.venteId));
-  // Le dossier patient (avec ses paramètres vitaux) est supprimé
-  state.patients = state.patients.filter((p) => p.id !== patientId);
+  // Le dossier est conservé : il sort seulement de la file active.
+  state.patients = state.patients.map((p) => p.id === patientId
+    ? { ...p, status: 'registered' as const, assignedDoctor: undefined, assignedSpecialty: undefined }
+    : p);
 }
 
 /** Ajoute un événement au parcours patient (timeline). */

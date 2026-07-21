@@ -197,16 +197,16 @@ export default function DoctorModule({ state, setState }: Props) {
     submittingRef.current = false;
   };
 
-  // Suppression définitive d'un patient de la file médecin — avec ses paramètres vitaux
+  // Retrait de la file médecin : le dossier patient est toujours conservé.
   const deleteWaitingPatient = (pid: string) => {
     const p = state.patients.find((x) => x.id === pid);
     if (!p) return;
-    if (!confirm(`Supprimer définitivement ${p.lastName} ${p.firstName} (${p.dossier}) de la file d'attente ?\n\n⚠️ Le dossier sera supprimé avec ses paramètres saisis à la réception.`)) return;
+    if (!confirm(`Retirer la consultation de ${p.lastName} ${p.firstName} (${p.dossier}) de la file d'attente ?\n\nLe dossier patient et ses paramètres seront conservés.`)) return;
     setState((prev) => {
       const next: AppState = { ...prev };
       purgePatientFromQueue(next, pid);
-      addAuditLog(next, 'SUPPRESSION_FILE_MEDECIN', `${p.lastName} ${p.firstName} (${p.dossier}) supprimé de la file médecin — paramètres inclus`, pid);
-      addJourneyEvent(next, { patientId: pid, department: 'consultation', action: 'Supprimé de la file médecin', details: `Dossier + paramètres supprimés par Dr. ${prev.currentUser?.name || ''}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name });
+      addAuditLog(next, 'RETRAIT_FILE_MEDECIN', `${p.lastName} ${p.firstName} (${p.dossier}) retiré de la file médecin — dossier conservé`, pid);
+      addJourneyEvent(next, { patientId: pid, department: 'consultation', action: 'Consultation retirée de la file médecin', status: 'registered', details: `Consultation annulée ; dossier conservé par Dr. ${prev.currentUser?.name || ''}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name });
       return next;
     });
   };
@@ -541,7 +541,7 @@ export default function DoctorModule({ state, setState }: Props) {
                     <button
                       onClick={(e) => { e.stopPropagation(); deleteWaitingPatient(p.id); }}
                       className="shrink-0 p-1.5 rounded-lg text-rose-500 hover:bg-rose-100 hover:text-rose-700 cursor-pointer transition"
-                      title="Supprimer de la file — dossier + paramètres supprimés"
+                      title="Retirer la consultation de la file — dossier conservé"
                     ><Trash2 className="w-4 h-4" /></button>
                   </div>
                 ))}</div>

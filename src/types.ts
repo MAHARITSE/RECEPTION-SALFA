@@ -333,6 +333,20 @@ export interface Famille {
 
 export interface Company { id: string; name: string; }
 
+/** Compte de facturation mensuel d'une société. Il consolide les factures du mois
+ * afin de suivre le solde dû et les règlements de chaque client conventionné. */
+export interface CompanyBillingAccount {
+  id: string;
+  company: string;
+  month: string; // YYYY-MM
+  invoiceIds: string[];
+  totalAmount: number;
+  paidAmount: number;
+  status: 'open' | 'partial' | 'paid';
+  createdAt: string;
+  payments: { id: string; amount: number; date: string; method?: string; reference?: string; receivedBy?: string }[];
+}
+
 /* ====== MOUVEMENTS AVEC EN-TÊTE + LIGNES (pour interface propre) ====== */
 export type MovementType = 'achat' | 'vente' | 'transfert' | 'inventaire' | 'sortie';
 
