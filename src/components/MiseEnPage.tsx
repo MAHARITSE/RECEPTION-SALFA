@@ -6,7 +6,7 @@ import {
   ChevronRight, MessageCircle, FileText
 } from 'lucide-react';
 
-interface LayoutProps {
+interface MiseEnPageProps {
   user: User;
   notifications: NotifType[];
   onLogout: () => void;
@@ -50,7 +50,7 @@ const roleBg: Record<string, string> = {
   admin: 'bg-slate-700',
 };
 
-export default function Layout({ user, notifications, onLogout, onMarkRead, onOpenMessaging, onOpenMedicalRecord, unreadMessages, children }: LayoutProps) {
+export default function MiseEnPage({ user, notifications, onLogout, onMarkRead, onOpenMessaging, onOpenMedicalRecord, unreadMessages, children }: MiseEnPageProps) {
   const [showNotif, setShowNotif] = useState(false);
 
   const myNotifs = notifications.filter(

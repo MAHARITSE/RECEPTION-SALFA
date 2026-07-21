@@ -26,7 +26,7 @@ type Tab = 'stock' | 'articles' | 'familles' | 'fournisseurs' | 'appro' | 'reque
 const SERVICE_COLORS = ['purple', 'blue', 'rose', 'emerald', 'amber', 'sky', 'indigo', 'teal'];
 const FAMILLE_COLORS = ['#0D47A1', '#10B981', '#8B5CF6', '#F59E0B', '#EF4444', '#EC4899', '#06B6D4', '#6366F1'];
 
-export default function MagasinierModule({ state, setState }: Props) {
+export default function ModuleMagasinier({ state, setState }: Props) {
   const [tab, setTab] = useState<Tab>('stock');
 
   // Toasts

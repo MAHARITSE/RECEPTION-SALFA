@@ -45,11 +45,19 @@ const seedArticles: Article[] = [
   art('Papier thermique','ECHO','rouleau',2000,1800,2500,800,25,8,5,3),
 ];
 
+const _mkCompany = (name: string, settlementMode: 'monthly_global' | 'per_invoice'): Company => ({
+  id: uuidv4(), name, paymentMode: 'Crédit', settlementMode,
+  createdAt: new Date().toISOString(),
+});
 const seedCompanies: Company[] = [
-  { id: uuidv4(), name: 'JIRAMA' },{ id: uuidv4(), name: 'TELMA' },
-  { id: uuidv4(), name: 'AIR MADAGASCAR' },{ id: uuidv4(), name: 'AMBATOVY' },
-  { id: uuidv4(), name: 'QMM / RIO TINTO' },{ id: uuidv4(), name: 'STAR BRASSERIES' },
-  { id: uuidv4(), name: 'BNI MADAGASCAR' },{ id: uuidv4(), name: 'SOCIMEX' },
+  _mkCompany('JIRAMA', 'monthly_global'),
+  _mkCompany('TELMA', 'monthly_global'),
+  _mkCompany('AIR MADAGASCAR', 'per_invoice'),
+  _mkCompany('AMBATOVY', 'monthly_global'),
+  _mkCompany('QMM / RIO TINTO', 'per_invoice'),
+  _mkCompany('STAR BRASSERIES', 'per_invoice'),
+  _mkCompany('BNI MADAGASCAR', 'monthly_global'),
+  _mkCompany('SOCIMEX', 'per_invoice'),
 ];
 
 /** Services d'entrepôt par défaut — le dépôt central disperse vers ces services */
@@ -685,37 +693,79 @@ export function createInitialState(): AppState {
   const demoInvoices = [rak105Inv, ras106Inv, and107Inv, rab108PharmaInv, rab108LabInv];
   const demoLabs = [rak105Req, ras106Req, and107Nfs, and107Lip, rab108Req];
 
-  // Jeu de démonstration volumineux : 150 passages répartis sur les 6 derniers mois.
-  // Il permet d'illustrer les listes, les recherches et les regroupements mensuels société.
-  const familyNames = ['RABEARISOA', 'RANDRIANARISOA', 'RAKOTONDRABE', 'ANDRIAMBOLOLONA', 'RASOLO', 'RAVELO', 'RANAIVO', 'RAZAFINDRAKOTO'];
-  const firstNames = ['Hery', 'Mialy', 'Tiana', 'Fara', 'Toky', 'Nomena', 'Soa', 'Kanto'];
+  // Jeu de démonstration volumineux : 150+ passages répartis sur les 6 derniers mois.
+  // Il permet d'illustrer les listes, les recherches, les regroupements mensuels,
+  // les paiements partiels, les statuts variés, etc.
+  const familyNames = ['RABEARISOA', 'RANDRIANARISOA', 'RAKOTONDRABE', 'ANDRIAMBOLOLONA', 'RASOLO', 'RAVELO', 'RANAIVO', 'RAZAFINDRAKOTO', 'RAZANADRAKOTO', 'ANDRIANTSITOHAINA', 'RATSIMBAZAFY', 'RAKOTOMALALA'];
+  const firstNames = ['Hery', 'Mialy', 'Tiana', 'Fara', 'Toky', 'Nomena', 'Soa', 'Kanto', 'Lova', 'Mamy', 'Hanta', 'Andry'];
   const companyNames = seedCompanies.map(c => c.name);
+  const companyMap = new Map(seedCompanies.map(c => [c.name, c]));
   const bulkPatients: Patient[] = [];
   const bulkConsultations: Consultation[] = [];
   const bulkInvoices: Invoice[] = [];
+  const bulkJourney: PatientJourneyEvent[] = [];
+  const demoCategories: Invoice['items'][number]['category'][] = ['consultation', 'lab', 'pharmacy', 'echo'];
+  const demoItemLabels: Record<string,string[]> = {
+    consultation: ['Consultation générale', 'Consultation spécialisée', 'Visite de contrôle'],
+    lab: ['NFS', 'Glycémie à jeun', 'Bilan lipidique', 'CRP', 'Bilan rénal', 'ECBU'],
+    pharmacy: ['Paracétamol 500mg × 10', 'Amoxicilline 1g × 6', 'Ibuprofène 400mg × 8', 'Oméprazole 20mg × 14'],
+    echo: ['Écho abdominale', 'Écho pelvienne', 'Écho obstétricale'],
+  };
+  const statusesByIndex = (i: number): 'pending' | 'paid' => {
+    // ~18% de factures impayées, mélangées par mois et société
+    if (i % 11 === 0 || i % 13 === 0) return 'pending';
+    return 'paid';
+  };
   for (let i = 0; i < 150; i++) {
     const date = daysAgo(4 + (i % 175));
     const isCompany = i % 3 !== 0;
     const patientId = uuidv4();
     const consultationId = uuidv4();
-    const company = isCompany ? companyNames[i % companyNames.length] : undefined;
+    const companyName = isCompany ? companyNames[i % companyNames.length] : undefined;
     const dossier = `DEM${String(200 + i).padStart(3, '0')}`;
+    const age = 25 + (i % 45);
     const patient: Patient = {
       id: patientId, dossier, firstName: firstNames[i % firstNames.length], lastName: familyNames[i % familyNames.length],
-      dateOfBirth: `${1970 + (i % 32)}-${String(1 + (i % 12)).padStart(2, '0')}-15`, age: `${25 + (i % 45)} Ans`, gender: i % 2 ? 'F' : 'M',
-      address: i % 2 ? 'ANTANANARIVO' : 'TOAMASINA', contact: `03${2 + (i % 3)} ${String(10000000 + i).slice(0, 2)} ${String(10000000 + i).slice(2, 5)} ${String(10000000 + i).slice(5, 8)}`,
-      ssn: '', allergies: [], chronicTreatments: [], antecedents: [], registeredAt: date, registeredBy: 'SYSTEM', lastVisitAt: date,
-      status: 'completed', clientType: isCompany ? 'societe' : 'comptoir', company,
+      dateOfBirth: `${1970 + (i % 32)}-${String(1 + (i % 12)).padStart(2, '0')}-15`, age: `${age} Ans`, gender: i % 2 ? 'F' : 'M',
+      address: ['ANTANANARIVO','TOAMASINA','FIANARANTSOA','MAHAJANGA','TOLIARA','ANTSIRANABE'][i%6], contact: `03${2 + (i % 3)} ${String(10000000 + i).slice(0, 2)} ${String(10000000 + i).slice(2, 5)} ${String(10000000 + i).slice(5, 8)}`,
+      ssn: '', allergies: i%9===0 ? ['Pénicilline'] : [], chronicTreatments: i%7===0 ? ['Metformine 850mg'] : [], antecedents: i%5===0 ? ['Hypertension'] : [],
+      bloodGroup: ['A+','B+','AB+','O+','O-','A-'][i%6] as Patient['bloodGroup'],
+      registeredAt: date, registeredBy: isCompany ? 'RECEPTION' : 'RECEPTION', lastVisitAt: date,
+      status: 'completed', clientType: isCompany ? 'societe' : 'comptoir', company: companyName,
     };
-    const amount = 10000 + (i % 5) * 2500;
+    // 1 à 3 lignes de facture : consultation + parfois labo ou pharmacie
+    const nLines = 1 + (i % 3);
+    const items: Invoice['items'][number][] = [];
+    const cats: typeof demoCategories[number][] = ['consultation'];
+    if (nLines > 1) cats.push(i % 2 ? 'lab' : 'pharmacy');
+    if (nLines > 2) cats.push('echo');
+    let total = 0;
+    cats.forEach((cat, idx) => {
+      const labels = demoItemLabels[cat];
+      const lbl = labels[(i + idx) % labels.length];
+      const amt = cat === 'consultation' ? 10000 + (i%5)*2500
+              : cat === 'lab' ? 12000 + (i%4)*4000
+              : cat === 'pharmacy' ? 5000 + (i%4)*2000
+              : 25000;
+      items.push({ description: lbl, amount: amt, category: cat });
+      total += amt;
+    });
+    const status = isCompany ? 'pending' : statusesByIndex(i);
     bulkPatients.push(patient);
     bulkConsultations.push({ id: consultationId, patientId, doctorId: `DOC00${1 + (i % 3)}`, doctorName: ['Dr. Jean Martin', 'Dr. Sophie Leclerc', 'Dr. Ahmed Benali'][i % 3], date,
       vitalSigns: { temperature: '36.8', bloodPressureSystolic: '120', bloodPressureDiastolic: '80', heartRate: '72', oxygenSaturation: '98', weight: '65', height: '168' },
-      visitReason: ['Consultation générale', 'Contrôle annuel', 'Douleur abdominale', 'Suivi traitement'][i % 4], diagnosis: ['Syndrome grippal', 'RAS', 'Gastrite', 'Hypertension stabilisée'][i % 4], notes: 'Passage de démonstration', prescriptions: [], labRequests: [], hospitalizeRequested: false, surgeryRequested: false, isEmergency: false,
+      visitReason: ['Consultation générale', 'Contrôle annuel', 'Douleur abdominale', 'Suivi traitement', 'Fièvre', 'Maux de tête'][i % 6],
+      diagnosis: ['Syndrome grippal', 'RAS', 'Gastrite', 'Hypertension stabilisée', 'Asthme', 'Diabète type 2'][i % 6],
+      notes: 'Passage de démonstration',
+      prescriptions: cats.includes('pharmacy') ? [{ id: uuidv4(), articleId: '', articleName: demoItemLabels.pharmacy[i%demoItemLabels.pharmacy.length], quantity: 1, posology: '1 x3/j', duration: '5 jours', instructions: '', unitPrice: items.find(x=>x.category==='pharmacy')?.amount||0, discount: 0, delivered: true }] : [],
+      labRequests: [], hospitalizeRequested: false, surgeryRequested: false, isEmergency: false,
     });
-    bulkInvoices.push({ id: uuidv4(), patientId, consultationId, clientName: `${patient.lastName} ${patient.firstName}`, clientType: patient.clientType,
-      items: [{ description: 'Consultation médicale', amount, category: 'consultation' }], totalAmount: amount, patientCharge: amount,
-      status: i % 7 === 0 ? 'pending' : 'paid', paidAt: i % 7 === 0 ? undefined : date, paidBy: i % 7 === 0 ? undefined : 'CAS001', createdAt: date, isExternal: false,
+    bulkInvoices.push({ id: uuidv4(), patientId, consultationId,
+      clientName: `${patient.lastName} ${patient.firstName}`, clientType: patient.clientType,
+      items, totalAmount: total, patientCharge: total,
+      status, paidAt: status === 'paid' ? date : undefined,
+      paidBy: status === 'paid' ? (isCompany ? 'FAC001' : 'CAS001') : undefined,
+      createdAt: date, isExternal: false,
     });
   }
   const demoJourney: PatientJourneyEvent[] = [
@@ -737,6 +787,29 @@ export function createInitialState(): AppState {
     jEv(rab108.id, 'consultation', 'Consultation terminée', 'consulted_awaiting_payment', 'Dr. Ahmed Benali — Hypertension', 'Dr. Ahmed Benali', { timestamp: daysAgo(0), consultationId: rab108Consult.id }),
     jEv(rab108.id, 'laboratoire', 'Demande d\'analyse', 'analyses_pending', 'Créatinine, Urée — à facturer', 'Dr. Ahmed Benali', { timestamp: daysAgo(0), labRequestId: rab108ReqId, consultationId: rab108Consult.id }),
   ];
+
+  // ========== Messages / Notifications / Fournisseurs / Articles / Stock démo ==========
+  const demoMessages: import('./types').Message[] = [
+    { id: uuidv4(), fromUserId: 'DOC001', fromUserName: 'Dr. Jean Martin', toUserId: 'PHA001', toUserName: 'Fatima Benali', content: "Pouvez-vous préparer l'ordonnance de Léa ANDRIAMANANA ? Urgent.", timestamp: daysAgo(4), read: true },
+    { id: uuidv4(), fromUserId: 'CAS001', fromUserName: 'Pierre Duval', toUserId: 'LAB001', toUserName: 'Thomas Nguyen', content: 'Bilan rénal payé pour M. RABEARIVELO, bon en impression.', timestamp: daysAgo(0), read: false },
+    { id: uuidv4(), fromUserId: 'ADM001', fromUserName: 'Admin Système', toUserId: 'FAC001', toUserName: 'Hanta RASOA', content: 'Pensez à solder les relevés JIRAMA et TELMA du mois dernier.', timestamp: daysAgo(2), read: false },
+    { id: uuidv4(), fromUserId: 'PHA001', fromUserName: 'Fatima Benali', toUserId: 'MAG001', toUserName: 'Ali Rasolofo', content: 'Stock Paracétamol bas en pharmacie, besoin de transfert.', timestamp: daysAgo(1), read: true },
+  ];
+  const demoNotifications: Notification[] = [
+    { id: uuidv4(), targetRole: 'billing', message: '🏢 3 relevés mensuels à solder ce mois', type: 'warning', timestamp: daysAgo(1), read: false },
+    { id: uuidv4(), targetRole: 'pharmacy', message: '💊 Stock bas : Amoxicilline 1g', type: 'warning', timestamp: daysAgo(2), read: false },
+    { id: uuidv4(), targetRole: 'laboratory', message: '🧪 2 résultats à valider', type: 'info', timestamp: daysAgo(0), read: false },
+  ];
+
+  // Quelques entrées / sorties / transferts de stock de démo
+  const demoStockEntries: StockEntry[] = SEED_FOURNISSEURS.flatMap((f, fi) =>
+    seedArticles.slice(0, 6).map((a, ai) => ({
+      id: uuidv4(), articleId: a.id, articleName: a.name, quantity: 100 + ai * 20,
+      purchasePrice: a.purchasePrice, supplier: f.name, invoiceRef: `BL-${fi + 1}-${ai + 1}`,
+      expiryDate: `${new Date().getFullYear() + 1}-12-31`, date: daysAgo(5 + fi * 3),
+      enteredBy: 'MAG001',
+    }))
+  );
 
   const initPharmaDeliveryItems: import('./types').PharmaDeliveryItem[] = leaConsult.prescriptions.map((p) => ({
     id: uuidv4(),
@@ -764,9 +837,10 @@ export function createInitialState(): AppState {
   const monthKeyOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   const demoBillingMonths: string[] = [];
   for (let m = 6; m >= 2; m--) { const d = new Date(now); d.setDate(1); d.setMonth(d.getMonth() - m); demoBillingMonths.push(monthKeyOf(d)); }
-  const demoBillingMethods = ['Virement', 'Chèque', 'Mobile Money', 'Espèces'];
+  const demoBillingMethods = ['Virement', 'Chèque', 'Mobile Money', 'Virement', 'Chèque'];
+  const monthlyGlobalCompanies = seedCompanies.filter(c => c.settlementMode === 'monthly_global').map(c => c.name);
   const companyBillingAccounts: CompanyBillingAccount[] = demoBillingMonths.flatMap((month, monthIdx) =>
-    companyNames.slice(0, 6).map((company, compIdx): CompanyBillingAccount | null => {
+    monthlyGlobalCompanies.map((company, compIdx): CompanyBillingAccount | null => {
       const invoiceIds = allDemoInvoices.filter(inv => {
         const p = allDemoPatients.find(x => x.id === inv.patientId);
         return p?.company === company && inv.createdAt.slice(0, 7) === month;
@@ -820,8 +894,8 @@ export function createInitialState(): AppState {
     },
     patients: allDemoPatients, consultations: [leaConsult, ...demoConsultations, ...bulkConsultations], invoices: allDemoInvoices, cashClosings: [],
     articles: [...seedArticles],
-    stockTransfers: [], stockEntries: [], auditLogs: [], notifications: [],
-    messages: [], users: [...users], companies: [...seedCompanies], companyBillingAccounts,
+    stockTransfers: [], stockEntries: demoStockEntries, auditLogs: [], notifications: demoNotifications,
+    messages: demoMessages, users: [...users], companies: [...seedCompanies], companyBillingAccounts,
     fournisseurs: [...SEED_FOURNISSEURS],
     familles: [...SEED_FAMILLES],
     journey: [...baseJourney, ...leaJourney, ...demoJourney],

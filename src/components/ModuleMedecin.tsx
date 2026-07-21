@@ -32,7 +32,7 @@ const ECHO_CATALOG: EchoExamCatalog[] = [
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
 type ViewMode = 'queue' | 'consultation' | 'my_consults';
 
-export default function DoctorModule({ state, setState }: Props) {
+export default function ModuleMedecin({ state, setState }: Props) {
   const [view, setView] = useState<ViewMode>('queue');
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');

@@ -1,18 +1,18 @@
 import { useState, useEffect, Component, type ReactNode, type ErrorInfo } from 'react';
 import type { User } from './types';
 import { createInitialState, migrateLegacyToVentes, type AppState } from './store';
-import ReceptionModule from './components/ReceptionModule';
-import LoginScreen from './components/LoginScreen';
-import Layout from './components/Layout';
-import DoctorModule from './components/DoctorModule';
-import CashierModule from './components/CashierModule';
-import PharmacyModule from './components/PharmacyModule';
-import MagasinierModule from './components/MagasinierModule';
-import LaboratoryModule from './components/LaboratoryModule';
-import AdminModule from './components/AdminModule';
-import BillingModule from './components/BillingModule';
-import MedicalRecordModule from './components/MedicalRecordModule';
-import Messaging from './components/Messaging';
+import ModuleReception from './components/ModuleReception';
+import EcranConnexion from './components/EcranConnexion';
+import MiseEnPage from './components/MiseEnPage';
+import ModuleMedecin from './components/ModuleMedecin';
+import ModuleCaisse from './components/ModuleCaisse';
+import ModulePharmacie from './components/ModulePharmacie';
+import ModuleMagasinier from './components/ModuleMagasinier';
+import ModuleLaboratoire from './components/ModuleLaboratoire';
+import ModuleAdministration from './components/ModuleAdministration';
+import ModuleFacturationSocietes from './components/ModuleFacturationSocietes';
+import ModuleDossierMedical from './components/ModuleDossierMedical';
+import Messagerie from './components/Messagerie';
 
 const roleTitles: Record<string, string> = {
   doctor: '🩺 Médecin — Consultation & Prescription',
@@ -53,7 +53,7 @@ class ModuleErrorBoundary extends Component<{ children: ReactNode; onReset: () =
 }
 
 /* ─── Error Boundary GLOBAL : plus AUCUN écran blanc possible, même si
-   la page de connexion, la réception, le layout ou la messagerie plante.
+   la page de connexion, la réception, la mise en page ou la messagerie plante.
    Affiche un message clair avec un bouton « Réessayer » (recharge l'app). ─── */
 class AppErrorBoundary extends Component<{ children: ReactNode }, EBState> {
   state: EBState = { hasError: false, error: null };
@@ -101,7 +101,6 @@ function AppInner() {
   // factures + dossiers hospit/bloc sont dupliqués dans la table unifiée `ventes`.
   useEffect(() => {
     setState((prev) => {
-      // On vérifie s'il y a quelque chose à migrer.
       const hasLegacy = (prev.invoices?.length || 0) + (prev.hbRecords?.length || 0) > 0;
       const alreadyMigrated = (prev.ventes?.length || 0) > 0;
       if (!hasLegacy || alreadyMigrated) return prev;
@@ -112,10 +111,6 @@ function AppInner() {
       console.info(`[ventes] migration automatique : ${migratedInvoices} facture(s), ${migratedHb} dossier(s) hospit/bloc.`);
       return next;
     });
-
-
-
-
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -151,30 +146,29 @@ function AppInner() {
   if (view === 'reception') {
     return (
       <>
-        <ReceptionModule state={state} setState={setState} onStaffLogin={() => setView('login')} onOpenMessaging={() => handleOpenMessagingWithRecipient(null)} />
-        {showMessaging && <Messaging state={state} setState={setState} onClose={handleCloseMessaging} initialRecipientId={messagingRecipientId} />}
+        <ModuleReception state={state} setState={setState} onStaffLogin={() => setView('login')} onOpenMessaging={() => handleOpenMessagingWithRecipient(null)} />
+        {showMessaging && <Messagerie state={state} setState={setState} onClose={handleCloseMessaging} initialRecipientId={messagingRecipientId} />}
       </>
     );
   }
 
-  /* ─── Vue Login ─── */
+  /* ─── Vue Connexion ─── */
   if (view === 'login') {
-    return <LoginScreen users={state.users} onLogin={handleLogin} onBack={() => setView('reception')} />;
+    return <EcranConnexion users={state.users} onLogin={handleLogin} onBack={() => setView('reception')} />;
   }
 
-  /* ─── Garde : si pas d'utilisateur connecté, rediriger vers login (SANS setView pendant le rendu) ─── */
   if (!state.currentUser) {
-    return <LoginScreen users={state.users} onLogin={handleLogin} onBack={() => setView('reception')} />;
+    return <EcranConnexion users={state.users} onLogin={handleLogin} onBack={() => setView('reception')} />;
   }
 
-  /* ─── Vue Dossier Médical (médecins uniquement) ─── */
+  /* ─── Vue Dossier Médical ─── */
   if (view === 'medicalRecord') {
     if (state.currentUser.role !== 'doctor') {
       return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-red-700 font-semibold">Accès refusé : seuls les médecins peuvent consulter les dossiers médicaux.</div>;
     }
     return (
       <>
-        <Layout
+        <MiseEnPage
           user={state.currentUser}
           notifications={state.notifications}
           onLogout={handleLogout}
@@ -183,30 +177,29 @@ function AppInner() {
           onOpenMedicalRecord={handleOpenMedicalRecord}
           unreadMessages={myMsgCount}
         >
-          <MedicalRecordModule state={state} onBack={() => setView('staff')} />
-        </Layout>
-        {showMessaging && <Messaging state={state} setState={setState} onClose={handleCloseMessaging} initialRecipientId={messagingRecipientId} />}
+          <ModuleDossierMedical state={state} onBack={() => setView('staff')} />
+        </MiseEnPage>
+        {showMessaging && <Messagerie state={state} setState={setState} onClose={handleCloseMessaging} initialRecipientId={messagingRecipientId} />}
       </>
     );
   }
 
-  /* ─── Vue Staff (modules par rôle) ─── */
   const renderModule = () => {
     switch (state.currentUser?.role) {
-      case 'doctor': return <DoctorModule state={state} setState={setState} />;
-      case 'cashier': return <CashierModule state={state} setState={setState} onOpenMessagingWithRecipient={handleOpenMessagingWithRecipient} />;
-      case 'pharmacy': return <PharmacyModule state={state} setState={setState} onOpenMessagingWithRecipient={handleOpenMessagingWithRecipient} />;
-      case 'magasinier': return <MagasinierModule state={state} setState={setState} />;
-      case 'laboratory': return <LaboratoryModule state={state} setState={setState} />;
-      case 'admin': return <AdminModule state={state} setState={setState} />;
-      case 'billing': return <BillingModule state={state} setState={setState} />;
+      case 'doctor': return <ModuleMedecin state={state} setState={setState} />;
+      case 'cashier': return <ModuleCaisse state={state} setState={setState} onOpenMessagingWithRecipient={handleOpenMessagingWithRecipient} />;
+      case 'pharmacy': return <ModulePharmacie state={state} setState={setState} onOpenMessagingWithRecipient={handleOpenMessagingWithRecipient} />;
+      case 'magasinier': return <ModuleMagasinier state={state} setState={setState} />;
+      case 'laboratory': return <ModuleLaboratoire state={state} setState={setState} />;
+      case 'admin': return <ModuleAdministration state={state} setState={setState} />;
+      case 'billing': return <ModuleFacturationSocietes state={state} setState={setState} />;
       default: return <div>Module non trouvé</div>;
     }
   };
 
   return (
     <>
-      <Layout user={state.currentUser} notifications={state.notifications} onLogout={handleLogout} onMarkRead={handleMarkRead}
+      <MiseEnPage user={state.currentUser} notifications={state.notifications} onLogout={handleLogout} onMarkRead={handleMarkRead}
         onOpenMessaging={() => handleOpenMessagingWithRecipient(null)} onOpenMedicalRecord={state.currentUser.role === 'doctor' ? handleOpenMedicalRecord : undefined} unreadMessages={myMsgCount}>
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-slate-800">{roleTitles[state.currentUser.role] || 'Module'}</h2>
@@ -217,8 +210,8 @@ function AppInner() {
         <ModuleErrorBoundary onReset={handleLogout}>
           {renderModule()}
         </ModuleErrorBoundary>
-      </Layout>
-      {showMessaging && <Messaging state={state} setState={setState} onClose={handleCloseMessaging} initialRecipientId={messagingRecipientId} />}
+      </MiseEnPage>
+      {showMessaging && <Messagerie state={state} setState={setState} onClose={handleCloseMessaging} initialRecipientId={messagingRecipientId} />}
     </>
   );
 }
