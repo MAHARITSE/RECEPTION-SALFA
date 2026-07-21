@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription } from '../types';
+import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription, CompanyBillingAccount } from '../types';
 import type { AppState } from '../store';
 import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber, addJourneyEvent, generatePharmaClosingNumber, purgePatientFromQueue } from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send } from 'lucide-react';
@@ -12,13 +12,15 @@ interface Props {
   setState: React.Dispatch<React.SetStateAction<AppState>>;
   onOpenMessagingWithRecipient?: (recipientId: string) => void;
 }
-type Tab = 'payment' | 'external' | 'hospit' | 'bloc' | 'closing';
+type Tab = 'payment' | 'external' | 'hospit' | 'bloc' | 'billing' | 'closing';
 type HbModal = 'none' | 'add_patient' | 'add_article' | 'edit_client';
 
 export default function CashierModule({ state, setState, onOpenMessagingWithRecipient }: Props) {
   const [selConsultId, setSelConsultId] = useState<string | null>(null);
   const [selPatientId, setSelPatientId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('payment');
+  const [billingMonth, setBillingMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [billingPayment, setBillingPayment] = useState<Record<string, string>>({});
   const payingRef = useRef(false);
 
   // Rectification modal state
@@ -102,17 +104,16 @@ export default function CashierModule({ state, setState, onOpenMessagingWithReci
   const selConsult = state.consultations.find(c => c.id === selConsultId);
   const selPatient = state.patients.find(p => p.id === (selPatientId || selConsult?.patientId)) || null;
 
-  // Suppression définitive d'un patient de la file caisse — avec ses paramètres vitaux,
-  // ses consultations non réglées et ses factures en attente (le payé est conservé).
+  // Retrait de la file caisse : seules les consultations/factures en attente sont annulées ; le dossier est conservé.
   const removePendingPatient = (pid: string) => {
     const p = state.patients.find((x) => x.id === pid);
     if (!p) return;
-    if (!confirm(`Supprimer définitivement ${p.lastName} ${p.firstName} (${p.dossier}) de la file caisse ?\n\n⚠️ Le dossier sera supprimé avec ses paramètres, ses consultations non réglées et ses factures en attente.`)) return;
+    if (!confirm(`Retirer ${p.lastName} ${p.firstName} (${p.dossier}) de la file caisse ?\n\nLes consultations et factures en attente seront annulées. Le dossier patient sera conservé.`)) return;
     setState((prev) => {
       const next = { ...prev };
       purgePatientFromQueue(next, pid);
-      addAuditLog(next, 'SUPPRESSION_FILE_CAISSE', `${p.lastName} ${p.firstName} (${p.dossier}) supprimé de la file caisse — paramètres + factures en attente inclus`, pid);
-      addJourneyEvent(next, { patientId: pid, department: 'caisse', action: 'Supprimé de la file caisse', details: `Facturation en attente annulée — dossier supprimé par ${prev.currentUser?.name || 'la caisse'}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name });
+      addAuditLog(next, 'RETRAIT_FILE_CAISSE', `${p.lastName} ${p.firstName} (${p.dossier}) retiré de la file caisse — dossier conservé`, pid);
+      addJourneyEvent(next, { patientId: pid, department: 'caisse', action: 'Consultations retirées de la file caisse', status: 'registered', details: `Facturation en attente annulée — dossier conservé par ${prev.currentUser?.name || 'la caisse'}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name });
       return next;
     });
     if (selPatientId === pid) { setSelPatientId(null); setSelConsultId(null); }
@@ -612,6 +613,30 @@ export default function CashierModule({ state, setState, onOpenMessagingWithReci
   };
   const switchTab = (t: Tab) => { setTab(t); if (t === 'hospit' || t === 'bloc') autoAddRequests(); };
 
+  // Compte facturation : regroupement mensuel des factures rattachées à une société.
+  const getCompanyMonthInvoices = (company: string, month: string) => state.invoices.filter(inv => {
+    const patient = state.patients.find(p => p.id === inv.patientId);
+    return patient?.company === company && inv.createdAt.slice(0, 7) === month;
+  });
+  const createBillingAccount = (company: string) => {
+    const invoices = getCompanyMonthInvoices(company, billingMonth);
+    if (!invoices.length) return alert('Aucune facture société à regrouper pour cette période.');
+    if (state.companyBillingAccounts.some(a => a.company === company && a.month === billingMonth)) return alert('Un compte existe déjà pour cette société et ce mois.');
+    const totalAmount = invoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
+    setState(prev => ({ ...prev, companyBillingAccounts: [...prev.companyBillingAccounts, { id: uuidv4(), company, month: billingMonth, invoiceIds: invoices.map(i => i.id), totalAmount, paidAmount: 0, status: 'open', createdAt: new Date().toISOString(), payments: [] }] }));
+  };
+  const addBillingPayment = (account: CompanyBillingAccount) => {
+    const amount = Number(billingPayment[account.id]);
+    const balance = account.totalAmount - account.paidAmount;
+    if (!amount || amount <= 0 || amount > balance) return alert(`Saisissez un montant entre 1 et ${formatAr(balance)}.`);
+    setState(prev => ({ ...prev, companyBillingAccounts: prev.companyBillingAccounts.map(a => {
+      if (a.id !== account.id) return a;
+      const paidAmount = a.paidAmount + amount;
+      return { ...a, paidAmount, status: paidAmount >= a.totalAmount ? 'paid' : 'partial', payments: [...a.payments, { id: uuidv4(), amount, date: new Date().toISOString(), method: 'Virement', receivedBy: prev.currentUser?.name }] };
+    }) }));
+    setBillingPayment(x => ({ ...x, [account.id]: '' }));
+  };
+
   // Stats — FILTRÉES PAR LE CAISSIER CONNECTÉ
   // Les paiements se font individuellement et au nom de la personne qui a reçu l'argent.
   // La clôture affiche UNIQUEMENT la caisse du caissier connecté, pas la totalité du jour.
@@ -773,7 +798,7 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
       {/* Tabs */}
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
         <div className="flex border-b overflow-x-auto">
-          {([['payment','📋 Facturation',pendingPatients.length],['external','🛒 Vte Externe',0],['hospit','🏨 Hospit.',hbRecords.filter(h=>h.type==='hospit').length],['bloc','🏥 Bloc',hbRecords.filter(h=>h.type==='bloc').length],['closing','🔒 Clôture',0]] as [Tab,string,number][]).map(([k,l,c]) => (
+          {([['payment','📋 Facturation',pendingPatients.length],['external','🛒 Vte Externe',0],['hospit','🏨 Hospit.',hbRecords.filter(h=>h.type==='hospit').length],['bloc','🏥 Bloc',hbRecords.filter(h=>h.type==='bloc').length],['billing','🏢 Comptes sociétés',state.companyBillingAccounts.filter(a => a.status !== 'paid').length],['closing','🔒 Clôture',0]] as [Tab,string,number][]).map(([k,l,c]) => (
             <button key={k} onClick={() => switchTab(k)} className={`flex items-center gap-1 px-4 py-3 text-xs font-medium border-b-2 cursor-pointer whitespace-nowrap ${tab===k?'border-amber-500 text-amber-600 bg-amber-50/50':'border-transparent text-slate-500'}`}>{l}{c > 0 ? ` (${c})` : ''}</button>
           ))}
         </div>
@@ -796,7 +821,7 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                           <button
                             onClick={(e) => { e.stopPropagation(); removePendingPatient(p.id); }}
                             className="p-1 rounded-lg text-rose-500 hover:bg-rose-100 hover:text-rose-700 cursor-pointer transition"
-                            title="Supprimer de la file caisse — dossier + paramètres + factures en attente supprimés"
+                            title="Retirer de la file caisse — dossier patient conservé"
                           ><Trash2 className="w-4 h-4" /></button>
                         </div>
                       </div>
@@ -956,6 +981,19 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                     </div>
                   );
                 })}
+            </div>
+          )}
+
+          {tab === 'billing' && (
+            <div className="bg-white rounded-xl border shadow-sm p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row justify-between gap-3 border-b pb-4"><div><h3 className="font-bold text-slate-800 flex items-center gap-2"><Building2 className="w-5 h-5 text-indigo-600" /> Comptes de facturation sociétés</h3><p className="text-xs text-slate-500 mt-1">Regroupez les factures par mois et suivez les règlements.</p></div><input type="month" value={billingMonth} onChange={e => setBillingMonth(e.target.value)} className="border rounded-lg px-3 py-2 text-sm bg-white" /></div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">{state.companies.map(company => {
+                const account = state.companyBillingAccounts.find(a => a.company === company.name && a.month === billingMonth);
+                const invoices = getCompanyMonthInvoices(company.name, billingMonth);
+                if (!account) return <div key={company.id} className="border rounded-xl p-4"><b className="text-sm">{company.name}</b><p className="text-xs text-slate-500 my-2">{invoices.length} facture(s) disponible(s)</p><button disabled={!invoices.length} onClick={() => createBillingAccount(company.name)} className="px-3 py-1.5 bg-indigo-600 text-white rounded text-xs font-bold disabled:opacity-40 cursor-pointer">Regrouper le mois</button></div>;
+                const balance = account.totalAmount - account.paidAmount;
+                return <div key={company.id} className="border rounded-xl p-4 bg-slate-50 space-y-2"><div className="flex justify-between gap-2"><b className="text-sm">{company.name}</b><span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${account.status === 'paid' ? 'bg-emerald-100 text-emerald-700' : account.status === 'partial' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`}>{account.status === 'paid' ? 'Soldé' : account.status === 'partial' ? 'Partiel' : 'Impayé'}</span></div><p className="text-xs text-slate-500">{account.invoiceIds.length} facture(s) regroupée(s)</p><div className="text-sm">Facturé <b>{formatAr(account.totalAmount)}</b></div><div className="text-sm text-emerald-700">Réglé {formatAr(account.paidAmount)}</div><div className="text-sm font-bold text-rose-700">Solde {formatAr(balance)}</div>{balance > 0 && <div className="flex gap-1 pt-1"><input type="number" min="1" value={billingPayment[account.id] || ''} onChange={e => setBillingPayment(v => ({...v, [account.id]: e.target.value}))} placeholder="Montant" className="w-full border rounded px-2 py-1 text-xs bg-white" /><button onClick={() => addBillingPayment(account)} className="px-2 py-1 bg-indigo-600 text-white rounded text-xs font-bold cursor-pointer">Régler</button></div>}</div>;
+              })}</div>
             </div>
           )}
 
