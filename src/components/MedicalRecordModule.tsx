@@ -69,102 +69,95 @@ export default function MedicalRecordModule({ state, patientId, onBack }: Props)
       })
     : [];
 
-  // ---- File des patients (colonne gauche, toujours visible) ----
-  const q = search.toLowerCase();
-  const list = state.patients
-    .filter((p) => !p.blacklisted)
-    .filter(
-      (p) =>
-        !q ||
-        p.firstName.toLowerCase().includes(q) ||
-        p.lastName.toLowerCase().includes(q) ||
-        p.dossier.toLowerCase().includes(q),
-    )
-    .sort((a, b) => new Date(b.lastVisitAt || b.registeredAt).getTime() - new Date(a.lastVisitAt || a.registeredAt).getTime());
+  // ---- Vue liste (aucun patient sélectionné) ----
+  if (!patient) {
+    const q = search.toLowerCase();
+    const list = state.patients
+      .filter((p) => !p.blacklisted)
+      .filter(
+        (p) =>
+          !q ||
+          p.firstName.toLowerCase().includes(q) ||
+          p.lastName.toLowerCase().includes(q) ||
+          p.dossier.toLowerCase().includes(q),
+      )
+      .sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime());
+    return (
+      <div className="space-y-4">
+        <div className="bg-white rounded-xl shadow-sm border p-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+              <FileText className="w-5 h-5 text-slate-700" /> Dossiers Médicaux
+            </h2>
+            <p className="text-sm text-slate-500">Gestion totale du dossier : identité, parcours, historique et analyses.</p>
+          </div>
+          {onBack && (
+            <button onClick={onBack} className="px-3 py-2 bg-slate-200 hover:bg-slate-300 rounded-lg text-sm flex items-center gap-2 cursor-pointer">
+              <ArrowLeft className="w-4 h-4" /> Retour
+            </button>
+          )}
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border p-4">
+          <div className="relative max-w-md mb-3">
+            <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-slate-400"
+              placeholder="Rechercher: Nom, Dossier, Matricule..."
+            />
+          </div>
+          <div className="overflow-auto max-h-[60vh]">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-100 sticky top-0">
+                <tr>
+                  <th className="p-2 text-left">Dossier</th>
+                  <th className="p-2 text-left">Nom et Prénom</th>
+                  <th className="p-2 text-center">Sexe</th>
+                  <th className="p-2 text-left">Âge</th>
+                  <th className="p-2 text-left">Société</th>
+                  <th className="p-2 text-left">Statut</th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((p) => {
+                  const st = statusCfg[p.status] || { label: p.status, bg: 'bg-slate-100', text: 'text-slate-600' };
+                  return (
+                    <tr
+                      key={p.id}
+                      onClick={() => setLocalId(p.id)}
+                      className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer"
+                    >
+                      <td className="p-2 font-mono font-bold text-blue-700">{p.dossier}</td>
+                      <td className="p-2 font-medium uppercase">{p.lastName} {p.firstName}</td>
+                      <td className="p-2 text-center">
+                        <span className={`inline-block w-6 h-6 rounded-full font-bold text-xs leading-6 ${p.gender === 'F' ? 'bg-pink-100 text-pink-700' : 'bg-blue-100 text-blue-700'}`}>{p.gender}</span>
+                      </td>
+                      <td className="p-2">{p.age}</td>
+                      <td className="p-2">{p.company || p.insureName || '—'}</td>
+                      <td className="p-2"><span className={`px-2 py-0.5 rounded text-[10px] font-bold ${st.bg} ${st.text}`}>{st.label}</span></td>
+                    </tr>
+                  );
+                })}
+                {list.length === 0 && (
+                  <tr><td colSpan={6} className="p-8 text-center text-slate-400">Aucun patient trouvé</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-  const st = patient
-    ? (statusCfg[patient.status] || { label: patient.status, bg: 'bg-slate-100', text: 'text-slate-600' })
-    : { label: '', bg: 'bg-slate-100', text: 'text-slate-600' };
-  const vitals = patient ? (patient.vitalSigns || consultations[0]?.vitalSigns) : undefined;
+  const st = statusCfg[patient.status] || { label: patient.status, bg: 'bg-slate-100', text: 'text-slate-600' };
+  const vitals = patient.vitalSigns || consultations[0]?.vitalSigns;
   const labCount = allLabs.length;
   const abnormalLabs = allLabs.filter((d) => (d.lr.results || []).some((r) => r.isAbnormal)).length;
 
   return (
     <div className="space-y-4">
-      {/* En-tête de page */}
-      <div className="bg-white rounded-xl shadow-sm border p-4 flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-            <FileText className="w-5 h-5 text-slate-700" /> Dossiers Médicaux
-          </h2>
-          <p className="text-sm text-slate-500">File des patients passés au centre — sélectionnez un patient pour afficher son parcours à droite.</p>
-        </div>
-        {onBack && (
-          <button onClick={onBack} className="px-3 py-2 bg-slate-200 hover:bg-slate-300 rounded-lg text-sm flex items-center gap-2 cursor-pointer">
-            <ArrowLeft className="w-4 h-4" /> Retour
-          </button>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
-        {/* COLONNE GAUCHE : file des patients (passage au centre) */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden lg:sticky lg:top-4">
-          <div className="p-3.5 border-b bg-slate-800 text-white">
-            <div className="flex items-center justify-between mb-2">
-              <span className="font-semibold text-sm flex items-center gap-1.5"><Route className="w-4 h-4" /> Passage au centre</span>
-              <span className="bg-white/20 font-mono font-bold px-2 py-0.5 rounded-full text-[10px]">{list.length}</span>
-            </div>
-            <div className="relative">
-              <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 rounded-lg text-slate-800 text-sm outline-none focus:ring-2 focus:ring-slate-400"
-                placeholder="Rechercher: Nom, Dossier..."
-              />
-            </div>
-          </div>
-          <div className="divide-y max-h-[68vh] overflow-y-auto">
-            {list.length === 0 ? (
-              <div className="p-10 text-center text-slate-400 text-sm">Aucun patient trouvé</div>
-            ) : (
-              list.map((p) => {
-                const pst = statusCfg[p.status] || { label: p.status, bg: 'bg-slate-100', text: 'text-slate-600' };
-                const isSelected = patient?.id === p.id;
-                return (
-                  <div
-                    key={p.id}
-                    onClick={() => setLocalId(p.id)}
-                    className={`p-3 cursor-pointer transition-all ${isSelected ? 'bg-slate-100 border-l-4 border-slate-700' : 'hover:bg-slate-50 border-l-4 border-transparent'}`}
-                  >
-                    <div className="flex justify-between items-start gap-2">
-                      <div className="min-w-0">
-                        <div className="font-bold text-sm text-slate-800 uppercase truncate">{p.lastName} {p.firstName}</div>
-                        <div className="text-xs text-slate-500 font-mono">{p.dossier} · {p.gender === 'M' ? 'H' : 'F'} · {p.age}</div>
-                        {(p.company || p.insureName) && <div className="text-[11px] text-slate-400 truncate">🏢 {p.company || p.insureName}</div>}
-                      </div>
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold whitespace-nowrap ${pst.bg} ${pst.text}`}>{pst.label}</span>
-                    </div>
-                    <div className="mt-1 text-[10px] text-slate-400">
-                      Dernier passage : {new Date(p.lastVisitAt || p.registeredAt).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-
-        {/* COLONNE DROITE : détail / parcours du patient sélectionné */}
-        <div className="lg:col-span-2 space-y-4">
-          {!patient ? (
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center text-slate-400">
-              <Route className="w-16 h-16 mx-auto mb-4 opacity-30" />
-              <p className="text-base font-medium">Sélectionnez un patient dans la file à gauche pour afficher son parcours</p>
-            </div>
-          ) : (
-            <>
       {/* En-tête identité */}
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
         <div className="bg-gradient-to-r from-slate-700 to-slate-800 text-white p-4 flex items-start justify-between">
@@ -416,10 +409,6 @@ export default function MedicalRecordModule({ state, patientId, onBack }: Props)
                 </tbody>
               </table>
             </div>
-          )}
-        </div>
-      </div>
-            </>
           )}
         </div>
       </div>
