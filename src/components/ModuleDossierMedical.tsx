@@ -3,10 +3,9 @@ import type { AppState } from '../store';
 import { formatAr, labCategoryLabel } from '../store';
 import type { LabRequest } from '../types';
 import { printDossierTicket, printLabResultTicket } from '../utils/printTicket';
-import PatientJourney from './PatientJourney';
 import {
   ArrowLeft, Printer, Search, FileText, FlaskConical, Stethoscope,
-  Building2, Receipt, Route, AlertTriangle, Droplets, Pill,
+  Receipt, AlertTriangle, Droplets, Pill,
 } from 'lucide-react';
 
 interface Props {
@@ -16,7 +15,7 @@ interface Props {
 }
 
 type DispLab = { lr: LabRequest; doctorName: string; consultationId?: string };
-type Tab = 'parcours' | 'consultations' | 'analyses' | 'factures';
+type Tab = 'consultations' | 'analyses' | 'factures';
 
 const statusCfg: Record<string, { label: string; bg: string; text: string }> = {
   registered: { label: 'Enregistré', bg: 'bg-slate-200', text: 'text-slate-700' },
@@ -33,7 +32,7 @@ const statusCfg: Record<string, { label: string; bg: string; text: string }> = {
 export default function ModuleDossierMedical({ state, patientId, onBack }: Props) {
   const [localId, setLocalId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [tab, setTab] = useState<Tab>('parcours');
+  const [tab, setTab] = useState<Tab>('consultations');
   // Ne jamais rendre une donnée clinique si le composant est appelé hors du parcours médecin.
   if (state.currentUser?.role !== 'doctor') return <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-red-800">Accès refusé : le dossier médical est réservé aux médecins.</div>;
 
@@ -240,7 +239,6 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
         <div className="flex border-b overflow-x-auto">
           {[
-            { key: 'parcours' as Tab, icon: <Route className="w-4 h-4" />, label: `Parcours (${journey.length})` },
             { key: 'consultations' as Tab, icon: <Stethoscope className="w-4 h-4" />, label: `Consult. (${consultations.length})` },
             { key: 'analyses' as Tab, icon: <FlaskConical className="w-4 h-4" />, label: `Analyses (${labCount})` },
             { key: 'factures' as Tab, icon: <Receipt className="w-4 h-4" />, label: `Factures (${invoices.length})` },
@@ -259,14 +257,6 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
         </div>
 
         <div className="p-6">
-          {/* PARCOURS */}
-          {tab === 'parcours' && (
-            <div>
-              <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2"><Route className="w-4 h-4" /> Parcours du patient dans l'établissement</h3>
-              <PatientJourney events={journey} />
-            </div>
-          )}
-
           {/* CONSULTATIONS */}
           {tab === 'consultations' && (
             <div className="space-y-3">
@@ -280,29 +270,44 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
                     </div>
                     {c.isEmergency && <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full font-bold">🚨 Urgence</span>}
                   </div>
-                  <div className="p-3 text-sm space-y-1">
-                    {c.visitReason && <div><span className="font-medium text-slate-600">Motif :</span> {c.visitReason}</div>}
-                    <div><span className="font-medium text-slate-600">Diagnostic :</span> {c.diagnosis}</div>
-                    {c.notes && <div><span className="font-medium text-slate-600">Notes :</span> {c.notes}</div>}
-                    {c.prescriptions.length > 0 && (
-                      <div className="pt-1">
-                        <div className="font-medium text-slate-600 mb-1">Ordonnance :</div>
-                        <ul className="list-disc pl-5 text-slate-700">
-                          {c.prescriptions.map((p) => (
-                            <li key={p.id}>
-                              {p.articleName} × {p.quantity}
-                              {p.posology ? ` (${p.posology})` : ''}
-                              {p.delivered ? <span className="text-emerald-600"> ✓ délivré</span> : <span className="text-amber-600"> (à délivrer)</span>}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    {state.currentUser?.role === 'doctor' && (
-                      <div className="mt-2 pt-2 border-t text-xs">
-                        <button className="px-2 py-0.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700" onClick={() => alert('Ajout observation médecin (simulé) — dossier mis à jour.')}>+ Ajouter observation médecin</button>
-                      </div>
-                    )}
+                  <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] divide-y lg:divide-y-0 lg:divide-x divide-slate-200">
+                    {/* Détails de la consultation */}
+                    <div className="p-3 text-sm space-y-1">
+                      {c.visitReason && <div><span className="font-medium text-slate-600">Motif :</span> {c.visitReason}</div>}
+                      <div><span className="font-medium text-slate-600">Diagnostic :</span> {c.diagnosis}</div>
+                      {c.notes && <div><span className="font-medium text-slate-600">Notes :</span> {c.notes}</div>}
+                      {state.currentUser?.role === 'doctor' && (
+                        <div className="mt-2 pt-2 border-t text-xs">
+                          <button className="px-2 py-0.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700" onClick={() => alert('Ajout observation médecin (simulé) — dossier mis à jour.')}>+ Ajouter observation médecin</button>
+                        </div>
+                      )}
+                    </div>
+                    {/* Colonne prestations : articles + quantité + posologie */}
+                    <div className="bg-slate-50 p-3">
+                      {c.prescriptions.length > 0 ? (
+                        <div>
+                          <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">Prestations ({c.prescriptions.length} article{c.prescriptions.length > 1 ? 's' : ''})</div>
+                          <div className="space-y-1.5">
+                            {c.prescriptions.map((p) => (
+                              <div key={p.id} className="flex items-start justify-between gap-2 text-xs border-b border-slate-200 last:border-0 pb-1.5 last:pb-0">
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium text-slate-700">{p.articleName}</div>
+                                  {p.posology && <div className="text-[10px] text-slate-400 mt-0.5">{p.posology}</div>}
+                                </div>
+                                <div className="shrink-0 text-right">
+                                  <span className="font-mono font-bold text-slate-600">×{p.quantity}</span>
+                                  {p.delivered
+                                    ? <span className="block text-[9px] text-emerald-600">✓ délivré</span>
+                                    : <span className="block text-[9px] text-amber-600">à délivrer</span>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-xs text-slate-400 italic text-center py-4">Aucune prescription</div>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}

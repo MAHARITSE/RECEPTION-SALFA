@@ -602,7 +602,63 @@ export default function ModuleMedecin({ state, setState }: Props) {
             {selectedPatient.allergies.length > 0 && <div className="mt-1 p-1.5 bg-red-50 border border-red-200 rounded text-xs text-red-700"><AlertTriangle className="w-3 h-3 inline" /> {selectedPatient.allergies.join(', ')}</div>}
           </div>
 
-          {showHistory && <div className="bg-white rounded-xl shadow-sm border p-3 max-h-40 overflow-y-auto text-xs">{patientConsultations.length === 0 ? <p className="text-slate-400">Premier passage</p> : patientConsultations.map((c) => (<div key={c.id} className="p-1.5 bg-slate-50 rounded mb-1"><strong>{new Date(c.date).toLocaleDateString('fr-FR')}</strong> — {c.diagnosis}</div>))}</div>}
+          {showHistory && (
+            <div className="bg-white rounded-xl shadow-sm border p-3 max-h-72 overflow-y-auto">
+              {patientConsultations.length === 0 ? (
+                <p className="text-slate-400 text-xs text-center py-4">Premier passage — aucun historique</p>
+              ) : (
+                <div className="space-y-3">
+                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1"><History className="w-3.5 h-3.5" /> Historique des consultations</h4>
+                  {patientConsultations.map((c) => (
+                    <div key={c.id} className="border border-slate-200 rounded-lg overflow-hidden">
+                      {/* Infos consultation (gauche) + Prestations (droite) */}
+                      <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] divide-y lg:divide-y-0 lg:divide-x divide-slate-200">
+                        {/* Colonne gauche : détails de la consultation */}
+                        <div className="p-3 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-sm text-slate-800">{c.doctorName}</span>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              {new Date(c.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                              , {new Date(c.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          {c.visitReason && (
+                            <div className="text-xs"><span className="font-medium text-slate-500">Motif :</span> <span className="text-slate-700">{c.visitReason}</span></div>
+                          )}
+                          <div className="text-xs"><span className="font-medium text-slate-500">Diagnostic :</span> <span className="text-slate-700">{c.diagnosis}</span></div>
+                          {c.notes && (
+                            <div className="text-xs"><span className="font-medium text-slate-500">Notes :</span> <span className="text-slate-700">{c.notes}</span></div>
+                          )}
+                          {c.isEmergency && <span className="inline-block px-1.5 py-0.5 bg-red-100 text-red-700 text-[10px] rounded-full font-bold">🚨 Urgence</span>}
+                        </div>
+                        {/* Colonne droite : prestations du docteur (articles + posologie) */}
+                        <div className="bg-slate-50 p-3">
+                          {c.prescriptions.length > 0 ? (
+                            <div>
+                              <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Prestations ({c.prescriptions.length} article{c.prescriptions.length > 1 ? 's' : ''})</div>
+                              <div className="space-y-1">
+                                {c.prescriptions.map((p) => (
+                                  <div key={p.id} className="flex items-start justify-between gap-2 text-xs border-b border-slate-200 last:border-0 pb-1 last:pb-0">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="font-medium text-slate-700 truncate">{p.articleName}</div>
+                                      {p.posology && <div className="text-[10px] text-slate-400">{p.posology}</div>}
+                                    </div>
+                                    <span className="shrink-0 font-mono text-slate-600 font-bold text-[11px]">×{p.quantity}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-xs text-slate-400 italic text-center py-2">Aucune prescription</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Vitals + Consult */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
