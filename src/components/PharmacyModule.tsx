@@ -4,7 +4,7 @@ import type { AppState } from '../store';
 import type { TransferCategory, StockTransfer } from '../types';
 import { addAuditLog, addNotification, formatAr, familyLabel, transferCategoryLabel, transferCategoryColor, addJourneyEvent, isArticleSaleable, createMovementWithLines, generatePharmaClosingNumber } from '../store';
 import type { MovementType } from '../types';
-import { printDeliveryTicket, printPharmaSalesRecapTicket } from '../utils/printTicket';
+import { printDeliveryTicket, printPharmaDeliveryClosingTicket, printPharmaSalesRecapTicket } from '../utils/printTicket';
 import DemandeAchatForm, { type ReqLine } from './DemandeAchatForm';
 import CashierModule from './CashierModule';
 import {
@@ -34,6 +34,7 @@ export default function PharmacyModule({ state, setState, onOpenMessagingWithRec
 
   // Nouveaux états pour affichage gauche/droite et clôtures de garde
   const [selConsultId, setSelConsultId] = useState<string | null>(null);
+  const [closingDetailsModal, setClosingDetailsModal] = useState<import('../types').PharmaDeliveryClosing | null>(null);
 
   // Reappro Modal State
   const [reapproModalOpen, setReapproModalOpen] = useState(false);
