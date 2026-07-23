@@ -225,7 +225,8 @@ export function createVente(
 
   const montantPaye = data.montantPaye ?? 0;
   let status: Vente['status'] = 'pending';
-  if (montantPaye >= tot.montantFacture && tot.montantFacture > 0) status = 'paid';
+  if (tot.montantFacture <= 0) status = 'pending';           // dossier hospit/bloc ouvert sans lignes
+  else if (montantPaye >= tot.montantFacture) status = 'paid';
   else if (montantPaye > 0) status = 'partiel';
 
   const vente: Vente = {
@@ -255,7 +256,11 @@ export function createVente(
   return { vente, venteLines };
 }
 
-/** Enregistre un paiement sur une vente (paiement partiel ou complet). */
+/** Enregistre un paiement sur une vente (paiement partiel ou complet).
+ *  Règles métier :
+ *   - Comptoir/Externe : paiement en espèces, le montant doit solder la facture.
+ *   - Société (crédit) : tout paiement enregistré ici est un versement
+ *     (espèces, Mobile Money, Chèque…), souvent un tiers-payeur. */
 export function addVentePayment(
   state: AppState,
   venteId: string,
@@ -279,9 +284,9 @@ export function addVentePayment(
   let status: Vente['status'] = v.status;
   let paidAt = v.paidAt;
   let datePaiement = v.datePaiement;
-  if (montantPaye >= v.montantFacture) {
+  if (montantPaye >= v.montantFacture && v.montantFacture > 0) {
     status = 'paid';
-    paidAt = paidAt || pay.date;
+    paidAt = pay.date;
   } else if (montantPaye > 0) {
     status = 'partiel';
     datePaiement = datePaiement || pay.date;
@@ -290,6 +295,83 @@ export function addVentePayment(
     ? { ...x, montantPaye, status, paidAt, datePaiement, paidBy: pay.paidByUserId, paidByName: pay.paidBy }
     : x);
   return pay;
+}
+
+/** Recalcule les totaux d'une vente à partir de ses lignes + remise globale. */
+export function recomputeVenteTotals(state: AppState, venteId: string, remisePctOverride?: number): Vente | null {
+  const v = state.ventes.find(x => x.id === venteId);
+  if (!v) return null;
+  const lines = getVenteLines(state, venteId);
+  const remisePct = remisePctOverride ?? v.remisePct ?? 0;
+  const tot = computeVenteTotals(lines, remisePct);
+  const montantPaye = Math.min(v.montantPaye || 0, tot.montantFacture);
+  let status: Vente['status'] = 'pending';
+  if (v.status === 'annule') status = 'annule';
+  else if (montantPaye >= tot.montantFacture && tot.montantFacture > 0) status = 'paid';
+  else if (montantPaye > 0) status = 'partiel';
+  const updated: Vente = {
+    ...v,
+    subtotal: tot.subtotal,
+    remisePct,
+    remiseMontant: tot.remiseMontant,
+    montantFacture: tot.montantFacture,
+    montantPaye,
+    status,
+  };
+  state.ventes = state.ventes.map(x => x.id === venteId ? updated : x);
+  return updated;
+}
+
+/** Ajoute une ligne à une vente existante (utile pour dossiers hospit/bloc ouverts). */
+export function addVenteLine(
+  state: AppState,
+  venteId: string,
+  line: Omit<VenteLine, 'id' | 'venteId'>,
+): VenteLine | null {
+  const v = state.ventes.find(x => x.id === venteId);
+  if (!v) return null;
+  const newLine: VenteLine = { id: uuidv4(), venteId, ...line };
+  state.venteLines = [...(state.venteLines || []), newLine];
+  recomputeVenteTotals(state, venteId);
+  return newLine;
+}
+
+/** Met à jour une ligne de vente existante. */
+export function updateVenteLine(
+  state: AppState,
+  lineId: string,
+  patch: Partial<Omit<VenteLine, 'id' | 'venteId'>>,
+): VenteLine | null {
+  const ln = (state.venteLines || []).find(l => l.id === lineId);
+  if (!ln) return null;
+  state.venteLines = (state.venteLines || []).map(l => l.id === lineId ? { ...l, ...patch } : l);
+  recomputeVenteTotals(state, ln.venteId);
+  return (state.venteLines || []).find(l => l.id === lineId) || null;
+}
+
+/** Supprime une ligne de vente. */
+export function deleteVenteLine(state: AppState, lineId: string): boolean {
+  const ln = (state.venteLines || []).find(l => l.id === lineId);
+  if (!ln) return false;
+  state.venteLines = (state.venteLines || []).filter(l => l.id !== lineId);
+  recomputeVenteTotals(state, ln.venteId);
+  return true;
+}
+
+/** Récupère les ventes Hospit/Bloc "ouvertes" (non annulées) d'un type donné. */
+export function getHbVentes(state: AppState, type: 'hospitalisation' | 'bloc'): Vente[] {
+  return (state.ventes || []).filter(v => v.type === type && v.status !== 'annule');
+}
+
+/** Indique si une vente est un dossier de type hospit/bloc. */
+export function isHbVente(v: Vente | undefined | null): boolean {
+  return !!v && (v.type === 'hospitalisation' || v.type === 'bloc');
+}
+
+/** Calcule le reste dû sur une vente. */
+export function venteRestantDu(v: Pick<Vente, 'montantFacture' | 'montantPaye'> | null | undefined): number {
+  if (!v) return 0;
+  return Math.max(0, (v.montantFacture || 0) - (v.montantPaye || 0));
 }
 
 /** Récupère les lignes d'une vente. */
