@@ -225,7 +225,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     // Réinitialiser le formulaire local (identique à la fin de validation)
     setSelectedPatientId(null); setConsultForm({ visitReason: '', diagnosis: '', notes: '', isEmergency: false, hospitalizeRequested: false, surgeryRequested: false });
     setVitals({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' });
-    setLines([]); setShowHistory(false); setSearchQuery(''); setSelectedLineId(null); setIsNewLine(false);
+    setLines([]); setSearchQuery(''); setSelectedLineId(null); setIsNewLine(false);
     setArticleSearch(''); setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
     setLabDraft([]); setLabSearch(''); setEchoDraft([]); setEchoSearch('');
     setLabDraftIdx(-1); setEchoDraftIdx(-1);
@@ -530,7 +530,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     // }
     setSelectedPatientId(null); setConsultForm({ visitReason: '', diagnosis: '', notes: '', isEmergency: false, hospitalizeRequested: false, surgeryRequested: false });
     setVitals({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' });
-    setLines([]); setShowHistory(false); setSearchQuery(''); setSelectedLineId(null); setIsNewLine(false);
+    setLines([]); setSearchQuery(''); setSelectedLineId(null); setIsNewLine(false);
     setArticleSearch(''); setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
     setLabDraft([]); setLabSearch(''); setEchoDraft([]); setEchoSearch('');
     setLabDraftIdx(-1); setEchoDraftIdx(-1);

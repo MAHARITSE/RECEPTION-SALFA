@@ -36,11 +36,15 @@ wamp_deploy\deployment\deploy.bat
 
 | Utilisateur | Mot de passe | Rôle |
 |------------|--------------|------|
-| admin | admin123 | Administrateur |
-| reception1 | admin123 | Réceptionniste |
-| dr_kalala | admin123 | Médecin |
-| pharmacien1 | admin123 | Pharmacien |
-| caisse1 | admin123 | Caissier |
+| ADM001 | admin123 | Administrateur |
+| DOC001 | doc123 | Médecin (Dr. Jean Martin) |
+| CAS001 | caisse123 | Caissier |
+| PHA001 | pharma123 | Pharmacien |
+| MAG001 | mag123 | Magasinier |
+| LAB001 | labo123 | Laboratoire |
+| HOS001 | hosp123 | Hospitalisation |
+
+> La **Réception** n'a pas besoin de connexion (accès libre).
 
 ## Résolution des Problèmes
 

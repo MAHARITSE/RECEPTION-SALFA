@@ -56,6 +56,7 @@ Le diagramme d'accompagnement se trouve dans le fichier [`schema-base-donnees.sv
 | **Fournisseurs** | Coordonnées, NIF, STAT, contact. |
 | **Achats** | Commandes/livraisons auprès d'un fournisseur, avec lignes d'articles (quantités, prix d'achat, dates de péremption). |
 | **Livraisons pharmacie** | Livraisons de médicaments aux patients (délivrances ordonnances / ventes), rattachées à la clôture de garde. |
+| **Clôtures livraison pharmacie** | Compilation des livraisons de garde par responsable, avec numéro unique `LIV-PHARMA-YYYY-NNNN`, total articles et montant. |
 
 ## 📬 Messagerie & journal
 

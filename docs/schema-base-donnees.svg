@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1100" font-family="Arial, Helvetica, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1150" font-family="Arial, Helvetica, sans-serif">
   <desc>Modèle relationnel : sociétés au crédit, sous-modes règlement global mensuel et individuel par facture, relevés mensuels et règlements associés.</desc>
   <defs>
     <style>
@@ -17,9 +17,9 @@
     </marker>
   </defs>
 
-  <rect width="1600" height="1100" fill="#f8fafc" />
+  <rect width="1600" height="1150" fill="#f8fafc" />
   <text x="800" y="30" text-anchor="middle" class="title">Schéma relationnel — Base de données Réception SALFA (version française)</text>
-  <text x="800" y="50" text-anchor="middle" font-size="12" fill="#64748b">Utilisateurs · Patients · Sociétés · Consultations · Factures · Paiements · Articles · Stocks · Achats · Laboratoire · Pharmacie · Hospitalisation · Bloc</text>
+  <text x="800" y="50" text-anchor="middle" font-size="12" fill="#64748b">Utilisateurs · Patients · Sociétés · Consultations · Factures · Ventes · Paiements · Articles · Stocks · Achats · Laboratoire · Pharmacie · Hospitalisation · Bloc · Clôtures Livraison</text>
 
   <!-- UTILISATEURS -->
   <g transform="translate(40,80)">
@@ -246,6 +246,29 @@
     <text x="10" y="128" class="field">société, type_client</text>
   </g>
 
+  <!-- MESSAGES -->
+  <g transform="translate(1270,450)">
+    <rect width="280" height="120" class="entity"/>
+    <text x="140" y="22" text-anchor="middle" class="entity-title">MESSAGES</text>
+    <line x1="0" y1="30" x2="280" y2="30" stroke="#1e40af"/>
+    <text x="10" y="48" class="pk">PK id</text>
+    <text x="10" y="64" class="fk">expéditeur/destinataire → UTILISATEURS</text>
+    <text x="10" y="80" class="field">contenu, date, lu</text>
+  </g>
+
+  <!-- CLOTURES LIVRAISON PHARMACIE -->
+  <g transform="translate(950,900)">
+    <rect width="280" height="160" class="entity"/>
+    <text x="140" y="22" text-anchor="middle" class="entity-title">CLÔTURES LIVRAISON PHARMA</text>
+    <line x1="0" y1="30" x2="280" y2="30" stroke="#1e40af"/>
+    <text x="10" y="48" class="pk">PK id</text>
+    <text x="10" y="64" class="field">n° clôture (LIV-PHARMA-YYYY-NNNN)</text>
+    <text x="10" y="80" class="fk">FK responsable_id → UTILISATEURS</text>
+    <text x="10" y="96" class="field">date, total_articles, total_montant</text>
+    <text x="10" y="112" class="field">— livraisons[] : patient, article, qté, prix</text>
+    <text x="10" y="128" class="field">livré_par → UTILISATEURS</text>
+  </g>
+
   <!-- BLOC OPERATOIRE -->
   <g transform="translate(1270,900)">
     <rect width="280" height="150" class="entity"/>
@@ -257,16 +280,6 @@
     <text x="10" y="96" class="field">— lignes: article, qté, prix, date_sortie</text>
     <text x="10" y="112" class="field">— paiements[] (partiels)</text>
     <text x="10" y="128" class="field">société, type_client</text>
-  </g>
-
-  <!-- MESSAGES -->
-  <g transform="translate(1270,450)">
-    <rect width="280" height="120" class="entity"/>
-    <text x="140" y="22" text-anchor="middle" class="entity-title">MESSAGES</text>
-    <line x1="0" y1="30" x2="280" y2="30" stroke="#1e40af"/>
-    <text x="10" y="48" class="pk">PK id</text>
-    <text x="10" y="64" class="fk">expéditeur/destinataire → UTILISATEURS</text>
-    <text x="10" y="80" class="field">contenu, date, lu</text>
   </g>
 
   <!-- NOTIFICATIONS -->

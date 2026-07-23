@@ -9,7 +9,7 @@ import {
   updateVenteLine, deleteVenteLine, getVenteLines, getVentePayments,
   recomputeVenteTotals, venteRestantDu,
 } from '../store';
-import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send } from 'lucide-react';
+import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, Search } from 'lucide-react';
 import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket } from '../utils/printTicket';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
 
@@ -57,6 +57,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const [hbPayAmounts, setHbPayAmounts] = useState<Record<string, number>>({});
   // 💡 Historique des paiements (affiché via un bouton dédié)
   const [hbHistoryId, setHbHistoryId] = useState<string | null>(null);
+  const [hbSearchQuery, setHbSearchQuery] = useState('');
   const [hbModal, setHbModal] = useState<HbModal>('none');
 
   // HB Modal: patient search/add (ALL fields like reception)
@@ -687,21 +688,24 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       return next;
     });
 
-    // Impression du reçu
+    // Impression du reçu — ticket simplifié pour hospit/bloc
     setTimeout(() => {
       const v = payResult?.vente || state.ventes.find(v => v.id === recordId);
       if (!v) return;
       const patient = v.patientId ? state.patients.find(p => p.id === v.patientId) : undefined;
-      // Ticket générique via la facture virtuelle (numéro de facture déjà généré)
+      const updatedReste = venteRestantDu(v);
+      const updatedTotalPaid = v.montantPaye || 0;
+      // Ticket simplifié : montant total, déjà perçu, paiement actuel, reste à payer
       const fakeInvoiceForPrint: Invoice = {
         id: v.id, patientId: v.patientId, consultationId: v.consultationId,
-        clientName: v.clientName || patient && `${patient.lastName} ${patient.firstName}`,
+        clientName: v.clientName || (patient ? `${patient.lastName} ${patient.firstName}` : ''),
         clientType: v.clientType,
-        items: getVenteLines(state, v.id).map(l => ({
-          description: `${l.articleName} × ${l.quantity}${l.discount ? ` (-${l.discount}%)` : ''}`,
-          amount: hbLineAmt(l),
-          category: (l.category || 'hospitalization') as any,
-        })),
+        items: [
+          { description: 'Montant Total', amount: v.montantFacture, category: 'hospitalization' as const },
+          { description: 'Somme déjà perçue', amount: updatedTotalPaid, category: 'hospitalization' as const },
+          { description: 'Paiement actuel', amount: amount, category: 'hospitalization' as const },
+          { description: 'Reste à payer', amount: updatedReste, category: 'hospitalization' as const },
+        ],
         totalAmount: v.montantFacture,
         patientCharge: amount,              // ⚠️ montant de ce versement (acompte)
         status: v.status === 'paid' ? 'paid' : 'pending',
@@ -794,9 +798,17 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
   const myGrandTotal = myTodayTotal + myTodayPartialTotal;
 
-  // Liste des dossiers hospit/bloc OUVERTS (tous statuts sauf annule)
+  // Liste des dossiers hospit/bloc OUVERTS (tous statuts sauf annule), filtrés par recherche
   const curHbRecords: Vente[] = (tab === 'hospit' || tab === 'bloc')
     ? state.ventes.filter(v => v.type === (tab === 'hospit' ? 'hospitalisation' : 'bloc') && v.status !== 'annule')
+        .filter(v => {
+          if (!hbSearchQuery.trim()) return true;
+          const q = hbSearchQuery.toLowerCase();
+          return (v.clientName || '').toLowerCase().includes(q)
+            || (v.numeroFacture || '').toLowerCase().includes(q)
+            || (v.company || '').toLowerCase().includes(q)
+            || (v.patientId && state.patients.some(p => p.id === v.patientId && (p.dossier.toLowerCase().includes(q) || p.matricule?.toLowerCase().includes(q))));
+        })
     : [];
   const closingDateKey = new Date().toDateString();
   const existingClosing = state.cashClosings.find(c => new Date(c.date).toDateString() === closingDateKey && c.cashierId === currentCashierId);
@@ -1111,6 +1123,18 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                 <button onClick={() => { setHbPatSearch(''); setHbModal('add_patient'); }} className={`px-3 py-1.5 text-white rounded-lg cursor-pointer text-sm flex items-center gap-1 ${tab === 'hospit' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-blue-600 hover:bg-blue-700'}`}><UserPlus className="w-4 h-4" /> Ajouter Patient</button>
               </div>
 
+              {/* Barre de recherche hospit/bloc */}
+              <div className="mt-3 mb-1 relative">
+                <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  value={hbSearchQuery}
+                  onChange={(e) => setHbSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-400 text-sm"
+                  placeholder="🔍 Rechercher patient, dossier, n° facture, société..."
+                />
+              </div>
+
               {/* Records list (ventes unifiées) */}
               {curHbRecords.length === 0 ? <div className="text-center py-8 text-slate-400">Aucun patient</div>
                 : curHbRecords.map(record => {
@@ -1119,11 +1143,12 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                   const totalFact = record.montantFacture;
                   const totalPaid = record.montantPaye || 0;
                   const reste = venteRestantDu(record);
-                  const isOpen = hbSelRecordId === record.id;
-                  const isCredit = record.clientType === 'societe';
-                  return (
-                    <div key={record.id} className={`border rounded-lg overflow-hidden ${isOpen ? 'border-blue-400' : 'border-slate-200'}`}>
-                      <div className={`p-3 flex justify-between items-center cursor-pointer ${isOpen ? 'bg-blue-50' : 'bg-slate-50'}`} onClick={() => setHbSelRecordId(isOpen ? null : record.id)}>
+                    const isOpen = hbSelRecordId === record.id;
+                    const isCredit = record.clientType === 'societe';
+                    const isUnpaidComptoir = !isCredit && reste > 0;
+                    return (
+                      <div key={record.id} className={`border rounded-lg overflow-hidden ${isOpen ? 'border-blue-400' : isUnpaidComptoir ? 'border-red-300' : 'border-slate-200'}`}>
+                        <div className={`p-3 flex justify-between items-center cursor-pointer ${isOpen ? 'bg-blue-50' : isUnpaidComptoir ? 'bg-red-50' : 'bg-slate-50'}`} onClick={() => setHbSelRecordId(isOpen ? null : record.id)}>
                         <div>
                           <div className="font-bold text-sm flex items-center gap-2">
                             {record.clientName}
