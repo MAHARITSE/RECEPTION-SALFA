@@ -1,10 +1,16 @@
 import { useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription } from '../types';
+import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, Vente, VenteLine, VenteType, HbLine, Consultation, Prescription, VitalSigns } from '../types';
 import type { AppState } from '../store';
-import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber, addJourneyEvent, generatePharmaClosingNumber, purgePatientFromQueue } from '../store';
+import {
+  addAuditLog, addNotification, formatAr, getPrice, calculateAge,
+  generateDossierNumber, addJourneyEvent, generatePharmaClosingNumber,
+  purgePatientFromQueue, createVente, addVentePayment, addVenteLine,
+  updateVenteLine, deleteVenteLine, getVenteLines, getVentePayments,
+  recomputeVenteTotals, venteRestantDu,
+} from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send } from 'lucide-react';
-import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket } from '../utils/printTicket';
+import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket } from '../utils/printTicket';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
 
 interface Props {
@@ -42,16 +48,10 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const [extIsNew, setExtIsNew] = useState(false);
   const extSearchRef = useRef<HTMLInputElement>(null);
 
-  // Hospit/Bloc — la liste est PARTAGÉE entre Caisse et Pharmacie (state global),
-  // car peu importe qui saisit (caisse ou pharmacie de garde), c'est le paiement qui fait foi.
-  const hbRecords: HbRecord[] = state.hbRecords || [];
-  const updateHbRecords = (updater: HbRecord[] | ((prev: HbRecord[]) => HbRecord[])) => {
-    setState(prev => {
-      const base = prev.hbRecords || [];
-      const next = typeof updater === 'function' ? (updater as (p: HbRecord[]) => HbRecord[])(base) : updater;
-      return { ...prev, hbRecords: next };
-    });
-  };
+  /* === Hospit/Bloc : utilisent DÉSORMAIS la table unifiée `ventes` ===
+   * - type = 'hospitalisation' | 'bloc'
+   * - Comptoir/Externe : paiement comptant espèces (saisie obligatoire du solde)
+   * - Société : crédit, avec possibles versements tiers en espèces */
   const [hbSelRecordId, setHbSelRecordId] = useState<string | null>(null);
   // 💡 Saisie du montant INDÉPENDANTE par dossier (chaque patient a sa propre saisie)
   const [hbPayAmounts, setHbPayAmounts] = useState<Record<string, number>>({});
@@ -66,7 +66,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   // HB Modal: article add
   const [hbArtSearch, setHbArtSearch] = useState('');
   const [hbArtIdx, setHbArtIdx] = useState(0);
-  const [hbArtForm, setHbArtForm] = useState<HbLine>({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: new Date().toISOString().split('T')[0] });
+  const [hbArtForm, setHbArtForm] = useState<VenteLine>({ id: '', venteId: '', articleId: undefined, articleName: '', quantity: 1, unitPrice: 0, discount: 0, category: 'hospitalization', dateSort: new Date().toISOString().split('T')[0] });
   const hbArtRef = useRef<HTMLInputElement>(null);
   const [hbSelLineId, setHbSelLineId] = useState<string | null>(null);
   const [hbIsNew, setHbIsNew] = useState(true);
@@ -375,8 +375,10 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         doctorId: state.currentUser?.id || 'CASHIER',
         doctorName: state.currentUser?.name ? `Vente Externe (${state.currentUser.name})` : 'Vente Externe',
         date: new Date().toISOString(),
+        vitalSigns: { temperature:'', bloodPressureSystolic:'', bloodPressureDiastolic:'', heartRate:'', oxygenSaturation:'', weight:'', height:'' } as VitalSigns,
         visitReason: 'Vente externe — Pharmacie',
         diagnosis: 'Client Externe',
+        notes: '',
         prescriptions,
         labRequests: [],
         hospitalizeRequested: false,
@@ -422,22 +424,66 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     setExtLines([]); setExtSearch('');
   };
 
-  // === HOSPIT/BLOC ===
-  const hbLineAmt = (l: HbLine) => Math.round(l.unitPrice * l.quantity * (1 - l.discount / 100));
-  const hbPatFiltered = hbPatSearch.length >= 1 ? state.patients.filter(p => `${p.lastName} ${p.firstName}`.toLowerCase().includes(hbPatSearch.toLowerCase()) || p.dossier.toLowerCase().includes(hbPatSearch.toLowerCase())) : [];
+  // === HOSPIT/BLOC (via `ventes` unifiées) ===
+  const hbLineAmt = (l: Pick<VenteLine, 'unitPrice'|'quantity'|'discount'>) =>
+    Math.round(l.unitPrice * l.quantity * (1 - (l.discount || 0) / 100));
+  const hbPatFiltered = hbPatSearch.length >= 1
+    ? state.patients.filter(p => `${p.lastName} ${p.firstName}`.toLowerCase().includes(hbPatSearch.toLowerCase()) || p.dossier.toLowerCase().includes(hbPatSearch.toLowerCase()))
+    : [];
+
+  /** Vente ouverte correspondant à l'onglet courant, pour un patient donné. */
+  const findHbVenteForPatient = (patientId: string, type: VenteType) =>
+    state.ventes.find(v => v.patientId === patientId && v.type === type && v.status !== 'annule');
+
+  /** Crée une nouvelle vente de type hospitalisation/bloc et retourne son id. */
+  const createHbVente = (data: {
+    patientId?: string;
+    patientName: string;
+    clientType: ClientType;
+    company?: string;
+    subCompany?: string;
+    type: 'hospitalisation' | 'bloc';
+    source?: Vente['source'];
+  }): string => {
+    let newId = '';
+    const now = new Date().toISOString();
+    setState(prev => {
+      const next = { ...prev };
+      const { vente } = createVente(next, {
+        patientId: data.patientId,
+        clientType: data.clientType,
+        clientName: data.patientName,
+        company: data.company,
+        subCompany: data.subCompany,
+        type: data.type,
+        source: data.source || (next.currentUser?.role === 'pharmacy' ? 'pharmacie' : 'caisse'),
+        dateVente: now,
+        remisePct: 0,
+        isExterne: false,
+        createdBy: next.currentUser?.id,
+        createdByName: next.currentUser?.name,
+        montantPaye: 0,
+      }, []);
+      newId = vente.id;
+      addAuditLog(next,
+        data.type === 'hospitalisation' ? 'OUVERTURE_HOSPIT' : 'OUVERTURE_BLOC',
+        `Dossier ${data.type} ouvert — ${data.patientName} (${data.clientType}${data.company ? ` / ${data.company}` : ''})`,
+        data.patientId);
+      return next;
+    });
+    return newId;
+  };
 
   const hbSelectPatient = (patientId: string) => {
     const p = state.patients.find(x => x.id === patientId);
     if (!p) return;
-    const exists = hbRecords.some(r => r.patientId === p.id && r.type === tab);
-    if (exists) { alert('Ce patient est déjà dans la liste'); return; }
-    const now = new Date().toISOString();
-    updateHbRecords([...hbRecords, {
-      id: uuidv4(), patientId: p.id, patientName: `${p.lastName} ${p.firstName}`,
-      clientType: p.clientType, company: p.company,
-      type: tab as 'hospit' | 'bloc', lines: [], payments: [],
-      openedAt: now, openedBy: state.currentUser?.name, openedByUserId: state.currentUser?.id,
-    }]);
+    const vtype: VenteType = tab === 'hospit' ? 'hospitalisation' : 'bloc';
+    if (findHbVenteForPatient(p.id, vtype)) { alert('Ce patient a déjà un dossier ouvert dans cet onglet'); return; }
+    createHbVente({
+      patientId: p.id, patientName: `${p.lastName} ${p.firstName}`,
+      clientType: p.clientType, company: p.company, subCompany: p.subCompany,
+      type: vtype,
+    });
     setHbPatSearch(''); setHbModal('none');
   };
 
@@ -456,14 +502,28 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       allergies: [] as string[], chronicTreatments: [] as string[], antecedents: [] as string[],
       registeredAt: new Date().toISOString(), registeredBy: state.currentUser?.id || 'CAISSE', status: 'registered' as const,
     };
-    const now = new Date().toISOString();
-    setState(prev => ({ ...prev, patients: [...prev.patients, np] }));
-    updateHbRecords([...hbRecords, {
-      id: uuidv4(), patientId: np.id, patientName: `${np.lastName} ${np.firstName}`,
-      clientType: np.clientType, company: np.company,
-      type: tab as 'hospit' | 'bloc', lines: [], payments: [],
-      openedAt: now, openedBy: state.currentUser?.name, openedByUserId: state.currentUser?.id,
-    }]);
+    setState(prev => {
+      const next = { ...prev, patients: [...prev.patients, np] };
+      const vtype: VenteType = tab === 'hospit' ? 'hospitalisation' : 'bloc';
+      createVente(next, {
+        patientId: np.id,
+        clientType: np.clientType,
+        clientName: `${np.lastName} ${np.firstName}`,
+        company: np.company,
+        subCompany: np.subCompany,
+        type: vtype,
+        source: next.currentUser?.role === 'pharmacy' ? 'pharmacie' : 'caisse',
+        dateVente: new Date().toISOString(),
+        remisePct: 0,
+        isExterne: false,
+        createdBy: next.currentUser?.id,
+        createdByName: next.currentUser?.name,
+        montantPaye: 0,
+      }, []);
+      addAuditLog(next, 'CREATION_PATIENT_HB',
+        `Nouveau patient créé depuis ${vtype} : ${np.lastName} ${np.firstName} (${np.dossier})`, np.id);
+      return next;
+    });
     setHbNewPat({ lastName: '', firstName: '', dateOfBirth: '', gender: 'M', contact: '', address: '', matricule: '', ssn: '', insureName: '', clientType: 'comptoir', company: '', subCompany: '' });
     setHbModal('none');
   };
@@ -474,10 +534,13 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     : [];
 
   const hbArtNew = () => {
-    // La date d'acte / de sortie n'est JAMAIS effacée par "Nouveau" ni par la validation :
-    // une personne peut faire sortir plusieurs médicaments le même jour.
-    // (Elle est réinitialisée uniquement à l'ouverture du panneau de saisie.)
-    setHbArtForm(prev => ({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: prev.dateSort || new Date().toISOString().split('T')[0] }));
+    const vente = state.ventes.find(v => v.id === hbSelRecordId);
+    setHbArtForm(prev => ({
+      id: '', venteId: hbSelRecordId || '', articleId: undefined,
+      articleName: '', quantity: 1, unitPrice: 0, discount: 0,
+      category: vente?.type === 'bloc' ? 'bloc' : 'hospitalization',
+      dateSort: prev.dateSort || new Date().toISOString().split('T')[0],
+    }));
     setHbSelLineId(null);
     setHbIsNew(true);
     setHbArtSearch('');
@@ -486,7 +549,11 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
   const hbArtDelete = () => {
     if (!hbSelRecordId || !hbSelLineId) return;
-    updateHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, lines: r.lines.filter(l => l.id !== hbSelLineId) } : r));
+    setState(prev => {
+      const next = { ...prev };
+      deleteVenteLine(next, hbSelLineId);
+      return next;
+    });
     hbArtNew();
   };
 
@@ -497,14 +564,22 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       alert(`⛔ Vente bloquée pour « ${a.name} »${a.saleBlockReason ? ` — ${a.saleBlockReason}` : ''}.`);
       return;
     }
-    // Gestion des stocks : un article en rupture pharmacie ne peut pas faire l'objet d'une vente
     if (a.stockPharmacie <= 0) {
       alert(`🚨 RUPTURE DE STOCK : « ${a.name} » (stock pharmacie = 0).\n\nCet article ne peut pas être vendu. Demandez un réapprovisionnement à la pharmacie.`);
       return;
     }
-    const rec = hbRecords.find(r => r.id === hbSelRecordId);
-    // On conserve la date déjà saisie (sorties multiples le même jour)
-    setHbArtForm(prev => ({ id: uuidv4(), articleName: a.name, quantity: 1, unitPrice: getPrice(a, rec?.clientType || 'comptoir'), discount: 0, dateSort: prev.dateSort || new Date().toISOString().split('T')[0] }));
+    const vente = state.ventes.find(v => v.id === hbSelRecordId);
+    setHbArtForm(prev => ({
+      id: '',
+      venteId: hbSelRecordId || '',
+      articleId: a.id,
+      articleName: a.name,
+      quantity: 1,
+      unitPrice: getPrice(a, vente?.clientType || 'comptoir'),
+      discount: 0,
+      category: vente?.type === 'bloc' ? 'bloc' : 'hospitalization',
+      dateSort: prev.dateSort || new Date().toISOString().split('T')[0],
+    }));
     setHbIsNew(true);
     setHbSelLineId(null);
     setHbArtSearch('');
@@ -517,29 +592,35 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
   const hbArtSave = () => {
     if (!hbSelRecordId || !hbArtForm.articleName) return;
-    const rec = hbRecords.find(r => r.id === hbSelRecordId);
-    if (!rec) return;
+    const vente = state.ventes.find(v => v.id === hbSelRecordId);
+    if (!vente) return;
 
-    // Contrôle stock pharmacie à la validation de la ligne
+    // Contrôle stock pharmacie
     const art = state.articles.find(a => a.name === hbArtForm.articleName);
     if (art && art.stockPharmacie <= 0) { alert(`🚨 RUPTURE DE STOCK : « ${art.name} » (stock pharmacie = 0).\n\nVente impossible.`); return; }
     if (art && hbArtForm.quantity > art.stockPharmacie) {
       if (!confirm(`⚠️ Stock pharmacie insuffisant pour « ${art.name} » : ${art.stockPharmacie} disponible(s), ${hbArtForm.quantity} demandée(s).\n\nEnregistrer quand même ?`)) return;
     }
 
-    const lineToSave: HbLine = {
-      ...hbArtForm,
-      // La date correspond à la date d'acte / de sortie de marchandise.
-      // Elle est saisie dans le formulaire et doit être conservée lors de l'enregistrement.
-      dateSort: hbArtForm.dateSort || new Date().toISOString().split('T')[0]
+    const lineToSave = {
+      articleId: hbArtForm.articleId || art?.id,
+      articleName: hbArtForm.articleName,
+      quantity: hbArtForm.quantity,
+      unitPrice: hbArtForm.unitPrice,
+      discount: hbArtForm.discount,
+      category: (vente.type === 'bloc' ? 'bloc' : 'hospitalization') as VenteLine['category'],
+      dateSort: hbArtForm.dateSort || new Date().toISOString().split('T')[0],
     };
 
-    if (hbIsNew || !rec.lines.some(l => l.id === hbArtForm.id)) {
-      updateHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, lines: [...r.lines, { ...lineToSave, id: uuidv4() }] } : r));
-    } else {
-      updateHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, lines: r.lines.map(l => l.id === hbArtForm.id ? lineToSave : l) } : r));
-    }
-    // Après validation : la zone date n'est PAS effacée (hbArtNew conserve la date saisie)
+    setState(prev => {
+      const next = { ...prev };
+      if (hbIsNew || hbArtForm.id === '') {
+        addVenteLine(next, hbSelRecordId, lineToSave);
+      } else {
+        updateVenteLine(next, hbArtForm.id, lineToSave);
+      }
+      return next;
+    });
     hbArtNew();
   };
 
@@ -555,69 +636,138 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   };
 
   const addPartialPay = (recordId: string) => {
-    const rec = hbRecords.find(r => r.id === recordId);
+    const vente = state.ventes.find(v => v.id === recordId);
     const amount = hbPayAmounts[recordId] || 0;
-    if (!rec || amount <= 0) return;
-    const totalFact = rec.lines.reduce((s, l) => s + hbLineAmt(l), 0);
-    const totalPaid = rec.payments.reduce((s, p) => s + p.amount, 0);
-    const reste = totalFact - totalPaid;
+    if (!vente || amount <= 0) return;
+
+    // Recalculer le total réel à partir des lignes (sécurité)
+    setState(prev => { const next = { ...prev }; recomputeVenteTotals(next, recordId); return next; });
+    const refreshed = state.ventes.find(v => v.id === recordId) || vente;
+    const reste = venteRestantDu(refreshed);
+    if (reste <= 0) { alert('Cette facture est déjà soldée.'); setHbPayAmounts(p => ({ ...p, [recordId]: 0 })); return; }
     if (amount > reste) { alert(`Montant supérieur au reste à payer (${formatAr(reste)})`); return; }
-    // 💡 On conserve qui a reçu l'argent : caisse ou pharmacie (selon le rôle de l'utilisateur connecté)
+
+    // Règle métier : Comptoir/Externe = espèces en caisse et paiement complet.
+    // Société = crédit ; les versements en caisse sont des paiements de tiers en espèces.
+    const isCredit = refreshed.clientType === 'societe';
+    if (!isCredit && amount < reste) {
+      if (!confirm(`⚠️ Ce client est de type « comptoir » (paiement comptant).\n\nLe montant saisi (${formatAr(amount)}) ne solde pas la facture (reste ${formatAr(reste - amount)}).\n\nEnregistrer quand même comme acompte ?`)) return;
+    }
+    const method: Vente['status'] extends never ? 'Espèces' : 'Espèces' = 'Espèces';
     const receivedBy: 'caisse' | 'pharmacie' = state.currentUser?.role === 'pharmacy' ? 'pharmacie' : 'caisse';
-    const payment = {
-      amount,
-      paidBy: state.currentUser?.name || '',
-      paidByUserId: state.currentUser?.id,
-      date: new Date().toISOString(),
-      receivedBy,
-    };
-    updateHbRecords((prev) => prev.map(r => r.id === recordId ? { ...r, payments: [...r.payments, payment] } : r));
+    const reference = isCredit
+      ? `Versement ${receivedBy} (crédit société${refreshed.company ? ` — ${refreshed.company}` : ''})`
+      : receivedBy;
 
-    // Imprimer le ticket de paiement pour hospitalisation/bloc
-    const newTotalPaid = totalPaid + amount;
-    const newReste = totalFact - newTotalPaid;
-    const patient = rec.patientId ? state.patients.find(p => p.id === rec.patientId) : undefined;
-    printHbPaymentTicket(
-      state.ticketSettings,
-      rec,
-      payment,
-      newReste,
-      state.currentUser || undefined,
-      patient,
-    );
+    let payResult: { vente: Vente; payment: { amount: number; date: string } } | null = null;
+    setState(prev => {
+      const next = { ...prev };
+      const pay = addVentePayment(next, recordId, {
+        amount,
+        method,
+        date: new Date().toISOString(),
+        paidBy: next.currentUser?.name || '',
+        paidByUserId: next.currentUser?.id,
+        reference,
+      });
+      const updatedVente = next.ventes.find(v => v.id === recordId)!;
+      if (pay) payResult = { vente: updatedVente, payment: { amount: pay.amount, date: pay.date } };
+      addAuditLog(next,
+        updatedVente.status === 'paid' ? 'PAIEMENT_HB_SOLDE' : 'PAIEMENT_HB_ACOMPTE',
+        `${formatAr(amount)} en ${method} sur ${updatedVente.type} ${updatedVente.numeroFacture} (${updatedVente.clientName}) — ${updatedVente.status === 'paid' ? 'Soldé' : 'Reste ' + formatAr(venteRestantDu(updatedVente))}`,
+        updatedVente.patientId);
+      addJourneyEvent(next, {
+        patientId: updatedVente.patientId || '',
+        department: 'caisse',
+        action: updatedVente.status === 'paid' ? 'Dossier soldé' : 'Acompte encaissé',
+        status: updatedVente.status === 'paid' ? 'invoice_paid' : undefined,
+        details: `${formatAr(amount)} en ${method} — ${updatedVente.numeroFacture}`,
+        actorId: next.currentUser?.id, actorName: next.currentUser?.name,
+      });
+      return next;
+    });
 
-    // 💡 Réinitialiser UNIQUEMENT la saisie de CE dossier (les autres restent indépendants)
+    // Impression du reçu
+    setTimeout(() => {
+      const v = payResult?.vente || state.ventes.find(v => v.id === recordId);
+      if (!v) return;
+      const patient = v.patientId ? state.patients.find(p => p.id === v.patientId) : undefined;
+      // Ticket générique via la facture virtuelle (numéro de facture déjà généré)
+      const fakeInvoiceForPrint: Invoice = {
+        id: v.id, patientId: v.patientId, consultationId: v.consultationId,
+        clientName: v.clientName || patient && `${patient.lastName} ${patient.firstName}`,
+        clientType: v.clientType,
+        items: getVenteLines(state, v.id).map(l => ({
+          description: `${l.articleName} × ${l.quantity}${l.discount ? ` (-${l.discount}%)` : ''}`,
+          amount: hbLineAmt(l),
+          category: (l.category || 'hospitalization') as any,
+        })),
+        totalAmount: v.montantFacture,
+        patientCharge: amount,              // ⚠️ montant de ce versement (acompte)
+        status: v.status === 'paid' ? 'paid' : 'pending',
+        paidAt: payResult?.payment.date,
+        paidBy: state.currentUser?.id,
+        createdAt: v.createdAt,
+        isExternal: false,
+      };
+      openThermalTicket(state.ticketSettings, fakeInvoiceForPrint, patient || undefined, state.currentUser || undefined);
+    }, 50);
+
     setHbPayAmounts(prev => ({ ...prev, [recordId]: 0 }));
   };
 
   // Edit client type
   const hbSaveClientType = () => {
     if (!hbSelRecordId) return;
-    const rec = hbRecords.find(r => r.id === hbSelRecordId);
-    updateHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, clientType: hbEditClientType, company: hbEditClientType === 'societe' ? hbEditCompany : undefined } : r));
-    // Also update patient in state if linked
-    if (rec?.patientId) {
-      setState(prev => ({ ...prev, patients: prev.patients.map(p => p.id === rec.patientId ? { ...p, clientType: hbEditClientType === 'externe' ? 'comptoir' : hbEditClientType as 'comptoir'|'societe', company: hbEditClientType === 'societe' ? hbEditCompany : undefined } : p) }));
-    }
+    setState(prev => {
+      const next = { ...prev };
+      next.ventes = next.ventes.map(v => v.id === hbSelRecordId ? {
+        ...v,
+        clientType: hbEditClientType,
+        company: hbEditClientType === 'societe' ? hbEditCompany : undefined,
+      } : v);
+      const v = next.ventes.find(x => x.id === hbSelRecordId);
+      if (v?.patientId) {
+        next.patients = next.patients.map(p => p.id === v.patientId ? {
+          ...p,
+          clientType: (hbEditClientType === 'externe' ? 'comptoir' : hbEditClientType) as 'comptoir' | 'societe',
+          company: hbEditClientType === 'societe' ? hbEditCompany : undefined,
+        } : p);
+      }
+      return next;
+    });
     setHbModal('none');
   };
 
   // Auto-add from doctor requests
   const autoAddRequests = () => {
-    const now = new Date().toISOString();
-    const openerName = state.currentUser?.name;
-    const openerId = state.currentUser?.id;
-    const additions: HbRecord[] = [];
-    state.consultations.forEach(c => {
-      const pat = state.patients.find(p => p.id === c.patientId);
-      if (!pat) return;
-      const name = `${pat.lastName} ${pat.firstName}`;
-      if (c.hospitalizeRequested && !hbRecords.some(h => h.patientId === pat.id && h.type === 'hospit'))
-        additions.push({ id: uuidv4(), patientId: pat.id, patientName: name, clientType: pat.clientType, company: pat.company, type: 'hospit', lines: [], payments: [], openedAt: now, openedBy: openerName, openedByUserId: openerId });
-      if (c.surgeryRequested && !hbRecords.some(h => h.patientId === pat.id && h.type === 'bloc'))
-        additions.push({ id: uuidv4(), patientId: pat.id, patientName: name, clientType: pat.clientType, company: pat.company, type: 'bloc', lines: [], payments: [], openedAt: now, openedBy: openerName, openedByUserId: openerId });
+    const source: Vente['source'] = state.currentUser?.role === 'pharmacy' ? 'pharmacie' : 'caisse';
+    setState(prev => {
+      const next = { ...prev };
+      const additions: Array<{ patientId: string; name: string; clientType: ClientType; company?: string; subCompany?: string; type: 'hospitalisation' | 'bloc' }> = [];
+      next.consultations.forEach(c => {
+        const pat = next.patients.find(p => p.id === c.patientId);
+        if (!pat) return;
+        const name = `${pat.lastName} ${pat.firstName}`;
+        if (c.hospitalizeRequested && !next.ventes.some(v => v.patientId === pat.id && v.type === 'hospitalisation' && v.status !== 'annule'))
+          additions.push({ patientId: pat.id, name, clientType: pat.clientType, company: pat.company, subCompany: pat.subCompany, type: 'hospitalisation' });
+        if (c.surgeryRequested && !next.ventes.some(v => v.patientId === pat.id && v.type === 'bloc' && v.status !== 'annule'))
+          additions.push({ patientId: pat.id, name, clientType: pat.clientType, company: pat.company, subCompany: pat.subCompany, type: 'bloc' });
+      });
+      additions.forEach(a => {
+        createVente(next, {
+          patientId: a.patientId,
+          clientType: a.clientType, clientName: a.name,
+          company: a.company, subCompany: a.subCompany,
+          type: a.type, source,
+          dateVente: new Date().toISOString(),
+          remisePct: 0, isExterne: false,
+          createdBy: next.currentUser?.id, createdByName: next.currentUser?.name,
+          montantPaye: 0,
+        }, []);
+      });
+      return next;
     });
-    if (additions.length > 0) updateHbRecords(prev => [...prev, ...additions]);
   };
   const switchTab = (t: Tab) => { setTab(t); if (t === 'hospit' || t === 'bloc') autoAddRequests(); };
 
@@ -632,19 +782,35 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const myTodayInvoices = todayInvoices.filter(inv => inv.paidBy === currentCashierId);
   const myTodayTotal = myTodayInvoices.reduce((s, inv) => s + inv.patientCharge, 0);
   const myTodayExtTotal = myTodayInvoices.filter(i => i.isExternal).reduce((s, i) => s + i.patientCharge, 0);
-  // Paiements Hospit/Bloc du caissier connecté uniquement
-  const myTodayPartialTotal = hbRecords.reduce((s, h) => s + h.payments.filter(p => new Date(p.date).toDateString() === new Date().toDateString() && p.paidByUserId === currentCashierId).reduce((ss, p) => ss + p.amount, 0), 0);
+  // Paiements Hospit/Bloc du caissier connecté (table unifiée ventePayments)
+  const todayKey = new Date().toDateString();
+  const myHbTodayPayments = (state.ventePayments || []).filter(p => {
+    if (p.paidByUserId !== currentCashierId) return false;
+    if (new Date(p.date).toDateString() !== todayKey) return false;
+    const v = state.ventes.find(x => x.id === p.venteId);
+    return v && (v.type === 'hospitalisation' || v.type === 'bloc');
+  });
+  const myTodayPartialTotal = myHbTodayPayments.reduce((s, p) => s + p.amount, 0);
 
   const myGrandTotal = myTodayTotal + myTodayPartialTotal;
 
-  const curHbRecords = hbRecords.filter(h => h.type === tab);
+  // Liste des dossiers hospit/bloc OUVERTS (tous statuts sauf annule)
+  const curHbRecords: Vente[] = (tab === 'hospit' || tab === 'bloc')
+    ? state.ventes.filter(v => v.type === (tab === 'hospit' ? 'hospitalisation' : 'bloc') && v.status !== 'annule')
+    : [];
   const closingDateKey = new Date().toDateString();
   const existingClosing = state.cashClosings.find(c => new Date(c.date).toDateString() === closingDateKey && c.cashierId === currentCashierId);
   // Une facture déjà intégrée dans un Z ne peut jamais être comptée une seconde fois.
   // On ne clôture que les factures du caissier connecté.
   const closeableInvoices = myTodayInvoices.filter(inv => !inv.closingId);
 
-  const closingSections = (invoices: Invoice[], hospitalizationTotal = myTodayPartialTotal) => {
+  const closingSections = (invoices: Invoice[], hospitalizationTotalOrHbPays?: number | typeof myHbTodayPayments, hbPaysParam?: typeof myHbTodayPayments) => {
+    const hospitalizationTotal = typeof hospitalizationTotalOrHbPays === 'number'
+      ? hospitalizationTotalOrHbPays
+      : myTodayPartialTotal;
+    const hbPays = Array.isArray(hospitalizationTotalOrHbPays)
+      ? hospitalizationTotalOrHbPays
+      : (hbPaysParam || []);
     const consultTotal = invoices.filter(i => !i.isExternal).reduce((sum, i) => sum + i.patientCharge, 0);
     const externalTotal = invoices.filter(i => i.isExternal).reduce((sum, i) => sum + i.patientCharge, 0);
     const hospitTotal = hospitalizationTotal;
@@ -658,6 +824,13 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         const patient = inv.patientId ? state.patients.find(p => p.id === inv.patientId) : undefined;
         return { label: `${new Date(inv.paidAt || inv.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} — ${patient ? `${patient.lastName} ${patient.firstName}` : inv.clientName || 'Client externe'}`, value: formatAr(inv.patientCharge) };
       }) },
+      ...(hbPays.length > 0 ? [{
+        title: '3. HOSPITALISATION / BLOC — encaissements du jour',
+        rows: hbPays.map(p => {
+          const v = state.ventes.find(x => x.id === p.venteId);
+          return { label: `${new Date(p.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} — ${v?.clientName} (${v?.numeroFacture}) [${v?.type === 'hospitalisation' ? 'Hosp.' : 'Bloc'}]`, value: formatAr(p.amount) };
+        })
+      }] : []),
     ];
   };
 
@@ -761,18 +934,27 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
         } catch (e) { console.error('Erreur impression récap', e); }
       }, 800);
     }
+    // Paiements hospit/bloc du caissier du jour, pas encore clôturés
+    const closeableHbPayments = myHbTodayPayments.filter(p => {
+      const v = state.ventes.find(x => x.id === p.venteId);
+      return v && !v.closingId;
+    });
     const closing: CashClosing = {
       id: uuidv4(), date: now.toISOString(), cashierId: currentCashierId, cashierName: state.currentUser?.name || 'Caissier',
-      invoiceIds: closeableInvoices.map(i => i.id), invoiceCount: closeableInvoices.length,
+      invoiceIds: [...closeableInvoices.map(i => i.id), ...closeableHbPayments.map(p => p.venteId)],
+      invoiceCount: closeableInvoices.length + closeableHbPayments.length,
       consultationTotal, externalTotal, hospitalizationTotal: myTodayPartialTotal,
       grandTotal: consultationTotal + externalTotal + myTodayPartialTotal, createdAt: now.toISOString(),
     };
     setState(prev => {
-      const next = { ...prev, cashClosings: [...prev.cashClosings, closing], invoices: prev.invoices.map(i => closing.invoiceIds.includes(i.id) ? { ...i, closingId: closing.id } : i) };
-      addAuditLog(next, 'CLOTURE_CAISSE', `Z ${closing.id.slice(0, 8).toUpperCase()} — ${closing.invoiceCount} facture(s), ${formatAr(closing.grandTotal)}`);
+      const next = { ...prev, cashClosings: [...prev.cashClosings, closing] };
+      next.invoices = next.invoices.map(i => closeableInvoices.some(ci => ci.id === i.id) ? { ...i, closingId: closing.id } : i);
+      const paidVenteIds = new Set(closeableHbPayments.map(p => p.venteId));
+      next.ventes = next.ventes.map(v => paidVenteIds.has(v.id) ? { ...v, closingId: closing.id } : v);
+      addAuditLog(next, 'CLOTURE_CAISSE', `Z ${closing.id.slice(0, 8).toUpperCase()} — ${closeableInvoices.length} facture(s) + ${closeableHbPayments.length} versement(s) hospit/bloc, ${formatAr(closing.grandTotal)}`);
       return next;
     });
-    printClosingTicket(state.ticketSettings, state.currentUser || { id: 'SYS', name: 'Caissier', role: 'cashier' }, now, closingSections(closeableInvoices), formatAr(closing.grandTotal));
+    printClosingTicket(state.ticketSettings, state.currentUser || { id: 'SYS', name: 'Caissier', role: 'cashier' }, now, closingSections(closeableInvoices, closeableHbPayments), formatAr(closing.grandTotal));
   };
 
   return (
@@ -782,7 +964,7 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
       {/* Tabs */}
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
         <div className="flex border-b overflow-x-auto">
-          {([['payment','📋 Facturation',pendingPatients.length],['external','🛒 Vte Externe',0],['hospit','🏨 Hospit.',hbRecords.filter(h=>h.type==='hospit').length],['bloc','🏥 Bloc',hbRecords.filter(h=>h.type==='bloc').length],['closing','🔒 Clôture',0]] as [Tab,string,number][]).map(([k,l,c]) => (
+          {([['payment','📋 Facturation',pendingPatients.length],['external','🛒 Vte Externe',0],['hospit','🏨 Hospit.',state.ventes.filter(v=>v.type==='hospitalisation'&&v.status!=='annule').length],['bloc','🏥 Bloc',state.ventes.filter(v=>v.type==='bloc'&&v.status!=='annule').length],['closing','🔒 Clôture',0]] as [Tab,string,number][]).map(([k,l,c]) => (
             <button key={k} onClick={() => switchTab(k)} className={`flex items-center gap-1 px-4 py-3 text-xs font-medium border-b-2 cursor-pointer whitespace-nowrap ${tab===k?'border-amber-500 text-amber-600 bg-amber-50/50':'border-transparent text-slate-500'}`}>{l}{c > 0 ? ` (${c})` : ''}</button>
           ))}
         </div>
@@ -929,37 +1111,60 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                 <button onClick={() => { setHbPatSearch(''); setHbModal('add_patient'); }} className={`px-3 py-1.5 text-white rounded-lg cursor-pointer text-sm flex items-center gap-1 ${tab === 'hospit' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-blue-600 hover:bg-blue-700'}`}><UserPlus className="w-4 h-4" /> Ajouter Patient</button>
               </div>
 
-              {/* Records list */}
+              {/* Records list (ventes unifiées) */}
               {curHbRecords.length === 0 ? <div className="text-center py-8 text-slate-400">Aucun patient</div>
                 : curHbRecords.map(record => {
-                  const totalFact = record.lines.reduce((s, l) => s + hbLineAmt(l), 0);
-                  const totalPaid = record.payments.reduce((s, p) => s + p.amount, 0);
-                  const reste = totalFact - totalPaid;
+                  const lines = getVenteLines(state, record.id);
+                  const pays = getVentePayments(state, record.id);
+                  const totalFact = record.montantFacture;
+                  const totalPaid = record.montantPaye || 0;
+                  const reste = venteRestantDu(record);
                   const isOpen = hbSelRecordId === record.id;
+                  const isCredit = record.clientType === 'societe';
                   return (
                     <div key={record.id} className={`border rounded-lg overflow-hidden ${isOpen ? 'border-blue-400' : 'border-slate-200'}`}>
                       <div className={`p-3 flex justify-between items-center cursor-pointer ${isOpen ? 'bg-blue-50' : 'bg-slate-50'}`} onClick={() => setHbSelRecordId(isOpen ? null : record.id)}>
                         <div>
-                          <div className="font-bold text-sm flex items-center gap-2">{record.patientName}
-                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${record.clientType === 'societe' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>{record.clientType === 'societe' ? `🏢 ${record.company}` : '🏪 Comptoir'}</span>
+                          <div className="font-bold text-sm flex items-center gap-2">
+                            {record.clientName}
+                            <span className="font-mono text-[10px] text-slate-400">{record.numeroFacture}</span>
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${isCredit ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>{isCredit ? `🏢 ${record.company} (CRÉDIT)` : '🏪 Comptant'}</span>
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${record.status === 'paid' ? 'bg-emerald-100 text-emerald-700' : record.status === 'partiel' ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-600'}`}>
+                              {record.status === 'paid' ? 'Soldé' : record.status === 'partiel' ? 'Partiel' : 'En cours'}
+                            </span>
                             <button onClick={(e) => { e.stopPropagation(); setHbSelRecordId(record.id); setHbEditClientType(record.clientType); setHbEditCompany(record.company || ''); setHbModal('edit_client'); }} className="text-blue-500 cursor-pointer" title="Modifier type"><Edit2 className="w-3 h-3" /></button>
                           </div>
                           <div className="text-xs text-slate-500 mt-0.5">Facture: <strong>{formatAr(totalFact)}</strong> | Payé: <span className="text-green-600">{formatAr(totalPaid)}</span> | Reste: <span className="text-red-600 font-bold">{formatAr(reste)}</span></div>
                         </div>
                         <div className="flex gap-1 items-center flex-wrap" onClick={e => e.stopPropagation()}>
-                          <button onClick={() => setHbHistoryId(record.id)} title="Historique des paiements" className="px-2 py-1 bg-slate-600 hover:bg-slate-700 text-white rounded text-xs cursor-pointer transition font-medium">📜 Historique{record.payments.length > 0 ? ` (${record.payments.length})` : ''}</button>
-                          <button onClick={() => { setHbSelRecordId(record.id); setHbArtSearch(''); setHbArtForm({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: new Date().toISOString().split('T')[0] }); setHbSelLineId(null); setHbIsNew(true); setHbModal('add_article'); }} className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs cursor-pointer transition font-medium">📋 Prescriptions</button>
+                          <button onClick={() => setHbHistoryId(record.id)} title="Historique des paiements" className="px-2 py-1 bg-slate-600 hover:bg-slate-700 text-white rounded text-xs cursor-pointer transition font-medium">📜 Historique{pays.length > 0 ? ` (${pays.length})` : ''}</button>
+                          <button onClick={() => {
+                            setHbSelRecordId(record.id);
+                            setHbArtSearch('');
+                            setHbArtForm({ id: '', articleId: undefined, articleName: '', quantity: 1, unitPrice: 0, discount: 0, category: record.type === 'bloc' ? 'bloc' : 'hospitalization', dateSort: new Date().toISOString().split('T')[0] } as any);
+                            setHbSelLineId(null);
+                            setHbIsNew(true);
+                            setHbModal('add_article');
+                          }} className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs cursor-pointer transition font-medium">📋 Prescriptions</button>
                           {reste > 0 && <>
-                            <input type="number" min={1} max={reste} value={hbPayAmounts[record.id] || ''} onChange={e => setHbPayAmounts(prev => ({ ...prev, [record.id]: Math.max(0, Math.min(parseInt(e.target.value) || 0, reste)) }))} className="w-24 px-2 py-1 border rounded text-xs text-right outline-none" placeholder="Montant" />
-                            <button onClick={() => addPartialPay(record.id)} disabled={!hbPayAmounts[record.id] || hbPayAmounts[record.id] > reste} className="px-2 py-1 bg-amber-600 text-white rounded text-xs cursor-pointer disabled:opacity-40">💰 Payer</button>
+                            <input
+                              type="number" min={1} max={reste}
+                              value={hbPayAmounts[record.id] || ''}
+                              onChange={e => setHbPayAmounts(prev => ({ ...prev, [record.id]: Math.max(0, Math.min(parseInt(e.target.value) || 0, reste)) }))}
+                              className="w-24 px-2 py-1 border rounded text-xs text-right outline-none"
+                              placeholder={isCredit ? 'Acompte' : 'Montant'}
+                            />
+                            <button onClick={() => addPartialPay(record.id)} disabled={!hbPayAmounts[record.id] || hbPayAmounts[record.id] > reste} className="px-2 py-1 bg-amber-600 text-white rounded text-xs cursor-pointer disabled:opacity-40">
+                              💰 {isCredit ? 'Encaisser' : 'Payer'}
+                            </button>
                           </>}
                         </div>
                       </div>
                       {isOpen && (
                         <div className="p-3 border-t bg-white">
-                          {record.lines.length > 0 && <table className="w-full text-[11px] mb-2"><thead className="bg-slate-100"><tr><th className="p-1 text-left w-16">Date</th><th className="p-1 text-left">Article</th><th className="p-1 text-right">Qté</th><th className="p-1 text-right">P.U.</th><th className="p-1 text-right">Montant</th></tr></thead><tbody>{record.lines.map(l => (<tr key={l.id} className="border-b border-slate-100"><td className="p-1 text-slate-500">{l.dateSort || '—'}</td><td className="p-1">{l.articleName}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 text-right font-mono">{l.unitPrice.toLocaleString('fr-FR')}</td><td className="p-1 text-right font-mono font-bold">{hbLineAmt(l).toLocaleString('fr-FR')}</td></tr>))}</tbody></table>}
-                          {record.lines.length === 0 && <p className="text-slate-400 text-xs text-center py-2">Aucun article — cliquez "+ Article"</p>}
-                          {record.payments.length > 0 && <div className="mt-2 text-[10px] text-slate-500 border-t pt-1"><div className="font-bold mb-1">Historique paiements :</div>{record.payments.map((p, i) => (<div key={i}>{new Date(p.date).toLocaleString('fr-FR',{hour:'2-digit',minute:'2-digit'})} — {formatAr(p.amount)} — {p.receivedBy === 'pharmacie' ? '🏥 Pharmacie' : '💵 Caisse'} : {p.paidBy}</div>))}</div>}
+                          {lines.length > 0 && <table className="w-full text-[11px] mb-2"><thead className="bg-slate-100"><tr><th className="p-1 text-left w-16">Date</th><th className="p-1 text-left">Article</th><th className="p-1 text-right">Qté</th><th className="p-1 text-right">P.U.</th><th className="p-1 text-right">Montant</th></tr></thead><tbody>{lines.map(l => (<tr key={l.id} className="border-b border-slate-100"><td className="p-1 text-slate-500">{l.dateSort || '—'}</td><td className="p-1">{l.articleName}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 text-right font-mono">{l.unitPrice.toLocaleString('fr-FR')}</td><td className="p-1 text-right font-mono font-bold">{hbLineAmt(l).toLocaleString('fr-FR')}</td></tr>))}</tbody></table>}
+                          {lines.length === 0 && <p className="text-slate-400 text-xs text-center py-2">Aucun article — cliquez sur « Prescriptions »</p>}
+                          {pays.length > 0 && <div className="mt-2 text-[10px] text-slate-500 border-t pt-1"><div className="font-bold mb-1">Historique paiements :</div>{pays.map((p) => (<div key={p.id}>{new Date(p.date).toLocaleString('fr-FR',{hour:'2-digit',minute:'2-digit'})} — {formatAr(p.amount)} — {p.method} — {p.reference?.includes('pharmacie') ? '🏥 Pharmacie' : '💵 Caisse'} : {p.paidBy}</div>))}</div>}
                         </div>
                       )}
                     </div>
@@ -984,16 +1189,22 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
               {/* Section 1: Versements par famille */}
               <div className="bg-white border rounded-lg p-4"><h4 className="font-bold text-sm mb-2">1. Versements par famille (ma caisse)</h4><div className="grid grid-cols-3 gap-2"><div className="p-3 bg-green-50 rounded flex justify-between"><span>Consultations</span><span className="font-mono font-bold">{formatAr(myTodayTotal - myTodayExtTotal)}</span></div><div className="p-3 bg-purple-50 rounded flex justify-between"><span>Ventes Ext.</span><span className="font-mono font-bold">{formatAr(myTodayExtTotal)}</span></div><div className="p-3 bg-rose-50 rounded flex justify-between"><span>Hospit/Bloc</span><span className="font-mono font-bold">{formatAr(myTodayPartialTotal)}</span></div></div></div>
 
-              {/* Section 2: Hospitalisation & Bloc */}
-              {hbRecords.filter(h => h.payments.some(p => p.paidByUserId === currentCashierId && new Date(p.date).toDateString() === new Date().toDateString())).length > 0 && (
+              {/* Section 2: Hospitalisation & Bloc (mes encaissements) */}
+              {myHbTodayPayments.length > 0 && (
                 <div className="bg-white border rounded-lg p-4"><h4 className="font-bold text-sm mb-2">2. Hospitalisation & Bloc (mes encaissements)</h4>
-                  <table className="w-full text-xs"><thead className="bg-slate-100"><tr><th className="p-2 text-left">Patient</th><th className="p-2">Type</th><th className="p-2 text-right">Facture</th><th className="p-2 text-right">Reçu</th><th className="p-2 text-right">Reste</th><th className="p-2">Caissier</th></tr></thead>
+                  <table className="w-full text-xs"><thead className="bg-slate-100"><tr><th className="p-2 text-left">Heure</th><th className="p-2 text-left">Patient</th><th className="p-2">Type</th><th className="p-2">N° Facture</th><th className="p-2 text-right">Reçu</th><th className="p-2">Mode</th></tr></thead>
                     <tbody>
-                      {hbRecords.filter(h => h.payments.some(p => p.paidByUserId === currentCashierId && new Date(p.date).toDateString() === new Date().toDateString())).map(h => {
-                        const tf = h.lines.reduce((s,l) => s+hbLineAmt(l),0);
-                        const tp = h.payments.filter(p => p.paidByUserId === currentCashierId && new Date(p.date).toDateString() === new Date().toDateString()).reduce((s,p) => s+p.amount,0);
-                        const tpAll = h.payments.reduce((s,p) => s+p.amount,0);
-                        return (<tr key={h.id} className="border-b"><td className="p-2">{h.patientName}</td><td className="p-2 text-center"><span className={`px-1 py-0.5 rounded text-[10px] font-bold ${h.type==='hospit'?'bg-rose-100 text-rose-700':'bg-blue-100 text-blue-700'}`}>{h.type==='hospit'?'Hosp.':'Bloc'}</span></td><td className="p-2 text-right font-mono">{formatAr(tf)}</td><td className="p-2 text-right font-mono text-green-600">{formatAr(tp)}</td><td className="p-2 text-right font-mono text-red-600">{formatAr(tf-tpAll)}</td><td className="p-2">{h.payments.filter(p => p.paidByUserId === currentCashierId).map(p => p.paidBy).filter((v,i,a) => a.indexOf(v)===i).join(', ')}</td></tr>);
+                      {myHbTodayPayments.map(p => {
+                        const v = state.ventes.find(x => x.id === p.venteId);
+                        if (!v) return null;
+                        return (<tr key={p.id} className="border-b">
+                          <td className="p-2 font-mono">{new Date(p.date).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</td>
+                          <td className="p-2">{v.clientName}</td>
+                          <td className="p-2 text-center"><span className={`px-1 py-0.5 rounded text-[10px] font-bold ${v.type==='hospitalisation'?'bg-rose-100 text-rose-700':'bg-blue-100 text-blue-700'}`}>{v.type==='hospitalisation'?'Hosp.':'Bloc'}</span></td>
+                          <td className="p-2 font-mono text-[10px] text-slate-500">{v.numeroFacture}</td>
+                          <td className="p-2 text-right font-mono text-green-600 font-bold">{formatAr(p.amount)}</td>
+                          <td className="p-2 text-[10px]">{p.method}</td>
+                        </tr>);
                       })}
                     </tbody>
                   </table>
@@ -1007,7 +1218,11 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
               <div className="bg-white border rounded-lg p-4"><h4 className="font-bold text-sm mb-2">4. Liste clients (mes encaissements)</h4>
                 <table className="w-full text-xs"><thead className="bg-slate-100"><tr><th className="p-2 text-left">Heure</th><th className="p-2 text-left">Client</th><th className="p-2">Type</th><th className="p-2 text-right">Montant</th></tr></thead><tbody>
                   {myTodayInvoices.map(inv => { const pat = inv.patientId ? state.patients.find(p => p.id === inv.patientId) : null; return (<tr key={inv.id} className="border-b"><td className="p-2 font-mono">{new Date(inv.paidAt || '').toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</td><td className="p-2">{pat ? `${pat.lastName} ${pat.firstName}` : inv.clientName || 'Ext.'}</td><td className="p-2 text-center"><span className={`px-1 py-0.5 rounded text-[10px] font-bold ${inv.isExternal ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>{inv.isExternal ? 'Externe' : 'Consult.'}</span></td><td className="p-2 text-right font-mono font-bold">{formatAr(inv.patientCharge)}</td></tr>); })}
-                  {hbRecords.filter(h => h.payments.some(p => p.paidByUserId === currentCashierId && new Date(p.date).toDateString() === new Date().toDateString())).map(h => { const tp = h.payments.filter(p => p.paidByUserId === currentCashierId && new Date(p.date).toDateString() === new Date().toDateString()).reduce((s,p) => s+p.amount,0); return (<tr key={h.id} className="border-b"><td className="p-2 font-mono">{h.payments.filter(p => p.paidByUserId === currentCashierId && new Date(p.date).toDateString() === new Date().toDateString()).map(p => new Date(p.date).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})).join(', ')}</td><td className="p-2">{h.patientName}</td><td className="p-2 text-center"><span className={`px-1 py-0.5 rounded text-[10px] font-bold ${h.type==='hospit'?'bg-rose-100 text-rose-700':'bg-blue-100 text-blue-700'}`}>{h.type==='hospit'?'Hosp.':'Bloc'}</span></td><td className="p-2 text-right font-mono font-bold">{formatAr(tp)}</td></tr>); })}
+                  {myHbTodayPayments.map(p => {
+                    const v = state.ventes.find(x => x.id === p.venteId);
+                    if (!v) return null;
+                    return (<tr key={p.id} className="border-b"><td className="p-2 font-mono">{new Date(p.date).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</td><td className="p-2">{v.clientName}</td><td className="p-2 text-center"><span className={`px-1 py-0.5 rounded text-[10px] font-bold ${v.type==='hospitalisation'?'bg-rose-100 text-rose-700':'bg-blue-100 text-blue-700'}`}>{v.type==='hospitalisation'?'Hosp.':'Bloc'}</span></td><td className="p-2 text-right font-mono font-bold">{formatAr(p.amount)}</td></tr>);
+                  })}
                 </tbody><tfoot className="bg-emerald-50"><tr><td colSpan={3} className="p-2 text-right font-bold">TOTAL:</td><td className="p-2 text-right font-mono font-bold text-lg">{formatAr(myGrandTotal)}</td></tr></tfoot></table>
               </div>
             </div>
@@ -1056,12 +1271,13 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
 
       {/* Prescription — Inline Sage-style (no modal) */}
       {hbModal === 'add_article' && hbSelRecordId && (() => {
-        const rec = hbRecords.find(r => r.id === hbSelRecordId);
-        const recTotal = rec ? rec.lines.reduce((s, l) => s + hbLineAmt(l), 0) : 0;
+        const rec = state.ventes.find(v => v.id === hbSelRecordId);
+        const recLines = rec ? getVenteLines(state, rec.id) : [];
+        const recTotal = rec ? rec.montantFacture : 0;
         return (
         <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-0 order-first">
             <div className="bg-emerald-600 px-4 py-3 flex justify-between items-center text-white">
-              <span className="font-bold flex items-center gap-1">💊 Prescription (Saisie Sage) — {rec?.patientName} ({rec?.type === 'hospit' ? 'Hospitalisation' : 'Bloc'})</span>
+              <span className="font-bold flex items-center gap-1">💊 Prescription (Saisie Sage) — {rec?.clientName} ({rec?.type === 'hospitalisation' ? 'Hospitalisation' : 'Bloc'}) — <span className="font-mono text-xs opacity-90">{rec?.numeroFacture}</span></span>
               <button onClick={() => setHbModal('none')} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button>
             </div>
             <div className="p-4 space-y-3">
@@ -1205,7 +1421,7 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-150 font-mono">
-                      {rec && rec.lines.map(l => {
+                      {rec && recLines.map(l => {
                         const isSel = l.id === hbSelLineId;
                         return (
                           <tr key={l.id} onClick={() => {
@@ -1222,7 +1438,7 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                             <td className="p-1 text-center">
                               <button onClick={(e) => {
                                 e.stopPropagation();
-                                updateHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, lines: r.lines.filter(x => x.id !== l.id) } : r));
+                                setState(prev => { const next = { ...prev }; deleteVenteLine(next, l.id); return next; });
                                 if (hbSelLineId === l.id) {
                                   hbArtNew();
                                 }
@@ -1233,15 +1449,15 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                           </tr>
                         );
                       })}
-                      {rec && rec.lines.length === 0 && (
-                        <tr><td colSpan={6} className="p-4 text-center text-slate-400 font-sans">Aucun article enregistré. Tapez ou recherchez un article ci-dessus.</td></tr>
+                      {rec && recLines.length === 0 && (
+                        <tr><td colSpan={7} className="p-4 text-center text-slate-400 font-sans">Aucun article enregistré. Tapez ou recherchez un article ci-dessus.</td></tr>
                       )}
                     </tbody>
-                    {rec && rec.lines.length > 0 && (
+                    {rec && recLines.length > 0 && (
                       <tfoot className="bg-emerald-50 border-t-2 border-emerald-300 text-slate-800 font-sans">
                         <tr className="font-bold">
                           <td colSpan={3} className="p-1.5 text-right">TOTAL PATIENT :</td>
-                          <td colSpan={3} className="p-1.5 text-right font-mono text-lg text-emerald-700">{formatAr(recTotal)}</td>
+                          <td colSpan={4} className="p-1.5 text-right font-mono text-lg text-emerald-700">{formatAr(recTotal)}</td>
                         </tr>
                       </tfoot>
                     )}
@@ -1249,7 +1465,7 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                 </div>
               </div>
 
-              <button onClick={() => { if (rec && blockIfUnsavedDraftLine(hbArtForm, rec.lines, { entityLabel: 'l\'article' })) return; setHbModal('none'); }} className="w-full py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 cursor-pointer font-medium transition text-sm">✅ Terminer et fermer</button>
+              <button onClick={() => { if (rec && blockIfUnsavedDraftLine(hbArtForm, recLines, { entityLabel: 'l\'article' })) return; setHbModal('none'); }} className="w-full py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 cursor-pointer font-medium transition text-sm">✅ Terminer et fermer</button>
             </div>
         </div>
         );
@@ -1347,38 +1563,40 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
 
       {/* Modal Historique des paiements (Hospitalisation / Bloc) */}
       {hbHistoryId && (() => {
-        const rec = hbRecords.find(r => r.id === hbHistoryId);
+        const rec = state.ventes.find(v => v.id === hbHistoryId);
         if (!rec) return null;
-        const totalFact = rec.lines.reduce((s, l) => s + hbLineAmt(l), 0);
-        const totalPaid = rec.payments.reduce((s, p) => s + p.amount, 0);
-        const titleColor = rec.type === 'hospit' ? 'bg-rose-600' : 'bg-blue-600';
+        const pays = getVentePayments(state, rec.id);
+        const totalFact = rec.montantFacture;
+        const totalPaid = rec.montantPaye || 0;
+        const titleColor = rec.type === 'hospitalisation' ? 'bg-rose-600' : 'bg-blue-600';
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
             <div className="w-full max-w-md bg-white rounded-xl shadow-2xl border border-slate-300 overflow-hidden flex flex-col">
               <div className={`${titleColor} px-4 py-3 flex justify-between items-center text-white`}>
-                <span className="font-bold text-sm">📜 Historique des paiements — {rec.patientName}</span>
+                <span className="font-bold text-sm">📜 Historique des paiements — {rec.clientName} <span className="opacity-80 font-mono text-xs">({rec.numeroFacture})</span></span>
                 <button onClick={() => setHbHistoryId(null)} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button>
               </div>
               <div className="p-4 space-y-3">
                 <div className="grid grid-cols-3 gap-2 text-center text-xs">
                   <div className="p-2 bg-slate-50 rounded"><div className="text-slate-500">Facture</div><div className="font-mono font-bold text-slate-800">{formatAr(totalFact)}</div></div>
                   <div className="p-2 bg-green-50 rounded"><div className="text-slate-500">Reçu</div><div className="font-mono font-bold text-green-700">{formatAr(totalPaid)}</div></div>
-                  <div className="p-2 bg-red-50 rounded"><div className="text-slate-500">Reste</div><div className="font-mono font-bold text-red-700">{formatAr(totalFact - totalPaid)}</div></div>
+                  <div className="p-2 bg-red-50 rounded"><div className="text-slate-500">Reste</div><div className="font-mono font-bold text-red-700">{formatAr(venteRestantDu(rec))}</div></div>
                 </div>
-                {rec.payments.length === 0 ? (
+                {pays.length === 0 ? (
                   <p className="text-center text-slate-400 text-sm py-6">Aucun paiement enregistré pour ce dossier.</p>
                 ) : (
                   <div className="space-y-2 max-h-[55vh] overflow-y-auto">
-                    {rec.payments.slice().reverse().map((p, i) => (
-                      <div key={i} className="border rounded-lg p-3 bg-white shadow-sm">
+                    {pays.slice().reverse().map((p) => (
+                      <div key={p.id} className="border rounded-lg p-3 bg-white shadow-sm">
                         <div className="flex justify-between items-center">
                           <span className="font-mono font-bold text-emerald-700">{formatAr(p.amount)}</span>
                           <span className="text-[10px] text-slate-400">{new Date(p.date).toLocaleString('fr-FR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}</span>
                         </div>
-                        <div className="text-xs text-slate-600 mt-1.5 flex items-center gap-1.5">
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${p.receivedBy === 'pharmacie' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
-                            {p.receivedBy === 'pharmacie' ? '🏥 Pharmacie' : '💵 Caisse'}
+                        <div className="text-xs text-slate-600 mt-1.5 flex items-center gap-1.5 flex-wrap">
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${p.reference?.includes('pharmacie') ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                            {p.reference?.includes('pharmacie') ? '🏥 Pharmacie' : '💵 Caisse'}
                           </span>
+                          <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-bold">{p.method || 'Espèces'}</span>
                           <span>Reçu par : <strong>{p.paidBy || '—'}</strong></span>
                         </div>
                       </div>
