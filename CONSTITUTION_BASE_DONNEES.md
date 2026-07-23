@@ -1,7 +1,7 @@
 # 📊 CONSTITUTION DE LA BASE DE DONNÉES — RECEPTION SALFA
 
-> **Date :** 20 Juillet 2026  
-> **Projet :** MediCare HIS v2.0 — Gestion de clinique / centre de santé
+> **Date :** 23 Juillet 2026  
+> **Projet :** MediCare HIS v4.0 — Gestion de clinique / centre de santé
 
 ---
 
@@ -674,6 +674,59 @@ ventes ──N:1──> users (createdBy, paidBy)
 - Pour basculer un module de `invoices` vers `ventes`, remplacer les accès `state.invoices` par `state.ventes` et utiliser `createVente` / `addVentePayment`.
 - Lorsqu'un module crée une vente, il lui est recommandé d'écrire en double dans `invoices` le temps de la migration complète (ou d'utiliser le helper `createVente` et de conserver une référence croisée via `legacyInvoiceId`).
 - `dateSort` reste une date métier saisie par l'utilisateur. Il ne faut pas la confondre avec `createdAt` (date technique de création).
+
+---
+
+## 📝 CORRECTIONS ET AMÉLIORATIONS RÉCENTES (v4.0 — Juillet 2026)
+
+### Correction critique : bouton « Valider » du médecin
+
+Les appels à `setShowHistory(false)` dans `ModuleMedecin.tsx` (fonctions `submitConsultation` et `handleBackToQueue`) provoquaient un `ReferenceError` car la variable d'état `showHistory` n'a jamais été déclarée. Les deux appels ont été supprimés.
+
+### Déduplication des analyses dans le dossier médical
+
+Dans `ModuleDossierMedical.tsx`, les analyses labo apparaissaient en double car elles existent à la fois dans `consultations[].labRequests` et dans `state.labRequests`. Un mécanisme de déduplication par ID (`seenLrIds: Set<string>`) a été ajouté.
+
+### Ticket d'encaissement Hospit/Bloc simplifié
+
+Le ticket imprimé lors d'un paiement hospit/bloc affiche désormais uniquement :
+1. **Montant Total** de la facture (`montantFacture`)
+2. **Somme déjà perçue** (`montantPaye`)
+3. **Paiement actuel** (montant du versement en cours)
+4. **Reste à payer** (`venteRestantDu`)
+
+Auparavant, le ticket imprimait toutes les lignes d'articles (détail complet).
+
+### Barre de recherche dans les onglets Hospit et Bloc
+
+Une barre de recherche a été ajoutée en haut des onglets Hospitalisation et Bloc Opératoire dans le module Caisse. Elle filtre les dossiers par :
+- Nom du patient (`clientName`)
+- Numéro de dossier / matricule
+- Numéro de facture (`numeroFacture`)
+- Société (`company`)
+
+### Fond rouge pour les clients comptoir impayés
+
+Dans la liste des dossiers hospit/bloc, les patients de type **comptoir** dont le reste à payer est supérieur à 0 sont affichés avec :
+- Bordure rouge (`border-red-300`)
+- Fond rouge clair (`bg-red-50`)
+
+Cela permet au caissier d'identifier visuellement les dossiers non soldés en un coup d'œil.
+
+### Demandes d'échographie
+
+Le médecin peut désormais saisir des demandes d'échographie en plus des demandes d'analyses labo. Les échos sont :
+- Saisies dans la consultation (recherche dans le catalogue `ECHO_CATALOG`)
+- Facturées en caisse comme les analyses labo
+- Imprimées sur un bon d'échographie dédié après paiement
+
+### Module Dossier Médical
+
+Le dossier médical (`ModuleDossierMedical.tsx`) affiche l'historique complet d'un patient :
+- Consultations avec détails (diagnostic, prescriptions, labo, écho)
+- Analyses avec résultats et valeurs usuelles
+- Factures avec statut (payée / en attente)
+- Impression du dossier complet en A4
 
 ---
 
