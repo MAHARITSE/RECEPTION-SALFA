@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, Vente, VenteLine, VenteType, HbLine, Consultation, Prescription, VitalSigns } from '../types';
+import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, Vente, VenteLine, VenteType, Consultation, VitalSigns } from '../types';
 import type { AppState } from '../store';
 import {
   addAuditLog, addNotification, formatAr, getPrice, calculateAge,
@@ -42,9 +42,9 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   // External sale (session-local: n'a pas besoin d'être partagé)
   const [extSearch, setExtSearch] = useState('');
   const [extSearchIdx, setExtSearchIdx] = useState(0);
-  const [extLines, setExtLines] = useState<HbLine[]>([]);
+  const [extLines, setExtLines] = useState<VenteLine[]>([]);
   const [extSelLineId, setExtSelLineId] = useState<string | null>(null);
-  const [extLineForm, setExtLineForm] = useState<HbLine>({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: new Date().toISOString().split('T')[0] });
+  const [extLineForm, setExtLineForm] = useState<VenteLine>({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: new Date().toISOString().split('T')[0] });
   const [extIsNew, setExtIsNew] = useState(false);
   const extSearchRef = useRef<HTMLInputElement>(null);
 
@@ -260,7 +260,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const extFiltered = extSearch.length >= 1
     ? state.articles.filter(a => a.name.toLowerCase().includes(extSearch.toLowerCase()) && !a.saleBlocked)
     : [];
-  const extLineAmt = (l: HbLine) => Math.round(l.unitPrice * l.quantity * (1 - l.discount / 100));
+  const extLineAmt = (l: VenteLine) => Math.round(l.unitPrice * l.quantity * (1 - l.discount / 100));
   const extTotal = extLines.reduce((s, l) => s + extLineAmt(l), 0);
 
   const extSelectArticle = (articleId: string) => {
@@ -276,7 +276,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       return;
     }
     // La date saisie est conservée : elle ne s'efface pas entre les lignes (plusieurs sorties le même jour)
-    const nl: HbLine = { id: uuidv4(), articleName: a.name, quantity: 1, unitPrice: getPrice(a, 'externe'), discount: 0, dateSort: extLineForm.dateSort || new Date().toISOString().split('T')[0] };
+    const nl: VenteLine = { id: uuidv4(), articleName: a.name, quantity: 1, unitPrice: getPrice(a, 'externe'), discount: 0, dateSort: extLineForm.dateSort || new Date().toISOString().split('T')[0] };
     setExtLineForm({ ...nl }); setExtSelLineId(nl.id); setExtIsNew(true); setExtSearch('');
   };
   const extSaveLine = () => {
@@ -287,7 +287,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     if (art && extLineForm.quantity > art.stockPharmacie) {
       if (!confirm(`⚠️ Stock pharmacie insuffisant pour « ${art.name} » : ${art.stockPharmacie} disponible(s), ${extLineForm.quantity} demandée(s).\n\nEnregistrer quand même ?`)) return;
     }
-    const lineToSave: HbLine = { ...extLineForm, dateSort: extLineForm.dateSort || new Date().toISOString().split('T')[0] };
+    const lineToSave: VenteLine = { ...extLineForm, dateSort: extLineForm.dateSort || new Date().toISOString().split('T')[0] };
     if (extIsNew || !extLines.find(l => l.id === extLineForm.id)) setExtLines([...extLines, lineToSave]);
     else setExtLines(extLines.map(l => l.id === extLineForm.id ? lineToSave : l));
     setExtIsNew(false);
@@ -358,7 +358,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
     if (medicamentLines.length > 0) {
       extConsultId = uuidv4();
-      const prescriptions: Prescription[] = medicamentLines.map((l) => ({
+      const prescriptions: VenteLine[] = medicamentLines.map((l) => ({
         id: uuidv4(),
         articleId: state.articles.find((a) => a.name === l.articleName)?.id || '',
         articleName: l.articleName,
@@ -1170,7 +1170,7 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                             setHbSelLineId(null);
                             setHbIsNew(true);
                             setHbModal('add_article');
-                          }} className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs cursor-pointer transition font-medium">📋 Prescriptions</button>
+                          }} className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs cursor-pointer transition font-medium">📋 VenteLines</button>
                           {reste > 0 && <>
                             <input
                               type="number" min={1} max={reste}
@@ -1188,7 +1188,7 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                       {isOpen && (
                         <div className="p-3 border-t bg-white">
                           {lines.length > 0 && <table className="w-full text-[11px] mb-2"><thead className="bg-slate-100"><tr><th className="p-1 text-left w-16">Date</th><th className="p-1 text-left">Article</th><th className="p-1 text-right">Qté</th><th className="p-1 text-right">P.U.</th><th className="p-1 text-right">Montant</th></tr></thead><tbody>{lines.map(l => (<tr key={l.id} className="border-b border-slate-100"><td className="p-1 text-slate-500">{l.dateSort || '—'}</td><td className="p-1">{l.articleName}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 text-right font-mono">{l.unitPrice.toLocaleString('fr-FR')}</td><td className="p-1 text-right font-mono font-bold">{hbLineAmt(l).toLocaleString('fr-FR')}</td></tr>))}</tbody></table>}
-                          {lines.length === 0 && <p className="text-slate-400 text-xs text-center py-2">Aucun article — cliquez sur « Prescriptions »</p>}
+                          {lines.length === 0 && <p className="text-slate-400 text-xs text-center py-2">Aucun article — cliquez sur « VenteLines »</p>}
                           {pays.length > 0 && <div className="mt-2 text-[10px] text-slate-500 border-t pt-1"><div className="font-bold mb-1">Historique paiements :</div>{pays.map((p) => (<div key={p.id}>{new Date(p.date).toLocaleString('fr-FR',{hour:'2-digit',minute:'2-digit'})} — {formatAr(p.amount)} — {p.method} — {p.reference?.includes('pharmacie') ? '🏥 Pharmacie' : '💵 Caisse'} : {p.paidBy}</div>))}</div>}
                         </div>
                       )}
@@ -1294,7 +1294,7 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
         </div>
       )}
 
-      {/* Prescription — Inline Sage-style (no modal) */}
+      {/* VenteLine — Inline Sage-style (no modal) */}
       {hbModal === 'add_article' && hbSelRecordId && (() => {
         const rec = state.ventes.find(v => v.id === hbSelRecordId);
         const recLines = rec ? getVenteLines(state, rec.id) : [];
@@ -1302,7 +1302,7 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
         return (
         <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-0 order-first">
             <div className="bg-emerald-600 px-4 py-3 flex justify-between items-center text-white">
-              <span className="font-bold flex items-center gap-1">💊 Prescription (Saisie Sage) — {rec?.clientName} ({rec?.type === 'hospitalisation' ? 'Hospitalisation' : 'Bloc'}) — <span className="font-mono text-xs opacity-90">{rec?.numeroFacture}</span></span>
+              <span className="font-bold flex items-center gap-1">💊 VenteLine (Saisie Sage) — {rec?.clientName} ({rec?.type === 'hospitalisation' ? 'Hospitalisation' : 'Bloc'}) — <span className="font-mono text-xs opacity-90">{rec?.numeroFacture}</span></span>
               <button onClick={() => setHbModal('none')} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button>
             </div>
             <div className="p-4 space-y-3">
@@ -1508,7 +1508,7 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
         </div>
       )}
 
-      {/* Modal Message Rectification Prescription */}
+      {/* Modal Message Rectification VenteLine */}
       {rectificationModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-lg bg-white rounded-xl shadow-2xl border border-slate-300 overflow-hidden flex flex-col">
@@ -1521,7 +1521,7 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
             <div className="p-4 space-y-3">
               <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-lg text-xs text-indigo-900 leading-relaxed">
                 <strong>Destinataire :</strong> {rectificationModal.doctorName}<br />
-                <strong>Concerne :</strong> Prescription du patient <strong>{rectificationModal.patientName}</strong> (Dossier: {rectificationModal.dossier})
+                <strong>Concerne :</strong> VenteLine du patient <strong>{rectificationModal.patientName}</strong> (Dossier: {rectificationModal.dossier})
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Message au médecin pour rectification d'une prescription déjà faite :</label>
@@ -1568,7 +1568,7 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                     };
                     setState((prev) => {
                       const next = { ...prev, messages: [...prev.messages, msg] };
-                      addNotification(next, 'doctor', `💬 [Rectification Prescription] ${rectificationModal.patientName} : ${rectificationText.trim().substring(0, 50)}...`, 'warning', rectificationModal.doctorId);
+                      addNotification(next, 'doctor', `💬 [Rectification VenteLine] ${rectificationModal.patientName} : ${rectificationText.trim().substring(0, 50)}...`, 'warning', rectificationModal.doctorId);
                       addAuditLog(next, 'MESSAGE_RECTIFICATION', `Message de rectification envoyé à ${rectificationModal.doctorName} (${rectificationModal.patientName})`);
                       return next;
                     });
