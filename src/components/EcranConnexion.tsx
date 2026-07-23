@@ -3,7 +3,7 @@ import type { User } from '../types';
 import {
   Stethoscope, CreditCard, Pill,
   FlaskConical, Building2, Hospital, ArrowLeft,
-  Lock, User as UserIcon, AlertCircle
+  Lock, User as UserIcon, AlertCircle, KeyRound
 } from 'lucide-react';
 
 interface EcranConnexionProps {
@@ -13,13 +13,13 @@ interface EcranConnexionProps {
 }
 
 const roleIcons: Record<string, React.ReactNode> = {
-  doctor: <Stethoscope className="w-5 h-5" />,
-  cashier: <CreditCard className="w-5 h-5" />,
-  pharmacy: <Pill className="w-5 h-5" />,
-  magasinier: <Building2 className="w-5 h-5" />,
-  laboratory: <FlaskConical className="w-5 h-5" />,
-  billing: <Building2 className="w-5 h-5" />,
-  admin: <UserIcon className="w-5 h-5" />,
+  doctor: <Stethoscope className="w-4 h-4" />,
+  cashier: <CreditCard className="w-4 h-4" />,
+  pharmacy: <Pill className="w-4 h-4" />,
+  magasinier: <Building2 className="w-4 h-4" />,
+  laboratory: <FlaskConical className="w-4 h-4" />,
+  billing: <Building2 className="w-4 h-4" />,
+  admin: <KeyRound className="w-4 h-4" />,
 };
 
 const roleLabels: Record<string, string> = {
@@ -28,18 +28,8 @@ const roleLabels: Record<string, string> = {
   pharmacy: 'Pharmacie',
   magasinier: 'Magasinier',
   laboratory: 'Laboratoire',
-  billing: 'Responsable facturation',
+  billing: 'Facturation',
   admin: 'Administrateur',
-};
-
-const roleColors: Record<string, string> = {
-  doctor: 'bg-emerald-600 hover:bg-emerald-700',
-  cashier: 'bg-amber-600 hover:bg-amber-700',
-  pharmacy: 'bg-purple-600 hover:bg-purple-700',
-  magasinier: 'bg-orange-600 hover:bg-orange-700',
-  laboratory: 'bg-cyan-600 hover:bg-cyan-700',
-  billing: 'bg-indigo-600 hover:bg-indigo-700',
-  admin: 'bg-slate-700 hover:bg-slate-800',
 };
 
 export default function EcranConnexion({ users, onLogin, onBack }: EcranConnexionProps) {
@@ -51,134 +41,136 @@ export default function EcranConnexion({ users, onLogin, onBack }: EcranConnexio
   const selectedUser = users.find((u) => u.id === selectedUserId);
 
   const handleLogin = () => {
-    if (!selectedUserId) {
-      setError('Veuillez sélectionner un utilisateur');
-      return;
-    }
-    if (!password) {
-      setError('Veuillez entrer le mot de passe');
-      return;
-    }
-    
+    if (!selectedUserId) { setError('Choisir un identifiant'); return; }
+    if (!password)       { setError('Saisir le mot de passe'); return; }
     const user = users.find((u) => u.id === selectedUserId);
-    if (!user) {
-      setError('Utilisateur non trouvé');
-      return;
-    }
-
-    if (user.password !== password) {
-      setError('Mot de passe incorrect');
-      return;
-    }
-
+    if (!user)           { setError('Utilisateur introuvable'); return; }
+    if (user.password !== password) { setError('Mot de passe erroné'); return; }
     setError('');
     onLogin(user);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleLogin();
-    }
-  };
+  const onKey = (e: React.KeyboardEvent) => { if (e.key === 'Enter') handleLogin(); };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 flex items-center justify-center p-4">
-      <div className="max-w-md w-full">
-        {/* Back button */}
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden"
+         style={{
+           background:
+             'radial-gradient(1200px 600px at 20% 0%, rgba(15,139,141,.15), transparent 60%),' +
+             'radial-gradient(900px 600px at 90% 100%, rgba(185,83,28,.12), transparent 60%),' +
+             'linear-gradient(180deg, #d7ddd1 0%, #c4ccbb 100%)'
+         }}>
+      {/* Motif de fond : quadrillage carnet */}
+      <div className="absolute inset-0 pointer-events-none opacity-40"
+           style={{
+             backgroundImage:
+               'linear-gradient(rgba(31,36,33,.05) 1px, transparent 1px),' +
+               'linear-gradient(90deg, rgba(31,36,33,.05) 1px, transparent 1px)',
+             backgroundSize: '22px 22px',
+           }} />
+
+      <div className="relative w-full max-w-md">
         <button
           onClick={onBack}
-          className="mb-6 flex items-center gap-2 text-slate-400 hover:text-white transition-colors cursor-pointer"
+          className="mb-5 inline-flex items-center gap-2 text-[var(--color-inksoft)] hover:text-[var(--color-cross)] transition font-mono text-sm"
         >
           <ArrowLeft className="w-4 h-4" />
-          Retour à la réception
-
-
+          ← Retour à la réception
         </button>
 
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-400 mb-4 shadow-2xl">
-            <Hospital className="w-8 h-8 text-white" />
+        {/* Plaque laiton */}
+        <div className="text-center mb-6">
+          <div className="brass-plaque inline-flex items-center gap-3 px-6 py-3 rounded-sm">
+            <Hospital className="w-8 h-8" strokeWidth={2.25} />
+            <div className="text-left leading-none">
+              <div className="text-xl font-bold tracking-[.3em]">SALFA</div>
+              <div className="text-[10px] tracking-[.4em] opacity-80 mt-0.5">HOSPITAL · INFORMATION</div>
+            </div>
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2">
-            MediCare <span className="text-blue-400">HIS</span>
-          </h1>
-          <p className="text-slate-400">Connexion Personnel Médical</p>
+          <div className="mt-4 font-display text-[var(--color-ink)] text-2xl tracking-widest uppercase">
+            Accès <span className="text-[var(--color-cross)]">Personnel</span>
+          </div>
+          <div className="mt-1 text-xs font-mono text-[var(--color-inksoft)] tracking-wider">
+            Poste de travail · Saisir code d'accès
+          </div>
         </div>
 
-        <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-700/50 p-6 shadow-2xl">
-          {/* User selection */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              <UserIcon className="w-4 h-4 inline mr-2" />
-              Identifiant
-            </label>
-            <select
-              value={selectedUserId}
-              onChange={(e) => { setSelectedUserId(e.target.value); setError(''); }}
-              className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 outline-none"
-            >
-              <option value="">-- Sélectionner --</option>
-              {staffUsers.map((user) => (
-                <option key={user.id} value={user.id}>
-                  {user.id} — {user.name} ({roleLabels[user.role] || user.role})
-                </option>
-              ))}
-            </select>
+        {/* Dossier cartonné */}
+        <div className="folder rounded-sm p-5 sm:p-6">
+          {/* languette */}
+          <div className="flex items-center gap-2 mb-5 -mt-10">
+            <div className="folder-tab folder-tab-active rounded-t-sm">CONTRÔLE D'ACCÈS</div>
+            <div className="flex-1 border-b border-dashed border-[var(--color-rule)] mb-[6px]" />
           </div>
 
-          {/* Password */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              <Lock className="w-4 h-4 inline mr-2" />
-              Mot de passe
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => { setPassword(e.target.value); setError(''); }}
-              onKeyDown={handleKeyDown}
-              className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 outline-none"
-              placeholder="••••••••"
-            />
-          </div>
+          {/* Identifiant */}
+          <label className="block text-[10px] font-display tracking-widest uppercase text-[var(--color-inksoft)] mb-1.5">
+            <UserIcon className="w-3 h-3 inline mr-1" />Identifiant
+          </label>
+          <select
+            value={selectedUserId}
+            onChange={(e) => { setSelectedUserId(e.target.value); setError(''); }}
+            className="field-reg w-full cursor-pointer"
+          >
+            <option value="">— Sélectionner un agent —</option>
+            {staffUsers.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.id}  ·  {u.name}  —  {roleLabels[u.role] || u.role}
+              </option>
+            ))}
+          </select>
 
-          {/* Error */}
+          {/* Mot de passe */}
+          <label className="block text-[10px] font-display tracking-widest uppercase text-[var(--color-inksoft)] mt-4 mb-1.5">
+            <Lock className="w-3 h-3 inline mr-1" />Code secret
+          </label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => { setPassword(e.target.value); setError(''); }}
+            onKeyDown={onKey}
+            className="field-reg field-mono w-full tracking-[.3em]"
+            placeholder="••••••••"
+            autoFocus
+          />
+
+          {/* Erreur */}
           {error && (
-            <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg flex items-center gap-2 text-red-400 text-sm">
-              <AlertCircle className="w-4 h-4" />
-              {error}
+            <div className="mt-4 flex items-start gap-2 p-2.5 border border-[var(--color-stamp-red)] bg-[color:color-mix(in_srgb,var(--color-stamp-red)_8%,transparent)] text-[var(--color-stamp-red)] text-sm font-medium">
+              <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <span>{error}</span>
             </div>
           )}
 
-          {/* Login button */}
+          {/* Bouton bakélite */}
           <button
             onClick={handleLogin}
             disabled={!selectedUserId || !password}
-            className={`w-full py-3 rounded-lg font-semibold text-white transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
-              selectedUser ? (roleColors[selectedUser.role] || 'bg-blue-600 hover:bg-blue-700') : 'bg-blue-600 hover:bg-blue-700'
-            }`}
+            className="btn-bake primary w-full mt-5 justify-center py-3 text-sm"
           >
-            {(selectedUser && roleIcons[selectedUser.role]) || null}
-            Se connecter
+            {(selectedUser && roleIcons[selectedUser.role]) || <KeyRound className="w-4 h-4"/>}
+            <span>Ouvrir la session</span>
           </button>
 
-          {/* Help text */}
-          <div className="mt-6 p-3 bg-slate-700/30 rounded-lg">
-            <p className="text-xs text-slate-400 text-center">
-              <strong>Mots de passe par défaut:</strong><br />
-              Médecins: <code className="bg-slate-600 px-1 rounded">doc123</code> • 
-              Caisse: <code className="bg-slate-600 px-1 rounded">caisse123</code><br />
-              Pharmacie: <code className="bg-slate-600 px-1 rounded">pharma123</code> • 
-              Magasin: <code className="bg-slate-600 px-1 rounded">mag123</code><br />
-              Labo: <code className="bg-slate-600 px-1 rounded">labo123</code><br />
-              Facturation: <code className="bg-slate-600 px-1 rounded">fact123</code> • 
-              Admin: <code className="bg-slate-600 px-1 rounded">admin123</code>
-            </p>
+          {/* Carte aide */}
+          <div className="mt-5 border border-dashed border-[var(--color-rule)] bg-[var(--color-paper-2)]/60 p-3 text-[11px] font-mono text-[var(--color-inksoft)] leading-relaxed">
+            <div className="flex items-center gap-2 text-[var(--color-ink)] mb-1.5 font-display tracking-widest uppercase text-[10px]">
+              <KeyRound className="w-3 h-3" /> Codes de démo
+            </div>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+              <span>DOC001 → <b>doc123</b></span>
+              <span>CAS001 → <b>caisse123</b></span>
+              <span>PHA001 → <b>pharma123</b></span>
+              <span>MAG001 → <b>mag123</b></span>
+              <span>LAB001 → <b>labo123</b></span>
+              <span>HOS001 → <b>hosp123</b></span>
+              <span>ADM001 → <b>admin123</b></span>
+            </div>
           </div>
         </div>
 
-        <p className="text-center text-slate-500 text-xs mt-6">
-          © 2026 MediCare HIS — Conforme RGPD
+        <p className="text-center text-[var(--color-inksoft)] text-[11px] font-mono mt-5 tracking-wider opacity-80">
+          © 2026 · SALFA HIS · Conforme politique de confidentialité
         </p>
       </div>
     </div>
