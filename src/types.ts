@@ -1,6 +1,6 @@
 export type UserRole = 'receptionist' | 'doctor' | 'cashier' | 'pharmacy' | 'magasinier' | 'laboratory' | 'admin' | 'billing';
 export type ClientType = 'comptoir' | 'societe' | 'externe';
-export type ArticleFamily = 'MEDIC' | 'LABO' | 'DENT' | 'ECHO';
+export type ArticleFamily = 'MEDIC' | 'LABO' | 'DENT' | 'ECHO' | 'CONSULT' | 'HOSPIT' | 'BLOC';
 export type PatientStatus = 'registered' | 'waiting_consultation' | 'in_consultation' | 'consulted_awaiting_payment' | 'invoice_paid' | 'medications_delivered' | 'analyses_pending' | 'analyses_complete' | 'completed';
 
 export interface User { id: string; name: string; role: UserRole; password?: string; }
@@ -60,13 +60,21 @@ export interface Article {
   saleBlockReason?: string;
   saleBlockedAt?: string;
   saleBlockedBy?: string;
-}
-
-export interface Prescription {
-  id: string; articleId: string; articleName: string; quantity: number;
-  posology: string; duration: string; instructions: string;
-  unitPrice: number; discount: number; // remise % par ligne
-  delivered: boolean;
+  /* ====== Champs spécifiques aux examens / prestations (labo, écho, consult, hospit, bloc) ====== */
+  /** Code examen (ex: BIO001, ECH001). Utilisé pour les prestations. */
+  code?: string;
+  /** Paramètres / descripteurs (ex: ['Glucose', 'Urée'] pour un bilan). */
+  parameters?: string[];
+  /** Type de prélèvement (ex: 'Sang veineux', 'Urine'). */
+  sampleType?: string;
+  /** Prix urgence (pour les examens labo/écho). */
+  urgentPrice?: number;
+  /** Durée / délai de rendu en heures. */
+  durationHours?: number;
+  /** Urgence par défaut. */
+  defaultUrgent?: boolean;
+  /** Catégorie métier (ex: 'hematologie', 'biochimie'…). */
+  labCategory?: string;
 }
 
 export interface LabResult {
@@ -74,26 +82,14 @@ export interface LabResult {
   normalMin: number; normalMax: number; isAbnormal: boolean;
 }
 
-/* ====== LABORATOIRE — catalogue & demandes autonomes ====== */
+/* ====== LABORATOIRE — demandes autonomes ====== */
 export type LabCategory =
   | 'hematologie' | 'biochimie' | 'serologie' | 'bacteriologie'
   | 'parasitologie' | 'immunologie' | 'hemostase' | 'autre';
 
-/** Un examen du catalogue laboratoire (avec grille tarifaire). */
-export interface LabExamCatalog {
-  id: string;
-  code: string;
-  name: string;
-  category: LabCategory;
-  parameters: string[];
-  sampleType: string;        // Sang veineux, Urines, Selles, Sérum...
-  priceComptoir: number;
-  priceSociete: number;
-  priceExterne: number;
-  urgentPrice: number;
-  durationHours: number;     // délai de rendu (heures)
-  defaultUrgent?: boolean;
-}
+/** @deprecated — Les examens de laboratoire sont désormais des Article (family: 'LABO').
+ *  Alias conservé pour compatibilité — un LabExamCatalog est un Article. */
+export type LabExamCatalog = Article;
 
 /** Demande d'analyse — peut être liée à une consultation OU autonome (state.labRequests). */
 export interface LabRequest {
@@ -143,7 +139,7 @@ export interface PatientJourneyEvent {
 export interface Consultation {
   id: string; patientId: string; doctorId: string; doctorName: string; date: string;
   vitalSigns: VitalSigns; visitReason: string; diagnosis: string; notes: string;
-  prescriptions: Prescription[]; labRequests: LabRequest[];
+  prescriptions: VenteLine[]; labRequests: LabRequest[];
   echoRequests?: EchoRequest[];
   hospitalizeRequested: boolean; surgeryRequested: boolean; isEmergency: boolean;
 }
@@ -410,16 +406,8 @@ export interface MovementLine {
 }
 
 /* ====== HOSPITALISATION / BLOC (paiement partiel, saisie unifiée) ====== */
-/** Ligne article d'un dossier Hospit/Bloc (même structure que ventes externes). */
-export interface HbLine {
-  id: string;
-  articleName: string;
-  quantity: number;
-  unitPrice: number;
-  discount: number;
-  /** Date d'acte / de sortie — conservée entre validations de lignes. */
-  dateSort?: string;
-}
+/** @deprecated — Utiliser VenteLine directement. Alias conservé pour compatibilité. */
+export type HbLine = VenteLine;
 
 /** Dossier Hospitalisation ou Bloc Opératoire — partagé entre Caisse et Pharmacie
  *  (caisse de garde), car seul le paiement fait foi : qui saisit n'a pas d'importance. */
@@ -430,7 +418,7 @@ export interface HbRecord {
   clientType: ClientType;
   company?: string;
   type: 'hospit' | 'bloc';
-  lines: HbLine[];
+  lines: VenteLine[];
   payments: { amount: number; paidBy: string; date: string; paidByUserId?: string; receivedBy?: 'caisse' | 'pharmacie' }[];
   /** Date d'ouverture du dossier. */
   openedAt?: string;
@@ -468,13 +456,16 @@ export type VenteStatus = 'pending' | 'partiel' | 'paid' | 'annule';
 /** Mode de règlement utilisé pour un paiement. */
 export type PaymentMethod = 'Espèces' | 'Carte bancaire' | 'Mobile Money' | 'Virement' | 'Chèque' | 'Autre';
 
-/** Ligne de vente — correspond exactement à la demande :
- *  id, articleName, quantity, unitPrice, discount, dateSort (date d'acte/sortie). */
+/** Ligne de vente unifiée — regroupe en une seule structure :
+ *  - les lignes de prescription (ordonnances médecin)
+ *  - les lignes hospitalisation / bloc
+ *  - les lignes de vente (caisse / pharmacie / externe)
+ *  Tous les contextes utilisent la même table de lignes. */
 export interface VenteLine {
   /** Identifiant unique de la ligne (UUID). */
   id: string;
-  /** FK → ventes.id */
-  venteId: string;
+  /** FK → ventes.id (vide pour les prescriptions et lignes hospitat/bloc non encore facturées). */
+  venteId?: string;
   /** Nom de l'article / prestation. */
   articleName: string;
   /** Référence optionnelle vers le catalogue articles. */
@@ -489,7 +480,19 @@ export interface VenteLine {
   category?: 'consultation' | 'lab' | 'pharmacy' | 'surgery' | 'hospitalization' | 'echo' | 'bloc' | 'externe';
   /** 📅 Date d'acte / de sortie — conservée pour l'historique. */
   dateSort?: string;
+  /* ====== Champs prescription (ordonnance) ====== */
+  /** Posologie (ex: "1 comprimé matin et soir"). */
+  posology?: string;
+  /** Durée du traitement. */
+  duration?: string;
+  /** Instructions supplémentaires. */
+  instructions?: string;
+  /** Marque de délivrance pharmacie. */
+  delivered?: boolean;
 }
+
+/** @deprecated — Utiliser VenteLine directement. Alias conservé pour compatibilité. */
+export type Prescription = VenteLine;
 
 /** En-tête de vente — regroupe consultation, bloc, hospitalisation, pharmacie, externe. */
 export interface Vente {

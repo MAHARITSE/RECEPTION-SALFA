@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { LabRequest, Patient, ClientType, LabExamCatalog, LabCategory } from '../types';
+import type { LabRequest, Patient, ClientType, Article, LabCategory } from '../types';
 import type { AppState } from '../store';
 import {
   addAuditLog, addNotification, addJourneyEvent, LAB_NORMS,
@@ -48,30 +48,34 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
 
   // ---- Ajout d'un examen au catalogue (formulaire d'ajout d'article) ----
   const [showAddExam, setShowAddExam] = useState(false);
-  const [examForm, setExamForm] = useState<LabExamCatalog>({
-    id: '', code: '', name: '', category: 'biochimie', parameters: [], sampleType: 'Sang veineux',
+  const [examForm, setExamForm] = useState({
+    id: '', code: '', name: '', labCategory: 'biochimie' as string, parameters: [] as string[], sampleType: 'Sang veineux',
     priceComptoir: 0, priceSociete: 0, priceExterne: 0, urgentPrice: 0, durationHours: 4, defaultUrgent: false,
   });
+  const labArticles = state.articles.filter(a => a.family === 'LABO');
 
   const createExam = () => {
     if (!examForm.name.trim() || !examForm.code.trim()) { alert('Le code et le nom de l\'examen sont obligatoires.'); return; }
     const code = examForm.code.trim().toUpperCase();
-    if (state.labCatalog.some((e) => e.code.toLowerCase() === code.toLowerCase())) { alert('Ce code existe déjà dans le catalogue.'); return; }
+    if (labArticles.some((e) => (e.code || '').toLowerCase() === code.toLowerCase())) { alert('Ce code existe déjà dans le catalogue.'); return; }
     const params = examForm.parameters.length
       ? examForm.parameters
       : (document.getElementById('lab-params') as HTMLInputElement)?.value.split(/[,\n;]+/).map((s) => s.trim()).filter(Boolean) || [];
-    const newExam: LabExamCatalog = {
+    const newExam: Article = {
       id: uuidv4(), code, name: examForm.name.trim(),
-      category: examForm.category,
+      family: 'LABO', unit: 'acte',
+      labCategory: examForm.labCategory,
       parameters: params,
       sampleType: examForm.sampleType.trim() || 'Sang veineux',
       priceComptoir: examForm.priceComptoir || 0, priceSociete: examForm.priceSociete || 0,
       priceExterne: examForm.priceExterne || 0, urgentPrice: examForm.urgentPrice || examForm.priceComptoir || 0,
-      durationHours: examForm.durationHours || 4, defaultUrgent: examForm.defaultUrgent,
+      durationHours: examForm.durationHours || 4, purchasePrice: 0,
+      stockCentral: 0, stockPharmacie: 0, minStockCentral: 0, minStockPharmacie: 0,
+      alertDisabledCentral: true, alertDisabledPharmacie: true,
     };
-    setState((prev) => ({ ...prev, labCatalog: [...prev.labCatalog, newExam] }));
+    setState((prev) => ({ ...prev, articles: [...prev.articles, newExam] }));
     setShowAddExam(false);
-    setExamForm({ id: '', code: '', name: '', category: 'biochimie', parameters: [], sampleType: 'Sang veineux', priceComptoir: 0, priceSociete: 0, priceExterne: 0, urgentPrice: 0, durationHours: 4, defaultUrgent: false });
+    setExamForm({ id: '', code: '', name: '', labCategory: 'biochimie', parameters: [], sampleType: 'Sang veineux', priceComptoir: 0, priceSociete: 0, priceExterne: 0, urgentPrice: 0, durationHours: 4, defaultUrgent: false });
     alert(`Examen « ${newExam.name} » (${newExam.code}) ajouté au catalogue.`);
   };
 
@@ -249,8 +253,8 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
     setSelectedExamIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
-  const priceFor = (exam: typeof state.labCatalog[number], ct: ClientType) => {
-    if (urgent) return exam.urgentPrice;
+  const priceFor = (exam: Article, ct: ClientType) => {
+    if (urgent) return exam.urgentPrice || exam.priceComptoir;
     return ct === 'societe' ? exam.priceSociete : ct === 'externe' ? exam.priceExterne : exam.priceComptoir;
   };
 
@@ -260,7 +264,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
     const patient = state.patients.find((p) => p.id === selectedPatientId);
     if (!patient) return;
     const ct = patient.clientType;
-    const chosen = state.labCatalog.filter((e) => selectedExamIds.includes(e.id));
+    const chosen = labArticles.filter((e) => selectedExamIds.includes(e.id));
     const invoiceId = uuidv4();
     const items = chosen.map((e) => ({ description: e.name, amount: priceFor(e, ct), category: 'lab' as const }));
     const total = items.reduce((s, i) => s + i.amount, 0);
@@ -271,8 +275,8 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
         const id = uuidv4();
         reqIds.push(id);
         return {
-          id, patientId: patient.id, examType: e.name, code: e.code, category: e.category,
-          parameters: e.parameters, urgent, status: 'pending', sampleType: e.sampleType,
+          id, patientId: patient.id, examType: e.name, code: e.code, category: (e.labCategory || 'autre') as LabCategory,
+          parameters: e.parameters || [], urgent, status: 'pending', sampleType: (e.sampleType || ''),
           requestedBy: prev.currentUser?.id, requestedAt: new Date().toISOString(),
           invoiceId, price: priceFor(e, ct),
         };
@@ -566,7 +570,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
                   </div>
                   <div className="space-y-3 pr-1">
                     {LAB_CATEGORIES.map((cat) => {
-                      const exams = state.labCatalog.filter((e) => e.category === cat);
+                      const exams = labArticles.filter((e) => e.labCategory === cat);
                       if (exams.length === 0) return null;
                       const ct = state.patients.find((p) => p.id === selectedPatientId)?.clientType || 'comptoir';
                       return (
@@ -581,7 +585,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
                                   className={`text-left p-2 rounded-lg border flex items-center justify-between gap-2 cursor-pointer transition ${sel ? 'border-cyan-500 bg-cyan-50' : 'border-slate-200 hover:bg-slate-50'}`}>
                                   <div>
                                     <div className="text-sm font-medium text-slate-800">{e.name}</div>
-                                    <div className="text-[10px] text-slate-400">{e.code} · {e.sampleType} · {e.durationHours}h</div>
+                                    <div className="text-[10px] text-slate-400">{e.code} · {(e.sampleType || '')} · {(e.durationHours || 0)}h</div>
                                   </div>
                                   <div className="text-right">
                                     <div className="text-xs font-mono font-bold text-slate-700">{formatAr(price)}</div>
@@ -599,7 +603,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
                     <div className="text-sm">
                       <span className="text-slate-500">{selectedExamIds.length} examen(s) · </span>
                       <span className="font-bold font-mono text-slate-800">
-                        {formatAr(state.labCatalog.filter((e) => selectedExamIds.includes(e.id)).reduce((s, e) => s + priceFor(e, state.patients.find((p) => p.id === selectedPatientId)?.clientType || 'comptoir'), 0))}
+                        {formatAr(labArticles.filter((e) => selectedExamIds.includes(e.id)).reduce((s, e) => s + priceFor(e, state.patients.find((p) => p.id === selectedPatientId)?.clientType || 'comptoir'), 0))}
                       </span>
                     </div>
                     <button onClick={createRequests} disabled={selectedExamIds.length === 0} className="px-5 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 font-medium text-sm disabled:opacity-40 cursor-pointer flex items-center gap-2">
@@ -631,7 +635,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">Catégorie</label>
-                  <select value={examForm.category} onChange={(e) => setExamForm({ ...examForm, category: e.target.value as LabCategory })} className="w-full px-2 py-1.5 border rounded cursor-pointer">
+                  <select value={examForm.labCategory} onChange={(e) => setExamForm({ ...examForm, labCategory: e.target.value })} className="w-full px-2 py-1.5 border rounded cursor-pointer">
                     {LAB_CATEGORIES.map((c) => <option key={c} value={c}>{labCategoryLabel(c)}</option>)}
                   </select>
                 </div>

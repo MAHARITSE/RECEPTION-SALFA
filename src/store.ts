@@ -1,9 +1,9 @@
 import { v4 as uuidv4 } from 'uuid';
 import type {
-  Patient, Consultation, Invoice, CashClosing, Article, AuditLog, VitalSigns, Prescription,
+  Patient, Consultation, Invoice, CashClosing, Article, AuditLog, VitalSigns,
   Notification, UserRole, User, Company, Fournisseur, Famille,
   Message, StockTransfer, StockEntry, ClientType, ArticleFamily, TransferCategory,
-  LabExamCatalog, LabCategory, LabRequest, PatientJourneyEvent, JourneyDepartment,
+  LabCategory, LabRequest, PatientJourneyEvent, JourneyDepartment,
   WarehouseService, StockMovement, InventorySession, StockLocation,
   MovementHeader, MovementLine, MovementType, Vente, VenteLine, VentePayment, VenteType, CompanyBillingAccount
 } from './types';
@@ -345,7 +345,7 @@ export function updateVenteLine(
   const ln = (state.venteLines || []).find(l => l.id === lineId);
   if (!ln) return null;
   state.venteLines = (state.venteLines || []).map(l => l.id === lineId ? { ...l, ...patch } : l);
-  recomputeVenteTotals(state, ln.venteId);
+  if (ln.venteId) recomputeVenteTotals(state, ln.venteId);
   return (state.venteLines || []).find(l => l.id === lineId) || null;
 }
 
@@ -354,7 +354,7 @@ export function deleteVenteLine(state: AppState, lineId: string): boolean {
   const ln = (state.venteLines || []).find(l => l.id === lineId);
   if (!ln) return false;
   state.venteLines = (state.venteLines || []).filter(l => l.id !== lineId);
-  recomputeVenteTotals(state, ln.venteId);
+  if (ln.venteId) recomputeVenteTotals(state, ln.venteId);
   return true;
 }
 
@@ -564,7 +564,6 @@ export interface AppState {
   familles: Famille[];
   journey: PatientJourneyEvent[];          // parcours patient (timeline)
   labRequests: LabRequest[];               // demandes d'analyse autonomes
-  labCatalog: LabExamCatalog[];            // catalogue d'examens
   warehouseServices: WarehouseService[];  // services destinataires du dépôt
   stockMovements: StockMovement[];         // entrées / sorties / transferts (legacy)
   inventorySessions: InventorySession[];   // inventaires
@@ -601,8 +600,8 @@ export function addNotification(s: AppState, targetRole: UserRole, message: stri
   s.notifications.unshift(n); return n;
 }
 
-export const ARTICLE_FAMILIES: ArticleFamily[] = ['MEDIC','LABO','DENT','ECHO'];
-export function familyLabel(f: ArticleFamily): string { return { MEDIC:'Médicaments', LABO:'Laboratoire', DENT:'Dentaire', ECHO:'Échographie' }[f]; }
+export const ARTICLE_FAMILIES: ArticleFamily[] = ['MEDIC','LABO','DENT','ECHO','CONSULT','HOSPIT','BLOC'];
+export function familyLabel(f: ArticleFamily): string { return { MEDIC:'Médicaments', LABO:'Laboratoire', DENT:'Dentaire', ECHO:'Échographie', CONSULT:'Consultation', HOSPIT:'Hospitalisation', BLOC:'Bloc opératoire' }[f] || f; }
 
 export const TRANSFER_CATEGORIES: TransferCategory[] = ['central', 'hospitalisation', 'bloc', 'approvisionnement'];
 export function transferCategoryLabel(c: TransferCategory): string {
@@ -645,40 +644,96 @@ export function labCategoryLabel(c: LabCategory): string {
     hematologie: 'Hématologie', biochimie: 'Biochimie', serologie: 'Sérologie',
     bacteriologie: 'Bactériologie', parasitologie: 'Parasitologie', immunologie: 'Immunologie',
     hemostase: 'Hémostase', autre: 'Autre',
-  }[c];
+  }[c] || c;
 }
 
-export const seedLabCatalog: LabExamCatalog[] = [
+/* ====== Helper : fabrique un article-prestation (labo, écho, consult, etc.) ====== */
+const prestationArticle = (code: string, name: string, pc: number, ps: number, pe: number, pu: number, dur: number, family: ArticleFamily, labCat?: string, params?: string[], sample?: string): Article => ({
+  id: uuidv4(), name, family, unit: 'acte', code,
+  priceComptoir: pc, priceSociete: ps, priceExterne: pe, purchasePrice: 0,
+  stockCentral: 0, stockPharmacie: 0, minStockCentral: 0, minStockPharmacie: 0,
+  alertDisabledCentral: true, alertDisabledPharmacie: true,
+  urgentPrice: pu, durationHours: dur,
+  labCategory: labCat, parameters: params, sampleType: sample,
+});
+
+/** Articles de prestations — examens laboratoire (family: 'LABO'). */
+export const seedLabArticles: Article[] = [
   // Hématologie
-  { id: uuidv4(), code: 'HEM001', name: 'NFS', category: 'hematologie', parameters: ['Globules Rouges', 'Globules Blancs', 'Hémoglobine', 'Plaquettes', 'Hématocrite'], sampleType: 'Sang veineux (EDTA)', priceComptoir: 15000, priceSociete: 13000, priceExterne: 18000, urgentPrice: 25000, durationHours: 4 },
-  { id: uuidv4(), code: 'HEM002', name: 'Groupe Sanguin & Rhésus', category: 'hematologie', parameters: ['Groupe ABO', 'Rhésus'], sampleType: 'Sang veineux', priceComptoir: 10000, priceSociete: 9000, priceExterne: 12000, urgentPrice: 15000, durationHours: 2 },
-  { id: uuidv4(), code: 'HEM003', name: 'Réticulocytes', category: 'hematologie', parameters: ['Réticulocytes'], sampleType: 'Sang veineux (EDTA)', priceComptoir: 12000, priceSociete: 11000, priceExterne: 14000, urgentPrice: 20000, durationHours: 3 },
-  { id: uuidv4(), code: 'HEM004', name: 'TP / INR', category: 'hemostase', parameters: ['TP', 'INR'], sampleType: 'Sang veineux (citraté)', priceComptoir: 12000, priceSociete: 11000, priceExterne: 15000, urgentPrice: 20000, durationHours: 2 },
-  { id: uuidv4(), code: 'HEM005', name: 'TCA', category: 'hemostase', parameters: ['TCA'], sampleType: 'Sang veineux (citraté)', priceComptoir: 12000, priceSociete: 11000, priceExterne: 15000, urgentPrice: 20000, durationHours: 3 },
+  prestationArticle('HEM001', 'NFS', 15000, 13000, 18000, 25000, 4, 'LABO', 'hematologie', ['Globules Rouges', 'Globules Blancs', 'Hémoglobine', 'Plaquettes', 'Hématocrite'], 'Sang veineux (EDTA)'),
+  prestationArticle('HEM002', 'Groupe Sanguin & Rhésus', 10000, 9000, 12000, 15000, 2, 'LABO', 'hematologie', ['Groupe ABO', 'Rhésus'], 'Sang veineux'),
+  prestationArticle('HEM003', 'Réticulocytes', 12000, 11000, 14000, 20000, 3, 'LABO', 'hematologie', ['Réticulocytes'], 'Sang veineux (EDTA)'),
+  prestationArticle('HEM004', 'TP / INR', 12000, 11000, 15000, 20000, 2, 'LABO', 'hemostase', ['TP', 'INR'], 'Sang veineux (citraté)'),
+  prestationArticle('HEM005', 'TCA', 12000, 11000, 15000, 20000, 3, 'LABO', 'hemostase', ['TCA'], 'Sang veineux (citraté)'),
   // Biochimie
-  { id: uuidv4(), code: 'BIO001', name: 'Glycémie à jeun', category: 'biochimie', parameters: ['Glucose'], sampleType: 'Sang veineux', priceComptoir: 8000, priceSociete: 7000, priceExterne: 10000, urgentPrice: 15000, durationHours: 1 },
-  { id: uuidv4(), code: 'BIO002', name: 'Créatinine', category: 'biochimie', parameters: ['Créatinine'], sampleType: 'Sang veineux', priceComptoir: 10000, priceSociete: 9000, priceExterne: 12000, urgentPrice: 18000, durationHours: 2 },
-  { id: uuidv4(), code: 'BIO003', name: 'Bilan hépatique', category: 'biochimie', parameters: ['ASAT', 'ALAT', 'GGT', 'Bilirubine'], sampleType: 'Sang veineux', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 40000, durationHours: 4 },
-  { id: uuidv4(), code: 'BIO004', name: 'Ionogramme (Na/K/Cl)', category: 'biochimie', parameters: ['Sodium', 'Potassium', 'Chlore'], sampleType: 'Sang veineux', priceComptoir: 15000, priceSociete: 13000, priceExterne: 18000, urgentPrice: 25000, durationHours: 2 },
-  { id: uuidv4(), code: 'BIO005', name: 'Bilan lipidique', category: 'biochimie', parameters: ['Cholestérol Total', 'HDL', 'LDL', 'Triglycérides'], sampleType: 'Sang veineux', priceComptoir: 20000, priceSociete: 18000, priceExterne: 25000, urgentPrice: 35000, durationHours: 4 },
-  { id: uuidv4(), code: 'BIO006', name: 'Urée', category: 'biochimie', parameters: ['Urée'], sampleType: 'Sang veineux', priceComptoir: 9000, priceSociete: 8000, priceExterne: 11000, urgentPrice: 16000, durationHours: 2 },
-  { id: uuidv4(), code: 'BIO007', name: 'Acide Urique', category: 'biochimie', parameters: ['Acide Urique'], sampleType: 'Sang veineux', priceComptoir: 9000, priceSociete: 8000, priceExterne: 11000, urgentPrice: 16000, durationHours: 2 },
-  { id: uuidv4(), code: 'BIO008', name: 'CRP', category: 'biochimie', parameters: ['CRP'], sampleType: 'Sang veineux', priceComptoir: 7000, priceSociete: 6000, priceExterne: 9000, urgentPrice: 12000, durationHours: 1 },
+  prestationArticle('BIO001', 'Glycémie à jeun', 8000, 7000, 10000, 15000, 1, 'LABO', 'biochimie', ['Glucose'], 'Sang veineux'),
+  prestationArticle('BIO002', 'Créatinine', 10000, 9000, 12000, 18000, 2, 'LABO', 'biochimie', ['Créatinine'], 'Sang veineux'),
+  prestationArticle('BIO003', 'Bilan hépatique', 25000, 22000, 30000, 40000, 4, 'LABO', 'biochimie', ['ASAT', 'ALAT', 'GGT', 'Bilirubine'], 'Sang veineux'),
+  prestationArticle('BIO004', 'Ionogramme (Na/K/Cl)', 15000, 13000, 18000, 25000, 2, 'LABO', 'biochimie', ['Sodium', 'Potassium', 'Chlore'], 'Sang veineux'),
+  prestationArticle('BIO005', 'Bilan lipidique', 20000, 18000, 25000, 35000, 4, 'LABO', 'biochimie', ['Cholestérol Total', 'HDL', 'LDL', 'Triglycérides'], 'Sang veineux'),
+  prestationArticle('BIO006', 'Urée', 9000, 8000, 11000, 16000, 2, 'LABO', 'biochimie', ['Urée'], 'Sang veineux'),
+  prestationArticle('BIO007', 'Acide Urique', 9000, 8000, 11000, 16000, 2, 'LABO', 'biochimie', ['Acide Urique'], 'Sang veineux'),
+  prestationArticle('BIO008', 'CRP', 7000, 6000, 9000, 12000, 1, 'LABO', 'biochimie', ['CRP'], 'Sang veineux'),
   // Sérologie
-  { id: uuidv4(), code: 'SER001', name: 'Sérologie VIH', category: 'serologie', parameters: ['VIH'], sampleType: 'Sang (sérum)', priceComptoir: 20000, priceSociete: 18000, priceExterne: 25000, urgentPrice: 30000, durationHours: 24 },
-  { id: uuidv4(), code: 'SER002', name: 'Sérologie HBs (Hépatite B)', category: 'serologie', parameters: ['HBs'], sampleType: 'Sang (sérum)', priceComptoir: 18000, priceSociete: 16000, priceExterne: 22000, urgentPrice: 28000, durationHours: 24 },
-  { id: uuidv4(), code: 'SER003', name: 'Dengue IgM/IgG', category: 'serologie', parameters: ['Dengue IgM/IgG'], sampleType: 'Sang (sérum)', priceComptoir: 22000, priceSociete: 20000, priceExterne: 28000, urgentPrice: 35000, durationHours: 24 },
-  { id: uuidv4(), code: 'SER004', name: 'COVID-19 (PCR)', category: 'serologie', parameters: ['SARS-CoV-2'], sampleType: 'Prélèvement nasopharyngé', priceComptoir: 35000, priceSociete: 32000, priceExterne: 45000, urgentPrice: 50000, durationHours: 6 },
+  prestationArticle('SER001', 'Sérologie VIH', 20000, 18000, 25000, 30000, 24, 'LABO', 'serologie', ['VIH'], 'Sang (sérum)'),
+  prestationArticle('SER002', 'Sérologie HBs (Hépatite B)', 18000, 16000, 22000, 28000, 24, 'LABO', 'serologie', ['HBs'], 'Sang (sérum)'),
+  prestationArticle('SER003', 'Dengue IgM/IgG', 22000, 20000, 28000, 35000, 24, 'LABO', 'serologie', ['Dengue IgM/IgG'], 'Sang (sérum)'),
+  prestationArticle('SER004', 'COVID-19 (PCR)', 35000, 32000, 45000, 50000, 6, 'LABO', 'serologie', ['SARS-CoV-2'], 'Prélèvement nasopharyngé'),
   // Bactériologie
-  { id: uuidv4(), code: 'BAC001', name: 'ECBU (Culture + Antibiogramme)', category: 'bacteriologie', parameters: ['Culture', 'Antibiogramme'], sampleType: 'Urine (pot stérile)', priceComptoir: 15000, priceSociete: 13000, priceExterne: 18000, urgentPrice: 25000, durationHours: 48 },
-  { id: uuidv4(), code: 'BAC002', name: 'Hémocultures', category: 'bacteriologie', parameters: ['Culture'], sampleType: 'Sang veineux', priceComptoir: 20000, priceSociete: 18000, priceExterne: 25000, urgentPrice: 30000, durationHours: 72 },
+  prestationArticle('BAC001', 'ECBU (Culture + Antibiogramme)', 15000, 13000, 18000, 25000, 48, 'LABO', 'bacteriologie', ['Culture', 'Antibiogramme'], 'Urine (pot stérile)'),
+  prestationArticle('BAC002', 'Hémocultures', 20000, 18000, 25000, 30000, 72, 'LABO', 'bacteriologie', ['Culture'], 'Sang veineux'),
   // Parasitologie
-  { id: uuidv4(), code: 'PAR001', name: 'Goutte épaisse', category: 'parasitologie', parameters: ['Plasmodium'], sampleType: 'Sang veineux', priceComptoir: 10000, priceSociete: 9000, priceExterne: 12000, urgentPrice: 18000, durationHours: 4 },
-  { id: uuidv4(), code: 'PAR002', name: 'Coprologie', category: 'parasitologie', parameters: ['Parasites', 'Candida'], sampleType: 'Selles (pot propre)', priceComptoir: 8000, priceSociete: 7000, priceExterne: 10000, urgentPrice: 15000, durationHours: 24 },
+  prestationArticle('PAR001', 'Goutte épaisse', 10000, 9000, 12000, 18000, 4, 'LABO', 'parasitologie', ['Plasmodium'], 'Sang veineux'),
+  prestationArticle('PAR002', 'Coprologie', 8000, 7000, 10000, 15000, 24, 'LABO', 'parasitologie', ['Parasites', 'Candida'], 'Selles (pot propre)'),
   // Immunologie
-  { id: uuidv4(), code: 'IMM001', name: 'TSH', category: 'immunologie', parameters: ['TSH'], sampleType: 'Sang (sérum)', priceComptoir: 18000, priceSociete: 16000, priceExterne: 22000, urgentPrice: 28000, durationHours: 24 },
-  { id: uuidv4(), code: 'IMM002', name: 'IgE totales', category: 'immunologie', parameters: ['IgE'], sampleType: 'Sang (sérum)', priceComptoir: 15000, priceSociete: 13000, priceExterne: 18000, urgentPrice: 24000, durationHours: 24 },
+  prestationArticle('IMM001', 'TSH', 18000, 16000, 22000, 28000, 24, 'LABO', 'immunologie', ['TSH'], 'Sang (sérum)'),
+  prestationArticle('IMM002', 'IgE totales', 15000, 13000, 18000, 24000, 24, 'LABO', 'immunologie', ['IgE'], 'Sang (sérum)'),
 ];
+
+/** Articles de prestations — échographies (family: 'ECHO'). */
+export const seedEchoArticles: Article[] = [
+  prestationArticle('ECH001', 'Échographie abdominale', 25000, 22000, 30000, 35000, 1, 'ECHO'),
+  prestationArticle('ECH002', 'Échographie pelvienne', 25000, 22000, 30000, 35000, 1, 'ECHO'),
+  prestationArticle('ECH003', 'Échographie obstétricale', 25000, 22000, 30000, 35000, 1, 'ECHO'),
+  prestationArticle('ECH004', 'Échographie cardiaque (ETT)', 40000, 35000, 45000, 50000, 1, 'ECHO'),
+  prestationArticle('ECH005', 'Échographie rénale', 25000, 22000, 30000, 35000, 1, 'ECHO'),
+  prestationArticle('ECH006', 'Échographie thyroïdienne', 25000, 22000, 30000, 35000, 1, 'ECHO'),
+  prestationArticle('ECH007', 'Échographie mammaire', 25000, 22000, 30000, 35000, 1, 'ECHO'),
+  prestationArticle('ECH008', 'Échographie des parties molles', 25000, 22000, 30000, 35000, 1, 'ECHO'),
+  prestationArticle('ECH009', 'Échographie Doppler', 35000, 30000, 40000, 45000, 1, 'ECHO'),
+  prestationArticle('ECH010', 'Échographie prostatique', 25000, 22000, 30000, 35000, 1, 'ECHO'),
+];
+
+/** Articles de prestations — consultations (family: 'CONSULT'). */
+export const seedConsultArticles: Article[] = [
+  prestationArticle('CONSULT001', 'Consultation générale', 15000, 13000, 20000, 25000, 0, 'CONSULT'),
+  prestationArticle('CONSULT002', 'Consultation spécialiste', 25000, 22000, 30000, 35000, 0, 'CONSULT'),
+  prestationArticle('CONSULT003', 'Consultation urgence', 20000, 18000, 25000, 30000, 0, 'CONSULT'),
+];
+
+/** Articles de prestations — hospitalisation (family: 'HOSPIT'). */
+export const seedHospitArticles: Article[] = [
+  prestationArticle('HOSP001', 'Séjour hospitalier (nuit)', 50000, 45000, 60000, 70000, 24, 'HOSPIT'),
+  prestationArticle('HOSP002', 'Journée hospitalisation', 35000, 30000, 40000, 50000, 24, 'HOSPIT'),
+  prestationArticle('HOSP003', 'Chambre VIP (nuit)', 80000, 70000, 100000, 120000, 24, 'HOSPIT'),
+];
+
+/** Articles de prestations — bloc opératoire (family: 'BLOC'). */
+export const seedBlocArticles: Article[] = [
+  prestationArticle('BLOC001', 'Acte bloc opératoire (standard)', 150000, 130000, 180000, 200000, 0, 'BLOC'),
+  prestationArticle('BLOC002', 'Acte bloc opératoire (complexe)', 300000, 270000, 350000, 400000, 0, 'BLOC'),
+  prestationArticle('BLOC003', 'Anesthésie générale', 80000, 70000, 100000, 120000, 0, 'BLOC'),
+];
+
+/** Retourne les articles d'une famille donnée. */
+export function getArticlesByFamily(articles: Article[], family: ArticleFamily): Article[] {
+  return articles.filter(a => a.family === family);
+}
+
+/** Compatibilité ascendante — retourne les articles labo (famille 'LABO'). */
+export function getLabCatalog(articles: Article[]): Article[] {
+  return getArticlesByFamily(articles, 'LABO');
+}
 
 /**
  * Retire un passage de la file d'attente sans jamais supprimer le dossier patient.
@@ -701,7 +756,7 @@ export function purgePatientFromQueue(state: AppState, patientId: string): void 
   // Miroir unifié des ventes : on ne retire que les ventes encore en attente du patient
   const pendingVenteIds = new Set(state.ventes.filter((v) => v.patientId === patientId && v.status === 'pending').map((v) => v.id));
   state.ventes = state.ventes.filter((v) => !pendingVenteIds.has(v.id));
-  state.venteLines = state.venteLines.filter((l) => !pendingVenteIds.has(l.venteId));
+  state.venteLines = state.venteLines.filter((l) => !l.venteId || !pendingVenteIds.has(l.venteId));
   state.ventePayments = state.ventePayments.filter((p) => !pendingVenteIds.has(p.venteId));
   // Le dossier est conservé : il sort seulement de la file active.
   state.patients = state.patients.map((p) => p.id === patientId

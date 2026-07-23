@@ -2,7 +2,8 @@
  * 50 patients, chacun avec ≥ 3 visites par mois sur les 12 derniers mois.
  * Les IDs sont stables afin que les relations restent identiques à chaque chargement. */
 import type { AppState } from '../store';
-import type { Article, Company, Consultation, Invoice, LabExamCatalog, Patient, User, Vente, VenteLine, VentePayment } from '../types';
+import { seedLabArticles, seedEchoArticles, seedConsultArticles, seedHospitArticles, seedBlocArticles } from '../store';
+import type { Article, Company, Consultation, Invoice, Patient, User, Vente, VenteLine, VentePayment } from '../types';
 
 const DAY = 86_400_000;
 const END = Date.UTC(2026, 6, 21, 12); // date de référence fixe: reproductible
@@ -30,8 +31,19 @@ const users: User[] = [
   return {id,name,role:role as User['role'],password:passwords[role]||'demo'};
 });
 const articleNames = ['Paracétamol 500 mg','Amoxicilline 500 mg','Ibuprofène 400 mg','Oméprazole 20 mg','Metformine 850 mg','Amlodipine 5 mg','Ceftriaxone 1 g','Sérum physiologique','Gants examen','Tube EDTA','Réactif glycémie','Bandelette urinaire','Gel échographie','Papier thermique','Composite dentaire','Anesthésique dentaire','Masque chirurgical','Compresses stériles','Solution antiseptique','Vitamine C 500 mg'];
-const articles: Article[] = articleNames.map((name,i)=>({id:id('art',i),name,family:i<10||i>15?'MEDIC':i<13?'LABO':i<15?'ECHO':'DENT',unit:i===7?'poche':i===9?'unité':'boîte',barcode:`619${String(i).padStart(9,'0')}`,priceComptoir:500+(i+1)*550,priceSociete:450+(i+1)*480,priceExterne:650+(i+1)*620,purchasePrice:250+(i+1)*260,stockCentral:1000+i*79,stockPharmacie:180+i*13,minStockCentral:80,minStockPharmacie:30,supplier:`Fournisseur Synthèse ${i%12+1}`,expiryDate:'2027-12-31'}));
-const labCatalog: LabExamCatalog[] = ['NFS','Glycémie à jeun','Créatinine','Bilan lipidique','CRP','ECBU','Goutte épaisse','TSH'].map((name,i)=>({id:id('exam',i),code:`LAB${String(i+1).padStart(3,'0')}`,name,category:i<2?'hematologie':'biochimie',parameters:[name],sampleType:'Sang veineux',priceComptoir:8000+i*1800,priceSociete:7000+i*1500,priceExterne:10000+i*2000,urgentPrice:13000+i*2500,durationHours:4}));
+// Articles physiques (médicaments, consommables labo, dentaire, écho)
+const physicalArticles: Article[] = articleNames.map((name,i)=>({id:id('art',i),name,family:i<10||i>15?'MEDIC':i<13?'LABO':i<15?'ECHO':'DENT',unit:i===7?'poche':i===9?'unité':'boîte',barcode:`619${String(i).padStart(9,'0')}`,priceComptoir:500+(i+1)*550,priceSociete:450+(i+1)*480,priceExterne:650+(i+1)*620,purchasePrice:250+(i+1)*260,stockCentral:1000+i*79,stockPharmacie:180+i*13,minStockCentral:80,minStockPharmacie:30,supplier:`Fournisseur Synthèse ${i%12+1}`,expiryDate:'2027-12-31'}));
+// Tous les articles unifiés = physiques + prestations (labo, écho, consult, hospit, bloc)
+const articles: Article[] = [
+  ...physicalArticles,
+  ...seedLabArticles,
+  ...seedEchoArticles,
+  ...seedConsultArticles,
+  ...seedHospitArticles,
+  ...seedBlocArticles,
+];
+// Le catalogue labo est désormais un sous-ensemble de articles[] (family: 'LABO')
+const labArticles = seedLabArticles; // Articles de prestations labo
 
 /** Construit une date ISO dans un mois donné (offset négatif depuis END) avec un jour précis. */
 function isoMonthDay(monthOffset: number, day: number, hour: number): string {
@@ -216,15 +228,15 @@ export function createMassiveDemoState(): AppState {
 
         // ~1/3 des visites ont une demande labo
         if (k % 3 === 0) {
-          const exam = labCatalog[k % labCatalog.length];
+          const exam = labArticles[k % labArticles.length];
           labRequests.push({
             id: id('labreq', k),
             patientId: patient.id,
             consultationId: cid,
             examType: exam.name,
             code: exam.code,
-            category: exam.category,
-            parameters: exam.parameters,
+            category: exam.labCategory as any,
+            parameters: exam.parameters || [],
             urgent: k % 11 === 0,
             status: k % 4 === 0 ? 'completed' : 'pending',
             sampleType: exam.sampleType,
@@ -420,10 +432,9 @@ export function createMassiveDemoState(): AppState {
       address: `Zone commerciale ${n + 1}`,
       createdAt: iso(730 - n),
     })),
-    familles: ['MEDIC', 'LABO', 'DENT', 'ECHO'].map((x, n) => ({ id: id('family', n), code: x, name: x, color: 'blue', order: n })),
+    familles: ['MEDIC', 'LABO', 'DENT', 'ECHO', 'CONSULT', 'HOSPIT', 'BLOC'].map((x, n) => ({ id: id('family', n), code: x, name: x, color: ['blue','emerald','pink','purple','cyan','rose','orange'][n] || 'blue', order: n })),
     journey,
     labRequests,
-    labCatalog,
     warehouseServices: [
       { id: 'svc-pharmacie', code: 'PHA', name: 'Pharmacie', kind: 'pharmacie', color: 'purple', active: true, createdAt: iso(730) },
       { id: 'svc-bloc', code: 'BLOC', name: 'Bloc opératoire', kind: 'service', color: 'blue', active: true, createdAt: iso(730) },
