@@ -45,6 +45,8 @@ Toutes les entités sont stockées dans des tableaux typés TypeScript.
 | `blacklisted` | `boolean?` | Bloqué ? |
 | `blacklistReason` | `string?` | Motif blacklist |
 | `blacklistDate` | `string?` | Date blacklist |
+| `famille` | `string?` | **Base de famille** (ex: "Famille Dupont", "Famille Rakoto") |
+| `lienFamilial` | `string?` | Lien familial (Chef de famille, Épouse, Enfant, Parent, etc.) |
 
 **Statuts possibles (`PatientStatus`) :**
 `registered` → `waiting_consultation` → `in_consultation` → `consulted_awaiting_payment` → `invoice_paid` → `medications_delivered` → `analyses_pending` → `analyses_complete` → `completed`
