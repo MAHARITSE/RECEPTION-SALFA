@@ -1,4 +1,4 @@
-import type { Invoice, Patient, TicketSettings, User, HbLine, LabRequest, Company, Consultation, PatientJourneyEvent, EchoRequest, HbRecord, PharmaDeliveryClosing } from '../types';
+import type { Invoice, Patient, TicketSettings, User, Prescription, LabRequest, Company, Consultation, PatientJourneyEvent, EchoRequest, HbRecord, PharmaDeliveryClosing } from '../types';
 
 /** Échappe les caractères HTML réservés dans une chaîne.
  *  Décode d'abord les entités HTML déjà présentes pour éviter le
@@ -263,7 +263,7 @@ export function printPrescriptionTicket(
   patient: Patient,
   doctor: User,
   date: Date,
-  prescriptions: HbLine[],
+  prescriptions: Prescription[],
   diagnosis: string,
 ) {
   const lines = prescriptions

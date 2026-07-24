@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import type {
-  Patient, Consultation, Invoice, CashClosing, Article, AuditLog, VitalSigns,
+  Patient, Consultation, Invoice, CashClosing, Article, AuditLog, VitalSigns, Prescription,
   Notification, UserRole, User, Company, Fournisseur, Famille,
   Message, StockTransfer, StockEntry, ClientType, ArticleFamily, TransferCategory,
   LabExamCatalog, LabCategory, LabRequest, PatientJourneyEvent, JourneyDepartment,
@@ -520,13 +520,7 @@ export function addNotification(s: AppState, targetRole: UserRole, message: stri
 }
 
 export const ARTICLE_FAMILIES: ArticleFamily[] = ['MEDIC','LABO','DENT','ECHO'];
-export function familyLabel(f?: ArticleFamily | string, familles: Famille[] = []): string {
-  if (!f) return '';
-  const dynamic = familles.find(x => x.code === f);
-  if (dynamic) return dynamic.name;
-  const defaults: Record<string, string> = { MEDIC:'Médicaments', LABO:'Laboratoire', DENT:'Dentaire', ECHO:'Échographie' };
-  return defaults[f] || f;
-}
+export function familyLabel(f: ArticleFamily): string { return { MEDIC:'Médicaments', LABO:'Laboratoire', DENT:'Dentaire', ECHO:'Échographie' }[f]; }
 
 export const TRANSFER_CATEGORIES: TransferCategory[] = ['central', 'hospitalisation', 'bloc', 'approvisionnement'];
 export function transferCategoryLabel(c: TransferCategory): string {

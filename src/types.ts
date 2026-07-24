@@ -1,6 +1,6 @@
 export type UserRole = 'receptionist' | 'doctor' | 'cashier' | 'pharmacy' | 'magasinier' | 'laboratory' | 'admin' | 'billing';
 export type ClientType = 'comptoir' | 'societe' | 'externe';
-export type ArticleFamily = string;
+export type ArticleFamily = 'MEDIC' | 'LABO' | 'DENT' | 'ECHO';
 export type PatientStatus = 'registered' | 'waiting_consultation' | 'in_consultation' | 'consulted_awaiting_payment' | 'invoice_paid' | 'medications_delivered' | 'analyses_pending' | 'analyses_complete' | 'completed';
 
 export interface User { id: string; name: string; role: UserRole; password?: string; }
@@ -62,11 +62,12 @@ export interface Article {
   saleBlockedBy?: string;
 }
 
-/** @deprecated — SUPPRIMÉ. Toutes les lignes de prescription sont désormais
- *  gérées directement via `HbLine` (lignes Hospitalisation / Bloc / Comptoir / Externe).
- *  L'alias `Prescription` est conservé temporairement pour la compatibilité ascendante
- *  et sera retiré dans une prochaine passe. */
-export type Prescription = HbLine;
+export interface Prescription {
+  id: string; articleId: string; articleName: string; quantity: number;
+  posology: string; duration: string; instructions: string;
+  unitPrice: number; discount: number; // remise % par ligne
+  delivered: boolean;
+}
 
 export interface LabResult {
   parameter: string; value: number; unit: string;
@@ -142,8 +143,7 @@ export interface PatientJourneyEvent {
 export interface Consultation {
   id: string; patientId: string; doctorId: string; doctorName: string; date: string;
   vitalSigns: VitalSigns; visitReason: string; diagnosis: string; notes: string;
-  /** Lignes d'ordonnance / articles — unifiées dans HbLine (prescriptions fusionnées). */
-  prescriptions: HbLine[]; labRequests: LabRequest[];
+  prescriptions: Prescription[]; labRequests: LabRequest[];
   echoRequests?: EchoRequest[];
   hospitalizeRequested: boolean; surgeryRequested: boolean; isEmergency: boolean;
 }
@@ -413,22 +413,10 @@ export interface MovementLine {
 /** Ligne article d'un dossier Hospit/Bloc (même structure que ventes externes). */
 export interface HbLine {
   id: string;
-  /** Référence optionnelle vers le catalogue articles. */
-  articleId?: string;
   articleName: string;
-  /** Famille article copiée depuis la base articles. */
-  family?: ArticleFamily;
   quantity: number;
   unitPrice: number;
   discount: number;
-  /** Champs communs avec les prescriptions, utiles si une ligne Hospit/Bloc devient ordonnance. */
-  posology?: string;
-  duration?: string;
-  instructions?: string;
-  delivered?: boolean;
-  deliveredAt?: string;
-  /** Lien vers la ligne de vente unifiée. */
-  venteLineId?: string;
   /** Date d'acte / de sortie — conservée entre validations de lignes. */
   dateSort?: string;
 }
@@ -437,8 +425,6 @@ export interface HbLine {
  *  (caisse de garde), car seul le paiement fait foi : qui saisit n'a pas d'importance. */
 export interface HbRecord {
   id: string;
-  /** Vente unifiée associée au dossier Hospit/Bloc (créée au premier paiement). */
-  venteId?: string;
   patientId?: string;
   patientName: string;
   clientType: ClientType;
@@ -493,26 +479,15 @@ export interface VenteLine {
   articleName: string;
   /** Référence optionnelle vers le catalogue articles. */
   articleId?: string;
-  /** Famille article copiée depuis la base articles (filtrage et états par famille). */
-  family?: ArticleFamily;
-  /** Référence optionnelle vers une ligne de prescription. */
-  prescriptionId?: string;
-  /** Référence optionnelle vers une ligne Hospit/Bloc. */
-  hbLineId?: string;
   /** Quantité. */
   quantity: number;
   /** Prix unitaire (avant remise). */
   unitPrice: number;
   /** Remise % sur la ligne. */
   discount: number;
-  /** Informations de prescription partagées quand la ligne vient d'une ordonnance. */
-  posology?: string;
-  duration?: string;
-  instructions?: string;
-  deliveredAt?: string;
   /** Catégorie (pour les états : pharmacie / labo / hospit…). */
   category?: 'consultation' | 'lab' | 'pharmacy' | 'surgery' | 'hospitalization' | 'echo' | 'bloc' | 'externe';
-  /** 📅 Date d'acte / de sortie — pour les prescriptions = date réelle de délivrance pharmacie. */
+  /** 📅 Date d'acte / de sortie — conservée pour l'historique. */
   dateSort?: string;
 }
 
