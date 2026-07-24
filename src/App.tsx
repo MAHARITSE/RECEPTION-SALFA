@@ -92,9 +92,7 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, EBState> {
 }
 
 function AppInner() {
-  // La création des données de démonstration est volumineuse : l'initialiseur
-  // paresseux évite de la recalculer à chaque rendu (et deux fois en StrictMode).
-  const [state, setState] = useState<AppState>(() => createInitialState());
+  const [state, setState] = useState<AppState>(createInitialState());
   const [view, setView] = useState<AppView>('reception');
   const [showMessaging, setShowMessaging] = useState(false);
   const [messagingRecipientId, setMessagingRecipientId] = useState<string | null>(null);

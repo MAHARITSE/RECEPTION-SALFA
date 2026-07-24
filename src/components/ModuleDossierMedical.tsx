@@ -49,17 +49,13 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
     ? state.journey.filter((j) => j.patientId === pid)
     : [];
 
-  const seenLrIds = new Set<string>();
   const allLabs: DispLab[] = pid
     ? [
         ...consultations.flatMap((c) =>
-          c.labRequests
-            .filter((lr) => { if (seenLrIds.has(lr.id)) return false; seenLrIds.add(lr.id); return true; })
-            .map((lr) => ({ lr, doctorName: c.doctorName, consultationId: c.id })),
+          c.labRequests.map((lr) => ({ lr, doctorName: c.doctorName, consultationId: c.id })),
         ),
         ...state.labRequests
           .filter((l) => l.patientId === pid)
-          .filter((lr) => { if (seenLrIds.has(lr.id)) return false; seenLrIds.add(lr.id); return true; })
           .map((lr) => ({
             lr,
             doctorName: state.users.find((u) => u.id === lr.requestedBy)?.name || '',

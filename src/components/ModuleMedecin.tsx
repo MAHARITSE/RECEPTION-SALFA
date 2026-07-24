@@ -1,14 +1,33 @@
 import { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { Consultation, VitalSigns, VenteLine, LabRequest, ClientType, Invoice, EchoRequest, PatientStatus, Article } from '../types';
-type Prescription = VenteLine; // compat alias
+import type { Consultation, VitalSigns, Prescription, LabRequest, ClientType, Invoice, EchoRequest, PatientStatus } from '../types';
 import type { AppState } from '../store';
 import { addAuditLog, addNotification, formatAr, getPrice, addJourneyEvent, labCategoryLabel, purgePatientFromQueue } from '../store';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
 import { Stethoscope, History, Trash2, AlertTriangle, Heart, FileText, Clock, CheckCircle, Send, Search, Edit2, RotateCcw, Save, FlaskConical, Scan } from 'lucide-react';
 
-// Les échographies sont désormais des articles (family: 'ECHO') dans state.articles
-// On y accède via: state.articles.filter(a => a.family === 'ECHO')
+export interface EchoExamCatalog {
+  id: string;
+  code: string;
+  name: string;
+  priceComptoir: number;
+  priceSociete: number;
+  priceExterne: number;
+  urgentPrice: number;
+}
+
+const ECHO_CATALOG: EchoExamCatalog[] = [
+  { id: 'echo-abd', code: 'ECH001', name: 'Échographie abdominale', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 35000 },
+  { id: 'echo-pel', code: 'ECH002', name: 'Échographie pelvienne', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 35000 },
+  { id: 'echo-obs', code: 'ECH003', name: 'Échographie obstétricale', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 35000 },
+  { id: 'echo-car', code: 'ECH004', name: 'Échographie cardiaque (ETT)', priceComptoir: 40000, priceSociete: 35000, priceExterne: 45000, urgentPrice: 50000 },
+  { id: 'echo-ren', code: 'ECH005', name: 'Échographie rénale', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 35000 },
+  { id: 'echo-thy', code: 'ECH006', name: 'Échographie thyroïdienne', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 35000 },
+  { id: 'echo-mam', code: 'ECH007', name: 'Échographie mammaire', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 35000 },
+  { id: 'echo-pmo', code: 'ECH008', name: 'Échographie des parties molles', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 35000 },
+  { id: 'echo-dop', code: 'ECH009', name: 'Échographie Doppler', priceComptoir: 35000, priceSociete: 30000, priceExterne: 40000, urgentPrice: 45000 },
+  { id: 'echo-pro', code: 'ECH010', name: 'Échographie prostatique', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 35000 },
+];
 
 interface Props {
   state: AppState;
@@ -84,24 +103,24 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
 
   // Catalogue labo : recherche + prix + brouillon de demandes d'analyses
   const labFiltered = labSearch.length >= 1
-    ? state.articles.filter(a => a.family === 'LABO').filter((e) => e.name.toLowerCase().includes(labSearch.toLowerCase()) || (e.code || '').toLowerCase().includes(labSearch.toLowerCase()))
+    ? state.labCatalog.filter((e) => e.name.toLowerCase().includes(labSearch.toLowerCase()) || e.code.toLowerCase().includes(labSearch.toLowerCase()))
     : [];
   const priceForExam = (examId: string, ct: ClientType, urgent: boolean) => {
-    const e = state.articles.find(a => a.family === 'LABO' && a.id === examId);
+    const e = state.labCatalog.find((x) => x.id === examId);
     if (!e) return 0;
-    if (urgent) return e.urgentPrice || 0;
+    if (urgent) return e.urgentPrice;
     return ct === 'societe' ? e.priceSociete : ct === 'externe' ? e.priceExterne : e.priceComptoir;
   };
   const labTotal = labDraft.reduce((s, d) => s + priceForExam(d.examId, clientType, d.urgent), 0);
 
   // Catalogue écho : recherche + prix + brouillon de demandes d'échographies
   const echoFiltered = echoSearch.length >= 1
-    ? state.articles.filter(a => a.family === 'ECHO').filter((e) => e.name.toLowerCase().includes(echoSearch.toLowerCase()) || (e.code || '').toLowerCase().includes(echoSearch.toLowerCase()))
+    ? ECHO_CATALOG.filter((e) => e.name.toLowerCase().includes(echoSearch.toLowerCase()) || e.code.toLowerCase().includes(echoSearch.toLowerCase()))
     : [];
   const echoPriceForExam = (examId: string, ct: ClientType, urgent: boolean) => {
-    const e = state.articles.filter(a => a.family === 'ECHO').find((x) => x.id === examId);
+    const e = ECHO_CATALOG.find((x) => x.id === examId);
     if (!e) return 0;
-    if (urgent) return e.urgentPrice || 0;
+    if (urgent) return e.urgentPrice;
     return ct === 'societe' ? e.priceSociete : ct === 'externe' ? e.priceExterne : e.priceComptoir;
   };
   const echoTotal = echoDraft.reduce((s, d) => s + echoPriceForExam(d.examId, clientType, d.urgent), 0);
@@ -206,7 +225,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     // Réinitialiser le formulaire local (identique à la fin de validation)
     setSelectedPatientId(null); setConsultForm({ visitReason: '', diagnosis: '', notes: '', isEmergency: false, hospitalizeRequested: false, surgeryRequested: false });
     setVitals({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' });
-    setLines([]); setSearchQuery(''); setSelectedLineId(null); setIsNewLine(false);
+    setLines([]); setShowHistory(false); setSearchQuery(''); setSelectedLineId(null); setIsNewLine(false);
     setArticleSearch(''); setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
     setLabDraft([]); setLabSearch(''); setEchoDraft([]); setEchoSearch('');
     setLabDraftIdx(-1); setEchoDraftIdx(-1);
@@ -389,13 +408,13 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
     // Restaurer les demandes d'analyses labo dans le brouillon
     const restoredLabDraft = (c.labRequests || []).map((lr) => {
-      const catalogMatch = state.articles.filter(a => a.family === 'LABO').find((e) => e.name === lr.examType && (e.code || '') === lr.code);
+      const catalogMatch = state.labCatalog.find((e) => e.name === lr.examType && e.code === lr.code);
       return catalogMatch ? { examId: catalogMatch.id, urgent: lr.urgent } : null;
     }).filter((d): d is { examId: string; urgent: boolean } => d !== null);
     setLabDraft(restoredLabDraft); setLabSearch(''); setLabSearchIdx(0);
     // Restaurer les demandes d'échographie dans le brouillon
     const restoredEchoDraft = (c.echoRequests || []).map((er) => {
-      const catalogMatch = state.articles.filter(a => a.family === 'ECHO').find((e) => e.name === er.examType);
+      const catalogMatch = ECHO_CATALOG.find((e) => e.name === er.examType);
       return catalogMatch ? { examId: catalogMatch.id, urgent: er.urgent, notes: er.notes || '' } : null;
     }).filter((d): d is { examId: string; urgent: boolean; notes: string } => d !== null);
     setEchoDraft(restoredEchoDraft); setEchoSearch(''); setEchoSearchIdx(0);
@@ -424,19 +443,19 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     // ---- Analyses labo -> facture en attente (bon imprimé à la CAISSE après paiement) ----
     const labInvoiceId = labDraft.length > 0 ? uuidv4() : null;
     const newLabRequests: LabRequest[] = labDraft.map((d) => {
-      const e = state.articles.find(a => a.family === 'LABO' && a.id === d.examId)!;
-      const price = d.urgent ? (e.urgentPrice || 0) : ct === 'societe' ? e.priceSociete : ct === 'externe' ? e.priceExterne : e.priceComptoir;
+      const e = state.labCatalog.find((x) => x.id === d.examId)!;
+      const price = d.urgent ? e.urgentPrice : ct === 'societe' ? e.priceSociete : ct === 'externe' ? e.priceExterne : e.priceComptoir;
       return {
         id: uuidv4(), patientId: selectedPatientId, consultationId: consultId, examType: e.name, code: e.code,
-        category: (e.labCategory || 'autre') as import('../types').LabCategory, parameters: [...(e.parameters || [])], urgent: d.urgent, status: 'pending' as const,
-        sampleType: e.sampleType || '', requestedBy: state.currentUser?.id || '', requestedAt: new Date().toISOString(),
+        category: e.category, parameters: [...e.parameters], urgent: d.urgent, status: 'pending' as const,
+        sampleType: e.sampleType, requestedBy: state.currentUser?.id || '', requestedAt: new Date().toISOString(),
         invoiceId: labInvoiceId || undefined, price,
       };
     });
     // ---- Échographies -> facture en attente (bon imprimé à la CAISSE après paiement) ----
     const echoInvoiceId = echoDraft.length > 0 ? uuidv4() : null;
     const newEchoRequests: EchoRequest[] = echoDraft.map((d) => {
-      const e = state.articles.filter(a => a.family === 'ECHO').find((x) => x.id === d.examId);
+      const e = ECHO_CATALOG.find((x) => x.id === d.examId);
       const examName = e ? e.name : 'Échographie';
       const price = echoPriceForExam(d.examId, ct, d.urgent);
       return {
@@ -511,7 +530,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     // }
     setSelectedPatientId(null); setConsultForm({ visitReason: '', diagnosis: '', notes: '', isEmergency: false, hospitalizeRequested: false, surgeryRequested: false });
     setVitals({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' });
-    setLines([]); setSearchQuery(''); setSelectedLineId(null); setIsNewLine(false);
+    setLines([]); setShowHistory(false); setSearchQuery(''); setSelectedLineId(null); setIsNewLine(false);
     setArticleSearch(''); setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
     setLabDraft([]); setLabSearch(''); setEchoDraft([]); setEchoSearch('');
     setLabDraftIdx(-1); setEchoDraftIdx(-1);
@@ -693,7 +712,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
                         const already = labDraft.some((d) => d.examId === e.id);
                         return (
                           <div key={e.id} onClick={() => addLabExam(e.id)} className={`px-3 py-1.5 cursor-pointer text-xs flex justify-between border-b border-slate-100 ${already ? 'opacity-40 bg-slate-50' : idx === labSearchIdx ? 'bg-cyan-100' : 'hover:bg-cyan-50'}`}>
-                            <span><span className="text-[9px] text-slate-400 mr-1">[{e.code || ''}]</span> {e.name} <span className="text-slate-400">· {labCategoryLabel((e.labCategory || 'autre') as import('../types').LabCategory)}</span></span>
+                            <span><span className="text-[9px] text-slate-400 mr-1">[{e.code}]</span> {e.name} <span className="text-slate-400">· {labCategoryLabel(e.category)}</span></span>
                             <span className="font-mono text-cyan-600 font-semibold">{formatAr(clientType === 'societe' ? e.priceSociete : clientType === 'externe' ? e.priceExterne : e.priceComptoir)}</span>
                           </div>
                         );
@@ -706,13 +725,13 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
                 {labDraft.length > 0 ? (
                   <div className="border border-slate-200 rounded-lg divide-y bg-slate-50/40" tabIndex={0} onKeyDown={handleLabDraftKeyDown} onFocus={() => setLabDraftIdx(0)}>
                     {labDraft.map((d) => {
-                      const e = state.articles.find(a => a.family === 'LABO' && a.id === d.examId);
+                      const e = state.labCatalog.find((x) => x.id === d.examId);
                       if (!e) return null;
                       const isDraftSel = labDraft.indexOf(d) === labDraftIdx;
                       return (
                         <div key={d.examId} className={`flex items-center justify-between p-2 text-xs ${isDraftSel ? 'bg-cyan-100 border-l-2 border-cyan-500' : ''}`}>
                           <div className="mr-2">
-                            <div className="font-bold text-slate-800">{e.name} <span className="text-[10px] text-slate-400 font-normal">[{e.code || ''}]</span></div>
+                            <div className="font-bold text-slate-800">{e.name} <span className="text-[10px] text-slate-400 font-normal">[{e.code}]</span></div>
                             <div className="text-[10px] text-slate-400">{e.sampleType} · {e.durationHours}h</div>
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
@@ -750,7 +769,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
                         const already = echoDraft.some((d) => d.examId === e.id);
                         return (
                           <div key={e.id} onClick={() => addEchoExam(e.id)} className={`px-3 py-1.5 cursor-pointer text-xs flex justify-between border-b border-slate-100 ${already ? 'opacity-40 bg-slate-50' : idx === echoSearchIdx ? 'bg-indigo-100' : 'hover:bg-indigo-50'}`}>
-                            <span><span className="text-[9px] text-slate-400 mr-1">[{e.code || ''}]</span> {e.name}</span>
+                            <span><span className="text-[9px] text-slate-400 mr-1">[{e.code}]</span> {e.name}</span>
                             <span className="font-mono text-indigo-600 font-semibold">{formatAr(clientType === 'societe' ? e.priceSociete : clientType === 'externe' ? e.priceExterne : e.priceComptoir)}</span>
                           </div>
                         );
@@ -763,13 +782,13 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
                 {echoDraft.length > 0 ? (
                   <div className="border border-slate-200 rounded-lg divide-y bg-slate-50/40" tabIndex={0} onKeyDown={handleEchoDraftKeyDown} onFocus={() => setEchoDraftIdx(0)}>
                     {echoDraft.map((d) => {
-                      const e = state.articles.filter(a => a.family === 'ECHO').find((x) => x.id === d.examId);
+                      const e = ECHO_CATALOG.find((x) => x.id === d.examId);
                       if (!e) return null;
                       const isDraftSel = echoDraft.indexOf(d) === echoDraftIdx;
                       return (
                         <div key={d.examId} className={`flex items-center justify-between p-2 text-xs ${isDraftSel ? 'bg-indigo-100 border-l-2 border-indigo-500' : ''}`}>
                           <div className="flex-1 mr-2">
-                            <div className="font-bold text-slate-800">{e.name} <span className="text-[10px] text-slate-400 font-normal">[{e.code || ''}]</span></div>
+                            <div className="font-bold text-slate-800">{e.name} <span className="text-[10px] text-slate-400 font-normal">[{e.code}]</span></div>
                             <input
                               type="text"
                               placeholder="Notes / indication clinique..."

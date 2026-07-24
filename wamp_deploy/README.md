@@ -43,8 +43,6 @@ wamp_deploy/
 3. Exécuter `database/import_structure.sql`
 4. Exécuter `database/import_data.sql` (optionnel - données de test)
 
-> **Base existante :** exécuter une fois `database/migration_ajout_familles_articles.sql` dans phpMyAdmin. Cette migration crée le référentiel `familles_articles`, ajoute son lien aux médicaments existants et les rattache à la famille **Médicaments**.
-
 ### 3. Déployer les fichiers
 1. Builder l'application:
    ```bash

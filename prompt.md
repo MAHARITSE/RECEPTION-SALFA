@@ -1,4 +1,4 @@
-# PROMPT COMPLET — MediCare HIS v4.0
+# PROMPT COMPLET — MediCare HIS v3.0
 
 ---
 
@@ -191,20 +191,18 @@ MÉDECIN (coche hospit/bloc) → CAISSE (onglet Hospit/Bloc)
 - Encaissement + ticket 80x80
 
 #### Onglet 3 : 🏨 Hospitalisation — Paiement partiel
-- **Barre de recherche** en haut : filtre par nom patient, dossier, matricule, n° facture, société
 - **Recherche patient dans la liste de réception** (saisie assistée)
 - **Si patient absent → possibilité d'ajouter** (comme à la réception)
 - Auto-détection des demandes d'hospitalisation du médecin
 - Saisie articles **un par un** (style Sage, recherche ↑↓) — **ruptures affichées en rouge et invendables**
 - Champ **date d'acte / de sortie** après le Montant — la zone n'est **pas effacée** après validation de la ligne (plusieurs sorties le même jour)
 - Ajout d'articles **à tout moment** (compte continu)
-- **Fond rouge** (bg-red-50) pour les patients **comptoir** qui n'ont **pas totalement payé** leur facture
 - Tableau par patient : Total Facture | Paiements Reçus | Reste à Payer
 - Versement rattaché au **caissier qui reçoit** avec horodatage
 - Fiche dépliable par patient
 
 #### Onglet 4 : 🏥 Bloc Opératoire — Paiement partiel
-- Même fonctionnement que Hospitalisation (barre de recherche + fond rouge comptoir impayé)
+- Même fonctionnement que Hospitalisation
 
 #### Onglet 5 : 🔒 Clôture de Caisse
 **4 sections** :
@@ -307,11 +305,6 @@ Bouton **Imprimer ticket 80×80** avec les 4 sections
 17. **Clôture** : 4 sections (familles, hospit/bloc, total général, liste clients)
 18. **Tickets 80×80** pour caisse et clôture
 19. **Médecin et Caisse** peuvent modifier le type de client
-20. **Ticket hospit/bloc simplifié** : Montant Total, Somme déjà perçue, Paiement actuel, Reste à payer (pas de détail articles)
-21. **Barre de recherche hospit/bloc** : filtre par nom, dossier, matricule, n° facture, société
-22. **Fond rouge comptoir impayé** : les patients comptoir avec reste > 0 sont affichés en fond rouge dans la liste hospit/bloc
-23. **Dossier médical sans doublons** : les analyses labo sont dédupliquées (consultations + state.labRequests)
-24. **Échographies** : demandes d'écho saisies par le médecin, facturées en caisse comme le labo
 
 ---
 
@@ -508,8 +501,6 @@ Bouton **Imprimer ticket 80×80** avec les 4 sections
 ┌────────────────────────────────────────────────────────────┐
 │ 🏨 Hospitalisation — Paiement Partiel + Saisie articles   │
 │                                                            │
-│ 🔍[Rechercher patient, dossier, n° facture, société...    ]│
-│                                                            │
 │ Patient: 🔍[Rechercher dans liste réception...        ]   │
 │          ┌ MARTIN JEAN (MAR101) ── clic ──┐               │
 │          │ DUPONT MARIE (DUP102) ──────────│               │
@@ -517,7 +508,7 @@ Bouton **Imprimer ticket 80×80** avec les 4 sections
 │          └─────────────────────────────────┘    [+Patient] │
 │                                                            │
 │ ┌── MARTIN JEAN ──── Facture: 85 000 │ Payé: 50 000 │    │
-│ │ (bg rouge si comptoir impayé)   Reste: 35 000 Ar   ▼│    │
+│ │                    Reste: 35 000 Ar                ▼│    │
 │ │ ┌────────────────────────────────────────────────┐  │    │
 │ │ │ Article        │Qté│ P.U.  │ Montant          │  │    │
 │ │ │ Lit chambre 201│  5│15 000 │  75 000          │  │    │
@@ -531,44 +522,11 @@ Bouton **Imprimer ticket 80×80** avec les 4 sections
 │ └─────────────────────────────────────────────────────┘    │
 │                                                            │
 │ ┌── DUPONT MARIE ──── Facture: 500 000 │ Payé: 0 │       │
-│ │ (bg rouge = comptoir impayé)    Reste: 500 000 ▼│      │
+│ │                      Reste: 500 000 Ar           ▼│      │
 │ │ ...                                                │      │
 │ └────────────────────────────────────────────────────┘      │
 └────────────────────────────────────────────────────────────┘
 ```
-
-### CAISSE — Ticket Encaissement Hospit/Bloc (simplifié)
-
-```
-┌──────────────────────────────────────┐
-│         CLINIQUE SALFA               │
-│       Antananarivo, MG               │
-│                                      │
-│  REÇU DE PAIEMENT — HOSPITALISATION  │
-│  N° FAC-2026-0042 · 23/07/2026      │
-│                                      │
-│  MARTIN JEAN                         │
-│  Dossier : MAR101                    │
-│  Caissier : Pierre Duval             │
-│                                      │
-│  Montant Total      85 000 Ar        │
-│  Somme déjà perçue  50 000 Ar        │
-│  Paiement actuel    25 000 Ar        │
-│  Reste à payer      10 000 Ar        │
-│                                      │
-│  *FAC-2026-0042*                     │
-│                                      │
-│  Pierre Duval     Client             │
-└──────────────────────────────────────┘
-```
-
-### CAISSE — Ticket Encaissement Hospit/Bloc (simplifié)
-
-Le ticket d'encaissement hospit/bloc n'affiche que le résumé (pas de détail articles) :
-- **Montant Total** de la facture
-- **Somme déjà perçue** (cumul des versements)
-- **Paiement actuel** (montant de ce versement)
-- **Reste à payer** (solde restant après ce versement)
 
 ### CAISSE — Clôture
 
@@ -994,4 +952,4 @@ JIRAMA, TELMA, AIR MADAGASCAR, AMBATOVY, QMM/RIO TINTO, STAR BRASSERIES, BNI MAD
 
 ---
 
-**FIN DU PROMPT — MediCare HIS v4.0**
+**FIN DU PROMPT — MediCare HIS v3.0**

@@ -79,31 +79,10 @@ CREATE TABLE IF NOT EXISTS consultations (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
--- Table: familles_articles
--- Référentiel des familles/catégories d'articles.
--- Une famille peut être utilisée par plusieurs articles, mais un article
--- appartient à une seule famille.
--- ============================================================
-CREATE TABLE IF NOT EXISTS familles_articles (
-    id SMALLINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    code VARCHAR(30) NOT NULL,
-    libelle VARCHAR(100) NOT NULL,
-    couleur VARCHAR(7) NOT NULL DEFAULT '#0D47A1',
-    ordre_affichage SMALLINT UNSIGNED NOT NULL DEFAULT 0,
-    actif BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY uk_familles_articles_code (code),
-    UNIQUE KEY uk_familles_articles_libelle (libelle),
-    KEY idx_familles_articles_actif_ordre (actif, ordre_affichage)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- ============================================================
 -- Table: medicaments
 -- ============================================================
 CREATE TABLE IF NOT EXISTS medicaments (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    famille_article_id SMALLINT UNSIGNED NULL,
     code VARCHAR(50) UNIQUE NOT NULL,
     nom_commercial VARCHAR(150) NOT NULL,
     nom_generique VARCHAR(150),
@@ -118,11 +97,7 @@ CREATE TABLE IF NOT EXISTS medicaments (
     date_expiration DATE,
     statut ENUM('actif', 'rupture', 'perime') DEFAULT 'actif',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    KEY idx_medicaments_famille_article (famille_article_id),
-    CONSTRAINT fk_medicaments_famille_article
-        FOREIGN KEY (famille_article_id) REFERENCES familles_articles(id)
-        ON UPDATE CASCADE ON DELETE RESTRICT
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
@@ -330,61 +305,39 @@ INSERT INTO utilisateurs (username, password_hash, nom_complet, role, service, t
 ('infirmier1', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Patrick Kabongo', 'infirmier', 'Hospitalisation', '+243XXXXXXXX9', 'infirmier1@hopital.local', 'actif');
 
 -- ============================================================
--- Référentiel des familles d'articles
--- ============================================================
--- ON DUPLICATE KEY UPDATE permet de rejouer ce script sans créer de doublons.
-INSERT INTO familles_articles (code, libelle, couleur, ordre_affichage, actif) VALUES
-('MEDIC', 'Médicaments', '#0D47A1', 1, TRUE),
-('LABO', 'Laboratoire', '#10B981', 2, TRUE),
-('DENT', 'Dentaire', '#8B5CF6', 3, TRUE),
-('ECHO', 'Échographie', '#F59E0B', 4, TRUE),
-('CONSULT', 'Consultation', '#06B6D4', 5, TRUE),
-('HOSPIT', 'Hospitalisation', '#F43F5E', 6, TRUE),
-('BLOC', 'Bloc opératoire', '#F97316', 7, TRUE)
-ON DUPLICATE KEY UPDATE
-    libelle = VALUES(libelle),
-    couleur = VALUES(couleur),
-    ordre_affichage = VALUES(ordre_affichage),
-    actif = VALUES(actif);
-
-SET @famille_medicaments_id := (
-    SELECT id FROM familles_articles WHERE code = 'MEDIC' LIMIT 1
-);
-
--- ============================================================
 -- Médicaments de base
 -- ============================================================
 
-INSERT INTO medicaments (famille_article_id, code, nom_commercial, nom_generique, forme, dosage, prix_unitaire, stock_actuel, stock_minimum, emplacement, fournisseur) VALUES
+INSERT INTO medicaments (code, nom_commercial, nom_generique, forme, dosage, prix_unitaire, stock_actuel, stock_minimum, emplacement, fournisseur) VALUES
 -- Analgésiques
-(@famille_medicaments_id, 'MED001', 'Doliprane 500mg', 'Paracétamol', 'Comprimé', '500mg', 0.50, 500, 50, 'A1-01', 'Pharmacie Centrale'),
-(@famille_medicaments_id, 'MED002', 'Spasfon 80mg', 'Phloroglucinol', 'Comprimé', '80mg', 1.20, 200, 30, 'A1-02', 'Pharmacie Centrale'),
-(@famille_medicaments_id, 'MED003', 'Brufen 400mg', 'Ibuprofène', 'Comprimé', '400mg', 0.80, 300, 40, 'A1-03', 'Pharmacie Centrale'),
+('MED001', 'Doliprane 500mg', 'Paracétamol', 'Comprimé', '500mg', 0.50, 500, 50, 'A1-01', 'Pharmacie Centrale'),
+('MED002', 'Spasfon 80mg', 'Phloroglucinol', 'Comprimé', '80mg', 1.20, 200, 30, 'A1-02', 'Pharmacie Centrale'),
+('MED003', 'Brufen 400mg', 'Ibuprofène', 'Comprimé', '400mg', 0.80, 300, 40, 'A1-03', 'Pharmacie Centrale'),
 
 -- Antibiotiques
-(@famille_medicaments_id, 'MED004', 'Amoxicilline 500mg', 'Amoxicilline', 'Gélule', '500mg', 1.50, 400, 50, 'B2-01', 'Pharmacie Centrale'),
-(@famille_medicaments_id, 'MED005', 'Azithromycine 250mg', 'Azithromycine', 'Comprimé', '250mg', 3.00, 150, 20, 'B2-02', 'Pharmacie Centrale'),
-(@famille_medicaments_id, 'MED006', 'Ciprox 500mg', 'Ciprofloxacine', 'Comprimé', '500mg', 2.00, 200, 30, 'B2-03', 'Pharmacie Centrale'),
+('MED004', 'Amoxicilline 500mg', 'Amoxicilline', 'Gélule', '500mg', 1.50, 400, 50, 'B2-01', 'Pharmacie Centrale'),
+('MED005', 'Azithromycine 250mg', 'Azithromycine', 'Comprimé', '250mg', 3.00, 150, 20, 'B2-02', 'Pharmacie Centrale'),
+('MED006', 'Ciprox 500mg', 'Ciprofloxacine', 'Comprimé', '500mg', 2.00, 200, 30, 'B2-03', 'Pharmacie Centrale'),
 
 -- Anti-inflammatoires
-(@famille_medicaments_id, 'MED007', 'Voltarène 50mg', 'Diclofénac', 'Comprimé', '50mg', 1.00, 250, 40, 'C1-01', 'Pharmacie Centrale'),
-(@famille_medicaments_id, 'MED008', 'Prednisolone 20mg', 'Prednisolone', 'Comprimé', '20mg', 0.70, 180, 30, 'C1-02', 'Pharmacie Centrale'),
+('MED007', 'Voltarène 50mg', 'Diclofénac', 'Comprimé', '50mg', 1.00, 250, 40, 'C1-01', 'Pharmacie Centrale'),
+('MED008', 'Prednisolone 20mg', 'Prednisolone', 'Comprimé', '20mg', 0.70, 180, 30, 'C1-02', 'Pharmacie Centrale'),
 
 -- Anti-hypertenseurs
-(@famille_medicaments_id, 'MED009', 'Amlor 5mg', 'Amlodipine', 'Comprimé', '5mg', 2.50, 100, 20, 'D1-01', 'Pharmacie Centrale'),
-(@famille_medicaments_id, 'MED010', 'Lasix 40mg', 'Furosémide', 'Comprimé', '40mg', 1.80, 120, 25, 'D1-02', 'Pharmacie Centrale'),
+('MED009', 'Amlor 5mg', 'Amlodipine', 'Comprimé', '5mg', 2.50, 100, 20, 'D1-01', 'Pharmacie Centrale'),
+('MED010', 'Lasix 40mg', 'Furosémide', 'Comprimé', '40mg', 1.80, 120, 25, 'D1-02', 'Pharmacie Centrale'),
 
 -- Anti-diabétiques
-(@famille_medicaments_id, 'MED011', 'Metformine 500mg', 'Metformine', 'Comprimé', '500mg', 0.60, 200, 30, 'E1-01', 'Pharmacie Centrale'),
-(@famille_medicaments_id, 'MED012', 'Glibenclamide 5mg', 'Glibenclamide', 'Comprimé', '5mg', 0.90, 150, 25, 'E1-02', 'Pharmacie Centrale'),
+('MED011', 'Metformine 500mg', 'Metformine', 'Comprimé', '500mg', 0.60, 200, 30, 'E1-01', 'Pharmacie Centrale'),
+('MED012', 'Glibenclamide 5mg', 'Glibenclamide', 'Comprimé', '5mg', 0.90, 150, 25, 'E1-02', 'Pharmacie Centrale'),
 
 -- Vitamines et suppléments
-(@famille_medicaments_id, 'MED013', 'Multivitamines', 'Complexe vitaminique', 'Comprimé', '-', 1.00, 300, 50, 'F1-01', 'Pharmacie Centrale'),
-(@famille_medicaments_id, 'MED014', 'Ferograd 500mg', 'Sulfate ferreux', 'Comprimé', '500mg', 1.20, 200, 30, 'F1-02', 'Pharmacie Centrale'),
+('MED013', 'Multivitamines', 'Complexe vitaminique', 'Comprimé', '-', 1.00, 300, 50, 'F1-01', 'Pharmacie Centrale'),
+('MED014', 'Ferograd 500mg', 'Sulfate ferreux', 'Comprimé', '500mg', 1.20, 200, 30, 'F1-02', 'Pharmacie Centrale'),
 
 -- Solution injectable
-(@famille_medicaments_id, 'MED015', 'Serum physiologique 100ml', 'NaCl 0.9%', 'Solution injectable', '100ml', 2.00, 100, 20, 'R1-01', 'Pharmacie Centrale'),
-(@famille_medicaments_id, 'MED016', 'Glucose 5% 250ml', 'Glucose', 'Solution injectable', '250ml', 2.50, 80, 15, 'R1-02', 'Pharmacie Centrale');
+('MED015', 'Serum physiologique 100ml', 'NaCl 0.9%', 'Solution injectable', '100ml', 2.00, 100, 20, 'R1-01', 'Pharmacie Centrale'),
+('MED016', 'Glucose 5% 250ml', 'Glucose', 'Solution injectable', '250ml', 2.50, 80, 15, 'R1-02', 'Pharmacie Centrale');
 
 -- ============================================================
 -- Sociétés (Assurances/Corporatifs)

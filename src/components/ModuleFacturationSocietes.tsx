@@ -2,10 +2,10 @@ import { useMemo, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { AppState } from '../store';
 import {
-  addAuditLog, billingStatusClasses, billingStatusLabel,
+  addAuditLog, addCompanyBillingPayment, billingStatusClasses, billingStatusLabel,
   formatAr, getCompanyInvoicesForMonth, addJourneyEvent,
 } from '../store';
-import type { CompanyBillingAccount, CompanySettlementMode, Invoice } from '../types';
+import type { CompanyBillingAccount, Company, CompanySettlementMode, Invoice } from '../types';
 import {
   Building2, Calendar, Check, CreditCard, Download, Eye, HandCoins,
   Printer, Receipt, Search, Trash2, Wallet, X, FileText, BadgeCheck,
@@ -21,6 +21,9 @@ const monthLabel = (month: string) =>
 
 const currentMonth = () => new Date().toISOString().slice(0, 7);
 const today = () => new Date().toISOString().slice(0, 10);
+
+const settlementModeLabel = (mode: CompanySettlementMode): string =>
+  mode === 'monthly_global' ? 'Global mensuel' : 'Individuel par facture';
 
 const invoiceStatusLabel = (inv: Invoice, state: AppState) => {
   // Un compte société qui a réglé cette facture ?
@@ -388,10 +391,10 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
 
   /* ======================= RENDU ======================= */
 
-  const TABS: [Tab, React.ReactNode][] = [
-    ['liste', <span className="flex items-center gap-1"><ListChecks className="w-4 h-4" /> Toutes les factures</span>],
-    ['global', <span className="flex items-center gap-1"><Calendar className="w-4 h-4" /> Règlement global mensuel</span>],
-    ['individual', <span className="flex items-center gap-1"><Receipt className="w-4 h-4" /> Règlement individuel</span>],
+  const TABS: [Tab, string, JSX.Element][] = [
+    ['liste', <span className="flex items-center gap-1"><ListChecks className="w-4 h-4" /> Toutes les factures</span>, undefined],
+    ['global', <span className="flex items-center gap-1"><Calendar className="w-4 h-4" /> Règlement global mensuel</span>, undefined],
+    ['individual', <span className="flex items-center gap-1"><Receipt className="w-4 h-4" /> Règlement individuel</span>, undefined],
   ];
 
   return (
