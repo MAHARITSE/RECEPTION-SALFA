@@ -858,6 +858,72 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                         </button>
                       </div>
                     </div>
+
+                    {/* === LISTE DES PRESCRIPTIONS === */}
+                    <div className="border rounded-lg overflow-hidden mb-3">
+                      <div className="bg-slate-100 px-3 py-2 border-b font-bold text-sm text-slate-700 flex items-center gap-2">📋 Liste des prescriptions</div>
+                      <div className="overflow-x-auto max-h-[260px] overflow-y-auto">
+                        <table className="w-full text-xs">
+                          <thead className="bg-slate-50 border-b text-slate-600 sticky top-0">
+                            <tr>
+                              <th className="p-2 text-left min-w-[120px]">Article</th>
+                              <th className="p-2 text-center w-8">Qté</th>
+                              <th className="p-2 text-center w-8">Rem%</th>
+                              <th className="p-2 text-right w-16">P.U.</th>
+                              <th className="p-2 text-right w-20">Montant</th>
+                              <th className="p-2 text-center w-16">Catégorie</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {(() => {
+                              const unpaidConsults = getConsults(selPatient.id);
+                              // Medications
+                              const medicationItems = unpaidConsults.flatMap(c => c.prescriptions.map(p => ({
+                                description: p.articleName,
+                                quantity: p.quantity,
+                                discount: p.discount,
+                                unitPrice: p.unitPrice,
+                                amount: Math.round(p.unitPrice * p.quantity * (1 - p.discount / 100)),
+                                category: 'Médicament',
+                                categoryColor: 'bg-cyan-100 text-cyan-700',
+                                consultId: c.id,
+                              })));
+                              // Lab + Echo from pending invoices
+                              const svcInvs = pendingServiceInvoices.filter(i => i.patientId === selPatient.id);
+                              const serviceItems = svcInvs.flatMap(i => i.items.map(it => ({
+                                description: it.description,
+                                quantity: '',
+                                discount: '',
+                                unitPrice: '',
+                                amount: it.amount,
+                                category: it.category === 'lab' ? 'Analyse' : it.category === 'echo' ? 'Échographie' : 'Service',
+                                categoryColor: it.category === 'lab' ? 'bg-teal-100 text-teal-700' : it.category === 'echo' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-700',
+                                consultId: i.id,
+                              })));
+                              const allItems = [...medicationItems, ...serviceItems];
+                              if (allItems.length === 0) return <tr><td colSpan={6} className="p-4 text-center text-slate-400">Aucune prescription</td></tr>;
+                              return allItems.map((item, idx) => (
+                                <tr key={idx} className="hover:bg-slate-50">
+                                  <td className="p-2 font-sans">{item.description}</td>
+                                  <td className="p-2 text-center font-mono">{item.quantity || '—'}</td>
+                                  <td className="p-2 text-center font-mono">{item.discount ? `${item.discount}%` : '—'}</td>
+                                  <td className="p-2 text-right font-mono">{item.unitPrice ? Number(item.unitPrice).toLocaleString('fr-FR') : '—'}</td>
+                                  <td className="p-2 text-right font-mono font-bold">{item.amount.toLocaleString('fr-FR')}</td>
+                                  <td className="p-2 text-center"><span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${item.categoryColor}`}>{item.category}</span></td>
+                                </tr>
+                              ));
+                            })()}
+                          </tbody>
+                          <tfoot className="bg-amber-50 border-t-2 border-amber-300">
+                            <tr>
+                              <td colSpan={4} className="p-2 text-right font-bold font-sans">TOTAL :</td>
+                              <td colSpan={2} className="p-2 text-right font-mono font-bold text-amber-700 text-sm">{formatAr(getPendingAmount(selPatient))}</td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    </div>
+
                     <div className="flex justify-between text-xl font-bold border-t-2 pt-2 mb-4"><span>À PAYER</span><span className="font-mono text-amber-600">{formatAr(getPendingAmount(selPatient))}</span></div>
                     <button onClick={handlePayment} className="w-full py-3 bg-amber-600 text-white rounded-xl font-semibold hover:bg-amber-700 cursor-pointer shadow-lg flex items-center justify-center gap-2"><CreditCard className="w-5 h-5" /> Encaisser {formatAr(getPendingAmount(selPatient))}</button>
                   </div>}
