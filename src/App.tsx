@@ -167,8 +167,8 @@ function AppInner() {
 
   /* ─── Vue Dossier Médical ─── */
   if (view === 'medicalRecord') {
-    if (state.currentUser.role !== 'doctor') {
-      return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-red-700 font-semibold">Accès refusé : seuls les médecins peuvent consulter les dossiers médicaux.</div>;
+    if (state.currentUser.role !== 'doctor' && state.currentUser.role !== 'admin') {
+      return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-red-700 font-semibold">Accès refusé : seuls les médecins et administrateurs peuvent consulter les dossiers médicaux.</div>;
     }
     return (
       <>
@@ -204,7 +204,7 @@ function AppInner() {
   return (
     <>
       <MiseEnPage user={state.currentUser} notifications={state.notifications} onLogout={handleLogout} onMarkRead={handleMarkRead}
-        onOpenMessaging={() => handleOpenMessagingWithRecipient(null)} onOpenMedicalRecord={state.currentUser.role === 'doctor' ? handleOpenMedicalRecord : undefined} unreadMessages={myMsgCount}>
+        onOpenMessaging={() => handleOpenMessagingWithRecipient(null)} onOpenMedicalRecord={state.currentUser.role === 'doctor' || state.currentUser.role === 'admin' ? handleOpenMedicalRecord : undefined} unreadMessages={myMsgCount}>
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-slate-800">{roleTitles[state.currentUser.role] || 'Module'}</h2>
           <p className="text-slate-500 text-sm mt-1">

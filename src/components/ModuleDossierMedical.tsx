@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { AppState } from '../store';
 import { formatAr, labCategoryLabel } from '../store';
 import type { LabRequest } from '../types';
@@ -34,6 +34,7 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
   const [selectedListId, setSelectedListId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<Tab>('consultations');
+  const lastRowClickRef = useRef<{ patientId: string; timestamp: number } | null>(null);
   // Ne jamais rendre une donnée clinique si le composant est appelé hors du parcours médecin / administrateur.
   if (state.currentUser?.role !== 'doctor' && state.currentUser?.role !== 'admin') return <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-red-800">Accès refusé : le dossier médical est réservé aux médecins et administrateurs.</div>;
 
@@ -73,6 +74,23 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
     setSelectedListId(id);
     setLocalId(id);
     setTab('consultations');
+  };
+
+  const handlePatientRowClick = (id: string) => {
+    const now = Date.now();
+    const previous = lastRowClickRef.current;
+    setSelectedListId(id);
+
+    // Sécurité : certains environnements n'émettent pas toujours `onDoubleClick`
+    // sur les lignes de tableau. On détecte donc aussi 2 clics rapprochés
+    // sur le même patient pour garantir l'ouverture du dossier.
+    if (previous?.patientId === id && now - previous.timestamp <= 500) {
+      lastRowClickRef.current = null;
+      openDossier(id);
+      return;
+    }
+
+    lastRowClickRef.current = { patientId: id, timestamp: now };
   };
 
   const handleBack = () => {
@@ -137,19 +155,17 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
                   <th className="p-2 text-center">Sexe</th>
                   <th className="p-2 text-left">Âge</th>
                   <th className="p-2 text-left">Société</th>
-                  <th className="p-2 text-left">Statut</th>
                 </tr>
               </thead>
               <tbody>
                 {list.map((p) => {
-                  const st = statusCfg[p.status] || { label: p.status, bg: 'bg-slate-100', text: 'text-slate-600' };
                   const isSelected = selectedListId === p.id;
                   return (
                     <tr
                       key={p.id}
                       tabIndex={0}
                       title="Double-cliquez pour ouvrir le dossier médical"
-                      onClick={() => setSelectedListId(p.id)}
+                      onClick={() => handlePatientRowClick(p.id)}
                       onDoubleClick={() => openDossier(p.id)}
                       onKeyDown={(e) => { if (e.key === 'Enter') openDossier(p.id); }}
                       className={`border-b border-slate-100 cursor-pointer outline-none transition-colors ${
@@ -163,12 +179,11 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
                       </td>
                       <td className="p-2">{p.age}</td>
                       <td className="p-2">{p.company || p.insureName || '—'}</td>
-                      <td className="p-2"><span className={`px-2 py-0.5 rounded text-[10px] font-bold ${st.bg} ${st.text}`}>{st.label}</span></td>
                     </tr>
                   );
                 })}
                 {list.length === 0 && (
-                  <tr><td colSpan={6} className="p-8 text-center text-slate-400">Aucun patient trouvé</td></tr>
+                  <tr><td colSpan={5} className="p-8 text-center text-slate-400">Aucun patient trouvé</td></tr>
                 )}
               </tbody>
             </table>
