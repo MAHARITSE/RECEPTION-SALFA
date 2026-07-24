@@ -4,7 +4,7 @@ import type { Consultation, VitalSigns, Prescription, LabRequest, ClientType, In
 import type { AppState } from '../store';
 import { addAuditLog, addNotification, formatAr, getPrice, addJourneyEvent, labCategoryLabel, purgePatientFromQueue, isPrescriptionPaid } from '../store';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
-import { Stethoscope, History, Trash2, AlertTriangle, Heart, FileText, Clock, CheckCircle, Send, Search, Edit2, RotateCcw, Save, FlaskConical, Scan } from 'lucide-react';
+import { Stethoscope, History, Trash2, AlertTriangle, Heart, FileText, Clock, CheckCircle, Send, Search, Edit2, RotateCcw, Save, FlaskConical, Scan, Plus } from 'lucide-react';
 
 export interface EchoExamCatalog {
   id: string;
@@ -348,6 +348,14 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     setLineForm({ ...nl }); setSelectedLineId(nl.id); setIsNewLine(true); setArticleSearch(''); setArtSearchIdx(0);
   };
 
+  const resetLineDraft = () => {
+    setSelectedLineId(null);
+    setIsNewLine(false);
+    setArticleSearch('');
+    setArtSearchIdx(0);
+    setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
+  };
+
   const handleSaveLine = () => {
     if (!lineForm.articleName) return;
     const currentId = lineForm.id;
@@ -364,7 +372,11 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     } else {
       setLines(prev => prev.map(l => l.id === currentId ? { ...lineForm } : l));
     }
-    setIsNewLine(false);
+
+    // Après l'enregistrement, on libère complètement la barre de recherche.
+    // Avant, elle conservait l'article enregistré (ex. « Paracétamol ») et le
+    // prochain choix modifiait cette même ligne au lieu d'ajouter un médicament.
+    resetLineDraft();
     // Focus back to search
     setTimeout(() => searchRef.current?.focus(), 50);
   };
@@ -668,6 +680,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
                 <div className="w-24"><label className="block text-[9px] text-slate-500">Montant</label><input type="text" readOnly value={formatAr(lineAmount(lineForm))} className="w-full bg-slate-200 border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono font-bold text-slate-700" /></div>
               </div>
               <div className="flex justify-end gap-1 mt-1">
+                <button onClick={() => { resetLineDraft(); setTimeout(() => searchRef.current?.focus(), 50); }} className="flex items-center gap-1 px-2 py-0.5 bg-white border border-slate-300 rounded shadow-sm text-slate-700 text-[10px] cursor-pointer" title="Effacer la saisie en cours et rechercher un nouveau médicament"><Plus className="h-3 w-3 text-slate-500" /> Nouveau</button>
                 <button onClick={handleDeleteLine} disabled={!selectedLineId} className="flex items-center gap-1 px-2 py-0.5 bg-white border border-slate-300 rounded shadow-sm text-slate-700 text-[10px] disabled:opacity-40 cursor-pointer"><Trash2 className="h-3 w-3 text-rose-600" /> Supprimer</button>
                 <button onClick={handleSaveLine} disabled={!lineForm.articleName} className="flex items-center gap-1 px-2 py-0.5 bg-sky-500 text-white border border-sky-600 rounded shadow-sm text-[10px] font-medium disabled:opacity-40 cursor-pointer"><Save className="h-3 w-3" /> Enregistrer</button>
               </div>
