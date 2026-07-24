@@ -31,11 +31,11 @@ Le diagramme d'accompagnement se trouve dans le fichier [`schema-base-donnees.sv
 | Entité | Description |
 |--------|-------------|
 | **Consultations** | Actes médicaux : motif, diagnostic, notes, constantes, prescriptions, demandes labo/écho, hospitalisation, chirurgie. |
-| **Ordonnances / Prescriptions** | Lignes de médicaments prescrites par le médecin (article, famille article, quantité, posologie, durée, remise, délivrée oui/non, date de délivrance/sortie). |
+| **Ordonnances / Prescriptions** | Lignes de médicaments prescrites par le médecin — désormais gérées via `HbLine` (article, famille article, quantité, posologie, durée, remise, délivrée oui/non, date de délivrance/sortie). |
 | **Laboratoire** | Catalogue d'examens (`LabExamCatalog`) + demandes d'analyses (`LabRequest`) avec résultat, urgence, prélèvement, validation. |
 | **Échographies** | Demandes d'échographie liées aux consultations. |
-| **Hospitalisation** | Dossiers d'hospitalisation avec lignes d'actes/prescriptions, famille article, date de sortie et paiements partiels. |
-| **Bloc opératoire** | Dossiers chirurgicaux, même structure que l'hospitalisation et mêmes informations de ligne que les prescriptions. |
+| **Hospitalisation** | Dossiers d'hospitalisation avec lignes d'actes/articles (HbLine), famille article, date de sortie et paiements partiels. |
+| **Bloc opératoire** | Dossiers chirurgicaux, même structure que l'hospitalisation et même type de ligne `HbLine`. |
 | **Parcours patient** | Journal (timeline) des événements par patient : admission, consultation, paiement, délivrance médicaments, résultat labo, etc. |
 
 ## 💰 Facturation & règlements
@@ -43,7 +43,7 @@ Le diagramme d'accompagnement se trouve dans le fichier [`schema-base-donnees.sv
 | Entité | Description |
 |--------|-------------|
 | **Factures / Ventes** | Toutes les prestations facturées : consultations, pharmacie, labo, écho, hospit, bloc, externes. Statut : `impayée`, `partiellement payée`, `payée`, `annulée`. |
-| **Lignes facture / venteLines** | Détail ligne par ligne (article, famille, quantité, prix unitaire, remise, catégorie, lien prescription/Hospit-Bloc, date de sortie). |
+| **Lignes facture / venteLines** | Détail ligne par ligne (article, famille, quantité, prix unitaire, remise, catégorie, lien HbLine (ordonnance/hospit/bloc), date de sortie). |
 | **Paiements** | Encaissements liés à une facture : montant, date, mode, référence, encaissé par. |
 | **Relevés / Comptes société** | Regroupement mensuel des factures d'une société (pour le sous-mode *global mensuel*) avec les paiements associés (acompte, solde, virement, chèque…). Le relevé passe au statut `soldé` lorsque le solde est nul. |
 
@@ -76,9 +76,9 @@ Utilisateurs (1) ──< (N) Mouvements de stock     (magasinier / pharmacie)
 Sociétés     (1) ──< (N) Patients                (salariés rattachés)
 Patients     (1) ──< (N) Consultations
 Patients     (1) ──< (N) Factures
-Consultations(1) ──< (N) Prescriptions
+Consultations(1) ──< (N) HbLine (via prescriptions)
 Consultations(1) ──< (N) Demandes labo / écho
-Prescriptions(1) ──< (0..1) venteLines        (prescriptionId)
+HbLine         ──< (0..1) venteLines        (prescriptionId / hbLineId)
 Factures     (1) ──< (N) Lignes facture
 Factures     (1) ──< (N) Paiements
 Sociétés     (1) ──< (N) Relevés mensuels
@@ -86,7 +86,7 @@ Relevés      (1) ──< (N) Paiements              (acompte + solde)
 Relevés      (M) ──< (N) Factures               (via invoiceIds[])
 Articles     (1) ──< (N) Lignes de mouvement
 Articles     (1) ──< (N) Lignes d'achat / de vente
-Familles     (1) ──< (N) Articles / Prescriptions / venteLines (via code famille)
+Familles     (1) ──< (N) Articles / HbLine / venteLines (via code famille)
 HbRecord     (1) ──< (N) HbLine ──< (0..1) venteLines (hbLineId)
 Fournisseurs (1) ──< (N) Achats
 Patients     (1) ──< (N) Parcours (timeline)
@@ -102,8 +102,8 @@ Utilisateurs (1) ──< (N) Messages (expéditeur & destinataire)
 3. **Annulation** : seules les consultations, demandes (labo/écho) et factures non réglées peuvent être annulées.
 4. **Le relevé mensuel** ne peut être soldé qu'après saisie du montant, de la date, du mode de paiement, de la référence et de l'observation ; le responsable facturation qui valide est enregistré.
 5. **Paiements partiels** supportés sur les factures *individuelles société* et les dossiers hospitalisation/bloc.
-6. **Familles dynamiques** : `Article.family` est un code `string` provenant de `familles`; ce code est reporté dans les prescriptions, HbLine et venteLines.
-7. **Date de sortie prescription** : pour les ordonnances, `venteLines.dateSort` n'est pas saisie à l'encaissement ; elle prend la date de délivrance pharmacie (`deliveredAt` → `YYYY-MM-DD`).
+6. **Familles dynamiques** : `Article.family` est un code `string` provenant de `familles`; ce code est reporté dans les lignes HbLine (ordonnance + hospit/bloc) et venteLines.
+7. **Date de sortie ordonnance** : pour les ordonnances, `venteLines.dateSort` n'est pas saisie à l'encaissement ; elle prend la date de délivrance pharmacie (`deliveredAt` → `YYYY-MM-DD`).
 8. **Le dossier patient**, ses paramètres vitaux et l'historique réglé sont **toujours conservés**.
 
 ---

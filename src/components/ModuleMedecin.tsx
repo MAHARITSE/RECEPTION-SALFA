@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { Consultation, VitalSigns, Prescription, LabRequest, ClientType, Invoice, EchoRequest, PatientStatus } from '../types';
+import type { Consultation, VitalSigns, HbLine, LabRequest, ClientType, Invoice, EchoRequest, PatientStatus } from '../types';
 import type { AppState } from '../store';
 import { addAuditLog, addNotification, formatAr, getPrice, addJourneyEvent, labCategoryLabel, purgePatientFromQueue, familyLabel } from '../store';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
@@ -44,9 +44,9 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
   const [artSearchIdx, setArtSearchIdx] = useState(0);
   const [consultForm, setConsultForm] = useState({ visitReason: '', diagnosis: '', notes: '', isEmergency: false, hospitalizeRequested: false, surgeryRequested: false });
   const [vitals, setVitals] = useState<VitalSigns>({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' });
-  const [lines, setLines] = useState<Prescription[]>([]);
+  const [lines, setLines] = useState<HbLine[]>([]);
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
-  const [lineForm, setLineForm] = useState<Prescription>({ id: '', articleId: '', articleName: '', family: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false, dateSort: '' });
+  const [lineForm, setLineForm] = useState<HbLine>({ id: '', articleId: '', articleName: '', family: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false, dateSort: '' });
   const [isNewLine, setIsNewLine] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const submittingRef = useRef(false);
@@ -160,7 +160,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     });
   };
 
-  const lineAmount = (l: Prescription) => Math.round(l.unitPrice * l.quantity * (1 - l.discount / 100));
+  const lineAmount = (l: HbLine) => Math.round(l.unitPrice * l.quantity * (1 - l.discount / 100));
   const totalPres = lines.reduce((s, l) => s + lineAmount(l), 0);
 
   const selectPatient = (pid: string) => {
@@ -319,7 +319,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     // Si on est en mode édition d'une ligne existante, on met à jour cette ligne (même id) au lieu de créer un doublon
     if (!isNewLine && selectedLineId && lines.find(l => l.id === selectedLineId)) {
       const existing = lines.find(l => l.id === selectedLineId)!;
-      const updated: Prescription = {
+      const updated: HbLine = {
         ...existing,
         articleId: a.id,
         articleName: a.name,
@@ -329,7 +329,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
       // On garde la quantité / posologie déjà saisies si l'utilisateur était en train d'éditer
       // Mais si lineForm est déjà l'édition de cette ligne, on préfère garder les valeurs de lineForm pour quantité etc.
       // Pour éviter toute confusion, on met à jour lineForm directement avec le nouvel article tout en conservant l'id d'origine
-      const merged: Prescription = {
+      const merged: HbLine = {
         ...lineForm,
         id: selectedLineId,
         articleId: a.id,
@@ -345,7 +345,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
       // On reste en mode édition (pas de nouvelle ligne)
       return;
     }
-    const nl: Prescription = { id: uuidv4(), articleId: a.id, articleName: a.name, family: a.family, quantity: 1, posology: '', duration: '', instructions: '', unitPrice: getPrice(a, clientType), discount: 0, delivered: false, dateSort: '' };
+    const nl: HbLine = { id: uuidv4(), articleId: a.id, articleName: a.name, family: a.family, quantity: 1, posology: '', duration: '', instructions: '', unitPrice: getPrice(a, clientType), discount: 0, delivered: false, dateSort: '' };
     setLineForm({ ...nl }); setSelectedLineId(nl.id); setIsNewLine(true); setArticleSearch(''); setArtSearchIdx(0);
   };
 
