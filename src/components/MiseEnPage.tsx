@@ -52,6 +52,7 @@ const roleBg: Record<string, string> = {
 
 export default function MiseEnPage({ user, notifications, onLogout, onMarkRead, onOpenMessaging, onOpenMedicalRecord, unreadMessages, children }: MiseEnPageProps) {
   const [showNotif, setShowNotif] = useState(false);
+  const isAdmin = user.role === 'admin';
 
   const myNotifs = notifications.filter(
     (n) => n.targetRole === user.role || n.targetUserId === user.id
@@ -62,7 +63,7 @@ export default function MiseEnPage({ user, notifications, onLogout, onMarkRead, 
     <div className="min-h-screen bg-slate-50 overflow-auto">
       {/* Header */}
       <header className={`${roleBg[user.role]} text-white shadow-lg`}>
-        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+        <div className={`${isAdmin ? 'w-full max-w-none' : 'max-w-[1600px] mx-auto'} px-4 sm:px-6 py-3 flex items-center justify-between`}>
           <div className="flex items-center gap-3">
             <div className="p-1.5 bg-white/20 rounded-lg">
               <Hospital className="w-6 h-6" />
@@ -168,8 +169,9 @@ export default function MiseEnPage({ user, notifications, onLogout, onMarkRead, 
         </div>
       </header>
 
-      {/* Content */}
-      <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6 pb-20">
+      {/* L'administration utilise toute la largeur disponible ; les modules
+          opérationnels conservent une largeur de lecture confortable. */}
+      <main className={`${isAdmin ? 'w-full max-w-none' : 'max-w-[1600px] mx-auto'} min-w-0 px-4 sm:px-6 py-6 pb-20`}>
         {children}
       </main>
     </div>
