@@ -2,18 +2,28 @@ import { useState, useRef } from 'react';
 import type { UserRole, TicketSettings, Company, CompanySettlementMode } from '../types';
 import { formatAr, addAuditLog, migrateLegacyToVentes, createInitialState } from '../store';
 import type { AppState } from '../store';
+import ModuleReception from './ModuleReception';
+import ModuleMedecin from './ModuleMedecin';
+import ModuleCaisse from './ModuleCaisse';
+import ModulePharmacie from './ModulePharmacie';
+import ModuleMagasinier from './ModuleMagasinier';
+import ModuleLaboratoire from './ModuleLaboratoire';
+import ModuleFacturationSocietes from './ModuleFacturationSocietes';
+import ModuleDossierMedical from './ModuleDossierMedical';
 import {
-  Save, Trash2, Plus, X, Check, Download, Upload,
+  Trash2, Plus, X, Check, Download, Upload,
   Eye, Settings as SettingsIcon, Users, Building2,
   Receipt, FileText, Shield, Database, Printer, Image as ImageIcon,
   CreditCard, AlertCircle, Search, RefreshCw, Copy, Activity,
-  Key, Edit2, Smile
+  Key, Edit2, Hospital, Stethoscope, Pill, Package, FlaskConical,
+  Menu, LayoutDashboard
 } from 'lucide-react';
 import { WINDEV_PROMPT, WEB_PROMPT } from '../data/promptsData';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
 
 type Tab = 'dashboard' | 'societe' | 'tickets' | 'users' | 'companies' | 'audit' | 'backup' | 'system' | 'prompts';
+type AppModuleKey = 'reception' | 'doctor' | 'medicalRecords' | 'cashier' | 'pharmacy' | 'magasinier' | 'laboratory' | 'billing';
 
 const roleLabels: Record<string, string> = {
   doctor: 'Médecin',
@@ -30,7 +40,7 @@ const ALL_ROLES: UserRole[] = ['doctor', 'cashier', 'pharmacy', 'magasinier', 'l
 const LOGO_EMOJIS = ['🍺', '🍻', '🍷', '🍸', '☕', '🍽️', '🏥', '⚕️', '💊', '🔬', '🏨', '🏢', '🩺', '⭐', '❤️', '🛡️'];
 
 const TABS: { key: Tab; label: string; icon: any; desc: string }[] = [
-  { key: 'dashboard', label: 'Tableau de bord', icon: Activity, desc: 'Vue d\'ensemble du système' },
+  { key: 'dashboard', label: 'Tableau de bord', icon: LayoutDashboard, desc: 'Vue d\'ensemble du système' },
   { key: 'societe', label: 'Société & Établissement', icon: Building2, desc: 'Identité, en-tête, NIF, STAT, Logo' },
   { key: 'tickets', label: 'Tickets & Impression', icon: Printer, desc: 'Format 58/80mm, impression directe, aperçu' },
   { key: 'users', label: 'Utilisateurs & Accès', icon: Users, desc: 'Comptes personnels, rôles, mots de passe' },
@@ -41,8 +51,21 @@ const TABS: { key: Tab; label: string; icon: any; desc: string }[] = [
   { key: 'prompts', label: 'Prompts & Specs', icon: FileText, desc: 'Spécifications techniques WinDev & Web' },
 ];
 
+const APP_MODULES: { key: AppModuleKey; label: string; icon: any; desc: string }[] = [
+  { key: 'reception', label: 'Réception', icon: Hospital, desc: 'Patients, enregistrement, paramètres vitaux' },
+  { key: 'doctor', label: 'Médecin / Consultation', icon: Stethoscope, desc: 'File, consultation, ordonnances, examens' },
+  { key: 'medicalRecords', label: 'Dossiers médicaux', icon: FileText, desc: 'Identité, parcours, historique et analyses' },
+  { key: 'cashier', label: 'Caisse', icon: CreditCard, desc: 'Paiements, ventes externes, hospitalisation/bloc' },
+  { key: 'pharmacy', label: 'Pharmacie', icon: Pill, desc: 'Caisse de garde, dispensation, stock pharmacie' },
+  { key: 'magasinier', label: 'Magasinier / Stock', icon: Package, desc: 'Articles, achats, transferts, inventaires' },
+  { key: 'laboratory', label: 'Laboratoire', icon: FlaskConical, desc: 'Analyses, prélèvements, résultats' },
+  { key: 'billing', label: 'Facturation sociétés', icon: Building2, desc: 'Comptes conventionnés et règlements' },
+];
+
 export default function ModuleAdministration({ state, setState }: Props) {
   const [tab, setTab] = useState<Tab>('dashboard');
+  const [activeModule, setActiveModule] = useState<AppModuleKey | null>(null);
+  const [adminMedicalPatientId, setAdminMedicalPatientId] = useState<string | null>(null);
   
   // Utilisateurs
   const [addUser, setAddUser] = useState(false);
@@ -351,6 +374,45 @@ export default function ModuleAdministration({ state, setState }: Props) {
     roleLabels[u.role]?.toLowerCase().includes(searchUser.toLowerCase())
   );
 
+  const selectAdminTab = (key: Tab) => {
+    setActiveModule(null);
+    setAdminMedicalPatientId(null);
+    setTab(key);
+  };
+
+  const selectAppModule = (key: AppModuleKey) => {
+    setActiveModule(key);
+    setAdminMedicalPatientId(null);
+  };
+
+  const openAdminMedicalRecord = (patientId?: string) => {
+    setAdminMedicalPatientId(patientId || null);
+    setActiveModule('medicalRecords');
+  };
+
+  const renderActiveModule = () => {
+    switch (activeModule) {
+      case 'reception':
+        return <ModuleReception state={state} setState={setState} onStaffLogin={() => showToast('Vous êtes déjà connecté en administrateur')} onOpenMessaging={() => showToast('Messagerie disponible depuis l\'en-tête')} />;
+      case 'doctor':
+        return <ModuleMedecin state={state} setState={setState} onOpenMedicalRecord={openAdminMedicalRecord} />;
+      case 'medicalRecords':
+        return <ModuleDossierMedical state={state} patientId={adminMedicalPatientId} onBack={() => { setAdminMedicalPatientId(null); setActiveModule(null); }} />;
+      case 'cashier':
+        return <ModuleCaisse state={state} setState={setState} onOpenMessagingWithRecipient={() => showToast('Messagerie disponible depuis l\'en-tête')} />;
+      case 'pharmacy':
+        return <ModulePharmacie state={state} setState={setState} onOpenMessagingWithRecipient={() => showToast('Messagerie disponible depuis l\'en-tête')} />;
+      case 'magasinier':
+        return <ModuleMagasinier state={state} setState={setState} />;
+      case 'laboratory':
+        return <ModuleLaboratoire state={state} setState={setState} />;
+      case 'billing':
+        return <ModuleFacturationSocietes state={state} setState={setState} />;
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="space-y-4">
       {toast && (
@@ -360,28 +422,87 @@ export default function ModuleAdministration({ state, setState }: Props) {
       )}
 
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-        {/* Navigation Onglets */}
-        <div className="flex border-b overflow-x-auto bg-slate-50">
-          {TABS.map((t) => {
-            const Icon = t.icon;
-            return (
-              <button
-                key={t.key}
-                onClick={() => setTab(t.key)}
-                title={t.desc}
-                className={`px-4 py-3 text-xs font-semibold border-b-2 cursor-pointer whitespace-nowrap flex items-center gap-2 transition ${
-                  tab === t.key
-                    ? 'border-slate-800 text-slate-900 bg-white shadow-sm'
-                    : 'border-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-800'
-                }`}
-              >
-                <Icon className="w-4 h-4" /> {t.label}
-              </button>
-            );
-          })}
-        </div>
+        <div className="flex min-h-[calc(100vh-220px)]">
+          {/* Sidebar Menu administrateur */}
+          <aside className="w-72 shrink-0 border-r bg-slate-900 text-white overflow-y-auto max-h-[calc(100vh-220px)]">
+            <div className="sticky top-0 z-10 bg-slate-950/95 px-4 py-4 border-b border-white/10">
+              <div className="flex items-center gap-2 font-bold text-sm">
+                <Menu className="w-4 h-4 text-emerald-300" /> Menu administrateur
+              </div>
+              <p className="mt-1 text-[11px] text-slate-400 leading-snug">Accès supervision + toutes les interfaces de l'application.</p>
+            </div>
 
-        <div className="p-5 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 260px)' }}>
+            <div className="p-3 space-y-4">
+              <div>
+                <div className="px-2 pb-1 text-[10px] uppercase tracking-wider text-slate-400 font-bold">Paramètres Admin</div>
+                <div className="space-y-1">
+                  {TABS.map((t) => {
+                    const Icon = t.icon;
+                    const active = !activeModule && tab === t.key;
+                    return (
+                      <button
+                        key={t.key}
+                        onClick={() => selectAdminTab(t.key)}
+                        title={t.desc}
+                        className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer flex items-start gap-2 transition ${
+                          active ? 'bg-white text-slate-900 shadow' : 'text-slate-300 hover:bg-white/10 hover:text-white'
+                        }`}
+                      >
+                        <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${active ? 'text-emerald-600' : 'text-slate-400'}`} />
+                        <span>
+                          <span className="block">{t.label}</span>
+                          <span className={`block font-normal text-[10px] leading-tight ${active ? 'text-slate-500' : 'text-slate-500'}`}>{t.desc}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <div className="px-2 pb-1 text-[10px] uppercase tracking-wider text-emerald-300 font-bold">Interfaces Application</div>
+                <div className="space-y-1">
+                  {APP_MODULES.map((m) => {
+                    const Icon = m.icon;
+                    const active = activeModule === m.key;
+                    return (
+                      <button
+                        key={m.key}
+                        onClick={() => selectAppModule(m.key)}
+                        title={m.desc}
+                        className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer flex items-start gap-2 transition ${
+                          active ? 'bg-emerald-500 text-white shadow' : 'text-slate-300 hover:bg-white/10 hover:text-white'
+                        }`}
+                      >
+                        <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${active ? 'text-white' : 'text-emerald-300'}`} />
+                        <span>
+                          <span className="block">{m.label}</span>
+                          <span className={`block font-normal text-[10px] leading-tight ${active ? 'text-emerald-50' : 'text-slate-500'}`}>{m.desc}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </aside>
+
+          <section className="flex-1 min-w-0 bg-slate-50">
+            {activeModule && (
+              <div className="px-5 py-3 border-b bg-white flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs uppercase tracking-wider font-bold text-emerald-600">Vue administrateur</div>
+                  <h3 className="font-bold text-slate-800">{APP_MODULES.find((m) => m.key === activeModule)?.label}</h3>
+                </div>
+                <span className="text-xs rounded-full bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1 font-semibold">
+                  Accès total administrateur
+                </span>
+              </div>
+            )}
+
+            <div className="p-5 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 260px)' }}>
+              {activeModule ? renderActiveModule() : (
+                <>
           {/* ===== DASHBOARD ===== */}
           {tab === 'dashboard' && (
             <div className="space-y-5">
@@ -952,6 +1073,10 @@ export default function ModuleAdministration({ state, setState }: Props) {
               </div>
             </div>
           )}
+                </>
+              )}
+            </div>
+          </section>
         </div>
       </div>
     </div>

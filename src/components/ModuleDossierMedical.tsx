@@ -31,10 +31,11 @@ const statusCfg: Record<string, { label: string; bg: string; text: string }> = {
 
 export default function ModuleDossierMedical({ state, patientId, onBack }: Props) {
   const [localId, setLocalId] = useState<string | null>(null);
+  const [selectedListId, setSelectedListId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<Tab>('consultations');
-  // Ne jamais rendre une donnée clinique si le composant est appelé hors du parcours médecin.
-  if (state.currentUser?.role !== 'doctor') return <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-red-800">Accès refusé : le dossier médical est réservé aux médecins.</div>;
+  // Ne jamais rendre une donnée clinique si le composant est appelé hors du parcours médecin / administrateur.
+  if (state.currentUser?.role !== 'doctor' && state.currentUser?.role !== 'admin') return <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-red-800">Accès refusé : le dossier médical est réservé aux médecins et administrateurs.</div>;
 
   const pid = patientId ?? localId;
   const patient = state.patients.find((p) => p.id === pid) || null;
@@ -68,6 +69,21 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
       })
     : [];
 
+  const openDossier = (id: string) => {
+    setSelectedListId(id);
+    setLocalId(id);
+    setTab('consultations');
+  };
+
+  const handleBack = () => {
+    if (!patientId && localId) {
+      setLocalId(null);
+      setSelectedListId(null);
+      return;
+    }
+    onBack?.();
+  };
+
   // ---- Vue liste (aucun patient sélectionné) ----
   if (!patient) {
     const q = search.toLowerCase();
@@ -90,11 +106,16 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
             </h2>
             <p className="text-sm text-slate-500">Gestion totale du dossier : identité, parcours, historique et analyses.</p>
           </div>
-          {onBack && (
-            <button onClick={onBack} className="px-3 py-2 bg-slate-200 hover:bg-slate-300 rounded-lg text-sm flex items-center gap-2 cursor-pointer">
-              <ArrowLeft className="w-4 h-4" /> Retour
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            <span className="hidden sm:inline-flex px-2 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-xs font-semibold">
+              💡 Double-clic sur une ligne → ouvrir le dossier
+            </span>
+            {onBack && (
+              <button onClick={onBack} className="px-3 py-2 bg-slate-200 hover:bg-slate-300 rounded-lg text-sm flex items-center gap-2 cursor-pointer">
+                <ArrowLeft className="w-4 h-4" /> Retour
+              </button>
+            )}
+          </div>
         </div>
         <div className="bg-white rounded-xl shadow-sm border p-4">
           <div className="relative max-w-md mb-3">
@@ -122,11 +143,18 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
               <tbody>
                 {list.map((p) => {
                   const st = statusCfg[p.status] || { label: p.status, bg: 'bg-slate-100', text: 'text-slate-600' };
+                  const isSelected = selectedListId === p.id;
                   return (
                     <tr
                       key={p.id}
-                      onClick={() => setLocalId(p.id)}
-                      className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer"
+                      tabIndex={0}
+                      title="Double-cliquez pour ouvrir le dossier médical"
+                      onClick={() => setSelectedListId(p.id)}
+                      onDoubleClick={() => openDossier(p.id)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') openDossier(p.id); }}
+                      className={`border-b border-slate-100 cursor-pointer outline-none transition-colors ${
+                        isSelected ? 'bg-blue-50 ring-1 ring-inset ring-blue-200 hover:bg-blue-50' : 'hover:bg-slate-50 focus:bg-slate-50'
+                      }`}
                     >
                       <td className="p-2 font-mono font-bold text-blue-700">{p.dossier}</td>
                       <td className="p-2 font-medium uppercase">{p.lastName} {p.firstName}</td>
@@ -182,9 +210,9 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
             >
               <Printer className="w-4 h-4" /> Imprimer le dossier
             </button>
-            {onBack && (
-              <button onClick={onBack} className="px-3 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm flex items-center gap-2 cursor-pointer">
-                <ArrowLeft className="w-4 h-4" /> Retour
+            {(onBack || (!patientId && localId)) && (
+              <button onClick={handleBack} className="px-3 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm flex items-center gap-2 cursor-pointer">
+                <ArrowLeft className="w-4 h-4" /> {!patientId && localId ? 'Retour à la liste' : 'Retour'}
               </button>
             )}
           </div>
