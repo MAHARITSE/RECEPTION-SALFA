@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription } from '../types';
+import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation } from '../types';
 import type { AppState } from '../store';
 import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber, addJourneyEvent, generatePharmaClosingNumber, purgePatientFromQueue, createVente, familyLabel } from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send } from 'lucide-react';
@@ -421,7 +421,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
     if (medicamentLines.length > 0) {
       extConsultId = uuidv4();
-      const prescriptions: Prescription[] = medicamentLines.map((l) => ({
+      const prescriptions: HbLine[] = medicamentLines.map((l) => ({
         id: uuidv4(),
         articleId: l.articleId || state.articles.find((a) => a.name === l.articleName)?.id || '',
         articleName: l.articleName,

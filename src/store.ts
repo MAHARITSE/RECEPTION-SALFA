@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import type {
-  Patient, Consultation, Invoice, CashClosing, Article, AuditLog, VitalSigns, Prescription,
+  Patient, Consultation, Invoice, CashClosing, Article, AuditLog, VitalSigns,
   Notification, UserRole, User, Company, Fournisseur, Famille,
   Message, StockTransfer, StockEntry, ClientType, ArticleFamily, TransferCategory,
   LabExamCatalog, LabCategory, LabRequest, PatientJourneyEvent, JourneyDepartment,

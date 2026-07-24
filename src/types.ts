@@ -62,20 +62,11 @@ export interface Article {
   saleBlockedBy?: string;
 }
 
-export interface Prescription {
-  id: string; articleId: string; articleName: string; quantity: number;
-  /** Famille article copiée depuis la base articles (même base que les lignes Hospit/Bloc). */
-  family?: ArticleFamily;
-  posology: string; duration: string; instructions: string;
-  unitPrice: number; discount: number; // remise % par ligne
-  delivered: boolean;
-  /** Date réelle de délivrance par la pharmacie (ISO). */
-  deliveredAt?: string;
-  /** Date de sortie utilisée par les lignes de vente = date de délivrance pharmacie (YYYY-MM-DD). */
-  dateSort?: string;
-  /** Lien vers la ligne de vente unifiée créée à l'encaissement. */
-  venteLineId?: string;
-}
+/** @deprecated — SUPPRIMÉ. Toutes les lignes de prescription sont désormais
+ *  gérées directement via `HbLine` (lignes Hospitalisation / Bloc / Comptoir / Externe).
+ *  L'alias `Prescription` est conservé temporairement pour la compatibilité ascendante
+ *  et sera retiré dans une prochaine passe. */
+export type Prescription = HbLine;
 
 export interface LabResult {
   parameter: string; value: number; unit: string;
@@ -151,7 +142,8 @@ export interface PatientJourneyEvent {
 export interface Consultation {
   id: string; patientId: string; doctorId: string; doctorName: string; date: string;
   vitalSigns: VitalSigns; visitReason: string; diagnosis: string; notes: string;
-  prescriptions: Prescription[]; labRequests: LabRequest[];
+  /** Lignes d'ordonnance / articles — unifiées dans HbLine (prescriptions fusionnées). */
+  prescriptions: HbLine[]; labRequests: LabRequest[];
   echoRequests?: EchoRequest[];
   hospitalizeRequested: boolean; surgeryRequested: boolean; isEmergency: boolean;
 }

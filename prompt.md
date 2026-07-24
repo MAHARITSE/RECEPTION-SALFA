@@ -32,7 +32,7 @@ Application web de gestion hospitalière intégrée (HIS) construite avec **Reac
 
 ### Familles d'articles
 
-Les 4 familles ci-dessous sont les valeurs initiales, mais la base `familles` est dynamique : toute famille créée dans le module magasinier peut être utilisée sur une fiche article, puis recopiée dans les prescriptions, `HbLine` et `venteLines`.
+Les 4 familles ci-dessous sont les valeurs initiales, mais la base `familles` est dynamique : toute famille créée dans le module magasinier peut être utilisée sur une fiche article, puis recopiée dans les lignes `HbLine` (ordonnance + hospit/bloc) et `venteLines`.
 
 | Code | Famille | Exemples |
 |------|---------|----------|
@@ -152,7 +152,7 @@ MÉDECIN (coche hospit/bloc) → CAISSE (onglet Hospit/Bloc)
 
 **Médecin et Caisse peuvent modifier le type de client** à tout moment
 
-**Saisie Prescription — Style Sage Commercial** :
+**Saisie Ordonnance — Style Sage Commercial** :
 - **UN SEUL champ recherche** (pas de combobox famille)
 - Recherche dans TOUTES les familles
 - Chaque résultat affiche la famille depuis la base articles, ex. `[Médicaments] Paracétamol 500mg — 450 Ar`
@@ -166,7 +166,7 @@ MÉDECIN (coche hospit/bloc) → CAISSE (onglet Hospit/Bloc)
 - Focus retour automatique sur la recherche après enregistrement
 - Clic sur une ligne du tableau → charge dans la barre du haut
 
-**Tableau prescription** :
+**Tableau ordonnance** :
 - Colonnes : Désignation, Qté, Posologie, Rem%, P.U., Montant
 - Ligne sélectionnée en bleu
 - Pied : TOTAL
@@ -277,7 +277,7 @@ Bouton **Imprimer ticket 80×80** avec les 4 sections
 | Constantes | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Allergies | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
 | Diagnostic | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Prescriptions/Prix | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
+| Ordonnances/Prix (HbLine) | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | Historique médical | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Stock central | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
 | Stock pharmacie | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ✅ |
@@ -723,22 +723,9 @@ type PatientStatus =
   | 'discharged'
   | 'completed';
 
-interface Prescription {
-  id: string;
-  articleId: string;
-  articleName: string;
-  family?: string;            // Code famille issu de la base `familles`
-  quantity: number;
-  posology: string;           // "1cp 3x/jour"
-  duration: string;
-  instructions: string;
-  unitPrice: number;
-  discount: number;           // Remise % PAR LIGNE
-  delivered: boolean;
-  deliveredAt?: string;       // Date/heure de délivrance pharmacie (ISO)
-  dateSort?: string;          // YYYY-MM-DD = date de délivrance pharmacie
-  venteLineId?: string;       // Lien vers venteLines
-}
+// Note : l'ancienne interface Prescription a été supprimée.
+// Toutes les lignes d'ordonnance sont désormais gérées via HbLine.
+// type Prescription = HbLine; (alias de compatibilité temporaire)
 
 interface Consultation {
   id: string;
@@ -750,7 +737,7 @@ interface Consultation {
   visitReason: string;        // Optionnel
   diagnosis: string;          // Obligatoire
   notes: string;
-  prescriptions: Prescription[];
+  prescriptions: HbLine[];    // Lignes d'ordonnance (fusionnées dans HbLine)
   labRequests: LabRequest[];
   hospitalizeRequested: boolean;
   surgeryRequested: boolean;
@@ -832,7 +819,7 @@ interface HbLine {
   id: string;
   articleId?: string;
   articleName: string;
-  family?: string;            // Même base famille que Prescription / Article
+  family?: string;            // Même base famille que Article (ordonnance + hospit/bloc)
   quantity: number;
   unitPrice: number;
   discount: number;
