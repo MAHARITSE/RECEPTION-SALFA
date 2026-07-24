@@ -8,8 +8,8 @@ import {
 } from '../store';
 import { printLabResultTicket } from '../utils/printTicket';
 import {
-  FlaskConical, Clock, CheckCircle, AlertTriangle, Send, Microscope, FileSearch,
-  Plus, Search, X, Printer, Syringe, Check,
+  FlaskConical, CheckCircle, AlertTriangle, Send, Microscope, FileSearch,
+  Plus, Search, Printer, Syringe, Check,
 } from 'lucide-react';
 
 interface Props {
@@ -28,10 +28,10 @@ interface DispLab {
   billable: boolean;
 }
 
-type Tab = 'to_bill' | 'awaiting' | 'in_progress' | 'completed' | 'all';
+type Tab = 'awaiting' | 'in_progress' | 'completed' | 'all';
 
 export default function ModuleLaboratoire({ state, setState }: Props) {
-  const [tab, setTab] = useState<Tab>('to_bill');
+  const [tab, setTab] = useState<Tab>('awaiting');
   const [search, setSearch] = useState('');
   const [filterCat, setFilterCat] = useState<string>('all');
   const [activeLab, setActiveLab] = useState<DispLab | null>(null);
@@ -104,13 +104,17 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
     });
   });
 
-  const filtered = allLabs.filter((d) => {
+  // Le laboratoire ne liste que les examens déjà réglés / prêts à traiter.
+  // Les demandes encore au statut `pending` restent visibles uniquement à la caisse,
+  // afin de ne plus afficher de partie « À facturer » dans la liste laboratoire.
+  const visibleLabs = allLabs.filter((d) => d.lr.status !== 'pending');
+
+  const filtered = visibleLabs.filter((d) => {
     if (search) {
       const q = search.toLowerCase();
       if (!d.patientName.toLowerCase().includes(q) && !(d.lr.examType.toLowerCase().includes(q))) return false;
     }
     if (filterCat !== 'all' && (d.lr.category || 'autre') !== filterCat) return false;
-    if (tab === 'to_bill') return d.lr.status === 'pending';
     if (tab === 'awaiting') return d.lr.status === 'paid' || d.lr.status === 'sample_received';
     if (tab === 'in_progress') return d.lr.status === 'in_progress';
     if (tab === 'completed') return d.lr.status === 'completed';
@@ -118,10 +122,9 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
   });
 
   const counts = {
-    to_bill: allLabs.filter((d) => d.lr.status === 'pending').length,
-    awaiting: allLabs.filter((d) => d.lr.status === 'paid' || d.lr.status === 'sample_received').length,
-    in_progress: allLabs.filter((d) => d.lr.status === 'in_progress').length,
-    completed: allLabs.filter((d) => d.lr.status === 'completed').length,
+    awaiting: visibleLabs.filter((d) => d.lr.status === 'paid' || d.lr.status === 'sample_received').length,
+    in_progress: visibleLabs.filter((d) => d.lr.status === 'in_progress').length,
+    completed: visibleLabs.filter((d) => d.lr.status === 'completed').length,
   };
 
   // ---- Mise à jour d'une demande (consultation OU autonome) ----
@@ -302,11 +305,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
   return (
     <div className="space-y-6 flex flex-col">
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-200">
-          <div className="flex items-center gap-3"><div className="p-2 bg-amber-100 rounded-lg"><Clock className="w-5 h-5 text-amber-600" /></div>
-            <div><div className="text-2xl font-bold text-slate-800">{counts.to_bill}</div><div className="text-sm text-slate-500">À facturer</div></div></div>
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-200">
           <div className="flex items-center gap-3"><div className="p-2 bg-cyan-100 rounded-lg"><Syringe className="w-5 h-5 text-cyan-600" /></div>
             <div><div className="text-2xl font-bold text-slate-800">{counts.awaiting}</div><div className="text-sm text-slate-500">En attente / échantillon</div></div></div>
@@ -347,7 +346,6 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="flex border-b border-slate-200 overflow-x-auto">
           {[
-            { key: 'to_bill' as Tab, label: `À facturer (${counts.to_bill})` },
             { key: 'awaiting' as Tab, label: `En attente (${counts.awaiting})` },
             { key: 'in_progress' as Tab, label: `En cours (${counts.in_progress})` },
             { key: 'completed' as Tab, label: `Terminées (${counts.completed})` },
@@ -391,7 +389,6 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
                           Prescripteur: {d.doctorName || d.lr.requestedBy || '—'}
                           {patient ? ` · Dossier ${patient.dossier}` : ''}
                           {d.lr.sampleType ? ` · ${d.lr.sampleType}` : ''}
-                          {d.billable && <span className="text-amber-600 font-semibold"> · 💳 À facturer</span>}
                           {st === 'completed' && d.lr.completedAt && ` · ${new Date(d.lr.completedAt).toLocaleDateString('fr-FR')}`}
                         </div>
                       </div>
