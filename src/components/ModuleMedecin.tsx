@@ -80,8 +80,9 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     }
   };
 
+  const isAdminUser = state.currentUser?.role === 'admin';
   const myWaiting = state.patients
-    .filter((p) => (!p.assignedDoctor || p.assignedDoctor === state.currentUser?.id) && p.status !== 'registered')
+    .filter((p) => (isAdminUser || !p.assignedDoctor || p.assignedDoctor === state.currentUser?.id) && p.status !== 'registered')
     .sort((a, b) => {
       const score = (s: PatientStatus) => {
         if (s === 'waiting_consultation') return 1;
@@ -146,7 +147,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     : [];
 
   const today = new Date().toDateString();
-  const myTodayConsults = state.consultations.filter((c) => c.doctorId === state.currentUser?.id && new Date(c.date).toDateString() === today);
+  const myTodayConsults = state.consultations.filter((c) => (isAdminUser || c.doctorId === state.currentUser?.id) && new Date(c.date).toDateString() === today);
 
   useEffect(() => {
     const line = lines.find(l => l.id === selectedLineId);
