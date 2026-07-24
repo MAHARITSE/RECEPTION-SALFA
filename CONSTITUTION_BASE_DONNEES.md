@@ -679,7 +679,27 @@ ventes ──N:1──> users (createdBy, paidBy)
 
 ## 📝 CORRECTIONS ET AMÉLIORATIONS RÉCENTES (v4.0 — Juillet 2026)
 
-### Correction critique : bouton « Valider » du médecin
+### Correction critique : type `JSX.Element` introuvable dans ModuleFacturationSocietes
+
+Le tableau `TABS` dans `ModuleFacturationSocietes.tsx` était typé comme `[Tab, string, JSX.Element][]` alors que :
+1. Le namespace `JSX` n'est pas accessible avec `"jsx": "react-jsx"` dans `tsconfig.json` (React 19)
+2. Le second élément est un `React.ReactNode` (balise JSX `<span>`) et non une `string`
+3. Le troisième élément (`undefined`) n'est jamais utilisé dans le destructuring `([k, label])`
+
+**Correction** : le type a été changé en `[Tab, React.ReactNode][]` et les troisièmes éléments superflus ont été supprimés.
+
+### Nettoyage des imports et variables inutilisées
+
+Plusieurs imports et variables inutilisées ont été supprimés pour correspondre aux règles `noUnusedLocals` et `noUnusedParameters` du `tsconfig.json` :
+
+| Fichier | Variable supprimée | Raison |
+|---------|-------------------|--------|
+| `ModuleFacturationSocietes.tsx` | `addCompanyBillingPayment`, `Company`, `settlementModeLabel` | Importés/déclarés mais jamais utilisés |
+| `ModuleFacturationSocietes.tsx` | 3e élément `undefined` des tuples `TABS` | Jamais exploité |
+
+### Corrections antérieures (rappel)
+
+#### Correction critique : bouton « Valider » du médecin
 
 Les appels à `setShowHistory(false)` dans `ModuleMedecin.tsx` (fonctions `submitConsultation` et `handleBackToQueue`) provoquaient un `ReferenceError` car la variable d'état `showHistory` n'a jamais été déclarée. Les deux appels ont été supprimés.
 
