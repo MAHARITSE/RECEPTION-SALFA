@@ -30,7 +30,9 @@ Application web de gestion hospitalière intégrée (HIS) construite avec **Reac
 
 ## PARTIE 2 : ARTICLES ET TARIFICATION
 
-### 4 Familles d'articles
+### Familles d'articles
+
+Les 4 familles ci-dessous sont les valeurs initiales, mais la base `familles` est dynamique : toute famille créée dans le module magasinier peut être utilisée sur une fiche article, puis recopiée dans les prescriptions, `HbLine` et `venteLines`.
 
 | Code | Famille | Exemples |
 |------|---------|----------|
@@ -153,13 +155,13 @@ MÉDECIN (coche hospit/bloc) → CAISSE (onglet Hospit/Bloc)
 **Saisie Prescription — Style Sage Commercial** :
 - **UN SEUL champ recherche** (pas de combobox famille)
 - Recherche dans TOUTES les familles
-- Chaque résultat affiche `[MEDIC] Paracétamol 500mg — 450 Ar`
+- Chaque résultat affiche la famille depuis la base articles, ex. `[Médicaments] Paracétamol 500mg — 450 Ar`
 - **Navigation clavier** : ↑↓ naviguer, Entrée sélectionner, Escape fermer
 - Après sélection → charge dans la barre d'édition
 - **Pas de consultation 10 000 Ar auto** — le médecin saisit tout
 
 **Barre de saisie en haut du tableau** :
-- Champs : Article (recherche), Qté, Posologie, Remise%, P.U. (readonly), Montant (readonly)
+- Champs : Article (recherche), Famille (readonly), Qté, Posologie, Remise%, P.U. (readonly), Montant (readonly), Date sortie (renseignée à la délivrance pharmacie)
 - Boutons : Supprimer, Enregistrer
 - Focus retour automatique sur la recherche après enregistrement
 - Clic sur une ligne du tableau → charge dans la barre du haut
@@ -725,6 +727,7 @@ interface Prescription {
   id: string;
   articleId: string;
   articleName: string;
+  family?: string;            // Code famille issu de la base `familles`
   quantity: number;
   posology: string;           // "1cp 3x/jour"
   duration: string;
@@ -732,6 +735,9 @@ interface Prescription {
   unitPrice: number;
   discount: number;           // Remise % PAR LIGNE
   delivered: boolean;
+  deliveredAt?: string;       // Date/heure de délivrance pharmacie (ISO)
+  dateSort?: string;          // YYYY-MM-DD = date de délivrance pharmacie
+  venteLineId?: string;       // Lien vers venteLines
 }
 
 interface Consultation {
@@ -811,9 +817,10 @@ interface Message {
 
 interface HbRecord {           // Hospitalisation/Bloc
   id: string;
+  venteId?: string;           // Vente unifiée liée au dossier
   patientName: string;
   type: 'hospit' | 'bloc';
-  lines: HbLine[];            // Articles facturés un par un
+  lines: HbLine[];            // Articles/prescriptions facturés un par un
   payments: {                 // Versements partiels
     amount: number;
     paidBy: string;           // Nom du caissier
@@ -823,10 +830,19 @@ interface HbRecord {           // Hospitalisation/Bloc
 
 interface HbLine {
   id: string;
+  articleId?: string;
   articleName: string;
+  family?: string;            // Même base famille que Prescription / Article
   quantity: number;
   unitPrice: number;
   discount: number;
+  posology?: string;
+  duration?: string;
+  instructions?: string;
+  delivered?: boolean;
+  deliveredAt?: string;
+  venteLineId?: string;
+  dateSort?: string;          // Date d'acte / de sortie
 }
 
 interface LabRequest {

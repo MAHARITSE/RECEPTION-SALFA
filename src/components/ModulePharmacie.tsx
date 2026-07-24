@@ -236,9 +236,16 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
       if (!confirm(`Stock insuffisant pour :\n${outOfStock.map((p) => `• ${p.articleName}`).join('\n')}\n\nDélivrer quand même (stock peut passer à 0) ?`)) return;
     }
 
+    const deliveredAt = new Date().toISOString();
+    const dateSort = deliveredAt.substring(0, 10);
+
     setState((prev) => {
+      const prescriptionsToDeliver = consultation.prescriptions.filter((p) => !p.delivered);
       const updatedConsultations = prev.consultations.map((c) =>
-        c.id === consultationId ? { ...c, prescriptions: c.prescriptions.map((p) => ({ ...p, delivered: true })) } : c);
+        c.id === consultationId ? {
+          ...c,
+          prescriptions: c.prescriptions.map((p) => p.delivered ? p : ({ ...p, delivered: true, deliveredAt, dateSort }))
+        } : c);
       const updatedArticles = [...prev.articles];
       const venteLines: any[] = [];
 
@@ -288,7 +295,7 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
           quantity: p.quantity,
           unitPrice: p.unitPrice,
           posology: p.posology,
-          deliveredAt: new Date().toISOString(),
+          deliveredAt,
           deliveredByUserId: prev.currentUser?.id || 'PHA001',
           deliveredByName: prev.currentUser?.name || 'Pharmacie',
           isExternal: !!isExternal,
@@ -301,6 +308,11 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
         ...prev,
         consultations: updatedConsultations,
         articles: updatedArticles,
+        // La date de sortie des lignes de vente issues d'ordonnances est la date réelle de délivrance pharmacie.
+        venteLines: (prev.venteLines || []).map((vl) => {
+          const match = prescriptionsToDeliver.find((p) => (p.venteLineId && vl.id === p.venteLineId) || vl.prescriptionId === p.id);
+          return match ? { ...vl, dateSort, deliveredAt } : vl;
+        }),
         pharmaDeliveryItems: [...(prev.pharmaDeliveryItems || []), ...newDeliveryItems],
         patients: patient ? prev.patients.map((p) => p.id === consultation.patientId ? { ...p, status: newStatus as any } : p) : prev.patients,
       };
@@ -832,7 +844,7 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                           const blocked = !!a.saleBlocked;
                           return (
                             <tr key={a.id} className={`border-b border-slate-100 ${blocked ? 'bg-orange-50/80' : isOut ? 'bg-red-50' : isLow ? 'bg-amber-50' : ''}`}>
-                              <td className="py-3 px-3"><span className="px-2 py-0.5 bg-slate-200 rounded text-xs">{familyLabel(a.family)}</span></td>
+                              <td className="py-3 px-3"><span className="px-2 py-0.5 bg-slate-200 rounded text-xs">{familyLabel(a.family, state.familles)}</span></td>
                               <td className="py-3 px-3 font-medium">
                                 {a.name}
                                 {blocked && a.saleBlockReason && (
