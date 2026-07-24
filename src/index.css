@@ -9,6 +9,38 @@
     @apply antialiased;
   }
 
+  /* Affiché par le bootstrap si un chargement JavaScript échoue. */
+  .startup-error {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    padding: 2rem;
+    color: #e2e8f0;
+    background: linear-gradient(135deg, #0f172a, #172554, #0f172a);
+    font-family: inherit;
+    text-align: center;
+  }
+
+  .startup-error__icon { font-size: 3.5rem; }
+  .startup-error h1 { margin: 0; font-size: 1.5rem; font-weight: 700; }
+  .startup-error p { max-width: 40rem; margin: 0; line-height: 1.5; }
+  .startup-error__detail { color: #94a3b8; font-family: monospace; font-size: .875rem; }
+  .startup-error button {
+    padding: .625rem 1rem;
+    border: 0;
+    border-radius: .5rem;
+    color: white;
+    background: #2563eb;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .startup-error button:hover { background: #1d4ed8; }
+
+
   /* Custom scrollbar */
   ::-webkit-scrollbar {
     width: 6px;
