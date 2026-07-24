@@ -302,6 +302,41 @@ export function getVentePayments(state: AppState, venteId: string): VentePayment
   return (state.ventePayments || []).filter(p => p.venteId === venteId);
 }
 
+/**
+ * Vrai uniquement lorsque les lignes de prescription d'une consultation ont fait
+ * l'objet d'un paiement effectif. Cette règle sert de garde unique avant tout
+ * affichage de données d'ordonnance (article, quantité, posologie, prix).
+ */
+export function isPrescriptionPaid(state: AppState, consultationId?: string): boolean {
+  if (!consultationId) return false;
+  const paidLegacyInvoice = state.invoices.some((inv) =>
+    inv.consultationId === consultationId &&
+    inv.status === 'paid' &&
+    inv.items.some((it) => it.category === 'pharmacy')
+  );
+  if (paidLegacyInvoice) return true;
+
+  return (state.ventes || []).some((v) =>
+    v.consultationId === consultationId &&
+    v.status === 'paid' &&
+    (state.venteLines || []).some((l) => l.venteId === v.id && l.category === 'pharmacy')
+  );
+}
+
+/** Retourne les prescriptions uniquement si elles sont payées ; sinon tableau vide. */
+export function paidPrescriptionsForConsultation(state: AppState, consultation: Pick<Consultation, 'id' | 'prescriptions'>): Prescription[] {
+  return isPrescriptionPaid(state, consultation.id) ? consultation.prescriptions : [];
+}
+
+/** Masque les désignations de prescription sur une facture non réglée. */
+export function safeInvoiceItemDescriptions(invoice: Pick<Invoice, 'items' | 'status'>, paidOverride?: boolean): string[] {
+  const paid = paidOverride ?? invoice.status === 'paid';
+  return invoice.items.map((it) => {
+    if (it.category === 'pharmacy' && !paid) return 'Prescription masquée — paiement requis';
+    return it.description;
+  });
+}
+
 /** Migre les anciennes factures (`invoices`) et dossiers hospit/bloc (`hbRecords`)
  *  vers la table unifiée `ventes` + `venteLines` (+ `ventePayments` pour les paiements partiels).
  *  S'exécute de manière idempotente : une fois la migration faite, rien n'est dupliqué. */

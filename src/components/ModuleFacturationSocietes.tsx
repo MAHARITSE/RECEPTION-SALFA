@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { AppState } from '../store';
 import {
   addAuditLog, addCompanyBillingPayment, billingStatusClasses, billingStatusLabel,
-  formatAr, getCompanyInvoicesForMonth, addJourneyEvent,
+  formatAr, getCompanyInvoicesForMonth, addJourneyEvent, safeInvoiceItemDescriptions,
 } from '../store';
 import type { CompanyBillingAccount, Company, CompanySettlementMode, Invoice } from '../types';
 import {
@@ -34,6 +34,11 @@ const invoiceStatusLabel = (inv: Invoice, state: AppState) => {
   if (totalPaid >= inv.totalAmount) return { label: 'Payée', color: 'bg-emerald-100 text-emerald-700', paid: inv.totalAmount, balance: 0 };
   if (totalPaid > 0) return { label: 'Partiellement payée', color: 'bg-amber-100 text-amber-700', paid: totalPaid, balance: inv.totalAmount - totalPaid };
   return { label: 'Impayée', color: 'bg-rose-100 text-rose-700', paid: 0, balance: inv.totalAmount };
+};
+
+const invoiceDesignation = (inv: Invoice, state: AppState, separator = ', ') => {
+  const st = invoiceStatusLabel(inv, state);
+  return safeInvoiceItemDescriptions(inv, st.balance <= 0).join(separator);
 };
 
 export default function ModuleFacturationSocietes({ state, setState }: Props) {
@@ -346,7 +351,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
     const rows = invoices.map(inv => {
       const p = patientOf(inv);
       const st = invoiceStatusLabel(inv, state);
-      return `<tr><td>${inv.id.slice(0, 8).toUpperCase()}</td><td>${new Date(inv.createdAt).toLocaleDateString('fr-FR')}</td><td>${p ? `${p.lastName} ${p.firstName}` : inv.clientName || '—'}</td><td>${p?.dossier || '—'}</td><td>${inv.items.map(i => i.description).join(', ')}</td><td class="num">${formatAr(inv.totalAmount)}</td><td class="num">${formatAr(st.paid)}</td><td class="num">${formatAr(st.balance)}</td><td>${st.label}</td></tr>`;
+      return `<tr><td>${inv.id.slice(0, 8).toUpperCase()}</td><td>${new Date(inv.createdAt).toLocaleDateString('fr-FR')}</td><td>${p ? `${p.lastName} ${p.firstName}` : inv.clientName || '—'}</td><td>${p?.dossier || '—'}</td><td>${invoiceDesignation(inv, state)}</td><td class="num">${formatAr(inv.totalAmount)}</td><td class="num">${formatAr(st.paid)}</td><td class="num">${formatAr(st.balance)}</td><td>${st.label}</td></tr>`;
     }).join('');
     const payRows = (invoiceIds
         ? account.payments.filter(p => p.invoiceIds?.some(id => invoiceIds.includes(id)))
@@ -379,7 +384,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
       'N° Facture;Date;Patient;Dossier;Designation;Montant;Regle;Solde;Statut',
       ...invoices.map(inv => {
         const p = patientOf(inv); const st = invoiceStatusLabel(inv, state);
-        return [inv.id.slice(0,8).toUpperCase(), new Date(inv.createdAt).toLocaleDateString('fr-FR'), p ? `${p.lastName} ${p.firstName}` : inv.clientName||'', p?.dossier||'', inv.items.map(i=>i.description).join(' | '), inv.totalAmount, st.paid, st.balance, st.label].map(esc).join(';');
+        return [inv.id.slice(0,8).toUpperCase(), new Date(inv.createdAt).toLocaleDateString('fr-FR'), p ? `${p.lastName} ${p.firstName}` : inv.clientName||'', p?.dossier||'', invoiceDesignation(inv, state, ' | '), inv.totalAmount, st.paid, st.balance, st.label].map(esc).join(';');
       }),
     ];
     const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
