@@ -52,7 +52,17 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
   const submittingRef = useRef(false);
   // Snapshot de la consultation ouverte via le bouton « Mod. » : permet de la
   // restaurer si l'utilisateur quitte par « Retour » sans rien valider.
-  const editSnapshotRef = useRef<{ consultation: Consultation; invoices: Invoice[]; labRequests: LabRequest[]; previousStatus: PatientStatus } | null>(null);
+  // On garde aussi les paiements/factures unifiés afin que l'annulation locale
+  // d'une modification ne supprime jamais définitivement un paiement existant.
+  const editSnapshotRef = useRef<{
+    consultation: Consultation;
+    invoices: Invoice[];
+    labRequests: LabRequest[];
+    ventes: AppState['ventes'];
+    venteLines: AppState['venteLines'];
+    ventePayments: AppState['ventePayments'];
+    previousStatus: PatientStatus;
+  } | null>(null);
 
   // ---- Demandes d'analyses (Laboratoire) saisies par le médecin ----
   const [labSearch, setLabSearch] = useState('');
@@ -202,11 +212,19 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
         if (snap && !prev.consultations.some((c) => c.id === snap.consultation.id)) {
           // Annulation d'une « Mod. » : consultation d'origine + factures/demandes restaurées
           restoredStatus = snap.previousStatus;
+          const invoiceIds = new Set(snap.invoices.map((inv) => inv.id));
+          const labRequestIds = new Set(snap.labRequests.map((lr) => lr.id));
+          const venteIds = new Set(snap.ventes.map((v) => v.id));
+          const venteLineIds = new Set(snap.venteLines.map((vl) => vl.id));
+          const ventePaymentIds = new Set(snap.ventePayments.map((vp) => vp.id));
           next = {
             ...next,
-            consultations: [...next.consultations, snap.consultation],
-            invoices: [...next.invoices, ...snap.invoices],
-            labRequests: [...next.labRequests, ...snap.labRequests],
+            consultations: [...next.consultations.filter((c) => c.id !== snap.consultation.id), snap.consultation],
+            invoices: [...next.invoices.filter((inv) => !invoiceIds.has(inv.id)), ...snap.invoices],
+            labRequests: [...next.labRequests.filter((lr) => !labRequestIds.has(lr.id)), ...snap.labRequests],
+            ventes: [...(next.ventes || []).filter((v) => !venteIds.has(v.id)), ...snap.ventes],
+            venteLines: [...(next.venteLines || []).filter((vl) => !venteLineIds.has(vl.id)), ...snap.venteLines],
+            ventePayments: [...(next.ventePayments || []).filter((vp) => !ventePaymentIds.has(vp.id)), ...snap.ventePayments],
           };
           addAuditLog(next, 'MODIF_ANNULEE', `${pat.dossier} — modification annulée, consultation restaurée`, pid);
           addJourneyEvent(next, { patientId: pid, department: 'consultation', action: 'Modification annulée', status: restoredStatus, details: `Consultation d'origine restaurée (retour sans validation)`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId: snap.consultation.id });
@@ -388,29 +406,117 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
   };
 
+  const consultationInvoiceIds = (s: AppState, consultationId: string) => new Set(
+    s.invoices.filter((inv) => inv.consultationId === consultationId).map((inv) => inv.id)
+  );
+
+  const consultationVenteIds = (s: AppState, consultationId: string, invoiceIds = consultationInvoiceIds(s, consultationId)) => new Set(
+    (s.ventes || [])
+      .filter((v) => v.consultationId === consultationId || (!!v.legacyInvoiceId && invoiceIds.has(v.legacyInvoiceId)))
+      .map((v) => v.id)
+  );
+
+  const hasDeliveredPrescription = (c: Consultation) => c.prescriptions.some((p) => p.delivered);
+
+  const hasPaidConsultationBilling = (s: AppState, c: Consultation) => {
+    const invoiceIds = consultationInvoiceIds(s, c.id);
+    const paidInvoice = s.invoices.some((inv) => invoiceIds.has(inv.id) && inv.status === 'paid');
+    const venteIds = consultationVenteIds(s, c.id, invoiceIds);
+    const paidVente = (s.ventes || []).some((v) =>
+      venteIds.has(v.id) && (v.status === 'paid' || v.status === 'partiel' || (v.montantPaye || 0) > 0)
+    );
+    return paidInvoice || paidVente || isPrescriptionPaid(s, c.id);
+  };
+
   const getConsultStatus = (c: Consultation) => {
-    const inv = state.invoices.find((i) => i.consultationId === c.id && i.status === 'paid');
-    const allDel = c.prescriptions.length > 0 && c.prescriptions.every((p) => p.delivered);
-    if (allDel) return { label: '💊 Livré', color: 'bg-emerald-100 text-emerald-800', canReturn: false, canEdit: false };
-    if (inv) return { label: '✅ Payé', color: 'bg-green-100 text-green-800', canReturn: true, canEdit: false };
-    return { label: '⏳ Attente', color: 'bg-amber-100 text-amber-800', canReturn: false, canEdit: c.prescriptions.length === 0 };
+    const delivered = hasDeliveredPrescription(c);
+    const paid = hasPaidConsultationBilling(state, c);
+    if (delivered) {
+      return {
+        label: '💊 Livré',
+        color: 'bg-emerald-100 text-emerald-800',
+        canReturn: false,
+        canEdit: false,
+        editCancelsPayment: false,
+        editTitle: 'Impossible : ordonnance déjà payée et livrée',
+      };
+    }
+    if (paid) {
+      return {
+        label: '✅ Payé',
+        color: 'bg-green-100 text-green-800',
+        canReturn: true,
+        canEdit: true,
+        editCancelsPayment: true,
+        editTitle: 'Modifier : le paiement déjà encaissé sera annulé et le patient repassera en caisse après validation',
+      };
+    }
+    return {
+      label: '⏳ Attente',
+      color: 'bg-amber-100 text-amber-800',
+      canReturn: false,
+      canEdit: true,
+      editCancelsPayment: false,
+      editTitle: 'Modifier la prescription avant paiement',
+    };
   };
 
   const returnToCashier = (cid: string) => {
     const c = state.consultations.find((x) => x.id === cid);
-    if (!c || !confirm('Retourner à la caisse ?')) return;
-    setState((prev) => ({ ...prev, consultations: prev.consultations.map((x) => x.id === cid ? { ...x, prescriptions: x.prescriptions.map((p) => ({ ...p, delivered: false })) } : x), patients: prev.patients.map((p) => p.id === c.patientId ? { ...p, status: 'consulted_awaiting_payment' as const } : p), invoices: prev.invoices.filter((i) => i.consultationId !== cid) }));
+    if (!c) return;
+    const patient = state.patients.find((p) => p.id === c.patientId);
+    if (hasDeliveredPrescription(c)) {
+      alert('Impossible : cette prescription est déjà payée et livrée. Le retour arrière est bloqué.');
+      return;
+    }
+    const paid = hasPaidConsultationBilling(state, c);
+    const msg = paid
+      ? 'Annuler le paiement déjà encaissé et renvoyer le patient à la caisse ?\n\nLa prescription pourra être refacturée après correction.'
+      : 'Retourner à la caisse ?';
+    if (!confirm(msg)) return;
+    setState((prev) => {
+      const invoiceIds = consultationInvoiceIds(prev, cid);
+      const venteIds = consultationVenteIds(prev, cid, invoiceIds);
+      const next: AppState = {
+        ...prev,
+        consultations: prev.consultations.map((x) => x.id === cid
+          ? { ...x, prescriptions: x.prescriptions.map((p) => ({ ...p, delivered: false })) }
+          : x),
+        patients: prev.patients.map((p) => p.id === c.patientId ? { ...p, status: 'consulted_awaiting_payment' as const } : p),
+        invoices: prev.invoices.filter((i) => !invoiceIds.has(i.id)),
+        ventes: (prev.ventes || []).filter((v) => !venteIds.has(v.id)),
+        venteLines: (prev.venteLines || []).filter((l) => !venteIds.has(l.venteId)),
+        ventePayments: (prev.ventePayments || []).filter((p) => !venteIds.has(p.venteId)),
+      };
+      addAuditLog(next, paid ? 'ANNULATION_PAIEMENT_RETOUR_CAISSE' : 'RETOUR_CAISSE', `${patient?.dossier || c.patientId} — retour à la caisse${paid ? ' avec annulation du paiement' : ''}`, c.patientId);
+      addJourneyEvent(next, { patientId: c.patientId, department: 'caisse', action: paid ? 'Paiement annulé — retour caisse' : 'Retour caisse', status: 'consulted_awaiting_payment', details: paid ? 'Paiement annulé avant nouvelle facturation' : 'Patient remis en attente de paiement', actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId: cid });
+      if (paid && patient) addNotification(next, 'cashier', `↩️ Paiement annulé: ${patient.lastName} ${patient.firstName} — à refacturer`, 'warning');
+      return next;
+    });
   };
 
   const reEditConsultation = (cid: string) => {
     const c = state.consultations.find((x) => x.id === cid);
     if (!c) return;
+    const patient = state.patients.find((p) => p.id === c.patientId);
+    if (hasDeliveredPrescription(c)) {
+      alert('Impossible : cette prescription est déjà payée et livrée. La modification est bloquée.');
+      return;
+    }
+    const paid = hasPaidConsultationBilling(state, c);
+    if (paid && !confirm('Cette prescription a déjà été payée.\n\nLa modification va annuler le paiement/la facture existante. Après validation, le patient devra repasser à la caisse.\n\nContinuer ?')) return;
+
+    const invoiceIds = consultationInvoiceIds(state, cid);
+    const venteIds = consultationVenteIds(state, cid, invoiceIds);
     // Snapshot : si le médecin quitte par « Retour » sans valider, tout est restauré
     editSnapshotRef.current = {
       consultation: c,
-      invoices: state.invoices.filter((inv) => inv.consultationId === cid),
+      invoices: state.invoices.filter((inv) => invoiceIds.has(inv.id)),
       labRequests: state.labRequests.filter((lr) => lr.consultationId === cid),
-      previousStatus: state.patients.find((p) => p.id === c.patientId)?.status || 'consulted_awaiting_payment',
+      ventes: (state.ventes || []).filter((v) => venteIds.has(v.id)),
+      venteLines: (state.venteLines || []).filter((vl) => venteIds.has(vl.venteId)),
+      ventePayments: (state.ventePayments || []).filter((vp) => venteIds.has(vp.venteId)),
+      previousStatus: patient?.status || 'consulted_awaiting_payment',
     };
     setSelectedPatientId(c.patientId); setConsultForm({ visitReason: c.visitReason, diagnosis: c.diagnosis, notes: c.notes, isEmergency: c.isEmergency, hospitalizeRequested: c.hospitalizeRequested, surgeryRequested: c.surgeryRequested });
     setVitals({ ...c.vitalSigns }); setLines([...c.prescriptions]); setView('consultation');
@@ -431,14 +537,25 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
       return catalogMatch ? { examId: catalogMatch.id, urgent: er.urgent, notes: er.notes || '' } : null;
     }).filter((d): d is { examId: string; urgent: boolean; notes: string } => d !== null);
     setEchoDraft(restoredEchoDraft); setEchoSearch(''); setEchoSearchIdx(0);
-    setState((prev) => ({
-      ...prev,
-      consultations: prev.consultations.filter((x) => x.id !== cid),
-      // IMPORTANT : supprimer aussi les factures et demandes labo liées à cette consultation pour éviter le double comptage
-      invoices: prev.invoices.filter((inv) => inv.consultationId !== cid),
-      labRequests: prev.labRequests.filter((lr) => lr.consultationId !== cid),
-      patients: prev.patients.map((p) => p.id === c.patientId ? { ...p, status: 'in_consultation' as const } : p)
-    }));
+    setState((prev) => {
+      const invoiceIds = consultationInvoiceIds(prev, cid);
+      const venteIds = consultationVenteIds(prev, cid, invoiceIds);
+      const next: AppState = {
+        ...prev,
+        consultations: prev.consultations.filter((x) => x.id !== cid),
+        // IMPORTANT : supprimer aussi les factures, paiements et demandes labo liés à cette consultation pour éviter le double comptage
+        invoices: prev.invoices.filter((inv) => !invoiceIds.has(inv.id)),
+        labRequests: prev.labRequests.filter((lr) => lr.consultationId !== cid),
+        ventes: (prev.ventes || []).filter((v) => !venteIds.has(v.id)),
+        venteLines: (prev.venteLines || []).filter((vl) => !venteIds.has(vl.venteId)),
+        ventePayments: (prev.ventePayments || []).filter((vp) => !venteIds.has(vp.venteId)),
+        patients: prev.patients.map((p) => p.id === c.patientId ? { ...p, status: 'in_consultation' as const } : p)
+      };
+      addAuditLog(next, paid ? 'MODIF_PRESCRIPTION_PAIEMENT_ANNULE' : 'MODIF_PRESCRIPTION', `${patient?.dossier || c.patientId} — modification de prescription${paid ? ' (paiement annulé)' : ''}`, c.patientId);
+      addJourneyEvent(next, { patientId: c.patientId, department: 'consultation', action: paid ? 'Modification avec annulation du paiement' : 'Modification de prescription', status: 'in_consultation', details: paid ? 'Paiement existant annulé ; nouvelle validation attendue' : 'Prescription remise en édition avant paiement', actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId: cid });
+      if (paid && patient) addNotification(next, 'cashier', `⚠️ Paiement annulé pour modification: ${patient.lastName} ${patient.firstName}`, 'warning');
+      return next;
+    });
   };
 
   const submitConsultation = () => {
@@ -565,7 +682,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
           <div className="overflow-auto"><table className="w-full text-sm"><thead className="bg-slate-100 sticky top-0"><tr><th className="p-2 text-left">Heure</th><th className="p-2 text-left">Patient</th><th className="p-2 text-right">Montant</th><th className="p-2 text-center">Statut</th><th className="p-2 text-center">Action</th></tr></thead>
             <tbody>{myTodayConsults.length === 0 ? <tr><td colSpan={5} className="p-8 text-center text-slate-400">Aucune</td></tr>
               : myTodayConsults.map((c) => { const pat = state.patients.find((p) => p.id === c.patientId); const st = getConsultStatus(c); const prescriptionIsPaid = isPrescriptionPaid(state, c.id); const prescTotal = c.prescriptions.reduce((s, p) => s + Math.round(p.unitPrice * p.quantity * (1 - p.discount / 100)), 0); const labTotal = (c.labRequests || []).reduce((s, lr) => s + (lr.price || 0), 0); const echoTotal = (c.echoRequests || []).reduce((s, er) => s + (er.price || 0), 0); const total = prescTotal + labTotal + echoTotal;
-                return (<tr key={c.id} className="border-b hover:bg-slate-50"><td className="p-2 font-mono">{new Date(c.date).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</td><td className="p-2 font-medium">{pat?.lastName} {pat?.firstName} <span className="text-xs text-slate-400">({pat?.dossier})</span></td><td className="p-2 text-right font-mono font-bold">{formatAr(total)}{(prescTotal > 0 && !prescriptionIsPaid) ? <span className="block text-[10px] font-normal text-amber-600">Prescription masquée — paiement requis</span> : (prescriptionIsPaid && prescTotal > 0) || labTotal > 0 || echoTotal > 0 ? <span className="block text-[10px] font-normal text-slate-400">{prescriptionIsPaid && prescTotal > 0 ? `💊${formatAr(prescTotal)} ` : ''}{labTotal > 0 ? `🧪${formatAr(labTotal)} ` : ''}{echoTotal > 0 ? `📡${formatAr(echoTotal)}` : ''}</span> : ''}</td><td className="p-2 text-center"><span className={`px-2 py-1 rounded-full text-xs font-bold ${st.color}`}>{st.label}</span></td><td className="p-2 text-center flex gap-1 justify-center flex-wrap">{st.canEdit && <button onClick={() => reEditConsultation(c.id)} className="px-2 py-1 bg-blue-500 text-white rounded text-xs cursor-pointer"><Edit2 className="w-3 h-3 inline" /> Mod.</button>}{st.canReturn && <button onClick={() => returnToCashier(c.id)} className="px-2 py-1 bg-amber-500 text-white rounded text-xs cursor-pointer"><RotateCcw className="w-3 h-3 inline" /> Caisse</button>}</td></tr>); })}</tbody>
+                return (<tr key={c.id} className="border-b hover:bg-slate-50"><td className="p-2 font-mono">{new Date(c.date).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</td><td className="p-2 font-medium">{pat?.lastName} {pat?.firstName} <span className="text-xs text-slate-400">({pat?.dossier})</span></td><td className="p-2 text-right font-mono font-bold">{formatAr(total)}{(prescTotal > 0 && !prescriptionIsPaid) ? <span className="block text-[10px] font-normal text-amber-600">Prescription masquée — paiement requis</span> : (prescriptionIsPaid && prescTotal > 0) || labTotal > 0 || echoTotal > 0 ? <span className="block text-[10px] font-normal text-slate-400">{prescriptionIsPaid && prescTotal > 0 ? `💊${formatAr(prescTotal)} ` : ''}{labTotal > 0 ? `🧪${formatAr(labTotal)} ` : ''}{echoTotal > 0 ? `📡${formatAr(echoTotal)}` : ''}</span> : ''}</td><td className="p-2 text-center"><span className={`px-2 py-1 rounded-full text-xs font-bold ${st.color}`}>{st.label}</span></td><td className="p-2 text-center flex gap-1 justify-center flex-wrap">{st.canEdit && <button onClick={() => reEditConsultation(c.id)} title={st.editTitle} className={`px-2 py-1 text-white rounded text-xs cursor-pointer ${st.editCancelsPayment ? 'bg-rose-600 hover:bg-rose-700' : 'bg-blue-500 hover:bg-blue-600'}`}><Edit2 className="w-3 h-3 inline" /> {st.editCancelsPayment ? 'Mod. (annule)' : 'Mod.'}</button>}{st.canReturn && <button onClick={() => returnToCashier(c.id)} title="Annuler le paiement et renvoyer en caisse" className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs cursor-pointer"><RotateCcw className="w-3 h-3 inline" /> Caisse</button>}{!st.canEdit && !st.canReturn && <span className="text-[10px] text-slate-400" title={st.editTitle}>—</span>}</td></tr>); })}</tbody>
           </table></div>
         </div>
       )}
