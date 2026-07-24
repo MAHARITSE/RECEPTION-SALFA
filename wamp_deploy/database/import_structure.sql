@@ -79,10 +79,31 @@ CREATE TABLE IF NOT EXISTS consultations (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
+-- Table: familles_articles
+-- Référentiel des familles/catégories d'articles.
+-- Une famille peut être utilisée par plusieurs articles, mais un article
+-- appartient à une seule famille.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS familles_articles (
+    id SMALLINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    code VARCHAR(30) NOT NULL,
+    libelle VARCHAR(100) NOT NULL,
+    couleur VARCHAR(7) NOT NULL DEFAULT '#0D47A1',
+    ordre_affichage SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+    actif BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_familles_articles_code (code),
+    UNIQUE KEY uk_familles_articles_libelle (libelle),
+    KEY idx_familles_articles_actif_ordre (actif, ordre_affichage)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================
 -- Table: medicaments
 -- ============================================================
 CREATE TABLE IF NOT EXISTS medicaments (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    famille_article_id SMALLINT UNSIGNED NULL,
     code VARCHAR(50) UNIQUE NOT NULL,
     nom_commercial VARCHAR(150) NOT NULL,
     nom_generique VARCHAR(150),
@@ -97,7 +118,11 @@ CREATE TABLE IF NOT EXISTS medicaments (
     date_expiration DATE,
     statut ENUM('actif', 'rupture', 'perime') DEFAULT 'actif',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_medicaments_famille_article (famille_article_id),
+    CONSTRAINT fk_medicaments_famille_article
+        FOREIGN KEY (famille_article_id) REFERENCES familles_articles(id)
+        ON UPDATE CASCADE ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
