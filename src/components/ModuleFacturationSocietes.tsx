@@ -65,11 +65,11 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
     ? state.ticketSettings.paymentMethods
     : ['Virement', 'Chèque', 'Mobile Money', 'Espèces'];
 
-  // Garde d'accès
-  if (state.currentUser?.role !== 'billing') {
+  // Garde d'accès : le responsable facturation et l'administrateur ont un accès complet.
+  if (state.currentUser?.role !== 'billing' && state.currentUser?.role !== 'admin') {
     return (
       <div className="p-12 text-center text-rose-700 font-semibold bg-rose-50 border border-rose-200 rounded-xl">
-        Accès refusé — le module « Facturation sociétés » est réservé au rôle Responsable facturation.
+        Accès refusé — le module « Facturation sociétés » est réservé au rôle Responsable facturation ou Administrateur.
       </div>
     );
   }
