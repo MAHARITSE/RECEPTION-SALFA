@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Consultation, VitalSigns, Prescription, LabRequest, ClientType, Invoice, EchoRequest, PatientStatus } from '../types';
 import type { AppState } from '../store';
-import { addAuditLog, addNotification, formatAr, getPrice, addJourneyEvent, labCategoryLabel, purgePatientFromQueue } from '../store';
+import { addAuditLog, addNotification, formatAr, getPrice, addJourneyEvent, labCategoryLabel, purgePatientFromQueue, familyLabel } from '../store';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
 import { Stethoscope, History, Trash2, AlertTriangle, Heart, FileText, Clock, CheckCircle, Send, Search, Edit2, RotateCcw, Save, FlaskConical, Scan } from 'lucide-react';
 
@@ -46,7 +46,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
   const [vitals, setVitals] = useState<VitalSigns>({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' });
   const [lines, setLines] = useState<Prescription[]>([]);
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
-  const [lineForm, setLineForm] = useState<Prescription>({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
+  const [lineForm, setLineForm] = useState<Prescription>({ id: '', articleId: '', articleName: '', family: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false, dateSort: '' });
   const [isNewLine, setIsNewLine] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const submittingRef = useRef(false);
@@ -175,7 +175,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     setLabDraft([]); setLabSearch(''); setEchoDraft([]); setEchoSearch('');
     setLabDraftIdx(-1); setEchoDraftIdx(-1);
     setArticleSearch('');
-    setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
+    setLineForm({ id: '', articleId: '', articleName: '', family: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false, dateSort: '' });
     setConsultForm({ visitReason: '', diagnosis: '', notes: '', isEmergency: false, hospitalizeRequested: false, surgeryRequested: false });
     if (p?.vitalSigns) setVitals({ ...p.vitalSigns }); else setVitals({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' });
     setState((prev) => {
@@ -226,7 +226,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     setSelectedPatientId(null); setConsultForm({ visitReason: '', diagnosis: '', notes: '', isEmergency: false, hospitalizeRequested: false, surgeryRequested: false });
     setVitals({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' });
     setLines([]); setShowHistory(false); setSearchQuery(''); setSelectedLineId(null); setIsNewLine(false);
-    setArticleSearch(''); setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
+    setArticleSearch(''); setLineForm({ id: '', articleId: '', articleName: '', family: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false, dateSort: '' });
     setLabDraft([]); setLabSearch(''); setEchoDraft([]); setEchoSearch('');
     setLabDraftIdx(-1); setEchoDraftIdx(-1);
     setView('queue');
@@ -323,6 +323,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
         ...existing,
         articleId: a.id,
         articleName: a.name,
+        family: a.family,
         unitPrice: getPrice(a, clientType),
       };
       // On garde la quantité / posologie déjà saisies si l'utilisateur était en train d'éditer
@@ -333,17 +334,18 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
         id: selectedLineId,
         articleId: a.id,
         articleName: a.name,
+        family: a.family,
         unitPrice: getPrice(a, clientType),
       };
       // Si lineForm ne correspondait pas à la ligne sélectionnée (cas stale), on utilise existing comme base
-      const finalForm = lineForm.id === selectedLineId ? merged : { ...existing, articleId: a.id, articleName: a.name, unitPrice: getPrice(a, clientType) };
+      const finalForm = lineForm.id === selectedLineId ? merged : { ...existing, articleId: a.id, articleName: a.name, family: a.family, unitPrice: getPrice(a, clientType) };
       setLineForm(finalForm);
       setArticleSearch('');
       setArtSearchIdx(0);
       // On reste en mode édition (pas de nouvelle ligne)
       return;
     }
-    const nl: Prescription = { id: uuidv4(), articleId: a.id, articleName: a.name, quantity: 1, posology: '', duration: '', instructions: '', unitPrice: getPrice(a, clientType), discount: 0, delivered: false };
+    const nl: Prescription = { id: uuidv4(), articleId: a.id, articleName: a.name, family: a.family, quantity: 1, posology: '', duration: '', instructions: '', unitPrice: getPrice(a, clientType), discount: 0, delivered: false, dateSort: '' };
     setLineForm({ ...nl }); setSelectedLineId(nl.id); setIsNewLine(true); setArticleSearch(''); setArtSearchIdx(0);
   };
 
@@ -372,7 +374,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     if (!selectedLineId) return;
     setLines(prev => prev.filter(l => l.id !== selectedLineId));
     setSelectedLineId(null);
-    setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
+    setLineForm({ id: '', articleId: '', articleName: '', family: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false, dateSort: '' });
   };
 
   const getConsultStatus = (c: Consultation) => {
@@ -405,7 +407,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     setSelectedLineId(null);
     setIsNewLine(false);
     setArticleSearch('');
-    setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
+    setLineForm({ id: '', articleId: '', articleName: '', family: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false, dateSort: '' });
     // Restaurer les demandes d'analyses labo dans le brouillon
     const restoredLabDraft = (c.labRequests || []).map((lr) => {
       const catalogMatch = state.labCatalog.find((e) => e.name === lr.examType && e.code === lr.code);
@@ -531,7 +533,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     setSelectedPatientId(null); setConsultForm({ visitReason: '', diagnosis: '', notes: '', isEmergency: false, hospitalizeRequested: false, surgeryRequested: false });
     setVitals({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' });
     setLines([]); setShowHistory(false); setSearchQuery(''); setSelectedLineId(null); setIsNewLine(false);
-    setArticleSearch(''); setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
+    setArticleSearch(''); setLineForm({ id: '', articleId: '', articleName: '', family: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false, dateSort: '' });
     setLabDraft([]); setLabSearch(''); setEchoDraft([]); setEchoSearch('');
     setLabDraftIdx(-1); setEchoDraftIdx(-1);
     setView('queue');
@@ -660,11 +662,13 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
                     </div>
                   )}
                 </div>
+                <div className="w-24"><label className="block text-[9px] text-slate-500">Famille</label><input readOnly type="text" value={familyLabel(lineForm.family, state.familles)} className="w-full bg-slate-200 border border-slate-300 rounded px-1 py-0.5 text-xs font-sans text-slate-600 truncate" /></div>
                 <div className="w-14"><label className="block text-[9px] text-slate-500">Qté</label><input type="number" min={1} value={lineForm.quantity} onChange={(e)=>updateLineForm('quantity',parseInt(e.target.value)||1)} onKeyDown={(e)=>{ if(e.key==='Enter'){e.preventDefault();handleSaveLine();}}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono outline-none focus:border-blue-500" /></div>
                 <div className="w-28"><label className="block text-[9px] text-slate-500">Posologie</label><input type="text" value={lineForm.posology} onChange={(e)=>updateLineForm('posology',e.target.value)} onKeyDown={(e)=>{ if(e.key==='Enter'){e.preventDefault();handleSaveLine();}}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs outline-none focus:border-blue-500" placeholder="1cp 3x/j" /></div>
                 <div className="w-14"><label className="block text-[9px] text-slate-500">Remise%</label><input type="number" min={0} max={100} value={lineForm.discount} onChange={(e)=>updateLineForm('discount',parseInt(e.target.value)||0)} onKeyDown={(e)=>{ if(e.key==='Enter'){e.preventDefault();handleSaveLine();}}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono outline-none focus:border-blue-500" /></div>
                 <div className="w-20"><label className="block text-[9px] text-slate-500">P.U.</label><input type="text" readOnly value={formatAr(lineForm.unitPrice)} className="w-full bg-slate-200 border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono" /></div>
                 <div className="w-24"><label className="block text-[9px] text-slate-500">Montant</label><input type="text" readOnly value={formatAr(lineAmount(lineForm))} className="w-full bg-slate-200 border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono font-bold text-slate-700" /></div>
+                <div className="w-28"><label className="block text-[9px] text-slate-500" title="Renseignée automatiquement lors de la délivrance pharmacie">Date sortie</label><input type="text" readOnly value={lineForm.dateSort || 'Délivrance pharma'} className="w-full bg-amber-50 border border-amber-300 rounded px-1 py-0.5 text-[10px] font-mono text-slate-600" /></div>
               </div>
               <div className="flex justify-end gap-1 mt-1">
                 <button onClick={handleDeleteLine} disabled={!selectedLineId} className="flex items-center gap-1 px-2 py-0.5 bg-white border border-slate-300 rounded shadow-sm text-slate-700 text-[10px] disabled:opacity-40 cursor-pointer"><Trash2 className="h-3 w-3 text-rose-600" /> Supprimer</button>
@@ -676,19 +680,19 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
             <div className="bg-white mx-2 mb-2 border-t border-slate-300 overflow-x-auto rounded-b">
               <table className="w-full text-left border-collapse text-[11px]">
                 <thead className="bg-slate-50 border-b border-slate-300 text-slate-600">
-                  <tr className="divide-x divide-slate-200"><th className="p-1 min-w-[130px]">Désignation</th><th className="p-1 text-right w-12">Qté</th><th className="p-1 w-24">Posologie</th><th className="p-1 text-center w-12">Rem%</th><th className="p-1 text-right w-20">P.U.</th><th className="p-1 text-right w-24">Montant</th></tr>
+                  <tr className="divide-x divide-slate-200"><th className="p-1 w-24">Famille</th><th className="p-1 min-w-[130px]">Désignation</th><th className="p-1 text-right w-12">Qté</th><th className="p-1 w-24">Posologie</th><th className="p-1 text-center w-12">Rem%</th><th className="p-1 text-right w-20">P.U.</th><th className="p-1 text-right w-24">Montant</th><th className="p-1 w-24">Date sortie</th></tr>
                 </thead>
                 <tbody className="divide-y font-mono">
                   {lines.map((l) => {
                     const isSel = l.id === selectedLineId;
                     return (<tr key={l.id} onClick={() => { setSelectedLineId(l.id); setIsNewLine(false); }} className={`cursor-pointer divide-x divide-slate-200 transition-colors ${isSel ? 'bg-blue-500 text-white font-medium' : 'hover:bg-slate-50 text-slate-800'}`}>
-                      <td className="p-1 font-sans">{l.articleName}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 font-sans">{l.posology || '—'}</td><td className="p-1 text-center">{l.discount > 0 ? `${l.discount}%` : '—'}</td><td className="p-1 text-right">{l.unitPrice.toLocaleString('fr-FR')}</td><td className="p-1 text-right font-bold">{lineAmount(l).toLocaleString('fr-FR')}</td>
+                      <td className="p-1 font-sans"><span className={`px-1 rounded text-[10px] ${isSel ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'}`}>{familyLabel(l.family, state.familles) || '—'}</span></td><td className="p-1 font-sans">{l.articleName}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 font-sans">{l.posology || '—'}</td><td className="p-1 text-center">{l.discount > 0 ? `${l.discount}%` : '—'}</td><td className="p-1 text-right">{l.unitPrice.toLocaleString('fr-FR')}</td><td className="p-1 text-right font-bold">{lineAmount(l).toLocaleString('fr-FR')}</td><td className="p-1 font-sans text-[10px]">{l.dateSort || '—'}</td>
                     </tr>);
                   })}
-                  {lines.length === 0 && <tr><td colSpan={6} className="p-3 text-center text-slate-400 font-sans">Ordonnance optionnelle — tapez un article (↑↓ Entrée) ou validez sans médicament</td></tr>}
+                  {lines.length === 0 && <tr><td colSpan={8} className="p-3 text-center text-slate-400 font-sans">Ordonnance optionnelle — tapez un article (↑↓ Entrée) ou validez sans médicament</td></tr>}
                 </tbody>
                 {lines.length > 0 && <tfoot className="bg-emerald-50 border-t-2 border-emerald-300 font-sans">
-                  <tr className="divide-x divide-emerald-200"><td colSpan={4} className="p-1 text-right font-bold">TOTAL:</td><td colSpan={2} className="p-1 text-right font-mono font-bold text-lg text-emerald-800">{formatAr(totalPres)}</td></tr>
+                  <tr className="divide-x divide-emerald-200"><td colSpan={6} className="p-1 text-right font-bold">TOTAL:</td><td colSpan={2} className="p-1 text-right font-mono font-bold text-lg text-emerald-800">{formatAr(totalPres)}</td></tr>
                 </tfoot>}
               </table>
             </div>

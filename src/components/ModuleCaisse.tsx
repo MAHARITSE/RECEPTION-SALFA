@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription } from '../types';
 import type { AppState } from '../store';
-import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber, addJourneyEvent, generatePharmaClosingNumber, purgePatientFromQueue } from '../store';
+import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber, addJourneyEvent, generatePharmaClosingNumber, purgePatientFromQueue, createVente, familyLabel } from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send } from 'lucide-react';
 import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket } from '../utils/printTicket';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
@@ -220,6 +220,70 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
           ? { ...p, status: 'invoice_paid' as const, lastVisitAt: paidAt }
           : p),
       };
+      // Miroir en base unifiée des ventes : les prescriptions, analyses et échos
+      // sont stockés dans `venteLines`. Pour les prescriptions, la dateSort reste vide
+      // jusqu'à la délivrance pharmacie, où elle devient la date réelle de délivrance.
+      const venteInputLines = [
+        ...unpaidConsults.flatMap(c => c.prescriptions.map(p => ({
+          articleId: p.articleId || undefined,
+          articleName: p.articleName,
+          family: p.family || prev.articles.find(a => a.id === p.articleId || a.name === p.articleName)?.family,
+          prescriptionId: p.id,
+          quantity: p.quantity,
+          unitPrice: p.unitPrice,
+          discount: p.discount || 0,
+          posology: p.posology,
+          duration: p.duration,
+          instructions: p.instructions,
+          category: 'pharmacy' as const,
+          dateSort: p.dateSort,
+        }))),
+        ...dedupedServiceItems.map(it => ({
+          articleName: it.description,
+          quantity: 1,
+          unitPrice: it.amount,
+          discount: 0,
+          category: it.category as any,
+          dateSort: paidAt.substring(0, 10),
+        })),
+      ];
+      if (venteInputLines.length > 0) {
+        const { vente, venteLines } = createVente(next, {
+          patientId: selPatient.id,
+          consultationId: unpaidConsults[0]?.id,
+          type: medicationItems.length > 0 ? 'pharmacie' : serviceItems.some(i => i.category === 'lab') ? 'labo' : serviceItems.some(i => i.category === 'echo') ? 'echo' : 'consultation',
+          clientType: selPatient.clientType,
+          clientName: `${selPatient.lastName} ${selPatient.firstName}`,
+          company: selPatient.company,
+          subCompany: selPatient.subCompany,
+          remisePct: 0,
+          montantPaye: total,
+          isExterne: false,
+          source: 'caisse',
+          dateVente: paidAt,
+          datePaiement: paidAt,
+          paidAt,
+          paidBy: prev.currentUser?.id || '',
+          paidByName: prev.currentUser?.name,
+          createdBy: prev.currentUser?.id,
+          createdByName: prev.currentUser?.name,
+          legacyInvoiceId: inv.id,
+        }, venteInputLines);
+        next.ventePayments = [...(next.ventePayments || []), {
+          id: uuidv4(),
+          venteId: vente.id,
+          amount: total,
+          method: 'Espèces',
+          date: paidAt,
+          paidBy: prev.currentUser?.name || '',
+          paidByUserId: prev.currentUser?.id,
+        }];
+        const vlineByPrescription = new Map(venteLines.filter(l => l.prescriptionId).map(l => [l.prescriptionId as string, l.id]));
+        next.consultations = next.consultations.map(c => c.patientId === selPatient.id
+          ? { ...c, prescriptions: c.prescriptions.map(p => vlineByPrescription.has(p.id) ? { ...p, venteLineId: vlineByPrescription.get(p.id) } : p) }
+          : c);
+      }
+
       const parts = [
         medicationItems.length ? 'médicaments' : '',
         serviceItems.some(i => i.category === 'lab') ? 'analyses' : '',
@@ -275,7 +339,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       return;
     }
     // La date saisie est conservée : elle ne s'efface pas entre les lignes (plusieurs sorties le même jour)
-    const nl: HbLine = { id: uuidv4(), articleName: a.name, quantity: 1, unitPrice: getPrice(a, 'externe'), discount: 0, dateSort: extLineForm.dateSort || new Date().toISOString().split('T')[0] };
+    const nl: HbLine = { id: uuidv4(), articleId: a.id, articleName: a.name, family: a.family, quantity: 1, unitPrice: getPrice(a, 'externe'), discount: 0, dateSort: extLineForm.dateSort || new Date().toISOString().split('T')[0] };
     setExtLineForm({ ...nl }); setExtSelLineId(nl.id); setExtIsNew(true); setExtSearch('');
   };
   const extSaveLine = () => {
@@ -359,8 +423,9 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       extConsultId = uuidv4();
       const prescriptions: Prescription[] = medicamentLines.map((l) => ({
         id: uuidv4(),
-        articleId: state.articles.find((a) => a.name === l.articleName)?.id || '',
+        articleId: l.articleId || state.articles.find((a) => a.name === l.articleName)?.id || '',
         articleName: l.articleName,
+        family: l.family || state.articles.find((a) => a.name === l.articleName)?.family,
         quantity: l.quantity,
         posology: 'Vente externe',
         duration: '',
@@ -368,6 +433,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         unitPrice: l.unitPrice,
         discount: l.discount,
         delivered: false,
+        dateSort: '',
       }));
       const extConsult: Consultation = {
         id: extConsultId,
@@ -504,7 +570,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     }
     const rec = hbRecords.find(r => r.id === hbSelRecordId);
     // On conserve la date déjà saisie (sorties multiples le même jour)
-    setHbArtForm(prev => ({ id: uuidv4(), articleName: a.name, quantity: 1, unitPrice: getPrice(a, rec?.clientType || 'comptoir'), discount: 0, dateSort: prev.dateSort || new Date().toISOString().split('T')[0] }));
+    setHbArtForm(prev => ({ id: uuidv4(), articleId: a.id, articleName: a.name, family: a.family, quantity: 1, unitPrice: getPrice(a, rec?.clientType || 'comptoir'), discount: 0, dateSort: prev.dateSort || new Date().toISOString().split('T')[0] }));
     setHbIsNew(true);
     setHbSelLineId(null);
     setHbArtSearch('');
@@ -879,7 +945,7 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                         const isOut = a.stockPharmacie <= 0;
                         const isLow = !isOut && a.stockPharmacie <= a.minStockPharmacie && !a.alertDisabledPharmacie;
                         return (<div key={a.id} onClick={() => extSelectArticle(a.id)} title={isOut ? 'Rupture de stock — vente impossible' : undefined} className={`px-2 py-1 text-xs flex justify-between border-b ${isOut ? 'bg-red-50 text-red-700 cursor-not-allowed' : `cursor-pointer ${idx === extSearchIdx ? 'bg-blue-100' : 'hover:bg-blue-50'}`}`}>
-                          <span className={isOut ? 'line-through decoration-red-400/60' : ''}>[{a.family}] {a.name}</span>
+                          <span className={isOut ? 'line-through decoration-red-400/60' : ''}>[{familyLabel(a.family, state.familles)}] {a.name}</span>
                           <span className="flex items-center gap-2">
                             {isOut
                               ? <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-[9px] font-bold">🚨 RUPTURE — invendable</span>
@@ -1099,7 +1165,7 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                               title={isOut ? 'Rupture de stock — vente impossible' : undefined}
                               className={`px-3 py-1.5 text-xs flex justify-between border-b border-slate-100 ${isOut ? 'bg-red-50 text-red-700 cursor-not-allowed' : `cursor-pointer ${idx === hbArtIdx ? 'bg-blue-500 text-white font-medium' : 'hover:bg-slate-50 text-slate-800'}`}`}
                             >
-                              <span className={isOut ? 'line-through decoration-red-400/60' : ''}>[{a.family}] {a.name}</span>
+                              <span className={isOut ? 'line-through decoration-red-400/60' : ''}>[{familyLabel(a.family, state.familles)}] {a.name}</span>
                               <span className="flex items-center gap-2">
                                 {isOut
                                   ? <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-[9px] font-bold">🚨 RUPTURE — invendable</span>
@@ -1111,6 +1177,10 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                           })}
                         </div>
                       )}
+                    </div>
+                    <div className="w-24">
+                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Famille</label>
+                      <input readOnly value={familyLabel(hbArtForm.family, state.familles)} className="w-full bg-slate-200 border border-slate-300 rounded px-1.5 py-0.5 text-xs text-slate-600 truncate font-sans" />
                     </div>
                     <div className="w-16">
                       <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Qté</label>
@@ -1195,6 +1265,7 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                   <table className="w-full text-[11px] text-left border-collapse">
                     <thead className="bg-slate-50 border-b border-slate-300 text-slate-600">
                       <tr className="divide-x divide-slate-200">
+                        <th className="p-1 font-normal w-24">Famille</th>
                         <th className="p-1 font-normal min-w-[150px]">Article</th>
                         <th className="p-1 font-normal text-right w-12">Qté</th>
                         <th className="p-1 font-normal text-center w-12">Rem%</th>
@@ -1213,6 +1284,7 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                             setHbArtForm({ ...l });
                             setHbIsNew(false);
                           }} className={`cursor-pointer divide-x divide-slate-200 transition-colors ${isSel ? 'bg-blue-500 text-white font-medium' : 'hover:bg-slate-50 text-slate-800'}`}>
+                            <td className="p-1 font-sans"><span className={`px-1 rounded text-[10px] ${isSel ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'}`}>{familyLabel(l.family, state.familles) || '—'}</span></td>
                             <td className="p-1 font-sans">{l.articleName}</td>
                             <td className="p-1 text-right">{l.quantity}</td>
                             <td className="p-1 text-center">{l.discount ? `${l.discount}%` : '—'}</td>
@@ -1234,14 +1306,14 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                         );
                       })}
                       {rec && rec.lines.length === 0 && (
-                        <tr><td colSpan={6} className="p-4 text-center text-slate-400 font-sans">Aucun article enregistré. Tapez ou recherchez un article ci-dessus.</td></tr>
+                        <tr><td colSpan={8} className="p-4 text-center text-slate-400 font-sans">Aucun article enregistré. Tapez ou recherchez un article ci-dessus.</td></tr>
                       )}
                     </tbody>
                     {rec && rec.lines.length > 0 && (
                       <tfoot className="bg-emerald-50 border-t-2 border-emerald-300 text-slate-800 font-sans">
                         <tr className="font-bold">
-                          <td colSpan={3} className="p-1.5 text-right">TOTAL PATIENT :</td>
-                          <td colSpan={3} className="p-1.5 text-right font-mono text-lg text-emerald-700">{formatAr(recTotal)}</td>
+                          <td colSpan={4} className="p-1.5 text-right">TOTAL PATIENT :</td>
+                          <td colSpan={4} className="p-1.5 text-right font-mono text-lg text-emerald-700">{formatAr(recTotal)}</td>
                         </tr>
                       </tfoot>
                     )}

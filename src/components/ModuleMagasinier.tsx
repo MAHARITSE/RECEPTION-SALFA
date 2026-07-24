@@ -119,6 +119,9 @@ export default function ModuleMagasinier({ state, setState }: Props) {
   const activeServices = services.filter((s) => s.active);
   const fournisseurs = state.fournisseurs || [];
   const familles = state.familles || [];
+  const familyOptions: Famille[] = familles.length
+    ? familles
+    : ARTICLE_FAMILIES.map((code, order) => ({ id: `default-${code}`, code, name: familyLabel(code), color: '#64748B', order }));
   const movements = state.stockMovements || [];
   const inventories = state.inventorySessions || [];
 
@@ -817,14 +820,14 @@ export default function ModuleMagasinier({ state, setState }: Props) {
   // Filtres
   const filteredStockArticles = state.articles.filter((a) => {
     const q = searchStock.toLowerCase();
-    const matchQ = a.name.toLowerCase().includes(q) || familyLabel(a.family).toLowerCase().includes(q) || (a.barcode || '').includes(q);
+    const matchQ = a.name.toLowerCase().includes(q) || familyLabel(a.family, familles).toLowerCase().includes(q) || (a.barcode || '').includes(q);
     const matchFam = familyStockFilter === 'all' || a.family === familyStockFilter;
     return matchQ && matchFam;
   });
 
   const filteredCatalogArticles = state.articles.filter((a) => {
     const q = searchArticle.toLowerCase();
-    return a.name.toLowerCase().includes(q) || familyLabel(a.family).toLowerCase().includes(q) || (a.barcode || '').includes(q);
+    return a.name.toLowerCase().includes(q) || familyLabel(a.family, familles).toLowerCase().includes(q) || (a.barcode || '').includes(q);
   });
 
   const filteredSuppliers = fournisseurs.filter((f) => {
@@ -936,8 +939,8 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                 <div className="flex items-center gap-1 flex-wrap">
                   <Filter className="w-4 h-4 text-slate-400 mr-1" />
                   <button onClick={() => setFamilyStockFilter('all')} className={`px-2.5 py-1 rounded text-xs cursor-pointer ${familyStockFilter === 'all' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600'}`}>Tous</button>
-                  {ARTICLE_FAMILIES.map(f => (
-                    <button key={f} onClick={() => setFamilyStockFilter(f)} className={`px-2.5 py-1 rounded text-xs cursor-pointer ${familyStockFilter === f ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600'}`}>{familyLabel(f)}</button>
+                  {familyOptions.map(f => (
+                    <button key={f.code} onClick={() => setFamilyStockFilter(f.code)} className={`px-2.5 py-1 rounded text-xs cursor-pointer ${familyStockFilter === f.code ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600'}`}>{f.name}</button>
                   ))}
                 </div>
               </div>
@@ -966,7 +969,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                       const low = !alertMuted && a.stockCentral <= a.minStockCentral && a.stockCentral > 0;
                       return (
                         <tr key={a.id} className={`border-b hover:bg-slate-50/80 ${out ? 'bg-rose-50/50' : low ? 'bg-amber-50/50' : ''}`}>
-                          <td className="p-2.5"><span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-[10px] font-semibold">{familyLabel(a.family)}</span></td>
+                          <td className="p-2.5"><span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-[10px] font-semibold">{familyLabel(a.family, familles)}</span></td>
                           <td className="p-2.5 font-medium text-slate-900">
                             {a.name}
                             {a.saleBlocked && <span className="ml-2 px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded text-[9px] font-bold">Vente Bloquée</span>}
@@ -1042,7 +1045,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                   <tbody>
                     {filteredCatalogArticles.map((a) => (
                       <tr key={a.id} className="border-b hover:bg-slate-50">
-                        <td className="p-2.5"><span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-[10px] font-bold">{familyLabel(a.family)}</span></td>
+                        <td className="p-2.5"><span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-[10px] font-bold">{familyLabel(a.family, familles)}</span></td>
                         <td className="p-2.5 font-semibold text-slate-900">
                           {a.name}
                           {a.barcode && <span className="block text-[10px] font-mono text-slate-400">Barcode: {a.barcode}</span>}
@@ -1087,7 +1090,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                         <div>
                           <label className="font-bold block text-slate-700 mb-1">Famille d'articles *</label>
                           <select value={artForm.family} onChange={e => setArtForm({ ...artForm, family: e.target.value as ArticleFamily })} className="w-full px-3 py-2 border rounded-lg text-sm bg-white outline-none cursor-pointer">
-                            {ARTICLE_FAMILIES.map(f => <option key={f} value={f}>{familyLabel(f)}</option>)}
+                            {familyOptions.map(f => <option key={f.code} value={f.code}>{f.name}</option>)}
                           </select>
                         </div>
                         <div>
@@ -1373,14 +1376,14 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                         <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 rounded-b shadow-2xl z-40 max-h-40 overflow-y-auto">
                           {purchaseFiltered.map((a, idx) => (
                             <div key={a.id} onClick={() => purchaseSelectArticle(a.id)} className={`px-3 py-1.5 cursor-pointer text-xs flex justify-between border-b ${idx === purchaseSearchIdx ? 'bg-sky-600 text-white font-medium' : 'hover:bg-slate-50 text-slate-800'}`}>
-                              <span>[{familyLabel(a.family)}] {a.name}</span>
+                              <span>[{familyLabel(a.family, familles)}] {a.name}</span>
                               <span className="font-mono text-[11px]">Stock: {a.stockCentral}</span>
                             </div>
                           ))}
                         </div>
                       )}
                     </div>
-                    <div className="w-24"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Famille</label><input readOnly value={familyLabel(purchaseForm.family as any) || ''} className="w-full bg-slate-200 border border-slate-300 rounded px-2 py-1 text-xs text-slate-600 truncate" /></div>
+                    <div className="w-24"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Famille</label><input readOnly value={familyLabel(purchaseForm.family as any, familles) || ''} className="w-full bg-slate-200 border border-slate-300 rounded px-2 py-1 text-xs text-slate-600 truncate" /></div>
                     <div className="w-20"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Quantité</label><input id="purchase-qty-input" type="number" min={1} value={purchaseForm.quantity} onChange={(e) => setPurchaseForm((prev) => ({ ...prev, quantity: parseInt(e.target.value) || 1 }))} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); purchaseSaveLine(); } }} className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs text-right font-mono" /></div>
                     <div className="w-24"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">P. Achat Unitaire</label><input type="number" min={0} value={purchaseForm.purchasePrice} onChange={(e) => setPurchaseForm((prev) => ({ ...prev, purchasePrice: parseInt(e.target.value) || 0 }))} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); purchaseSaveLine(); } }} className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs text-right font-mono" /></div>
                     <div className="w-28"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Date Péremption</label><input type="date" value={purchaseForm.expiryDate} onChange={(e) => setPurchaseForm((prev) => ({ ...prev, expiryDate: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); purchaseSaveLine(); } }} className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs font-mono" /></div>
@@ -1411,7 +1414,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                     <tbody className="divide-y font-mono">
                       {purchaseLines.map((l) => (
                         <tr key={l.id} className="hover:bg-slate-50">
-                          <td className="p-1.5 font-sans">{familyLabel(l.family)}</td>
+                          <td className="p-1.5 font-sans">{familyLabel(l.family, familles)}</td>
                           <td className="p-1.5 font-sans font-medium">{l.articleName}</td>
                           <td className="p-1.5 text-right">{l.quantity}</td>
                           <td className="p-1.5 text-right">{l.purchasePrice.toLocaleString('fr-FR')} Ar</td>
