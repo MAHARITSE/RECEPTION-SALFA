@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import type { AppState } from '../store';
-import { formatAr, labCategoryLabel } from '../store';
+import { formatAr, labCategoryLabel, paidPrescriptionsForConsultation, safeInvoiceItemDescriptions } from '../store';
 import type { LabRequest } from '../types';
 import { printDossierTicket, printLabResultTicket } from '../utils/printTicket';
 import {
@@ -220,7 +220,17 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
           </div>
           <div className="flex gap-2">
             <button
-              onClick={() => printDossierTicket(state.ticketSettings, patient, { consultations, labRequests: allLabs.map((d) => d.lr), invoices, journey })}
+              onClick={() => {
+                const printableConsultations = consultations.map((c) => ({
+                  ...c,
+                  prescriptions: paidPrescriptionsForConsultation(state, c),
+                }));
+                const printableInvoices = invoices.map((inv) => ({
+                  ...inv,
+                  items: inv.items.map((it, idx) => ({ ...it, description: safeInvoiceItemDescriptions(inv)[idx] })),
+                }));
+                printDossierTicket(state.ticketSettings, patient, { consultations: printableConsultations, labRequests: allLabs.map((d) => d.lr), invoices: printableInvoices, journey });
+              }}
               className="px-3 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm flex items-center gap-2 cursor-pointer"
             >
               <Printer className="w-4 h-4" /> Imprimer le dossier
@@ -328,7 +338,8 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
                     {/* Colonne prestations : articles + quantité + posologie */}
                     <div className="bg-slate-50 p-3">
                       {(() => {
-                        const prescriptions = c.prescriptions.map((p) => ({
+                        const hasHiddenPrescriptions = c.prescriptions.length > 0 && paidPrescriptionsForConsultation(state, c).length === 0;
+                        const prescriptions = paidPrescriptionsForConsultation(state, c).map((p) => ({
                           id: p.id,
                           name: p.articleName,
                           info: [p.posology, p.duration, p.instructions].filter(Boolean).join(' · ') || undefined,
@@ -343,11 +354,16 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
                         ];
                         if (c.hospitalizeRequested) prest.push({ id: `hosp-${c.id}`, name: 'Hospitalisation demandée', info: undefined, qty: 1, sTxt: 'Demande', sCol: 'text-blue-600' });
                         if (c.surgeryRequested) prest.push({ id: `surg-${c.id}`, name: 'Intervention bloc demandée', info: undefined, qty: 1, sTxt: 'Demande', sCol: 'text-blue-600' });
-                        const totalItems = prescriptions.length + prest.length;
+                        const totalItems = prescriptions.length + prest.length + (hasHiddenPrescriptions ? 1 : 0);
 
                         return totalItems > 0 ? (
                           <div>
                             <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">Prestations ({totalItems} acte{totalItems > 1 ? 's' : ''})</div>
+                            {hasHiddenPrescriptions && (
+                              <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-2 text-[11px] font-semibold text-amber-800">
+                                Prescription masquée — paiement non enregistré.
+                              </div>
+                            )}
                             {prescriptions.length > 0 && (
                               <div className="mb-3 rounded-lg border border-emerald-100 bg-white p-2">
                                 <div className="mb-1.5 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
@@ -486,7 +502,7 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
                     <tr key={i.id} className="border-b border-slate-100">
                       <td className="p-2 text-slate-500">{new Date(i.paidAt || i.createdAt).toLocaleDateString('fr-FR')}</td>
                       <td className="p-2 font-mono text-xs">{i.id.slice(0, 8).toUpperCase()}</td>
-                      <td className="p-2 text-xs">{i.items.map((it) => it.description).join(' ; ')}</td>
+                      <td className="p-2 text-xs">{safeInvoiceItemDescriptions(i).join(' ; ')}</td>
                       <td className="p-2 text-right font-mono font-bold">{formatAr(i.patientCharge)}</td>
                       <td className="p-2 text-center">
                         {i.status === 'paid'

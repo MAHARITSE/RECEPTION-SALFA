@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { AppState } from '../store';
 import type { TransferCategory, StockTransfer } from '../types';
-import { addAuditLog, addNotification, formatAr, familyLabel, transferCategoryLabel, transferCategoryColor, addJourneyEvent, isArticleSaleable, createMovementWithLines, generatePharmaClosingNumber } from '../store';
+import { addAuditLog, addNotification, formatAr, familyLabel, transferCategoryLabel, transferCategoryColor, addJourneyEvent, isArticleSaleable, createMovementWithLines, generatePharmaClosingNumber, isPrescriptionPaid } from '../store';
 import type { MovementType } from '../types';
 import { printDeliveryTicket, printPharmaDeliveryClosingTicket, printPharmaSalesRecapTicket } from '../utils/printTicket';
 import DemandeAchatForm, { type ReqLine } from './DemandeAchatForm';
@@ -148,13 +148,13 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
   };
 
   const paidConsultations = state.consultations.filter((c) => {
-    const inv = state.invoices.find((i) => i.consultationId === c.id && i.status === 'paid');
     const hasUndelivered = c.prescriptions.some((p) => !p.delivered);
-    return inv && hasUndelivered;
+    return hasUndelivered && isPrescriptionPaid(state, c.id);
   });
-  const emergencyConsults = state.consultations.filter((c) => c.isEmergency && c.prescriptions.some((p) => !p.delivered) && !state.invoices.find((i) => i.consultationId === c.id && i.status === 'paid'));
   const externalInvoices = state.invoices.filter((i) => i.isExternal && i.status === 'paid');
-  const allPending = [...paidConsultations, ...emergencyConsults];
+  // Règle stricte : la pharmacie ne voit aucune ordonnance tant que le paiement
+  // pharmacie lié à la consultation n'est pas effectif (même en urgence).
+  const allPending = paidConsultations;
 
   const filtered = state.articles.filter((a) => a.name.toLowerCase().includes(searchStock.toLowerCase()));
 
@@ -208,6 +208,10 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
   const deliver = (consultationId: string, isExternal?: boolean) => {
     const consultation = state.consultations.find((c) => c.id === consultationId);
     if (!consultation) return;
+    if (!isPrescriptionPaid(state, consultationId)) {
+      alert("Ordonnance masquée : le paiement n'est pas encore enregistré.");
+      return;
+    }
     const isExt = isExternal || !consultation.patientId || consultation.diagnosis === 'Client Externe';
     const patient = isExt ? null : state.patients.find((p) => p.id === consultation.patientId);
     const name = patient ? `${patient.lastName} ${patient.firstName}` : consultation.diagnosis === 'Client Externe' ? 'Client Externe' : 'Client externe';
@@ -321,6 +325,10 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
   const printDelivery = (consultationId: string, isExternal?: boolean) => {
     const c = state.consultations.find((x) => x.id === consultationId);
     if (!c) return;
+    if (!isPrescriptionPaid(state, consultationId)) {
+      alert("Ordonnance masquée : le paiement n'est pas encore enregistré.");
+      return;
+    }
     const isExt = isExternal || !c.patientId || c.diagnosis === 'Client Externe';
     const patient = isExt
       ? { id: 'ext', lastName: 'Client Externe', firstName: '', dossier: 'EXT', gender: 'M', dob: '', phone: '', clientType: 'externe', createdAt: '' } as any
