@@ -36,6 +36,8 @@ export interface Patient {
   lastVisitAt?: string;
   assignedDoctor?: string; assignedSpecialty?: string; blacklisted?: boolean;
   blacklistReason?: string; blacklistDate?: string;
+  famille?: string; // Base de famille (ex: "Famille Dupont", "Famille Rakoto")
+  lienFamilial?: string; // ex: "Chef de famille", "Épouse", "Enfant"
 }
 
 export interface Article {

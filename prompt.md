@@ -694,6 +694,8 @@ interface Patient {
   registeredAt: string;
   registeredBy: string;
   blacklisted?: boolean;
+  famille?: string;          // Base de famille (ex: "Famille Dupont")
+  lienFamilial?: string;     // Lien familial (Chef de famille, Épouse, Enfant...)
 }
 
 interface VitalSigns {

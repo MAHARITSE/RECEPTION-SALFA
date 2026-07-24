@@ -25,6 +25,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
     lastName: '', firstName: '', dateOfBirth: '', gender: 'F' as 'M' | 'F',
     address: '', contact: '', ssn: '', matricule: '', insureName: '',
     clientType: 'comptoir' as ClientType, company: '', subCompany: '',
+    famille: '', lienFamilial: '',
   });
 
   const [vitalsForm, setVitalsForm] = useState<VitalSigns>({
@@ -105,6 +106,8 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
       clientType: patientForm.clientType, company: patientForm.company || undefined, subCompany: patientForm.subCompany || undefined,
       allergies: [], chronicTreatments: [], antecedents: [],
       registeredAt: new Date().toISOString(), registeredBy: 'RECEPTION', status: 'registered',
+      famille: patientForm.famille || undefined,
+      lienFamilial: patientForm.lienFamilial || undefined,
     };
     setState((prev) => {
       const next = { ...prev, patients: [...prev.patients, np] };
@@ -125,6 +128,8 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
         gender: patientForm.gender, address: patientForm.address.toUpperCase(), contact: patientForm.contact, ssn: patientForm.ssn,
         matricule: patientForm.matricule || undefined,
         clientType: patientForm.clientType, company: patientForm.company || undefined, subCompany: patientForm.subCompany || undefined,
+        famille: patientForm.famille || undefined,
+        lienFamilial: patientForm.lienFamilial || undefined,
       } : p),
     }));
     setModal('none');
@@ -290,7 +295,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
           </div>
           <div className="flex items-center gap-1">
             <button onClick={() => { setModal('add'); setPatientForm({ ...patientForm, lastName: '', firstName: '', dateOfBirth: '', gender: 'F', address: '', contact: '', ssn: '', matricule: '', insureName: '', clientType: 'comptoir', company: '', subCompany: '' }); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold shadow transition cursor-pointer"><Plus className="h-4 w-4" /> Nouveau</button>
-            <button onClick={() => { if (!selectedPatient) return; setPatientForm({ lastName: selectedPatient.lastName, firstName: selectedPatient.firstName, dateOfBirth: selectedPatient.dateOfBirth === 'N/A' ? '' : selectedPatient.dateOfBirth, gender: selectedPatient.gender, address: selectedPatient.address, contact: selectedPatient.contact, ssn: selectedPatient.ssn, matricule: selectedPatient.matricule || '', insureName: selectedPatient.company || selectedPatient.insureName || '', clientType: selectedPatient.clientType === 'externe' ? 'comptoir' : selectedPatient.clientType, company: selectedPatient.company || '', subCompany: selectedPatient.subCompany || '' }); setModal('edit'); }} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Edit className="h-4 w-4" /> Modifier</button>
+            <button onClick={() => { if (!selectedPatient) return; setPatientForm({ lastName: selectedPatient.lastName, firstName: selectedPatient.firstName, dateOfBirth: selectedPatient.dateOfBirth === 'N/A' ? '' : selectedPatient.dateOfBirth, gender: selectedPatient.gender, address: selectedPatient.address, contact: selectedPatient.contact, ssn: selectedPatient.ssn, matricule: selectedPatient.matricule || '', insureName: selectedPatient.company || selectedPatient.insureName || '', clientType: selectedPatient.clientType === 'externe' ? 'comptoir' : selectedPatient.clientType, company: selectedPatient.company || '', subCompany: selectedPatient.subCompany || '', famille: selectedPatient.famille || '', lienFamilial: selectedPatient.lienFamilial || '' }); setModal('edit'); }} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Edit className="h-4 w-4" /> Modifier</button>
             <button onClick={handleDeletePatient} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Trash2 className="h-4 w-4" /> Supprimer</button>
             <div className="w-px h-6 bg-slate-300 mx-1" />
             <button onClick={() => selectedPatient && setModal('patientInfo')} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Info className="h-4 w-4" /> Info</button>
