@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { AppState } from '../store';
 import {
@@ -84,6 +84,16 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
   // ====== SAISIE SAGE — CATALOGUE PRÉMÉDITÉ ======
   const [sageSearch, setSageSearch] = useState('');
   const [sageCategoryFilter, setSageCategoryFilter] = useState<string>('all');
+
+  // Sage Line Editor Form State inside Invoicing Editing Modal
+  const [selectedItemIdx, setSelectedItemIdx] = useState<number | null>(null);
+  const [activeCode, setActiveCode] = useState('');
+  const [activeDescription, setActiveDescription] = useState('');
+  const [activeCategory, setActiveCategory] = useState<'consultation' | 'lab' | 'pharmacy' | 'surgery' | 'hospitalization' | 'echo'>('pharmacy');
+  const [activeQuantity, setActiveQuantity] = useState(1);
+  const [activeUnitPrice, setActiveUnitPrice] = useState(0);
+  const [sageSearchIdx, setSageSearchIdx] = useState(0);
+  const sageSearchRef = useRef<HTMLInputElement>(null);
 
   const unifiedCatalog = useMemo(() => {
     type CatalogCategory = 'consultation' | 'lab' | 'pharmacy' | 'surgery' | 'hospitalization' | 'echo';
@@ -747,16 +757,126 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
 
   const startEditingInvoice = (inv: Invoice) => {
     setEditingInvoice(inv);
-    const enrichedItems = inv.items.map((item, idx) => ({
-      ...item,
-      code: item.code || `ACT-${String(idx + 1).padStart(2, '0')}`,
-      quantity: item.quantity || 1,
-      unitPrice: item.unitPrice !== undefined ? item.unitPrice : item.amount,
-      amount: item.amount,
-    }));
+    const enrichedItems = inv.items.map((item, idx) => {
+      const q = item.quantity || 1;
+      const pu = item.unitPrice !== undefined ? item.unitPrice : (item.amount / q);
+      return {
+        ...item,
+        code: item.code || `ACT-${String(idx + 1).padStart(2, '0')}`,
+        quantity: q,
+        unitPrice: pu,
+        amount: item.amount,
+      };
+    });
     setEditingItems(enrichedItems);
     setSageSearch('');
     setSageCategoryFilter('all');
+    setSelectedItemIdx(null);
+    setActiveCode('');
+    setActiveDescription('');
+    setActiveCategory('pharmacy');
+    setActiveQuantity(1);
+    setActiveUnitPrice(0);
+    setSageSearchIdx(0);
+  };
+
+  const selectItemForEditing = (idx: number) => {
+    setSelectedItemIdx(idx);
+    const item = editingItems[idx];
+    if (item) {
+      setActiveCode(item.code || '');
+      setActiveDescription(item.description);
+      setActiveCategory(item.category);
+      setActiveQuantity(item.quantity || 1);
+      setActiveUnitPrice(item.unitPrice !== undefined ? item.unitPrice : (item.amount / (item.quantity || 1)));
+      setSageSearch('');
+      setSageSearchIdx(0);
+    }
+  };
+
+  const handleResetLine = () => {
+    setSelectedItemIdx(null);
+    setActiveCode('');
+    setActiveDescription('');
+    setActiveCategory('pharmacy');
+    setActiveQuantity(1);
+    setActiveUnitPrice(0);
+    setSageSearch('');
+    setSageSearchIdx(0);
+    setTimeout(() => sageSearchRef.current?.focus(), 50);
+  };
+
+  const handleSaveLine = () => {
+    if (!activeDescription.trim()) return;
+
+    const qty = Number(activeQuantity) || 1;
+    const pu = Number(activeUnitPrice) || 0;
+    const amount = qty * pu;
+
+    const newLine: InvoiceItem = {
+      code: activeCode || `ACT-${String(editingItems.length + 1).padStart(2, '0')}`,
+      description: activeDescription.trim(),
+      category: activeCategory,
+      quantity: qty,
+      unitPrice: pu,
+      amount: amount,
+    };
+
+    if (selectedItemIdx !== null) {
+      // Update existing item
+      setEditingItems(prev => {
+        const copy = [...prev];
+        copy[selectedItemIdx] = newLine;
+        return copy;
+      });
+    } else {
+      // Add new item
+      setEditingItems(prev => [...prev, newLine]);
+    }
+
+    // Reset line form
+    handleResetLine();
+  };
+
+  const handleDeleteLine = () => {
+    if (selectedItemIdx !== null) {
+      setEditingItems(prev => prev.filter((_, idx) => idx !== selectedItemIdx));
+      handleResetLine();
+    }
+  };
+
+  const handleSelectCatalogItem = (catalogItem: {
+    code: string;
+    description: string;
+    category: 'consultation' | 'lab' | 'pharmacy' | 'surgery' | 'hospitalization' | 'echo';
+    price: number;
+  }) => {
+    setActiveCode(catalogItem.code);
+    setActiveDescription(catalogItem.description);
+    setActiveCategory(catalogItem.category);
+    setActiveUnitPrice(catalogItem.price);
+    if (activeQuantity <= 0) {
+      setActiveQuantity(1);
+    }
+    setSageSearch('');
+    setSageSearchIdx(0);
+  };
+
+  const handleSageSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (filteredSageCatalog.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSageSearchIdx(prev => (prev + 1) % filteredSageCatalog.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSageSearchIdx(prev => (prev - 1 + filteredSageCatalog.length) % filteredSageCatalog.length);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const sel = filteredSageCatalog[sageSearchIdx];
+      if (sel) {
+        handleSelectCatalogItem(sel);
+      }
+    }
   };
 
   const addPremeditatedItem = (catalogItem: {
@@ -1705,8 +1825,8 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
       {/* ==================== MODAL : ÉDITION DES PRESCRIPTIONS / FACTURE ==================== */}
       {editingInvoice && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4" onClick={() => setEditingInvoice(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="p-4 bg-indigo-700 text-white flex justify-between items-center">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="p-4 bg-indigo-700 text-white flex justify-between items-center font-sans">
               <div className="flex items-center gap-2">
                 <Edit2 className="w-5 h-5 text-indigo-200" />
                 <h3 className="font-bold text-base">Modifier les Actes & Prescriptions (Facture {editingInvoice.id.slice(0, 8).toUpperCase()})</h3>
@@ -1716,75 +1836,240 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
               </button>
             </div>
 
-            <div className="p-4 space-y-3 text-xs max-h-[75vh] overflow-y-auto">
-              <p className="text-slate-600">Vous pouvez corriger ou ajouter des lignes d'actes, médicaments ou analyses pour cette facture :</p>
-
-              <div className="space-y-2">
-                {editingItems.map((item, idx) => (
-                  <div key={idx} className="flex gap-2 items-center bg-slate-50 p-2 border rounded-lg">
-                    <input
-                      type="text"
-                      value={item.description}
-                      onChange={e => {
-                        const copy = [...editingItems];
-                        copy[idx].description = e.target.value;
-                        setEditingItems(copy);
-                      }}
-                      className="flex-1 px-2.5 py-1.5 border rounded bg-white text-xs font-medium"
-                      placeholder="Désignation"
-                    />
-                    <select
-                      value={item.category}
-                      onChange={e => {
-                        const copy = [...editingItems];
-                        copy[idx].category = e.target.value as any;
-                        setEditingItems(copy);
-                      }}
-                      className="w-32 px-2 py-1.5 border rounded bg-white text-xs font-semibold cursor-pointer"
-                    >
-                      <option value="consultation">Consultation</option>
-                      <option value="pharmacy">Pharmacie</option>
-                      <option value="lab">Laboratoire</option>
-                      <option value="echo">Échographie</option>
-                      <option value="hospitalization">Hospitalisation</option>
-                      <option value="surgery">Bloc opératoire</option>
-                    </select>
-                    <input
-                      type="number"
-                      value={item.amount}
-                      onChange={e => {
-                        const copy = [...editingItems];
-                        copy[idx].amount = Number(e.target.value);
-                        setEditingItems(copy);
-                      }}
-                      className="w-28 px-2.5 py-1.5 border rounded bg-white font-mono font-bold text-xs"
-                      placeholder="Prix (Ar)"
-                    />
-                    <button
-                      onClick={() => setEditingItems(editingItems.filter((_, i) => i !== idx))}
-                      className="p-1.5 text-rose-600 hover:bg-rose-100 rounded cursor-pointer"
-                      title="Supprimer la ligne"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
+            <div className="p-4 space-y-4 text-xs max-h-[80vh] overflow-y-auto">
+              <div className="p-3 bg-blue-50 border border-blue-200 text-blue-900 rounded-lg font-sans">
+                <p className="font-semibold mb-0.5">Saisie Sage (Saisie Préméditée) :</p>
+                <p className="text-slate-600">Recherchez un article ou acte dans le catalogue complet ci-dessous, ajustez la quantité ou le prix unitaire, puis cliquez sur <strong>Enregistrer la ligne</strong> (ou cliquez sur une ligne du tableau ci-dessous pour la modifier ou la supprimer).</p>
               </div>
 
-              <button
-                onClick={() => setEditingItems([...editingItems, { description: 'Nouvel acte / médicament', amount: 0, category: 'pharmacy' }])}
-                className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs flex items-center justify-center gap-1 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" /> Ajouter une ligne
-              </button>
+              {/* Saisie Sage / Catalogue Prémédité block */}
+              <div className="bg-[#f4f4f4] border border-slate-300 rounded-lg p-3 select-none space-y-3 font-sans">
+                {/* Search Input */}
+                <div className="relative">
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1">🔍 Recherche d'Article / Examen (Saisie Préméditée : tapez pour rechercher, ↑↓ + Entrée)</label>
+                  <input
+                    ref={sageSearchRef}
+                    type="text"
+                    value={sageSearch}
+                    onChange={e => {
+                      setSageSearch(e.target.value);
+                      setSageSearchIdx(0);
+                    }}
+                    onKeyDown={handleSageSearchKeyDown}
+                    className="w-full bg-white border border-blue-400 rounded-lg px-2.5 py-1.5 text-xs font-mono outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500 text-slate-800"
+                    placeholder="Tapez le nom d'un médicament, d'un examen de labo, d'une consultation ou échographie..."
+                    autoFocus
+                  />
+                  
+                  {/* Dropdown for catalog search */}
+                  {sageSearch.trim().length >= 1 && filteredSageCatalog.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 rounded-b-lg shadow-2xl z-50 max-h-48 overflow-y-auto">
+                      {filteredSageCatalog.map((item, idx) => (
+                        <div
+                          key={`${item.code}-${idx}`}
+                          onClick={() => handleSelectCatalogItem(item)}
+                          className={`px-3 py-2 text-xs flex justify-between border-b border-slate-100 cursor-pointer transition-colors ${
+                            idx === sageSearchIdx ? 'bg-blue-500 text-white font-medium' : 'hover:bg-slate-50 text-slate-800'
+                          }`}
+                        >
+                          <span className="flex items-center gap-1.5">
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${idx === sageSearchIdx ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                              {item.code}
+                            </span>
+                            <span>{item.description}</span>
+                            <span className={`text-[10px] ${idx === sageSearchIdx ? 'text-blue-100' : 'text-slate-400'}`}>({item.familyLabel})</span>
+                          </span>
+                          <span className={`font-mono font-bold ${idx === sageSearchIdx ? 'text-white' : 'text-blue-600'}`}>
+                            {formatAr(item.price)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
-              <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg flex justify-between items-center text-sm font-bold text-indigo-900">
+                {/* Input fields bar for the line */}
+                <div className="bg-slate-100 border border-slate-200 rounded-lg p-2.5 shadow-inner">
+                  <div className="grid grid-cols-12 gap-2 items-end">
+                    
+                    {/* Code input */}
+                    <div className="col-span-2">
+                      <label className="block text-[10px] font-bold text-slate-500 mb-1">Référence / Code</label>
+                      <input
+                        type="text"
+                        value={activeCode}
+                        onChange={e => setActiveCode(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded px-2.5 py-1 text-xs font-mono text-slate-700 outline-none focus:border-slate-500"
+                        placeholder="Ex: PHA-01"
+                      />
+                    </div>
+
+                    {/* Designation input */}
+                    <div className="col-span-4">
+                      <label className="block text-[10px] font-bold text-slate-500 mb-1">Désignation / Acte / Médicament</label>
+                      <input
+                        type="text"
+                        value={activeDescription}
+                        onChange={e => setActiveDescription(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded px-2.5 py-1 text-xs text-slate-800 font-medium outline-none focus:border-slate-500"
+                        placeholder="Saisissez un acte ou article..."
+                      />
+                    </div>
+
+                    {/* Category select */}
+                    <div className="col-span-2">
+                      <label className="block text-[10px] font-bold text-slate-500 mb-1">Catégorie</label>
+                      <select
+                        value={activeCategory}
+                        onChange={e => setActiveCategory(e.target.value as any)}
+                        className="w-full bg-white border border-slate-300 rounded px-2.5 py-1 text-xs text-slate-800 cursor-pointer font-medium outline-none focus:border-slate-500"
+                      >
+                        <option value="consultation">Consultation</option>
+                        <option value="pharmacy">Pharmacie</option>
+                        <option value="lab">Laboratoire</option>
+                        <option value="echo">Échographie</option>
+                        <option value="hospitalization">Hospitalisation</option>
+                        <option value="surgery">Bloc opératoire</option>
+                      </select>
+                    </div>
+
+                    {/* Qté input */}
+                    <div className="col-span-1">
+                      <label className="block text-[10px] font-bold text-slate-500 mb-1">Qté</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={activeQuantity}
+                        onChange={e => setActiveQuantity(parseInt(e.target.value) || 1)}
+                        className="w-full bg-white border border-slate-300 rounded px-2.5 py-1 text-xs text-right font-mono text-slate-800 outline-none focus:border-slate-500"
+                      />
+                    </div>
+
+                    {/* P.U. input */}
+                    <div className="col-span-2">
+                      <label className="block text-[10px] font-bold text-slate-500 mb-1">P.U. (Ar)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={activeUnitPrice}
+                        onChange={e => setActiveUnitPrice(parseFloat(e.target.value) || 0)}
+                        className="w-full bg-white border border-slate-300 rounded px-2.5 py-1 text-xs text-right font-mono font-bold text-slate-800 outline-none focus:border-slate-500"
+                      />
+                    </div>
+
+                    {/* Montant calculated */}
+                    <div className="col-span-1">
+                      <label className="block text-[10px] font-bold text-slate-500 mb-1">Montant</label>
+                      <input
+                        type="text"
+                        readOnly
+                        value={(activeQuantity * activeUnitPrice).toLocaleString('fr-FR')}
+                        className="w-full bg-slate-200 border border-slate-300 rounded px-2.5 py-1 text-xs text-right font-mono font-bold text-slate-600"
+                      />
+                    </div>
+
+                  </div>
+
+                  {/* Save, reset, delete buttons */}
+                  <div className="flex justify-end gap-1.5 mt-2.5">
+                    <button
+                      type="button"
+                      onClick={handleResetLine}
+                      className="flex items-center gap-1 px-3 py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded text-slate-700 font-semibold cursor-pointer shadow-xs transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Nouveau / Effacer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDeleteLine}
+                      disabled={selectedItemIdx === null}
+                      className="flex items-center gap-1 px-3 py-1 bg-white hover:bg-rose-50 border border-slate-300 text-rose-600 disabled:opacity-40 rounded font-semibold cursor-pointer shadow-xs transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Supprimer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveLine}
+                      disabled={!activeDescription.trim()}
+                      className="flex items-center gap-1 px-4 py-1 bg-sky-500 hover:bg-sky-600 border border-sky-600 text-white disabled:opacity-40 rounded font-bold cursor-pointer shadow-sm transition-colors"
+                    >
+                      <Save className="w-3.5 h-3.5" /> Enregistrer la ligne
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Table of items in the Invoice */}
+              <div className="bg-white border border-slate-300 rounded-lg overflow-hidden shadow-xs">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead className="bg-slate-100 border-b border-slate-300 text-slate-600 font-bold font-sans">
+                    <tr className="divide-x divide-slate-200">
+                      <th className="p-2 w-24">Code</th>
+                      <th className="p-2">Désignation / Acte / Médicament</th>
+                      <th className="p-2 w-32 text-center">Catégorie</th>
+                      <th className="p-2 w-16 text-right">Qté</th>
+                      <th className="p-2 w-24 text-right">P.U. (Ar)</th>
+                      <th className="p-2 w-28 text-right">Montant (Ar)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 font-mono">
+                    {editingItems.map((item, idx) => {
+                      const isSel = idx === selectedItemIdx;
+                      return (
+                        <tr
+                          key={idx}
+                          onClick={() => selectItemForEditing(idx)}
+                          className={`cursor-pointer divide-x divide-slate-200 transition-colors ${
+                            isSel
+                              ? 'bg-blue-500 text-white font-semibold'
+                              : 'hover:bg-slate-50 text-slate-800'
+                          }`}
+                        >
+                          <td className="p-2 truncate">{item.code || `ACT-${String(idx + 1).padStart(2, '0')}`}</td>
+                          <td className={`p-2 truncate ${isSel ? 'text-white' : 'text-slate-900 font-medium font-sans'}`}>
+                            {item.description}
+                          </td>
+                          <td className="p-2 text-center uppercase text-[10px] font-bold">
+                            <span className={`px-1.5 py-0.5 rounded font-sans ${
+                              isSel 
+                                ? 'bg-blue-600 text-white' 
+                                : item.category === 'pharmacy' ? 'bg-emerald-100 text-emerald-800'
+                                : item.category === 'lab' ? 'bg-blue-100 text-blue-800'
+                                : item.category === 'consultation' ? 'bg-indigo-100 text-indigo-800'
+                                : item.category === 'echo' ? 'bg-purple-100 text-purple-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}>
+                              {item.category === 'surgery' ? 'bloc' : item.category}
+                            </span>
+                          </td>
+                          <td className="p-2 text-right">{item.quantity || 1}</td>
+                          <td className="p-2 text-right">
+                            {(item.unitPrice !== undefined ? item.unitPrice : (item.amount / (item.quantity || 1))).toLocaleString('fr-FR')}
+                          </td>
+                          <td className={`p-2 text-right font-bold ${isSel ? 'text-white' : 'text-indigo-900'}`}>
+                            {item.amount.toLocaleString('fr-FR')}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {editingItems.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="p-6 text-center text-slate-400 font-sans">
+                          Aucun acte ou prescription dans cette facture. Utilisez la Saisie Sage ci-dessus pour ajouter des lignes.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg flex justify-between items-center text-sm font-bold text-indigo-900 font-sans">
                 <span>Nouveau Total Facture :</span>
                 <span className="font-mono text-base">{formatAr(editingItems.reduce((s, i) => s + Number(i.amount || 0), 0))}</span>
               </div>
             </div>
 
-            <div className="p-3 bg-slate-100 border-t flex justify-end gap-2">
+            <div className="p-3 bg-slate-100 border-t flex justify-end gap-2 font-sans">
               <button onClick={() => setEditingInvoice(null)} className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-lg text-xs cursor-pointer">
                 Annuler
               </button>
