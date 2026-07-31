@@ -512,8 +512,8 @@ export function printLabResultTicket(
     .map(
       (r) => `<tr>
         <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb">${escapeHtml(r.parameter)}</td>
-        <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;text-align:center;font-weight:700">${r.value} ${escapeHtml(r.unit)}</td>
-        <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;text-align:center">${r.normalMin} – ${r.normalMax} ${escapeHtml(r.unit)}</td>
+        <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;text-align:center;font-weight:700">${r.value} ${escapeHtml(r.unit || '')}</td>
+        <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;text-align:center">${r.normalMin} – ${r.normalMax} ${escapeHtml(r.unit || '')}</td>
         <td style="padding:5px 8px;border-bottom:1px solid #e5e7eb;text-align:center">${
           r.isAbnormal
             ? '<span style="color:#b91c1c;font-weight:700">ANORMAL</span>'
@@ -581,7 +581,7 @@ export function printDossierTicket(
     .reverse()
     .map((r) => `<div class="sec"><div class="lbl">${r.completedAt ? new Date(r.completedAt).toLocaleDateString('fr-FR') : (r.requestedAt ? new Date(r.requestedAt).toLocaleDateString('fr-FR') : '—')} — ${escapeHtml(r.examType)} ${r.urgent ? '<span style="color:#b91c1c">[URGENT]</span>' : ''}</div>
       ${(r.results || [])
-        .map((res) => `<div style="display:flex;justify-content:space-between;border-bottom:1px dotted #ddd;padding:1px 0"><span>${escapeHtml(res.parameter)}</span><span><strong>${res.value} ${escapeHtml(res.unit)}</strong> ${res.isAbnormal ? '<span style="color:#b91c1c;font-weight:700"> ANORMAL</span>' : ''}</span></div>`)
+        .map((res) => `<div style="display:flex;justify-content:space-between;border-bottom:1px dotted #ddd;padding:1px 0"><span>${escapeHtml(res.parameter)}</span><span><strong>${res.value} ${escapeHtml(res.unit || '')}</strong> ${res.isAbnormal ? '<span style="color:#b91c1c;font-weight:700"> ANORMAL</span>' : ''}</span></div>`)
         .join('')}
     </div>`)
     .join('');

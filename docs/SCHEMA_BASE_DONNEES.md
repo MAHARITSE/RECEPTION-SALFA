@@ -124,4 +124,5 @@ venteLines.venteId ─── 1 ventes
 
 - `monthly_global` : les factures du mois sont regroupées dans `companyBillingAccounts`; les règlements sont portés par `CompanyBillingPayment`.
 - `per_invoice` : la facture/vente est réglée individuellement, éventuellement avec plusieurs `ventePayments`.
+- **Réinitialisation & Suppression globale** : une fonction de suppression sécurisée avec confirmation et traçabilité d'audit (`SUPPRESSION_TOTALE_FACTURATION_SOCIETES`) permet de vider l'ensemble des comptes et relevés sociétés du module facturation.
 - Les données de démonstration sont uniquement le retour de `createInitialState`; elles ne constituent pas une commande de suppression des données saisies.

@@ -44,11 +44,32 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
   const [reapproEditingLine, setReapproEditingLine] = useState<ReqLine | null>(null);
   const [reapproEditingNotes, setReapproEditingNotes] = useState('');
   const [reapproEditingCategory, setReapproEditingCategory] = useState<TransferCategory | undefined>(undefined);
+  const [bannerExpanded, setBannerExpanded] = useState(true);
 
   const openReapproNew = () => {
     setReapproEditingId(null);
     setReapproEditingLine(null);
     setReapproEditingNotes('');
+    setReapproEditingCategory('approvisionnement');
+    setReapproModalOpen(true);
+  };
+
+  const openReapproForArticle = (a: import('../types').Article) => {
+    const suggestedQty = Math.max(10, a.minStockPharmacie * 2 - a.stockPharmacie);
+    const line: ReqLine = {
+      id: uuidv4(),
+      articleId: a.id,
+      articleName: a.name,
+      family: a.family,
+      quantity: suggestedQty,
+      purchasePrice: a.purchasePrice || 0,
+      expiryDate: a.expiryDate || '',
+      notes: `Réappro stock bas (${a.stockPharmacie} / min ${a.minStockPharmacie})`,
+      amount: suggestedQty * (a.purchasePrice || 0),
+    };
+    setReapproEditingId(null);
+    setReapproEditingLine(line);
+    setReapproEditingNotes(`Réapprovisionnement automatique stock bas : ${a.name}`);
     setReapproEditingCategory('approvisionnement');
     setReapproModalOpen(true);
   };
@@ -486,6 +507,119 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
           </button>
         </div>
       </div>
+
+      {/* BANDEAU D'ALERTE STOCK BAS PHARMACIE */}
+      {(() => {
+        const lowStockPharmacie = state.articles.filter(
+          (a) => !a.alertDisabledPharmacie && a.stockPharmacie <= a.minStockPharmacie
+        );
+        if (lowStockPharmacie.length === 0) return null;
+
+        const ruptures = lowStockPharmacie.filter((a) => a.stockPharmacie <= 0);
+        const stockBas = lowStockPharmacie.filter((a) => a.stockPharmacie > 0);
+
+        return (
+          <div className="bg-amber-50 dark:bg-amber-950/40 border-l-4 border-amber-500 rounded-xl p-4 shadow-sm transition-all text-slate-800 dark:text-slate-100">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 rounded-lg shrink-0">
+                  <AlertTriangle className="w-5 h-5 animate-pulse text-amber-600 dark:text-amber-400" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="font-bold text-sm text-amber-900 dark:text-amber-200">
+                      Alerte Stock Pharmacie : {lowStockPharmacie.length} article(s) sous le seuil d'alerte
+                    </h4>
+                    {ruptures.length > 0 && (
+                      <span className="px-2 py-0.5 rounded-full bg-red-600 text-white text-[11px] font-bold animate-pulse">
+                        🚨 {ruptures.length} Rupture(s)
+                      </span>
+                    )}
+                    {stockBas.length > 0 && (
+                      <span className="px-2 py-0.5 rounded-full bg-amber-600 text-white text-[11px] font-bold">
+                        ⚠️ {stockBas.length} Stock Bas
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+                    Ces articles ont atteint ou dépassé le seuil minimum configuré. Transmettez une demande d'approvisionnement au magasinier.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setBannerExpanded(!bannerExpanded)}
+                  className="px-3 py-1.5 bg-amber-200/80 hover:bg-amber-300 dark:bg-amber-900 dark:hover:bg-amber-800 text-amber-900 dark:text-amber-100 rounded-lg text-xs font-semibold cursor-pointer transition flex items-center gap-1"
+                >
+                  {bannerExpanded ? 'Masquer la liste' : `Voir les ${lowStockPharmacie.length} articles`}
+                </button>
+              </div>
+            </div>
+
+            {bannerExpanded && (
+              <div className="mt-4 pt-3 border-t border-amber-200 dark:border-amber-800/60 overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead>
+                    <tr className="text-amber-900 dark:text-amber-300 border-b border-amber-200 dark:border-amber-800/60">
+                      <th className="py-2 px-2 font-semibold">Article</th>
+                      <th className="py-2 px-2 font-semibold">Famille</th>
+                      <th className="py-2 px-2 font-semibold text-center">Stock Pharmacie</th>
+                      <th className="py-2 px-2 font-semibold text-center">Seuil Minimum</th>
+                      <th className="py-2 px-2 font-semibold text-center">Stock Central</th>
+                      <th className="py-2 px-2 font-semibold text-center">Statut</th>
+                      <th className="py-2 px-2 font-semibold text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-amber-200/50 dark:divide-amber-800/40">
+                    {lowStockPharmacie.map((a) => {
+                      const isOut = a.stockPharmacie <= 0;
+                      return (
+                        <tr key={a.id} className="hover:bg-amber-100/50 dark:hover:bg-amber-900/40">
+                          <td className="py-2 px-2 font-bold text-slate-800 dark:text-slate-100">{a.name}</td>
+                          <td className="py-2 px-2">
+                            <span className="px-2 py-0.5 bg-amber-200/60 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 rounded font-mono text-[10px]">
+                              {familyLabel(a.family)}
+                            </span>
+                          </td>
+                          <td className={`py-2 px-2 text-center font-mono font-bold ${isOut ? 'text-red-600 dark:text-red-400 font-extrabold' : 'text-amber-700 dark:text-amber-300'}`}>
+                            {a.stockPharmacie} {a.unit}
+                          </td>
+                          <td className="py-2 px-2 text-center font-mono text-slate-600 dark:text-slate-400">
+                            {a.minStockPharmacie} {a.unit}
+                          </td>
+                          <td className="py-2 px-2 text-center font-mono font-semibold text-indigo-700 dark:text-indigo-300">
+                            {a.stockCentral} {a.unit}
+                          </td>
+                          <td className="py-2 px-2 text-center">
+                            {isOut ? (
+                              <span className="px-2 py-0.5 rounded bg-red-100 dark:bg-red-900/60 text-red-700 dark:text-red-300 font-bold text-[10px]">
+                                RUPTURE
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 font-semibold text-[10px]">
+                                STOCK BAS
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2 px-2 text-right">
+                            <button
+                              onClick={() => openReapproForArticle(a)}
+                              className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded text-[11px] font-medium transition cursor-pointer shadow-sm"
+                            >
+                              Demander réappro
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="flex border-b border-slate-200 overflow-x-auto">

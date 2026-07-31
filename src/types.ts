@@ -72,8 +72,14 @@ export interface Prescription {
 }
 
 export interface LabResult {
-  parameter: string; value: number; unit: string;
-  normalMin: number; normalMax: number; isAbnormal: boolean;
+  parameter: string;
+  value: number | string;
+  unit?: string;
+  normalMin?: number;
+  normalMax?: number;
+  normalRangeText?: string;
+  isAbnormal: boolean;
+  comments?: string;
 }
 
 /* ====== LABORATOIRE — catalogue & demandes autonomes ====== */
@@ -119,6 +125,8 @@ export interface LabRequest {
   completedAt?: string;
   completedBy?: string;
   validatedBy?: string;
+  labConclusion?: string;     // Conclusion générale du biologiste / laboratoire
+  biologicalAlert?: boolean;  // Signalement d'une alerte biologique majeure
 }
 
 /* ====== PARCOURS PATIENT (timeline) ====== */
@@ -150,7 +158,14 @@ export interface Consultation {
   hospitalizeRequested: boolean; surgeryRequested: boolean; isEmergency: boolean;
 }
 
-export interface InvoiceItem { description: string; amount: number; category: 'consultation' | 'lab' | 'pharmacy' | 'surgery' | 'hospitalization' | 'echo'; }
+export interface InvoiceItem {
+  code?: string;
+  description: string;
+  quantity?: number;
+  unitPrice?: number;
+  amount: number;
+  category: 'consultation' | 'lab' | 'pharmacy' | 'surgery' | 'hospitalization' | 'echo';
+}
 
 /** Demande d'échographie saisie par le médecin */
 export interface EchoRequest {

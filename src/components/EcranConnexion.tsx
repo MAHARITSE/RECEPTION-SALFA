@@ -167,8 +167,8 @@ export default function EcranConnexion({ users, onLogin, onBack }: EcranConnexio
             <p className="text-xs text-slate-400 text-center">
               <strong>Mots de passe par défaut:</strong><br />
               Médecins: <code className="bg-slate-600 px-1 rounded">doc123</code> • 
-              Caisse: <code className="bg-slate-600 px-1 rounded">caisse123</code><br />
-              Pharmacie: <code className="bg-slate-600 px-1 rounded">pharma123</code> • 
+              Caisses (1 & 2): <code className="bg-slate-600 px-1 rounded">caisse123</code><br />
+              Pharmacies (1 & 2): <code className="bg-slate-600 px-1 rounded">pharma123</code> • 
               Magasin: <code className="bg-slate-600 px-1 rounded">mag123</code><br />
               Labo: <code className="bg-slate-600 px-1 rounded">labo123</code><br />
               Facturation: <code className="bg-slate-600 px-1 rounded">fact123</code> • 

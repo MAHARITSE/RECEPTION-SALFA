@@ -1,18 +1,21 @@
-import React, { useState } from 'react';
-import type { User, Notification as NotifType } from '../types';
+import React, { useState, useEffect, useRef } from 'react';
+import type { User, Patient, Notification as NotifType } from '../types';
 import {
   Hospital, LogOut, Bell, UserCircle, Stethoscope,
   CreditCard, Pill, FlaskConical, Building2, X,
-  ChevronRight, MessageCircle, FileText
+  ChevronRight, MessageCircle, FileText, CheckCircle2, AlertTriangle, Info,
+  Sun, Moon
 } from 'lucide-react';
+import { useDarkMode } from './ThemeToggle';
 
 interface MiseEnPageProps {
   user: User;
+  patients?: Patient[];
   notifications: NotifType[];
   onLogout: () => void;
   onMarkRead: (id: string) => void;
   onOpenMessaging: () => void;
-  onOpenMedicalRecord?: () => void;
+  onOpenMedicalRecord?: (patientId?: string) => void;
   unreadMessages: number;
   children: React.ReactNode;
 }
@@ -50,20 +53,79 @@ const roleBg: Record<string, string> = {
   admin: 'bg-slate-700',
 };
 
-export default function MiseEnPage({ user, notifications, onLogout, onMarkRead, onOpenMessaging, onOpenMedicalRecord, unreadMessages, children }: MiseEnPageProps) {
+export default function MiseEnPage({ user, patients = [], notifications, onLogout, onMarkRead, onOpenMessaging, onOpenMedicalRecord, unreadMessages, children }: MiseEnPageProps) {
   const [showNotif, setShowNotif] = useState(false);
+  const [activeToast, setActiveToast] = useState<NotifType | null>(null);
 
   const myNotifs = notifications.filter(
-    (n) => n.targetRole === user.role || n.targetUserId === user.id
+    (n) => (user.role === 'pharmacy' || user.role === 'magasinier') &&
+           (n.targetRole === user.role || n.targetUserId === user.id)
   );
   const unreadCount = myNotifs.filter((n) => !n.read).length;
 
+  const prevCountRef = useRef(myNotifs.length);
+  useEffect(() => {
+    if (myNotifs.length > prevCountRef.current) {
+      const newest = myNotifs[0];
+      if (newest && !newest.read) {
+        setActiveToast(newest);
+        const t = setTimeout(() => setActiveToast(null), 6000);
+        return () => clearTimeout(t);
+      }
+    }
+    prevCountRef.current = myNotifs.length;
+  }, [myNotifs]);
+
   return (
-    <div className="min-h-screen w-full bg-slate-50 overflow-auto">
+    <div className="min-h-screen w-full bg-slate-50 overflow-auto relative">
+      {/* Toast Popup Notification - Centré et colorisé */}
+      {activeToast && (
+        <div className="fixed inset-0 z-[9999] pointer-events-none flex items-center justify-center p-4">
+          <div className={`pointer-events-auto max-w-md w-full p-4 sm:p-5 rounded-2xl shadow-2xl border flex items-start gap-3.5 transition-all animate-in fade-in zoom-in-95 backdrop-blur-md ${
+            activeToast.type === 'critical'
+              ? 'bg-gradient-to-r from-rose-600 via-red-600 to-pink-600 border-rose-300 text-white shadow-rose-500/40'
+              : activeToast.type === 'warning'
+              ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-yellow-500 border-amber-200 text-white shadow-amber-500/40'
+              : 'bg-gradient-to-r from-indigo-600 via-purple-600 to-blue-600 border-indigo-300 text-white shadow-indigo-500/40'
+          }`}>
+            <div className="p-2 bg-white/20 backdrop-blur rounded-xl shrink-0 mt-0.5">
+              {activeToast.type === 'critical' ? (
+                <AlertTriangle className="w-6 h-6 text-white" />
+              ) : activeToast.type === 'warning' ? (
+                <AlertTriangle className="w-6 h-6 text-white" />
+              ) : (
+                <CheckCircle2 className="w-6 h-6 text-white" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[11px] font-bold text-white/80 uppercase tracking-wider">
+                Notification Système
+              </div>
+              <div className="text-sm font-semibold text-white mt-0.5 leading-snug">
+                {activeToast.message}
+              </div>
+              <div className="text-[10px] text-white/70 mt-1">
+                {new Date(activeToast.timestamp).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                onMarkRead(activeToast.id);
+                setActiveToast(null);
+              }}
+              className="text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/20 cursor-pointer transition"
+              title="Fermer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header className={`${roleBg[user.role]} text-white shadow-lg`}>
-        <div className="w-full max-w-none px-4 sm:px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="w-full max-w-none px-4 sm:px-6 py-2.5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 shrink-0">
             <div className="p-1.5 bg-white/20 rounded-lg">
               <Hospital className="w-6 h-6" />
             </div>
@@ -78,65 +140,66 @@ export default function MiseEnPage({ user, notifications, onLogout, onMarkRead, 
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            {/* Notifications */}
-            <div className="relative">
-              <button
-                onClick={() => setShowNotif(!showNotif)}
-                className="relative p-2 hover:bg-white/20 rounded-lg transition-colors cursor-pointer"
-              >
-                <Bell className="w-5 h-5" />
-                {unreadCount > 0 && (
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {/* Notifications — réservées à la Pharmacie et au Magasinier (alertes stock & approvisionnements) */}
+            {(user.role === 'pharmacy' || user.role === 'magasinier') && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowNotif(!showNotif)}
+                  className="relative p-2 hover:bg-white/20 rounded-lg transition-colors cursor-pointer"
+                  title="Notifications stock"
+                >
+                  <Bell className="w-5 h-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                      {unreadCount}
+                    </span>
+                  )}
+                </button>
 
-
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                    {unreadCount}
-                  </span>
-                )}
-              </button>
-
-              {showNotif && (
-                <div className="absolute right-0 top-12 w-96 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 max-h-96 overflow-y-auto">
-                  <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-                    <h3 className="font-semibold text-slate-800">Notifications</h3>
-                    <button onClick={() => setShowNotif(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                  {myNotifs.length === 0 ? (
-                    <div className="p-6 text-center text-slate-400">Aucune notification</div>
-                  ) : (
-                    myNotifs.slice(0, 20).map((n) => (
-                      <div
-                        key={n.id}
-                        onClick={() => onMarkRead(n.id)}
-                        className={`p-3 border-b border-slate-50 cursor-pointer hover:bg-slate-50 transition-colors ${
-                          !n.read ? 'bg-blue-50' : ''
-                        }`}
-                      >
-                        <div className="flex items-start gap-2">
-                          <div
-                            className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${
-                              n.type === 'critical' ? 'bg-red-500' : n.type === 'warning' ? 'bg-amber-500' : 'bg-blue-500'
-                            }`}
-                          />
-                          <div>
-                            <p className="text-sm text-slate-700">{n.message}</p>
-                            <p className="text-xs text-slate-400 mt-1">
-                              {new Date(n.timestamp).toLocaleString('fr-FR')}
-                            </p>
+                {showNotif && (
+                  <div className="absolute right-0 top-12 w-96 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 max-h-96 overflow-y-auto">
+                    <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                      <h3 className="font-semibold text-slate-800">Notifications Stock</h3>
+                      <button onClick={() => setShowNotif(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    {myNotifs.length === 0 ? (
+                      <div className="p-6 text-center text-slate-400">Aucune notification</div>
+                    ) : (
+                      myNotifs.slice(0, 20).map((n) => (
+                        <div
+                          key={n.id}
+                          onClick={() => onMarkRead(n.id)}
+                          className={`p-3 border-b border-slate-50 cursor-pointer hover:bg-slate-50 transition-colors ${
+                            !n.read ? 'bg-blue-50' : ''
+                          }`}
+                        >
+                          <div className="flex items-start gap-2">
+                            <div
+                              className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${
+                                n.type === 'critical' ? 'bg-red-500' : n.type === 'warning' ? 'bg-amber-500' : 'bg-blue-500'
+                              }`}
+                            />
+                            <div>
+                              <p className="text-sm text-slate-700">{n.message}</p>
+                              <p className="text-xs text-slate-400 mt-1">
+                                {new Date(n.timestamp).toLocaleString('fr-FR')}
+                              </p>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {onOpenMedicalRecord && (
               <button
-                onClick={onOpenMedicalRecord}
+                onClick={() => onOpenMedicalRecord()}
                 className="flex items-center gap-2 px-3 py-2 bg-white/20 hover:bg-white/30 backdrop-blur rounded-lg transition font-medium cursor-pointer"
                 title="Dossiers médicaux"
               >

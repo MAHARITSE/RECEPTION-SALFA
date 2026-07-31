@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react';
 import type { AppState } from '../store';
 import { formatAr, labCategoryLabel, paidPrescriptionsForConsultation, safeInvoiceItemDescriptions } from '../store';
-import type { LabRequest } from '../types';
+import type { LabRequest, Consultation, Invoice, HbRecord } from '../types';
 import { printDossierTicket, printLabResultTicket } from '../utils/printTicket';
 import {
   ArrowLeft, Printer, Search, FileText, FlaskConical, Stethoscope,
-  Receipt, AlertTriangle, Droplets, Pill,
+  Receipt, AlertTriangle, Droplets, Pill, Clock, Calendar, Activity,
+  ChevronDown, ChevronUp, Filter, CheckCircle2,
 } from 'lucide-react';
 
 interface Props {
@@ -15,7 +16,7 @@ interface Props {
 }
 
 type DispLab = { lr: LabRequest; doctorName: string; consultationId?: string };
-type Tab = 'consultations' | 'analyses' | 'factures';
+type Tab = 'timeline' | 'consultations' | 'analyses' | 'factures';
 
 const statusCfg: Record<string, { label: string; bg: string; text: string }> = {
   registered: { label: 'Enregistré', bg: 'bg-slate-200', text: 'text-slate-700' },
@@ -33,7 +34,9 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
   const [localId, setLocalId] = useState<string | null>(null);
   const [selectedListId, setSelectedListId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [tab, setTab] = useState<Tab>('consultations');
+  const [tab, setTab] = useState<Tab>('timeline');
+  const [timelineFilter, setTimelineFilter] = useState<'all' | 'consultations' | 'prescriptions' | 'analyses' | 'factures'>('all');
+  const [expandedTimelineId, setExpandedTimelineId] = useState<string | null>(null);
   const lastRowClickRef = useRef<{ patientId: string; timestamp: number } | null>(null);
   // Ne jamais rendre une donnée clinique si le composant est appelé hors du parcours médecin / administrateur.
   if (state.currentUser?.role !== 'doctor' && state.currentUser?.role !== 'admin') return <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-red-800">Accès refusé : le dossier médical est réservé aux médecins et administrateurs.</div>;
@@ -51,7 +54,8 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
     ? state.journey.filter((j) => j.patientId === pid)
     : [];
 
-  const allLabs: DispLab[] = pid
+  const seenDossierLabIds = new Set<string>();
+  const rawDossierLabs = pid
     ? [
         ...consultations.flatMap((c) =>
           c.labRequests.map((lr) => ({ lr, doctorName: c.doctorName, consultationId: c.id })),
@@ -63,17 +67,155 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
             doctorName: state.users.find((u) => u.id === lr.requestedBy)?.name || '',
             consultationId: lr.consultationId,
           })),
-      ].sort((a, b) => {
-        const da = new Date(a.lr.completedAt || a.lr.requestedAt || 0).getTime();
-        const db = new Date(b.lr.completedAt || b.lr.requestedAt || 0).getTime();
-        return db - da;
-      })
+      ]
     : [];
+
+  const allLabs: DispLab[] = [];
+  for (const item of rawDossierLabs) {
+    if (!seenDossierLabIds.has(item.lr.id)) {
+      seenDossierLabIds.add(item.lr.id);
+      allLabs.push(item);
+    }
+  }
+  allLabs.sort((a, b) => {
+    const da = new Date(a.lr.completedAt || a.lr.requestedAt || 0).getTime();
+    const db = new Date(b.lr.completedAt || b.lr.requestedAt || 0).getTime();
+    return db - da;
+  });
+
+  // ---- Unified Visit Timeline Encounters Construction ----
+  const usedLabIds = new Set<string>();
+  const usedInvoiceIds = new Set<string>();
+
+  interface UnifiedEncounter {
+    id: string;
+    timestamp: number;
+    dateFormatted: string;
+    timeFormatted: string;
+    type: 'visit' | 'lab' | 'invoice' | 'hospitalization';
+    title: string;
+    doctorName?: string;
+    isEmergency?: boolean;
+    consultation?: Consultation;
+    prescriptions: any[];
+    labs: DispLab[];
+    invoice?: Invoice;
+    hbRecord?: HbRecord;
+  }
+
+  const encounters: UnifiedEncounter[] = [];
+
+  consultations.forEach((c) => {
+    const d = new Date(c.date);
+    const prescr = paidPrescriptionsForConsultation(state, c);
+
+    const consultLabs = allLabs.filter((item) => {
+      const isDirectMatch = item.lr.consultationId === c.id;
+      const isDateMatch = !item.lr.consultationId && item.lr.requestedAt && new Date(item.lr.requestedAt).toDateString() === d.toDateString();
+      if (isDirectMatch || isDateMatch) {
+        usedLabIds.add(item.lr.id);
+        return true;
+      }
+      return false;
+    });
+
+    const consultInvoice = invoices.find((inv) => {
+      if (inv.consultationId === c.id) {
+        usedInvoiceIds.add(inv.id);
+        return true;
+      }
+      return false;
+    });
+
+    encounters.push({
+      id: `visit-${c.id}`,
+      timestamp: d.getTime(),
+      dateFormatted: d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }),
+      timeFormatted: d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+      type: 'visit',
+      title: c.visitReason ? `Visite Médicale : ${c.visitReason}` : `Consultation avec Dr. ${c.doctorName}`,
+      doctorName: c.doctorName,
+      isEmergency: c.isEmergency,
+      consultation: c,
+      prescriptions: prescr,
+      labs: consultLabs,
+      invoice: consultInvoice,
+    });
+  });
+
+  // Standalone Labs
+  allLabs.forEach((item) => {
+    if (!usedLabIds.has(item.lr.id)) {
+      const lr = item.lr;
+      const t = new Date(lr.completedAt || lr.requestedAt || Date.now()).getTime();
+      const d = new Date(t);
+      encounters.push({
+        id: `lab-single-${lr.id}`,
+        timestamp: t,
+        dateFormatted: d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }),
+        timeFormatted: d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+        type: 'lab',
+        title: `Examen de Laboratoire : ${lr.examType}`,
+        doctorName: item.doctorName,
+        prescriptions: [],
+        labs: [item],
+      });
+    }
+  });
+
+  // Standalone Invoices
+  invoices.forEach((inv) => {
+    if (!usedInvoiceIds.has(inv.id)) {
+      const t = new Date(inv.paidAt || inv.createdAt).getTime();
+      const d = new Date(t);
+      encounters.push({
+        id: `inv-single-${inv.id}`,
+        timestamp: t,
+        dateFormatted: d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }),
+        timeFormatted: d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+        type: 'invoice',
+        title: `Facture directe n° ${inv.id.slice(0, 8).toUpperCase()}`,
+        prescriptions: [],
+        labs: [],
+        invoice: inv,
+      });
+    }
+  });
+
+  // Hospitalizations
+  (state.hbRecords || []).filter(r => r.patientId === pid).forEach((rec) => {
+    const t = new Date(rec.openedAt || Date.now()).getTime();
+    const d = new Date(t);
+    encounters.push({
+      id: `hb-${rec.id}`,
+      timestamp: t,
+      dateFormatted: d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }),
+      timeFormatted: d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+      type: 'hospitalization',
+      title: `Séjour ${rec.type === 'hospit' ? 'Hospitalisation' : 'Intervention Bloc'}`,
+      prescriptions: [],
+      labs: [],
+      hbRecord: rec,
+    });
+  });
+
+  encounters.sort((a, b) => b.timestamp - a.timestamp);
+
+  const filteredTimeline = encounters.filter((item) => {
+    if (timelineFilter === 'all') return true;
+    if (timelineFilter === 'consultations') return item.isEmergency || item.type === 'visit';
+    if (timelineFilter === 'prescriptions') return item.prescriptions.length > 0;
+    if (timelineFilter === 'analyses') return item.labs.length > 0;
+    if (timelineFilter === 'factures') return !!item.invoice;
+    return true;
+  });
+
+  const totalPrescriptionsCount = consultations.reduce((acc, c) => acc + paidPrescriptionsForConsultation(state, c).length, 0);
 
   const openDossier = (id: string) => {
     setSelectedListId(id);
     setLocalId(id);
-    setTab('consultations');
+    setTab('timeline');
   };
 
   const handlePatientRowClick = (id: string) => {
@@ -292,6 +434,7 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
         <div className="flex border-b overflow-x-auto">
           {[
+            { key: 'timeline' as Tab, icon: <Clock className="w-4 h-4" />, label: `Chronologie (${encounters.length})` },
             { key: 'consultations' as Tab, icon: <Stethoscope className="w-4 h-4" />, label: `Consult. (${consultations.length})` },
             { key: 'analyses' as Tab, icon: <FlaskConical className="w-4 h-4" />, label: `Analyses (${labCount})` },
             { key: 'factures' as Tab, icon: <Receipt className="w-4 h-4" />, label: `Factures (${invoices.length})` },
@@ -300,7 +443,7 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
               key={t.key}
               onClick={() => setTab(t.key)}
               className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap cursor-pointer ${
-                tab === t.key ? 'border-slate-700 text-slate-800 bg-slate-50' : 'border-transparent text-slate-500 hover:text-slate-700'
+                tab === t.key ? 'border-indigo-600 text-indigo-900 bg-indigo-50/50 font-bold' : 'border-transparent text-slate-500 hover:text-slate-700'
               }`}
             >
               {t.icon}
@@ -309,7 +452,340 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
           ))}
         </div>
 
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
+          {/* CHRONOLOGIE / VISIT TIMELINE */}
+          {tab === 'timeline' && (
+            <div className="space-y-6">
+              {/* Filter Toolbar without duplicating tabs */}
+              <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-xl flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-indigo-600" />
+                  <span className="font-bold text-slate-800 text-sm">Visites & rencontres médicales</span>
+                  <span className="text-xs bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full font-semibold">
+                    {encounters.length}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {[
+                    { id: 'all', label: `Toutes (${encounters.length})` },
+                    { id: 'consultations', label: `🚨 Urgences (${encounters.filter(e => e.isEmergency).length})` },
+                    { id: 'prescriptions', label: `💊 Ordonnances (${encounters.filter(e => e.prescriptions.length > 0).length})` },
+                    { id: 'analyses', label: `🧪 Examens (${encounters.filter(e => e.labs.length > 0).length})` },
+                    { id: 'factures', label: `💳 Facturées (${encounters.filter(e => !!e.invoice).length})` },
+                  ].map((f) => (
+                    <button
+                      key={f.id}
+                      onClick={() => setTimelineFilter(f.id as any)}
+                      className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                        timelineFilter === f.id
+                          ? 'bg-slate-800 text-white shadow-sm'
+                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Timeline Container */}
+              {filteredTimeline.length === 0 ? (
+                <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-300 p-8">
+                  <Clock className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                  <p className="text-slate-600 font-semibold text-base">Aucune visite correspondant aux filtres</p>
+                  <p className="text-slate-400 text-xs mt-1">Sélectionnez "Toutes" ou modifiez vos critères de recherche.</p>
+                </div>
+              ) : (
+                <div className="relative pl-6 sm:pl-8 border-l-2 border-indigo-200 ml-4 sm:ml-6 space-y-5 py-2">
+                  {filteredTimeline.map((item) => {
+                    const isExpanded = expandedTimelineId === item.id;
+                    return (
+                      <div key={item.id} className="relative group">
+                        {/* Timeline Node Bullet Icon */}
+                        <div
+                          className={`absolute -left-[31px] sm:-left-[39px] top-3.5 flex h-8 w-8 items-center justify-center rounded-full ring-4 ring-white shadow-md ${
+                            item.isEmergency
+                              ? 'bg-red-600 text-white'
+                              : item.type === 'visit'
+                              ? 'bg-emerald-600 text-white'
+                              : item.type === 'lab'
+                              ? 'bg-cyan-600 text-white'
+                              : item.type === 'invoice'
+                              ? 'bg-amber-600 text-white'
+                              : 'bg-indigo-600 text-white'
+                          }`}
+                        >
+                          {item.isEmergency ? (
+                            <AlertTriangle className="w-4 h-4" />
+                          ) : item.type === 'visit' ? (
+                            <Stethoscope className="w-4 h-4" />
+                          ) : item.type === 'lab' ? (
+                            <FlaskConical className="w-4 h-4" />
+                          ) : item.type === 'invoice' ? (
+                            <Receipt className="w-4 h-4" />
+                          ) : (
+                            <Activity className="w-4 h-4" />
+                          )}
+                        </div>
+
+                        {/* Event Card */}
+                        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition-all overflow-hidden">
+                          {/* Card Header */}
+                          <div
+                            onClick={() => setExpandedTimelineId(isExpanded ? null : item.id)}
+                            className="p-4 flex items-center justify-between cursor-pointer select-none bg-gradient-to-r from-slate-50/80 to-white hover:bg-slate-50 transition"
+                          >
+                            <div className="flex-1 min-w-0 pr-3">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                                  {item.type === 'visit'
+                                    ? 'Visite Médicale'
+                                    : item.type === 'lab'
+                                    ? 'Examen Labo Seul'
+                                    : item.type === 'invoice'
+                                    ? 'Facturation Seule'
+                                    : 'Hospitalisation / Bloc'}
+                                </span>
+                                <span className="text-xs font-mono font-medium text-slate-400">
+                                  • {item.dateFormatted} à {item.timeFormatted}
+                                </span>
+                              </div>
+                              <div className="text-base font-bold text-slate-800 mt-0.5 truncate">
+                                {item.title}
+                              </div>
+
+                              {/* Summary Badges for this Visit Encounter */}
+                              <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                                {item.isEmergency && (
+                                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-red-100 text-red-700">
+                                    🚨 Urgence
+                                  </span>
+                                )}
+                                {item.consultation?.diagnosis && (
+                                  <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                                    🩺 {item.consultation.diagnosis}
+                                  </span>
+                                )}
+                                {item.prescriptions.length > 0 && (
+                                  <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800">
+                                    💊 Ordonnance ({item.prescriptions.length} méd.)
+                                  </span>
+                                )}
+                                {item.labs.length > 0 && (
+                                  <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-cyan-100 text-cyan-800">
+                                    🧪 Analyses ({item.labs.length})
+                                  </span>
+                                )}
+                                {item.invoice && (
+                                  <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                                    💳 Facture ({formatAr(item.invoice.patientCharge)})
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0 text-slate-400">
+                              <span className="text-xs text-slate-500 font-semibold hidden sm:inline">
+                                {isExpanded ? 'Réduire' : 'Détails'}
+                              </span>
+                              {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                            </div>
+                          </div>
+
+                          {/* Expanded Card Body */}
+                          {isExpanded && (
+                            <div className="p-4 sm:p-5 border-t border-slate-100 bg-slate-50/50 space-y-4 text-sm animate-in fade-in duration-150">
+                              {/* 1. Consultation info */}
+                              {item.consultation && (
+                                <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-2">
+                                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center justify-between">
+                                    <span>🩺 Consultation Médicale</span>
+                                    {item.doctorName && <span className="text-slate-600 font-medium">Dr. {item.doctorName}</span>}
+                                  </div>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                                    <div>
+                                      <span className="text-slate-500 font-semibold">Motif :</span>{' '}
+                                      <span className="text-slate-800 font-bold">{item.consultation.visitReason || 'Non précisé'}</span>
+                                    </div>
+                                    <div>
+                                      <span className="text-slate-500 font-semibold">Diagnostic :</span>{' '}
+                                      <span className="text-emerald-700 font-bold">{item.consultation.diagnosis || 'Non renseigné'}</span>
+                                    </div>
+                                  </div>
+                                  {item.consultation.notes && (
+                                    <div className="bg-amber-50 p-2.5 rounded-lg border border-amber-200 text-xs text-amber-900">
+                                      <strong>Notes du médecin :</strong> {item.consultation.notes}
+                                    </div>
+                                  )}
+                                  {item.consultation.vitalSigns &&
+                                    (item.consultation.vitalSigns.temperature ||
+                                      item.consultation.vitalSigns.weight ||
+                                      item.consultation.vitalSigns.bloodPressureSystolic) && (
+                                      <div className="flex flex-wrap gap-2 pt-1">
+                                        {item.consultation.vitalSigns.temperature && (
+                                          <span className="px-2 py-0.5 bg-slate-100 rounded text-xs">
+                                            🌡️ T°: <strong>{item.consultation.vitalSigns.temperature}°C</strong>
+                                          </span>
+                                        )}
+                                        {item.consultation.vitalSigns.bloodPressureSystolic && (
+                                          <span className="px-2 py-0.5 bg-slate-100 rounded text-xs">
+                                            🫀 TA: <strong>{item.consultation.vitalSigns.bloodPressureSystolic}/{item.consultation.vitalSigns.bloodPressureDiastolic}</strong>
+                                          </span>
+                                        )}
+                                        {item.consultation.vitalSigns.heartRate && (
+                                          <span className="px-2 py-0.5 bg-slate-100 rounded text-xs">
+                                            💓 FC: <strong>{item.consultation.vitalSigns.heartRate} bpm</strong>
+                                          </span>
+                                        )}
+                                        {item.consultation.vitalSigns.oxygenSaturation && (
+                                          <span className="px-2 py-0.5 bg-slate-100 rounded text-xs">
+                                            🫁 SpO2: <strong>{item.consultation.vitalSigns.oxygenSaturation}%</strong>
+                                          </span>
+                                        )}
+                                        {item.consultation.vitalSigns.weight && (
+                                          <span className="px-2 py-0.5 bg-slate-100 rounded text-xs">
+                                            ⚖️ Poids: <strong>{item.consultation.vitalSigns.weight} kg</strong>
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                </div>
+                              )}
+
+                              {/* 2. Prescriptions */}
+                              {item.prescriptions.length > 0 && (
+                                <div className="bg-white p-3.5 rounded-xl border border-purple-200 space-y-2">
+                                  <div className="text-xs font-bold text-purple-900 uppercase tracking-wide">
+                                    💊 Ordonnance Prescrite ({item.prescriptions.length} médicament{item.prescriptions.length > 1 ? 's' : ''})
+                                  </div>
+                                  <div className="divide-y border rounded-lg overflow-hidden bg-purple-50/20">
+                                    {item.prescriptions.map((p: any) => (
+                                      <div key={p.id} className="p-2.5 flex items-start justify-between gap-3 text-xs">
+                                        <div>
+                                          <div className="font-bold text-slate-800">{p.articleName}</div>
+                                          <div className="text-slate-600">
+                                            Posologie : <strong className="text-purple-700">{p.posology || 'Selon prescription'}</strong>{' '}
+                                            {p.duration ? `· Durée : ${p.duration}` : ''}
+                                          </div>
+                                        </div>
+                                        <div className="text-right shrink-0">
+                                          <div className="font-mono font-bold">×{p.quantity} ({formatAr(p.unitPrice * p.quantity)})</div>
+                                          <span
+                                            className={`inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded mt-0.5 ${
+                                              p.delivered ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                                            }`}
+                                          >
+                                            {p.delivered ? '✓ Délivré' : 'À délivrer'}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* 3. Labs */}
+                              {item.labs.length > 0 && (
+                                <div className="bg-white p-3.5 rounded-xl border border-cyan-200 space-y-2">
+                                  <div className="text-xs font-bold text-cyan-900 uppercase tracking-wide">
+                                    🧪 Analyses de Laboratoire ({item.labs.length})
+                                  </div>
+                                  {item.labs.map((labDisp) => {
+                                    const lr = labDisp.lr;
+                                    const results = lr.results || [];
+                                    return (
+                                      <div key={lr.id} className="border rounded-lg overflow-hidden text-xs bg-slate-50/50 p-2.5 space-y-2">
+                                        <div className="flex justify-between items-center">
+                                          <div className="font-bold text-slate-800">
+                                            {lr.examType} <span className="text-slate-400 font-normal">({labCategoryLabel(lr.category || 'autre')})</span>
+                                          </div>
+                                          {lr.status === 'completed' && (
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                printLabResultTicket(
+                                                  state.ticketSettings,
+                                                  patient,
+                                                  lr,
+                                                  labDisp.doctorName,
+                                                  labCategoryLabel(lr.category || 'autre')
+                                                );
+                                              }}
+                                              className="px-2.5 py-1 bg-cyan-700 hover:bg-cyan-800 text-white rounded text-[11px] font-semibold flex items-center gap-1 shadow-sm cursor-pointer"
+                                            >
+                                              <Printer className="w-3 h-3" /> Imprimer
+                                            </button>
+                                          )}
+                                        </div>
+                                        {results.length > 0 ? (
+                                          <table className="w-full bg-white rounded border">
+                                            <thead className="bg-cyan-50 text-slate-600 text-[11px]">
+                                              <tr>
+                                                <th className="p-1.5 text-left">Paramètre</th>
+                                                <th className="p-1.5 text-center">Résultat</th>
+                                                <th className="p-1.5 text-center">Normes</th>
+                                              </tr>
+                                            </thead>
+                                            <tbody>
+                                              {results.map((r: any) => (
+                                                <tr key={r.parameter} className={`border-t ${r.isAbnormal ? 'bg-red-50 text-red-800 font-bold' : ''}`}>
+                                                  <td className="p-1.5">{r.parameter}</td>
+                                                  <td className="p-1.5 text-center font-mono">{r.value} {r.unit}</td>
+                                                  <td className="p-1.5 text-center font-mono text-slate-500">
+                                                    {r.normalMin} - {r.normalMax} {r.unit}
+                                                  </td>
+                                                </tr>
+                                              ))}
+                                            </tbody>
+                                          </table>
+                                        ) : (
+                                          <div className="text-slate-400 italic text-[11px]">Prélèvement enregistré ({lr.status})</div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+
+                              {/* 4. Invoice */}
+                              {item.invoice && (
+                                <div className="bg-white p-3.5 rounded-xl border border-amber-200 space-y-2">
+                                  <div className="text-xs font-bold text-amber-900 uppercase tracking-wide flex justify-between">
+                                    <span>💳 Facturation & Règlement</span>
+                                    <span className="text-emerald-700 font-mono font-bold text-sm">{formatAr(item.invoice.patientCharge)}</span>
+                                  </div>
+                                  <div className="divide-y border rounded-lg overflow-hidden bg-slate-50 text-xs">
+                                    {item.invoice.items.map((it: any, idx: number) => (
+                                      <div key={idx} className="p-2 flex justify-between">
+                                        <span>{safeInvoiceItemDescriptions(item.invoice!)[idx] || it.type}</span>
+                                        <span className="font-mono font-bold">{formatAr(it.unitPrice * (it.quantity || 1))}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* 5. Hospitalization */}
+                              {item.hbRecord && (
+                                <div className="bg-white p-3.5 rounded-xl border border-indigo-200 space-y-2 text-xs">
+                                  <div className="font-bold text-indigo-900 uppercase tracking-wide">🏥 Dossier Hospitalisation / Bloc</div>
+                                  <div className="p-2.5 bg-indigo-50/50 rounded-lg space-y-1">
+                                    <div>Type : <strong className="text-slate-800">{item.hbRecord.type === 'hospit' ? 'Hospitalisation' : 'Bloc Opératoire'}</strong></div>
+                                    <div>Lignes d'actes : <strong className="text-slate-800">{item.hbRecord.lines?.length || 0} acte(s)</strong></div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
           {/* CONSULTATIONS */}
           {tab === 'consultations' && (
             <div className="space-y-3">

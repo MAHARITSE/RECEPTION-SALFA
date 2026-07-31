@@ -13,6 +13,7 @@ import ModuleAdministration from './components/ModuleAdministration';
 import ModuleFacturationSocietes from './components/ModuleFacturationSocietes';
 import ModuleDossierMedical from './components/ModuleDossierMedical';
 import Messagerie from './components/Messagerie';
+import FloatingThemeToggle from './components/ThemeToggle';
 
 const roleTitles: Record<string, string> = {
   doctor: '🩺 Médecin — Consultation & Prescription',
@@ -174,11 +175,12 @@ function AppInner() {
       <>
         <MiseEnPage
           user={state.currentUser}
+          patients={state.patients}
           notifications={state.notifications}
           onLogout={handleLogout}
           onMarkRead={handleMarkRead}
           onOpenMessaging={() => handleOpenMessagingWithRecipient(null)}
-          onOpenMedicalRecord={() => handleOpenMedicalRecord()}
+          onOpenMedicalRecord={(patientId) => handleOpenMedicalRecord(patientId)}
           unreadMessages={myMsgCount}
         >
           <ModuleDossierMedical state={state} patientId={medicalRecordPatientId} onBack={() => { setView('staff'); setMedicalRecordPatientId(null); }} />
@@ -203,7 +205,7 @@ function AppInner() {
 
   return (
     <>
-      <MiseEnPage user={state.currentUser} notifications={state.notifications} onLogout={handleLogout} onMarkRead={handleMarkRead}
+      <MiseEnPage user={state.currentUser} patients={state.patients} notifications={state.notifications} onLogout={handleLogout} onMarkRead={handleMarkRead}
         onOpenMessaging={() => handleOpenMessagingWithRecipient(null)} onOpenMedicalRecord={state.currentUser.role === 'doctor' || state.currentUser.role === 'admin' ? handleOpenMedicalRecord : undefined} unreadMessages={myMsgCount}>
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-slate-800">{roleTitles[state.currentUser.role] || 'Module'}</h2>
@@ -224,6 +226,7 @@ export default function App() {
   return (
     <AppErrorBoundary>
       <AppInner />
+      <FloatingThemeToggle />
     </AppErrorBoundary>
   );
 }

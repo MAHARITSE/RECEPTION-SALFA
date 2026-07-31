@@ -115,6 +115,30 @@ export default function ModuleMagasinier({ state, setState }: Props) {
   // Services
   const [newSvc, setNewSvc] = useState({ code: '', name: '', color: 'sky' });
 
+  // Bandeau d'alerte stock bas
+  const [magBannerExpanded, setMagBannerExpanded] = useState(true);
+  const [magBannerFilter, setMagBannerFilter] = useState<'central' | 'pharmacie'>('central');
+
+  const addPurchaseLineForArticle = (a: Article) => {
+    const qtyToOrder = Math.max(10, a.minStockCentral * 2 - a.stockCentral);
+    const newLine = {
+      id: uuidv4(),
+      articleId: a.id,
+      articleName: a.name,
+      family: a.family,
+      quantity: qtyToOrder,
+      purchasePrice: a.purchasePrice || 0,
+      expiryDate: a.expiryDate || '',
+      amount: qtyToOrder * (a.purchasePrice || 0),
+    };
+    setPurchaseLines((prev) => {
+      if (prev.some((l) => l.articleId === a.id)) return prev;
+      return [...prev, newLine];
+    });
+    setTab('appro');
+    showToast(`Article "${a.name}" ajouté à la commande d'achat (${qtyToOrder} ${a.unit})`);
+  };
+
   const services = state.warehouseServices || [];
   const activeServices = services.filter((s) => s.active);
   const fournisseurs = state.fournisseurs || [];
@@ -855,10 +879,181 @@ export default function ModuleMagasinier({ state, setState }: Props) {
   return (
     <div className="space-y-4">
       {toast && (
-        <div className="fixed top-4 right-4 bg-blue-700 text-white px-5 py-2.5 rounded-xl shadow-lg z-50 animate-bounce font-medium text-sm flex items-center gap-2">
-          <Check className="w-4 h-4" /> {toast}
+        <div className="fixed inset-0 z-[9999] pointer-events-none flex items-center justify-center p-4">
+          <div className="pointer-events-auto bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white border border-blue-300/40 px-6 py-4 rounded-2xl shadow-2xl animate-in fade-in zoom-in-95 font-semibold text-sm flex items-center gap-3">
+            <div className="p-1.5 bg-white/20 rounded-lg">
+              <Check className="w-5 h-5 text-white" />
+            </div>
+            <span>{toast}</span>
+          </div>
         </div>
       )}
+
+      {/* BANDEAU D'ALERTE STOCK BAS MAGASINIER */}
+      {(() => {
+        const lowStockCentral = state.articles.filter(
+          (a) => !a.alertDisabledCentral && a.stockCentral <= a.minStockCentral
+        );
+        const lowStockPharmacie = state.articles.filter(
+          (a) => !a.alertDisabledPharmacie && a.stockPharmacie <= a.minStockPharmacie
+        );
+
+        if (lowStockCentral.length === 0 && lowStockPharmacie.length === 0) return null;
+
+        const rupturesCentral = lowStockCentral.filter((a) => a.stockCentral <= 0);
+        const stockBasCentral = lowStockCentral.filter((a) => a.stockCentral > 0);
+
+        const currentList = magBannerFilter === 'central' ? lowStockCentral : lowStockPharmacie;
+
+        return (
+          <div className="bg-amber-50 dark:bg-amber-950/40 border-l-4 border-amber-500 rounded-xl p-4 shadow-sm transition-all text-slate-800 dark:text-slate-100">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 rounded-lg shrink-0">
+                  <ShieldAlert className="w-5 h-5 animate-pulse text-amber-600 dark:text-amber-400" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="font-bold text-sm text-amber-900 dark:text-amber-200">
+                      Alerte Stock Minimum : {lowStockCentral.length} article(s) Dépôt Central / {lowStockPharmacie.length} Pharmacie
+                    </h4>
+                    {rupturesCentral.length > 0 && (
+                      <span className="px-2 py-0.5 rounded-full bg-red-600 text-white text-[11px] font-bold animate-pulse">
+                        🚨 {rupturesCentral.length} Ruptures Central
+                      </span>
+                    )}
+                    {stockBasCentral.length > 0 && (
+                      <span className="px-2 py-0.5 rounded-full bg-amber-600 text-white text-[11px] font-bold">
+                        ⚠️ {stockBasCentral.length} Stock Bas Central
+                      </span>
+                    )}
+                    {lowStockPharmacie.length > 0 && (
+                      <span className="px-2 py-0.5 rounded-full bg-purple-600 text-white text-[11px] font-bold">
+                        💊 {lowStockPharmacie.length} Stock Bas Pharmacie
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+                    Articles ayant atteint ou franchi le seuil d'alerte configuré. Anticipez les commandes fournisseurs ou les approvisionnements.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setMagBannerExpanded(!magBannerExpanded)}
+                  className="px-3 py-1.5 bg-amber-200/80 hover:bg-amber-300 dark:bg-amber-900 dark:hover:bg-amber-800 text-amber-900 dark:text-amber-100 rounded-lg text-xs font-semibold cursor-pointer transition flex items-center gap-1"
+                >
+                  {magBannerExpanded ? 'Masquer la liste' : 'Voir le détail des alertes'}
+                </button>
+              </div>
+            </div>
+
+            {magBannerExpanded && (
+              <div className="mt-4 pt-3 border-t border-amber-200 dark:border-amber-800/60 space-y-3">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setMagBannerFilter('central')}
+                    className={`px-3 py-1 rounded-md text-xs font-semibold cursor-pointer transition ${
+                      magBannerFilter === 'central'
+                        ? 'bg-amber-600 text-white shadow-sm'
+                        : 'bg-amber-200/50 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200 hover:bg-amber-200'
+                    }`}
+                  >
+                    📦 Stock Central ({lowStockCentral.length})
+                  </button>
+                  <button
+                    onClick={() => setMagBannerFilter('pharmacie')}
+                    className={`px-3 py-1 rounded-md text-xs font-semibold cursor-pointer transition ${
+                      magBannerFilter === 'pharmacie'
+                        ? 'bg-purple-600 text-white shadow-sm'
+                        : 'bg-amber-200/50 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200 hover:bg-amber-200'
+                    }`}
+                  >
+                    💊 Stock Pharmacie ({lowStockPharmacie.length})
+                  </button>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left">
+                    <thead>
+                      <tr className="text-amber-900 dark:text-amber-300 border-b border-amber-200 dark:border-amber-800/60">
+                        <th className="py-2 px-2 font-semibold">Article</th>
+                        <th className="py-2 px-2 font-semibold">Famille</th>
+                        <th className="py-2 px-2 font-semibold text-center">Stock Central</th>
+                        <th className="py-2 px-2 font-semibold text-center">Seuil Central</th>
+                        <th className="py-2 px-2 font-semibold text-center">Stock Pharmacie</th>
+                        <th className="py-2 px-2 font-semibold text-center">Seuil Pharmacie</th>
+                        <th className="py-2 px-2 font-semibold text-center">Statut</th>
+                        <th className="py-2 px-2 font-semibold text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-amber-200/50 dark:divide-amber-800/40">
+                      {currentList.map((a) => {
+                        const isCentralOut = a.stockCentral <= 0;
+                        const isPharmaOut = a.stockPharmacie <= 0;
+                        return (
+                          <tr key={a.id} className="hover:bg-amber-100/50 dark:hover:bg-amber-900/40">
+                            <td className="py-2 px-2 font-bold text-slate-800 dark:text-slate-100">{a.name}</td>
+                            <td className="py-2 px-2">
+                              <span className="px-2 py-0.5 bg-amber-200/60 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 rounded font-mono text-[10px]">
+                                {familyLabel(a.family)}
+                              </span>
+                            </td>
+                            <td className={`py-2 px-2 text-center font-mono font-bold ${isCentralOut ? 'text-red-600 dark:text-red-400 font-extrabold' : 'text-slate-800 dark:text-slate-200'}`}>
+                              {a.stockCentral} {a.unit}
+                            </td>
+                            <td className="py-2 px-2 text-center font-mono text-slate-500 dark:text-slate-400">
+                              {a.minStockCentral} {a.unit}
+                            </td>
+                            <td className={`py-2 px-2 text-center font-mono font-bold ${isPharmaOut ? 'text-red-600 dark:text-red-400 font-extrabold' : 'text-purple-700 dark:text-purple-300'}`}>
+                              {a.stockPharmacie} {a.unit}
+                            </td>
+                            <td className="py-2 px-2 text-center font-mono text-slate-500 dark:text-slate-400">
+                              {a.minStockPharmacie} {a.unit}
+                            </td>
+                            <td className="py-2 px-2 text-center">
+                              {magBannerFilter === 'central' ? (
+                                isCentralOut ? (
+                                  <span className="px-2 py-0.5 rounded bg-red-100 dark:bg-red-900/60 text-red-700 dark:text-red-300 font-bold text-[10px]">
+                                    RUPTURE CENTRAL
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 font-semibold text-[10px]">
+                                    STOCK BAS CENTRAL
+                                  </span>
+                                )
+                              ) : (
+                                isPharmaOut ? (
+                                  <span className="px-2 py-0.5 rounded bg-red-100 dark:bg-red-900/60 text-red-700 dark:text-red-300 font-bold text-[10px]">
+                                    RUPTURE PHARMA
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-200 font-semibold text-[10px]">
+                                    STOCK BAS PHARMA
+                                  </span>
+                                )
+                              )}
+                            </td>
+                            <td className="py-2 px-2 text-right">
+                              <button
+                                onClick={() => addPurchaseLineForArticle(a)}
+                                className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[11px] font-medium transition cursor-pointer shadow-sm"
+                              >
+                                ➕ Commander Achat
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">

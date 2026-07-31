@@ -3,9 +3,11 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription } from '../types';
 import type { AppState } from '../store';
 import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber, addJourneyEvent, generatePharmaClosingNumber, purgePatientFromQueue } from '../store';
-import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send } from 'lucide-react';
+import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText } from 'lucide-react';
 import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket } from '../utils/printTicket';
+import { printSalfaIndividualInvoice } from '../utils/printSalfaInvoice';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
+import ConfirmModal from './ConfirmModal';
 
 interface Props {
   state: AppState;
@@ -112,19 +114,81 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const selConsult = state.consultations.find(c => c.id === selConsultId);
   const selPatient = state.patients.find(p => p.id === (selPatientId || selConsult?.patientId)) || null;
 
+  // Confirmation Modal State
+  const [confirmModalState, setConfirmModalState] = useState<{
+    isOpen: boolean;
+    title?: string;
+    message: string;
+    subText?: string;
+    confirmText?: string;
+    cancelText?: string;
+    type?: 'danger' | 'warning' | 'info' | 'success';
+    showCancel?: boolean;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    message: '',
+    onConfirm: () => {},
+  });
+
+  const askConfirmation = (opts: {
+    title?: string;
+    message: string;
+    subText?: string;
+    confirmText?: string;
+    cancelText?: string;
+    type?: 'danger' | 'warning' | 'info' | 'success';
+    showCancel?: boolean;
+    onConfirm: () => void;
+  }) => {
+    setConfirmModalState({
+      isOpen: true,
+      title: opts.title || 'Confirmation',
+      message: opts.message,
+      subText: opts.subText,
+      confirmText: opts.confirmText || 'Confirmer',
+      cancelText: opts.cancelText || 'Annuler',
+      type: opts.type || 'danger',
+      showCancel: opts.showCancel !== undefined ? opts.showCancel : true,
+      onConfirm: opts.onConfirm,
+    });
+  };
+
+  const showAlert = (message: string, title: string = 'Information', type: 'warning' | 'info' | 'danger' = 'warning') => {
+    setConfirmModalState({
+      isOpen: true,
+      title,
+      message,
+      confirmText: "D'accord",
+      type,
+      showCancel: false,
+      onConfirm: () => setConfirmModalState((prev) => ({ ...prev, isOpen: false })),
+    });
+  };
+
   // Retrait de la file caisse : seules les consultations/factures en attente sont annulées ; le dossier est conservé.
   const removePendingPatient = (pid: string) => {
     const p = state.patients.find((x) => x.id === pid);
     if (!p) return;
-    if (!confirm(`Retirer ${p.lastName} ${p.firstName} (${p.dossier}) de la file caisse ?\n\nLes consultations et factures en attente seront annulées. Le dossier patient sera conservé.`)) return;
-    setState((prev) => {
-      const next = { ...prev };
-      purgePatientFromQueue(next, pid);
-      addAuditLog(next, 'RETRAIT_FILE_CAISSE', `${p.lastName} ${p.firstName} (${p.dossier}) retiré de la file caisse — dossier conservé`, pid);
-      addJourneyEvent(next, { patientId: pid, department: 'caisse', action: 'Consultations retirées de la file caisse', status: 'registered', details: `Facturation en attente annulée — dossier conservé par ${prev.currentUser?.name || 'la caisse'}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name });
-      return next;
+    askConfirmation({
+      title: 'Retrait de la file Caisse',
+      message: `Retirer ${p.lastName} ${p.firstName} (${p.dossier}) de la file caisse ?`,
+      subText: 'Les consultations et factures en attente seront annulées. Le dossier patient (VitalSigns et historique) reste conservé dans la base de données.',
+      confirmText: 'Retirer de la file',
+      cancelText: 'Annuler',
+      type: 'warning',
+      onConfirm: () => {
+        setState((prev) => {
+          const next = { ...prev };
+          purgePatientFromQueue(next, pid);
+          addAuditLog(next, 'RETRAIT_FILE_CAISSE', `${p.lastName} ${p.firstName} (${p.dossier}) retiré de la file caisse — dossier conservé`, pid);
+          addJourneyEvent(next, { patientId: pid, department: 'caisse', action: 'Consultations retirées de la file caisse', status: 'registered', details: `Facturation en attente annulée — dossier conservé par ${prev.currentUser?.name || 'la caisse'}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name });
+          return next;
+        });
+        if (selPatientId === pid) { setSelPatientId(null); setSelConsultId(null); }
+        setConfirmModalState((prev) => ({ ...prev, isOpen: false }));
+      },
     });
-    if (selPatientId === pid) { setSelPatientId(null); setSelConsultId(null); }
   };
 
   const handlePayment = () => {
@@ -227,8 +291,6 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       ].filter(Boolean).join(' + ');
       addAuditLog(next, 'PAIEMENT_UNIFIE', `${formatAr(total)} — ${parts || 'facture'} — ${selPatient.lastName}`, selPatient.id);
       addJourneyEvent(next, { patientId: selPatient.id, department: 'caisse', action: 'Paiement unifié enregistré', status: 'invoice_paid', details: `${formatAr(total)} (${parts || 'facture'})`, actorName: prev.currentUser?.name });
-      if (medicationItems.length > 0) addNotification(next, 'pharmacy', `💊 ${selPatient.lastName} ${selPatient.firstName}`, 'info');
-      if (labToPrint.length > 0) addNotification(next, 'laboratory', `🧪 Analyses payées: ${selPatient.lastName} ${selPatient.firstName}`, 'info');
       return next;
     });
 
@@ -382,6 +444,8 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         hospitalizeRequested: false,
         surgeryRequested: false,
         isEmergency: false,
+        vitalSigns: { temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' },
+        notes: '',
       };
       newConsultations.push(extConsult);
     }
@@ -415,7 +479,6 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         articles
       };
       addAuditLog(next, 'VENTE_EXTERNE', `Client Externe — ${formatAr(extTotal)}${medicamentLines.length > 0 ? ' (avec ordonnance ajoutée à la file d\'attente pharmacie)' : ''}`);
-      addNotification(next, 'pharmacy', `🛒 Client Externe — ${formatAr(extTotal)}${medicamentLines.length > 0 ? ' (Ordonnance ajoutée à la file d\'attente)' : ''}`, 'info');
       return next;
     });
     openThermalTicket(state.ticketSettings, inv, undefined, state.currentUser || undefined);
@@ -490,6 +553,32 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     hbArtNew();
   };
 
+  const deleteHbRecord = (recordId: string) => {
+    const rec = hbRecords.find(r => r.id === recordId);
+    if (!rec) return;
+    const totalFact = rec.lines.reduce((s, l) => s + hbLineAmt(l), 0);
+    const totalPaid = rec.payments.reduce((s, p) => s + p.amount, 0);
+    if (totalFact > 0 || totalPaid > 0) {
+      showAlert("La suppression n'est autorisée que pour les dossiers dont la facture est égale à 0 Ar.", "Suppression non autorisée", "danger");
+      return;
+    }
+    const dossierTypeName = rec.type === 'hospit' ? 'hospitalisation' : 'bloc opératoire';
+    askConfirmation({
+      title: `Suppression du dossier ${dossierTypeName}`,
+      message: `Supprimer le dossier ${dossierTypeName} de ${rec.patientName} ?`,
+      subText: `Facture = 0 Ar. Ce dossier sera supprimé de la liste caisse, mais le patient sera conservé dans la base de données.`,
+      confirmText: 'Supprimer le dossier',
+      cancelText: 'Annuler',
+      type: 'danger',
+      onConfirm: () => {
+        updateHbRecords(hbRecords.filter(r => r.id !== recordId));
+        if (hbSelRecordId === recordId) setHbSelRecordId(null);
+        addAuditLog(state, 'SUPPRESSION_DOSSIER_HB', `Dossier ${rec.type} de ${rec.patientName} supprimé (Facture 0 Ar)`, rec.patientId);
+        setConfirmModalState((prev) => ({ ...prev, isOpen: false }));
+      },
+    });
+  };
+
   const hbArtSelectArticle = (articleId: string) => {
     const a = state.articles.find(x => x.id === articleId);
     if (!a) return;
@@ -524,7 +613,29 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     const art = state.articles.find(a => a.name === hbArtForm.articleName);
     if (art && art.stockPharmacie <= 0) { alert(`🚨 RUPTURE DE STOCK : « ${art.name} » (stock pharmacie = 0).\n\nVente impossible.`); return; }
     if (art && hbArtForm.quantity > art.stockPharmacie) {
-      if (!confirm(`⚠️ Stock pharmacie insuffisant pour « ${art.name} » : ${art.stockPharmacie} disponible(s), ${hbArtForm.quantity} demandée(s).\n\nEnregistrer quand même ?`)) return;
+      askConfirmation({
+        title: 'Stock pharmacie insuffisant',
+        message: `Stock pharmacie insuffisant pour « ${art.name} » : ${art.stockPharmacie} disponible(s), ${hbArtForm.quantity} demandée(s).`,
+        subText: 'Enregistrer la ligne de prescription quand même ?',
+        confirmText: 'Enregistrer quand même',
+        type: 'warning',
+        onConfirm: () => {
+          const lineToSave: HbLine = {
+            ...hbArtForm,
+            dateSort: hbArtForm.dateSort || new Date().toISOString().split('T')[0]
+          };
+          updateHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? {
+            ...r,
+            lines: hbIsNew || !r.lines.find(l => l.id === hbArtForm.id)
+              ? [...r.lines, lineToSave]
+              : r.lines.map(l => l.id === hbArtForm.id ? lineToSave : l)
+          } : r));
+          setHbIsNew(false);
+          setHbArtForm(prev => ({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: prev.dateSort || new Date().toISOString().split('T')[0] }));
+          setConfirmModalState((prev) => ({ ...prev, isOpen: false }));
+        }
+      });
+      return;
     }
 
     const lineToSave: HbLine = {
@@ -1015,6 +1126,9 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                         <div className="flex gap-1 items-center flex-wrap" onClick={e => e.stopPropagation()}>
                           <button onClick={() => setHbHistoryId(record.id)} title="Historique des paiements" className="px-2 py-1 bg-slate-600 hover:bg-slate-700 text-white rounded text-xs cursor-pointer transition font-medium">📜 Historique{record.payments.length > 0 ? ` (${record.payments.length})` : ''}</button>
                           <button onClick={() => { setHbSelRecordId(record.id); setHbArtSearch(''); setHbArtForm({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: new Date().toISOString().split('T')[0] }); setHbSelLineId(null); setHbIsNew(true); setHbModal('add_article'); }} className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs cursor-pointer transition font-medium">📋 Prescriptions</button>
+                          {totalFact === 0 && totalPaid === 0 && (
+                            <button onClick={() => deleteHbRecord(record.id)} className="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs cursor-pointer transition font-medium flex items-center gap-1" title="Supprimer ce dossier (Facture 0 Ar)"><Trash2 className="w-3.5 h-3.5" /> Supprimer</button>
+                          )}
                           {reste > 0 && <>
                             <input type="number" min={1} max={reste} value={hbPayAmounts[record.id] || ''} onChange={e => setHbPayAmounts(prev => ({ ...prev, [record.id]: Math.max(0, Math.min(parseInt(e.target.value) || 0, reste)) }))} className="w-24 px-2 py-1 border rounded text-xs text-right outline-none" placeholder="Montant" />
                             <button onClick={() => addPartialPay(record.id)} disabled={!hbPayAmounts[record.id] || hbPayAmounts[record.id] > reste} className="px-2 py-1 bg-amber-600 text-white rounded text-xs cursor-pointer disabled:opacity-40">💰 Payer</button>
@@ -1023,7 +1137,7 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                       </div>
                       {isOpen && (
                         <div className="p-3 border-t bg-white">
-                          {record.lines.length > 0 && <table className="w-full text-[11px] mb-2"><thead className="bg-slate-100"><tr><th className="p-1 text-left w-16">Date</th><th className="p-1 text-left">Article</th><th className="p-1 text-right">Qté</th><th className="p-1 text-right">P.U.</th><th className="p-1 text-right">Montant</th></tr></thead><tbody>{record.lines.map(l => (<tr key={l.id} className="border-b border-slate-100"><td className="p-1 text-slate-500">{l.dateSort || '—'}</td><td className="p-1">{l.articleName}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 text-right font-mono">{l.unitPrice.toLocaleString('fr-FR')}</td><td className="p-1 text-right font-mono font-bold">{hbLineAmt(l).toLocaleString('fr-FR')}</td></tr>))}</tbody></table>}
+                          {record.lines.length > 0 && <table className="w-full text-[11px] mb-2"><thead className="bg-slate-100"><tr><th className="p-1 text-left w-16">Date</th><th className="p-1 text-left">Article</th><th className="p-1 text-right">Qté</th><th className="p-1 text-right">P.U.</th><th className="p-1 text-right">Montant</th><th className="p-1 text-center w-8">Action</th></tr></thead><tbody>{record.lines.map(l => (<tr key={l.id} className="border-b border-slate-100"><td className="p-1 text-slate-500">{l.dateSort || '—'}</td><td className="p-1">{l.articleName}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 text-right font-mono">{l.unitPrice.toLocaleString('fr-FR')}</td><td className="p-1 text-right font-mono font-bold">{hbLineAmt(l).toLocaleString('fr-FR')}</td><td className="p-1 text-center"><button onClick={() => { askConfirmation({ title: 'Suppression de ligne', message: `Supprimer la ligne "${l.articleName}" ?`, confirmText: 'Supprimer', type: 'danger', onConfirm: () => { updateHbRecords(hbRecords.map(r => r.id === record.id ? { ...r, lines: r.lines.filter(x => x.id !== l.id) } : r)); setConfirmModalState(prev => ({ ...prev, isOpen: false })); } }); }} className="text-rose-600 hover:text-rose-800 p-0.5 cursor-pointer" title="Supprimer la ligne"><Trash2 className="w-3.5 h-3.5 text-rose-600" /></button></td></tr>))}</tbody></table>}
                           {record.lines.length === 0 && <p className="text-slate-400 text-xs text-center py-2">Aucun article — cliquez "+ Article"</p>}
                           {record.payments.length > 0 && <div className="mt-2 text-[10px] text-slate-500 border-t pt-1"><div className="font-bold mb-1">Historique paiements :</div>{record.payments.map((p, i) => (<div key={i}>{new Date(p.date).toLocaleString('fr-FR',{hour:'2-digit',minute:'2-digit'})} — {formatAr(p.amount)} — {p.receivedBy === 'pharmacie' ? '🏥 Pharmacie' : '💵 Caisse'} : {p.paidBy}</div>))}</div>}
                         </div>
@@ -1071,10 +1185,30 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
 
               {/* Section 4: Liste clients */}
               <div className="bg-white border rounded-lg p-4"><h4 className="font-bold text-sm mb-2">4. Liste clients (mes encaissements)</h4>
-                <table className="w-full text-xs"><thead className="bg-slate-100"><tr><th className="p-2 text-left">Heure</th><th className="p-2 text-left">Client</th><th className="p-2">Type</th><th className="p-2 text-right">Montant</th></tr></thead><tbody>
-                  {myTodayInvoices.map(inv => { const pat = inv.patientId ? state.patients.find(p => p.id === inv.patientId) : null; return (<tr key={inv.id} className="border-b"><td className="p-2 font-mono">{new Date(inv.paidAt || '').toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</td><td className="p-2">{pat ? `${pat.lastName} ${pat.firstName}` : inv.clientName || 'Ext.'}</td><td className="p-2 text-center"><span className={`px-1 py-0.5 rounded text-[10px] font-bold ${inv.isExternal ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>{inv.isExternal ? 'Externe' : 'Consult.'}</span></td><td className="p-2 text-right font-mono font-bold">{formatAr(inv.patientCharge)}</td></tr>); })}
-                  {hbRecords.filter(h => h.payments.some(p => p.paidByUserId === currentCashierId && new Date(p.date).toDateString() === new Date().toDateString())).map(h => { const tp = h.payments.filter(p => p.paidByUserId === currentCashierId && new Date(p.date).toDateString() === new Date().toDateString()).reduce((s,p) => s+p.amount,0); return (<tr key={h.id} className="border-b"><td className="p-2 font-mono">{h.payments.filter(p => p.paidByUserId === currentCashierId && new Date(p.date).toDateString() === new Date().toDateString()).map(p => new Date(p.date).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})).join(', ')}</td><td className="p-2">{h.patientName}</td><td className="p-2 text-center"><span className={`px-1 py-0.5 rounded text-[10px] font-bold ${h.type==='hospit'?'bg-rose-100 text-rose-700':'bg-blue-100 text-blue-700'}`}>{h.type==='hospit'?'Hosp.':'Bloc'}</span></td><td className="p-2 text-right font-mono font-bold">{formatAr(tp)}</td></tr>); })}
-                </tbody><tfoot className="bg-emerald-50"><tr><td colSpan={3} className="p-2 text-right font-bold">TOTAL:</td><td className="p-2 text-right font-mono font-bold text-lg">{formatAr(myGrandTotal)}</td></tr></tfoot></table>
+                <table className="w-full text-xs"><thead className="bg-slate-100"><tr><th className="p-2 text-left">Heure</th><th className="p-2 text-left">Client</th><th className="p-2">Type</th><th className="p-2 text-right">Montant</th><th className="p-2 text-center">Facture A5</th></tr></thead><tbody>
+                  {myTodayInvoices.map(inv => {
+                    const pat = inv.patientId ? state.patients.find(p => p.id === inv.patientId) : null;
+                    const comp = pat?.company ? state.companies.find(c => c.name === pat.company) : undefined;
+                    return (
+                      <tr key={inv.id} className="border-b">
+                        <td className="p-2 font-mono">{new Date(inv.paidAt || '').toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</td>
+                        <td className="p-2">{pat ? `${pat.lastName} ${pat.firstName}` : inv.clientName || 'Ext.'}</td>
+                        <td className="p-2 text-center"><span className={`px-1 py-0.5 rounded text-[10px] font-bold ${inv.isExternal ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>{inv.isExternal ? 'Externe' : 'Consult.'}</span></td>
+                        <td className="p-2 text-right font-mono font-bold">{formatAr(inv.patientCharge)}</td>
+                        <td className="p-2 text-center">
+                          <button
+                            onClick={() => printSalfaIndividualInvoice(state.ticketSettings, inv, pat || undefined, comp)}
+                            className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px] font-bold cursor-pointer inline-flex items-center gap-1"
+                            title="Imprimer Reçu / Facture A5"
+                          >
+                            <FileText className="w-3 h-3" /> Facture A5
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {hbRecords.filter(h => h.payments.some(p => p.paidByUserId === currentCashierId && new Date(p.date).toDateString() === new Date().toDateString())).map(h => { const tp = h.payments.filter(p => p.paidByUserId === currentCashierId && new Date(p.date).toDateString() === new Date().toDateString()).reduce((s,p) => s+p.amount,0); return (<tr key={h.id} className="border-b"><td className="p-2 font-mono">{h.payments.filter(p => p.paidByUserId === currentCashierId && new Date(p.date).toDateString() === new Date().toDateString()).map(p => new Date(p.date).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})).join(', ')}</td><td className="p-2">{h.patientName}</td><td className="p-2 text-center"><span className={`px-1 py-0.5 rounded text-[10px] font-bold ${h.type==='hospit'?'bg-rose-100 text-rose-700':'bg-blue-100 text-blue-700'}`}>{h.type==='hospit'?'Hosp.':'Bloc'}</span></td><td className="p-2 text-right font-mono font-bold">{formatAr(tp)}</td><td className="p-2 text-center text-slate-400">—</td></tr>); })}
+                </tbody><tfoot className="bg-emerald-50"><tr><td colSpan={3} className="p-2 text-right font-bold">TOTAL:</td><td className="p-2 text-right font-mono font-bold text-lg">{formatAr(myGrandTotal)}</td><td></td></tr></tfoot></table>
               </div>
             </div>
           )}
@@ -1393,7 +1527,6 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                     };
                     setState((prev) => {
                       const next = { ...prev, messages: [...prev.messages, msg] };
-                      addNotification(next, 'doctor', `💬 [Rectification Prescription] ${rectificationModal.patientName} : ${rectificationText.trim().substring(0, 50)}...`, 'warning', rectificationModal.doctorId);
                       addAuditLog(next, 'MESSAGE_RECTIFICATION', `Message de rectification envoyé à ${rectificationModal.doctorName} (${rectificationModal.patientName})`);
                       return next;
                     });
@@ -1456,6 +1589,19 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
           </div>
         );
       })()}
+
+      <ConfirmModal
+        isOpen={confirmModalState.isOpen}
+        title={confirmModalState.title}
+        message={confirmModalState.message}
+        subText={confirmModalState.subText}
+        confirmText={confirmModalState.confirmText}
+        cancelText={confirmModalState.cancelText}
+        type={confirmModalState.type}
+        showCancel={confirmModalState.showCancel}
+        onConfirm={confirmModalState.onConfirm}
+        onCancel={() => setConfirmModalState((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

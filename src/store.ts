@@ -478,8 +478,10 @@ const users: User[] = [
   { id: 'DOC001', name: 'Dr. Jean Martin', role: 'doctor', password: 'doc123' },
   { id: 'DOC002', name: 'Dr. Sophie Leclerc', role: 'doctor', password: 'doc123' },
   { id: 'DOC003', name: 'Dr. Ahmed Benali', role: 'doctor', password: 'doc123' },
-  { id: 'CAS001', name: 'Pierre Duval', role: 'cashier', password: 'caisse123' },
-  { id: 'PHA001', name: 'Fatima Benali', role: 'pharmacy', password: 'pharma123' },
+  { id: 'CAS001', name: 'Caisse 1 - Pierre Duval', role: 'cashier', password: 'caisse123' },
+  { id: 'CAS002', name: 'Caisse 2 - Miora Kanto', role: 'cashier', password: 'caisse123' },
+  { id: 'PHA001', name: 'Pharmacie 1 - Fatima Benali', role: 'pharmacy', password: 'pharma123' },
+  { id: 'PHA002', name: 'Pharmacie 2 - Tiana Soa', role: 'pharmacy', password: 'pharma123' },
   { id: 'MAG001', name: 'Ali Rasolofo', role: 'magasinier', password: 'mag123' },
   { id: 'LAB001', name: 'Thomas Nguyen', role: 'laboratory', password: 'labo123' },
   { id: 'ADM001', name: 'Admin Système', role: 'admin', password: 'admin123' },
@@ -549,7 +551,21 @@ export function addAuditLog(s: AppState, action: string, details: string, patien
   const l: AuditLog = { id: uuidv4(), timestamp: new Date().toISOString(), userId: s.currentUser?.id || 'SYSTEM', userName: s.currentUser?.name || 'Système', userRole: s.currentUser?.role || 'receptionist', action, details, patientId };
   s.auditLogs.unshift(l); return l;
 }
-export function addNotification(s: AppState, targetRole: UserRole, message: string, type: 'info'|'warning'|'critical' = 'info', targetUserId?: string): Notification {
+export function addNotification(s: AppState, targetRole: UserRole, message: string, type: 'info'|'warning'|'critical' = 'info', targetUserId?: string): Notification | null {
+  // RÈGLE : Seules les notifications pour la Pharmacie et le Magasinier (ruptures de stock, réapprovisionnement, alertes stock) sont autorisées
+  if (targetRole !== 'pharmacy' && targetRole !== 'magasinier') {
+    return null;
+  }
+  const lowerMsg = message.toLowerCase();
+  const isStockTopic = [
+    'stock', 'rupture', 'appro', 'réappro', 'réapprovisionnement',
+    'dépôt', 'central', 'article', 'quantité', 'inventaire', 'livraison', 'fournisseur', 'commande'
+  ].some(kw => lowerMsg.includes(kw));
+
+  if (!isStockTopic && !lowerMsg.includes('pharmacie')) {
+    return null;
+  }
+
   const n: Notification = { id: uuidv4(), targetRole, targetUserId, message, type, timestamp: new Date().toISOString(), read: false };
   s.notifications.unshift(n); return n;
 }
@@ -656,9 +672,9 @@ export function purgePatientFromQueue(state: AppState, patientId: string): void 
   state.ventes = state.ventes.filter((v) => !pendingVenteIds.has(v.id));
   state.venteLines = state.venteLines.filter((l) => !pendingVenteIds.has(l.venteId));
   state.ventePayments = state.ventePayments.filter((p) => !pendingVenteIds.has(p.venteId));
-  // Le dossier est conservé : il sort seulement de la file active.
+  // Le dossier est conservé dans la base : il sort seulement de la file active et ses paramètres vitaux (VitalSigns) sont supprimés.
   state.patients = state.patients.map((p) => p.id === patientId
-    ? { ...p, status: 'registered' as const, assignedDoctor: undefined, assignedSpecialty: undefined }
+    ? { ...p, status: 'registered' as const, vitalSigns: undefined, assignedDoctor: undefined, assignedSpecialty: undefined }
     : p);
 }
 

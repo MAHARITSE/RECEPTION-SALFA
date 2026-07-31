@@ -1,13 +1,13 @@
 {
-  "name": "react-vite-tailwind",
+  "name": "reception-salfa",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 0.0.0.0 --port 3000",
     "build": "vite build",
-    "preview": "npm run build && wrangler dev",
-    "deploy": "npm run build && wrangler deploy"
+    "preview": "vite preview --host 0.0.0.0 --port 3000",
+    "lint": "tsc --noEmit"
   },
   "dependencies": {
     "@types/uuid": "^10.0.0",
@@ -19,7 +19,6 @@
     "uuid": "^14.0.0"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.45.1",
     "@tailwindcss/vite": "4.1.17",
     "@types/node": "22.19.17",
     "@types/react": "19.2.7",
@@ -28,7 +27,6 @@
     "tailwindcss": "4.1.17",
     "typescript": "5.9.3",
     "vite": "7.3.2",
-    "vite-plugin-singlefile": "2.3.0",
-    "wrangler": "^4.112.0"
+    "vite-plugin-singlefile": "2.3.0"
   }
 }

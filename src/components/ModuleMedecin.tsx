@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { Consultation, VitalSigns, Prescription, LabRequest, ClientType, Invoice, EchoRequest, PatientStatus } from '../types';
+import type { Consultation, VitalSigns, Prescription, LabRequest, ClientType, Invoice, EchoRequest, PatientStatus, Patient } from '../types';
 import type { AppState } from '../store';
 import { addAuditLog, addNotification, formatAr, getPrice, addJourneyEvent, labCategoryLabel, purgePatientFromQueue, isPrescriptionPaid } from '../store';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
-import { Stethoscope, History, Trash2, AlertTriangle, Heart, FileText, Clock, CheckCircle, Send, Search, Edit2, RotateCcw, Save, FlaskConical, Scan, Plus } from 'lucide-react';
+import { printLabResultTicket } from '../utils/printTicket';
+import { Stethoscope, History, Trash2, AlertTriangle, Heart, FileText, Clock, CheckCircle, Send, Search, Edit2, RotateCcw, Save, FlaskConical, Scan, Plus, X, Droplets, Users, Printer, Eye, CheckCircle2 } from 'lucide-react';
 
 export interface EchoExamCatalog {
   id: string;
@@ -38,6 +39,7 @@ type ViewMode = 'queue' | 'consultation' | 'my_consults';
 
 export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: Props) {
   const [view, setView] = useState<ViewMode>('queue');
+  const [toastFeedback, setToastFeedback] = useState<string | null>(null);
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [articleSearch, setArticleSearch] = useState('');
@@ -76,6 +78,105 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
   const [echoSearchIdx, setEchoSearchIdx] = useState(0);
   const echoSearchRef = useRef<HTMLInputElement>(null);
 
+  // ---- Compléter / Modifier le dossier médical du patient par le médecin ----
+  const [showPatientEditModal, setShowPatientEditModal] = useState(false);
+  const [patientEditForm, setPatientEditForm] = useState({
+    bloodGroup: '',
+    allergiesText: '',
+    antecedentsText: '',
+    chronicTreatmentsText: '',
+    famille: '',
+    lienFamilial: '',
+    ssn: '',
+    matricule: '',
+    contact: '',
+    address: '',
+  });
+
+  const selectedPatient = state.patients.find((p) => p.id === selectedPatientId);
+
+  useEffect(() => {
+    if (selectedPatient) {
+      setPatientEditForm({
+        bloodGroup: selectedPatient.bloodGroup || '',
+        allergiesText: (selectedPatient.allergies || []).join(', '),
+        antecedentsText: (selectedPatient.antecedents || []).join(', '),
+        chronicTreatmentsText: (selectedPatient.chronicTreatments || []).join(', '),
+        famille: selectedPatient.famille || '',
+        lienFamilial: selectedPatient.lienFamilial || '',
+        ssn: selectedPatient.ssn || '',
+        matricule: selectedPatient.matricule || '',
+        contact: selectedPatient.contact || '',
+        address: selectedPatient.address || '',
+      });
+    }
+  }, [
+    selectedPatientId,
+    selectedPatient?.bloodGroup,
+    selectedPatient?.allergies,
+    selectedPatient?.antecedents,
+    selectedPatient?.chronicTreatments,
+    selectedPatient?.famille,
+    selectedPatient?.lienFamilial,
+    selectedPatient?.ssn,
+    selectedPatient?.matricule,
+    selectedPatient?.contact,
+    selectedPatient?.address,
+  ]);
+
+  const savePatientMedicalProfile = () => {
+    if (!selectedPatientId || !selectedPatient) return;
+    const newAllergies = patientEditForm.allergiesText
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const newAntecedents = patientEditForm.antecedentsText
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const newChronic = patientEditForm.chronicTreatmentsText
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    setState((prev) => {
+      const next: AppState = {
+        ...prev,
+        patients: prev.patients.map((p) =>
+          p.id === selectedPatientId
+            ? {
+                ...p,
+                bloodGroup: patientEditForm.bloodGroup || undefined,
+                allergies: newAllergies,
+                antecedents: newAntecedents,
+                chronicTreatments: newChronic,
+                famille: patientEditForm.famille || undefined,
+                lienFamilial: patientEditForm.lienFamilial || undefined,
+                ssn: patientEditForm.ssn,
+                matricule: patientEditForm.matricule || undefined,
+                contact: patientEditForm.contact,
+                address: patientEditForm.address,
+              }
+            : p
+        ),
+      };
+      addAuditLog(next, 'MAJ_DOSSIER_PATIENT_MEDECIN', `Dossier médical mis à jour par Dr. ${prev.currentUser?.name || ''} (${selectedPatient.dossier})`, selectedPatientId);
+      addJourneyEvent(next, {
+        patientId: selectedPatientId,
+        department: 'consultation',
+        action: 'Mise à jour du dossier médical',
+        status: selectedPatient.status,
+        details: 'Données médicales complétées (groupe sanguin, antécédents, allergies, famille...) par le médecin',
+        actorId: prev.currentUser?.id,
+        actorName: prev.currentUser?.name,
+      });
+      return next;
+    });
+    setShowPatientEditModal(false);
+    setToastFeedback('Dossier médical du patient mis à jour avec succès');
+    setTimeout(() => setToastFeedback(null), 3000);
+  };
+
   const getPatientStatusBadge = (status: PatientStatus) => {
     switch (status) {
       case 'waiting_consultation': return { label: 'En attente', color: 'bg-amber-100 text-amber-700' };
@@ -108,7 +209,6 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
       return score(a.status) - score(b.status);
     });
   const searchResults = searchQuery.length >= 2 ? state.patients.filter((p) => { const q = searchQuery.toLowerCase(); return p.firstName.toLowerCase().includes(q) || p.lastName.toLowerCase().includes(q) || p.dossier.toLowerCase().includes(q); }) : [];
-  const selectedPatient = state.patients.find((p) => p.id === selectedPatientId);
   const patientConsultations = selectedPatientId ? state.consultations.filter((c) => c.patientId === selectedPatientId) : [];
   const clientType = selectedPatient?.clientType || 'comptoir';
 
@@ -252,11 +352,17 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     submittingRef.current = false;
   };
 
+  const [patientToPurge, setPatientToPurge] = useState<Patient | null>(null);
+
   // Retrait de la file médecin : le dossier patient est toujours conservé.
   const deleteWaitingPatient = (pid: string) => {
     const p = state.patients.find((x) => x.id === pid);
     if (!p) return;
-    if (!confirm(`Retirer la consultation de ${p.lastName} ${p.firstName} (${p.dossier}) de la file d'attente ?\n\nLe dossier patient et ses paramètres seront conservés.`)) return;
+    setPatientToPurge(p);
+  };
+
+  const confirmPurgePatient = (p: Patient) => {
+    const pid = p.id;
     setState((prev) => {
       const next: AppState = { ...prev };
       purgePatientFromQueue(next, pid);
@@ -264,6 +370,12 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
       addJourneyEvent(next, { patientId: pid, department: 'consultation', action: 'Consultation retirée de la file médecin', status: 'registered', details: `Consultation annulée ; dossier conservé par Dr. ${prev.currentUser?.name || ''}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name });
       return next;
     });
+    if (selectedPatientId === pid) {
+      setSelectedPatientId(null);
+      setView('queue');
+    }
+    setPatientToPurge(null);
+    setToastFeedback(`Consultation de ${p.lastName} ${p.firstName} retirée de la file.`);
   };
 
   // Keyboard navigation in search results
@@ -490,7 +602,6 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
       };
       addAuditLog(next, paid ? 'ANNULATION_PAIEMENT_RETOUR_CAISSE' : 'RETOUR_CAISSE', `${patient?.dossier || c.patientId} — retour à la caisse${paid ? ' avec annulation du paiement' : ''}`, c.patientId);
       addJourneyEvent(next, { patientId: c.patientId, department: 'caisse', action: paid ? 'Paiement annulé — retour caisse' : 'Retour caisse', status: 'consulted_awaiting_payment', details: paid ? 'Paiement annulé avant nouvelle facturation' : 'Patient remis en attente de paiement', actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId: cid });
-      if (paid && patient) addNotification(next, 'cashier', `↩️ Paiement annulé: ${patient.lastName} ${patient.firstName} — à refacturer`, 'warning');
       return next;
     });
   };
@@ -553,7 +664,6 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
       };
       addAuditLog(next, paid ? 'MODIF_PRESCRIPTION_PAIEMENT_ANNULE' : 'MODIF_PRESCRIPTION', `${patient?.dossier || c.patientId} — modification de prescription${paid ? ' (paiement annulé)' : ''}`, c.patientId);
       addJourneyEvent(next, { patientId: c.patientId, department: 'consultation', action: paid ? 'Modification avec annulation du paiement' : 'Modification de prescription', status: 'in_consultation', details: paid ? 'Paiement existant annulé ; nouvelle validation attendue' : 'Prescription remise en édition avant paiement', actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId: cid });
-      if (paid && patient) addNotification(next, 'cashier', `⚠️ Paiement annulé pour modification: ${patient.lastName} ${patient.firstName}`, 'warning');
       return next;
     });
   };
@@ -629,7 +739,6 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
         };
         next = { ...next, labRequests: [...next.labRequests, ...newLabRequests], invoices: [...next.invoices, labInv] };
         addAuditLog(next, 'DEMANDE_ANALYSE', `${newLabRequests.map((r) => r.examType).join(', ')} — ${formatAr(labTotalAmt)} (${selectedPatient.dossier})`, selectedPatientId);
-        addNotification(next, 'cashier', `🧪 Analyses à facturer: ${selectedPatient.lastName} ${selectedPatient.firstName} — ${formatAr(labTotalAmt)}`, 'info');
         addJourneyEvent(next, { patientId: selectedPatientId, department: 'consultation', action: "Demande d'analyse", status: 'analyses_pending', details: `${newLabRequests.map((r) => r.examType).join(', ')} — à facturer (caisse)`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId: consultation.id });
       }
       if (newEchoRequests.length > 0 && echoInvoiceId) {
@@ -642,22 +751,19 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
         };
         next = { ...next, invoices: [...next.invoices, echoInv] };
         addAuditLog(next, 'DEMANDE_ECHO', `${newEchoRequests.map((r) => r.examType).join(', ')} — ${formatAr(echoTotalAmt)} (${selectedPatient.dossier})`, selectedPatientId);
-        addNotification(next, 'cashier', `📡 Échographie à facturer: ${selectedPatient.lastName} ${selectedPatient.firstName} — ${formatAr(echoTotalAmt)}`, 'info');
         addJourneyEvent(next, { patientId: selectedPatientId, department: 'imagerie', action: "Demande d'échographie", status: nextStatus, details: `${newEchoRequests.map((r) => r.examType).join(', ')} — à facturer (caisse)`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId: consultation.id });
       }
+
       addAuditLog(next, 'CONSULTATION', `${selectedPatient.lastName} — ${formatAr(grandTotal)}${lines.length === 0 ? ' (sans ordonnance)' : ''}`, selectedPatientId);
       addJourneyEvent(next, { patientId: selectedPatientId, department: 'consultation', action: 'Consultation terminée', status: nextStatus, details: `${formatAr(grandTotal)} — ${consultForm.diagnosis}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId: consultation.id });
-      if (hasBillable) {
-        addNotification(next, 'cashier', `💰 ${selectedPatient.lastName} ${selectedPatient.firstName} — ${formatAr(grandTotal)}`, 'info');
-      }
       return next;
     });
-    // Impression médecin : ordonnance UNIQUEMENT s'il y a des médicaments
-    // (les bons labo / écho sortent à la CAISSE après paiement, avec le ticket)
-    // ne pas imprimer l'ordonnance dans la partie docteur
-    // if (state.currentUser && lines.length > 0) {
-    //   printPrescriptionTicket(state.ticketSettings, selectedPatient!, state.currentUser, new Date(), lines, consultForm.diagnosis);
-    // }
+
+    const savedPatientName = `${selectedPatient.lastName} ${selectedPatient.firstName}`;
+    const savedDiagnosis = consultForm.diagnosis;
+    setToastFeedback(`✅ Diagnostic & consultation validés pour ${savedPatientName} (${savedDiagnosis}) !`);
+    setTimeout(() => setToastFeedback(null), 6000);
+
     setSelectedPatientId(null); setConsultForm({ visitReason: '', diagnosis: '', notes: '', isEmergency: false, hospitalizeRequested: false, surgeryRequested: false });
     setVitals({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' });
     setLines([]); setSearchQuery(''); setSelectedLineId(null); setIsNewLine(false);
@@ -670,6 +776,21 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
 
   return (
     <div className="space-y-3">
+      {toastFeedback && (
+        <div className="fixed inset-0 z-[9999] pointer-events-none flex items-center justify-center p-4">
+          <div className="pointer-events-auto max-w-md w-full p-4 sm:p-5 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 text-white rounded-2xl shadow-2xl border border-emerald-300/40 flex items-center justify-between gap-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center gap-3">
+              <div className="p-1.5 bg-white/20 rounded-lg shrink-0">
+                <CheckCircle className="w-6 h-6 text-white" />
+              </div>
+              <span className="font-semibold text-sm leading-snug">{toastFeedback}</span>
+            </div>
+            <button onClick={() => setToastFeedback(null)} className="text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/20 cursor-pointer transition">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-white rounded-xl p-4 shadow-sm border cursor-pointer hover:border-amber-400" onClick={() => setView('queue')}><div className="flex items-center gap-3"><div className="p-2 bg-amber-100 rounded-lg"><Clock className="w-5 h-5 text-amber-600" /></div><div><div className="text-2xl font-bold">{myWaiting.length}</div><div className="text-sm text-slate-500">En attente</div></div></div></div>
         <div className="bg-white rounded-xl p-4 shadow-sm border cursor-pointer hover:border-emerald-400" onClick={() => setView('my_consults')}><div className="flex items-center gap-3"><div className="p-2 bg-green-100 rounded-lg"><CheckCircle className="w-5 h-5 text-green-600" /></div><div><div className="text-2xl font-bold">{myTodayConsults.length}</div><div className="text-sm text-slate-500">Mes consultations (auj.)</div></div></div></div>
@@ -727,13 +848,208 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
       {view === 'consultation' && selectedPatient && (
         <div className="space-y-2 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 180px)' }}>
           {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border p-3">
-            <div className="flex justify-between items-start">
-              <div><h3 className="font-bold text-lg">{selectedPatient.lastName} {selectedPatient.firstName} <span className="text-sm font-mono text-blue-600">({selectedPatient.dossier})</span>{selectedPatient.company && <span className="ml-2 px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700">{selectedPatient.company}</span>}</h3><div className="text-sm text-slate-500">{selectedPatient.gender === 'M' ? 'H' : 'F'} | {selectedPatient.age}</div></div>
-              <div className="flex gap-2"><button onClick={() => onOpenMedicalRecord && onOpenMedicalRecord(selectedPatient.id)} className="px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded text-xs cursor-pointer"><History className="w-3 h-3 inline" /> Historique ({patientConsultations.length})</button><button onClick={handleBackToQueue} className="px-2 py-1 bg-slate-200 rounded text-xs cursor-pointer" title="Retour à la file — le patient est remis en attente s'il n'a pas été validé">← Retour</button></div>
+          <div className="bg-white rounded-xl shadow-sm border p-3.5 space-y-2">
+            <div className="flex flex-wrap justify-between items-start gap-2">
+              <div>
+                <h3 className="font-bold text-lg flex items-center gap-2 flex-wrap">
+                  <span>{selectedPatient.lastName} {selectedPatient.firstName}</span>
+                  <span className="text-sm font-mono text-blue-600 font-semibold">({selectedPatient.dossier})</span>
+                  {selectedPatient.company && <span className="px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700 font-medium">{selectedPatient.company}</span>}
+                  {selectedPatient.famille && (
+                    <span className="px-2 py-0.5 rounded text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 font-medium" title="Base de famille">
+                      👨‍👩‍👧 {selectedPatient.famille} {selectedPatient.lienFamilial ? `(${selectedPatient.lienFamilial})` : ''}
+                    </span>
+                  )}
+                </h3>
+                <div className="text-xs text-slate-500 flex items-center gap-3 mt-0.5 flex-wrap">
+                  <span>Sexe: <strong>{selectedPatient.gender === 'M' ? 'Homme (H)' : 'Femme (F)'}</strong></span>
+                  <span>•</span>
+                  <span>Âge: <strong>{selectedPatient.age}</strong></span>
+                  {selectedPatient.bloodGroup && (
+                    <>
+                      <span>•</span>
+                      <span className="text-rose-600 font-bold flex items-center gap-1">
+                        <Droplets className="w-3.5 h-3.5 inline" /> Groupe: {selectedPatient.bloodGroup}
+                      </span>
+                    </>
+                  )}
+                  {selectedPatient.ssn && (
+                    <>
+                      <span>•</span>
+                      <span>CIN/SSN: <span className="font-mono">{selectedPatient.ssn}</span></span>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={() => setShowPatientEditModal(true)}
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold cursor-pointer shadow-sm flex items-center gap-1.5 transition"
+                  title="Compléter ou modifier le dossier médical du patient (groupe sanguin, antécédents, allergies, famille...)"
+                >
+                  <Edit2 className="w-3.5 h-3.5" /> Compléter Dossier
+                </button>
+                <button onClick={() => onOpenMedicalRecord && onOpenMedicalRecord(selectedPatient.id)} className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium cursor-pointer transition">
+                  <History className="w-3.5 h-3.5 inline mr-1" /> Historique ({patientConsultations.length})
+                </button>
+                <button onClick={handleBackToQueue} className="px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-medium cursor-pointer transition" title="Retour à la file — le patient est remis en attente s'il n'a pas été validé">
+                  ← Retour
+                </button>
+              </div>
             </div>
-            {selectedPatient.allergies.length > 0 && <div className="mt-1 p-1.5 bg-red-50 border border-red-200 rounded text-xs text-red-700"><AlertTriangle className="w-3 h-3 inline" /> {selectedPatient.allergies.join(', ')}</div>}
+
+            {/* Badges synthétiques du dossier médical */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pt-2 border-t border-slate-100 text-xs">
+              <div className={`p-2 rounded-lg border ${selectedPatient.allergies.length > 0 ? 'bg-red-50 border-red-200 text-red-800' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
+                <span className="font-bold block text-[11px] mb-0.5">⚠️ Allergies :</span>
+                {selectedPatient.allergies.length > 0 ? selectedPatient.allergies.join(', ') : 'Aucune allergie renseignée'}
+              </div>
+              <div className={`p-2 rounded-lg border ${selectedPatient.antecedents.length > 0 ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
+                <span className="font-bold block text-[11px] mb-0.5">📋 Antécédents :</span>
+                {selectedPatient.antecedents.length > 0 ? selectedPatient.antecedents.join(', ') : 'Aucun antécédent répertorié'}
+              </div>
+              <div className={`p-2 rounded-lg border ${selectedPatient.chronicTreatments.length > 0 ? 'bg-blue-50 border-blue-200 text-blue-900' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
+                <span className="font-bold block text-[11px] mb-0.5">💊 Traitements chroniques :</span>
+                {selectedPatient.chronicTreatments.length > 0 ? selectedPatient.chronicTreatments.join(', ') : 'Aucun traitement continu'}
+              </div>
+            </div>
           </div>
+
+          {/* SECTION : RÉSULTATS D'ANALYSES BIOLOGIQUES POUR LE MÉDECIN */}
+          {(() => {
+            const rawPatientLabs = state.labRequests.filter(lr => lr.patientId === selectedPatient.id || (lr.consultationId && patientConsultations.some(c => c.id === lr.consultationId)));
+            const seenMedLabIds = new Set<string>();
+            const patientLabs: typeof rawPatientLabs = [];
+            for (const lr of rawPatientLabs) {
+              if (!seenMedLabIds.has(lr.id)) {
+                seenMedLabIds.add(lr.id);
+                patientLabs.push(lr);
+              }
+            }
+            const completedLabs = patientLabs.filter(lr => lr.status === 'completed' && lr.results && lr.results.length > 0);
+            const inProgressLabs = patientLabs.filter(lr => lr.status !== 'completed');
+
+            if (patientLabs.length === 0) return null;
+
+            return (
+              <div className="bg-white rounded-xl shadow-sm border border-cyan-200 overflow-hidden">
+                <div className="p-3 bg-cyan-50 border-b border-cyan-100 flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <FlaskConical className="w-5 h-5 text-cyan-600" />
+                    <h4 className="font-bold text-sm text-cyan-900">
+                      Résultats & Analyses Laboratoire ({completedLabs.length} disponible{completedLabs.length > 1 ? 's' : ''})
+                    </h4>
+                    {inProgressLabs.length > 0 && (
+                      <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-bold rounded-full animate-pulse">
+                        ⏳ {inProgressLabs.length} en cours au labo
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-xs text-slate-500 font-mono">Espace Biologie & Médical</span>
+                </div>
+
+                <div className="p-3 space-y-3 max-h-80 overflow-y-auto bg-slate-50/50 divide-y divide-slate-200">
+                  {completedLabs.length === 0 ? (
+                    <p className="text-xs text-slate-500 italic py-2 text-center">
+                      Aucun résultat d'analyse encore disponible. Les demandes sont en cours de traitement au laboratoire.
+                    </p>
+                  ) : (
+                    completedLabs.map((lr) => {
+                      const hasAbnormal = (lr.results || []).some((r) => r.isAbnormal) || lr.biologicalAlert;
+                      return (
+                        <div key={lr.id} className="pt-2 first:pt-0 space-y-2">
+                          <div className="flex items-center justify-between flex-wrap gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-800 text-xs">{lr.examType}</span>
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                [{lr.code || 'LAB'}] · Réalisé le {new Date(lr.completedAt || Date.now()).toLocaleString('fr-FR')}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {hasAbnormal ? (
+                                <span className="px-2 py-0.5 bg-rose-100 text-rose-700 border border-rose-200 rounded-full text-[10px] font-bold flex items-center gap-1">
+                                  <AlertTriangle className="w-3 h-3" /> PATHOLOGIQUE / ALERTE
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-full text-[10px] font-bold flex items-center gap-1">
+                                  <CheckCircle2 className="w-3 h-3" /> Résultats Normaux
+                                </span>
+                              )}
+                              <button
+                                onClick={() => printLabResultTicket(state.ticketSettings, selectedPatient, lr, state.currentUser?.name, labCategoryLabel(lr.category || 'autre'))}
+                                className="px-2 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition shadow-xs"
+                                title="Imprimer le compte-rendu d'analyse"
+                              >
+                                <Printer className="w-3 h-3 text-slate-500" /> Imprimer
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Paramètres et valeurs */}
+                          <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+                            <table className="w-full text-xs">
+                              <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
+                                <tr>
+                                  <th className="text-left p-1.5">Paramètre</th>
+                                  <th className="text-center p-1.5">Valeur Mesurée</th>
+                                  <th className="text-center p-1.5">Normes de Référence</th>
+                                  <th className="text-center p-1.5">Interprétation</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {(lr.results || []).map((r, idx) => (
+                                  <tr key={idx} className={r.isAbnormal ? 'bg-rose-50/70 font-semibold' : ''}>
+                                    <td className="p-1.5 text-slate-800">{r.parameter}</td>
+                                    <td className={`p-1.5 text-center font-mono font-bold ${r.isAbnormal ? 'text-rose-700' : 'text-emerald-700'}`}>
+                                      {r.value} {r.unit || ''}
+                                    </td>
+                                    <td className="p-1.5 text-center text-slate-500 font-mono text-[11px]">
+                                      {r.normalRangeText || (r.normalMin !== undefined && r.normalMax !== undefined && r.normalMin !== r.normalMax ? `${r.normalMin} - ${r.normalMax} ${r.unit || ''}` : '—')}
+                                    </td>
+                                    <td className="p-1.5 text-center">
+                                      {r.isAbnormal ? (
+                                        <span className="text-rose-700 font-bold text-[10px] flex items-center justify-center gap-0.5">
+                                          <AlertTriangle className="w-3 h-3 inline" /> ANORMAL
+                                        </span>
+                                      ) : (
+                                        <span className="text-emerald-600 text-[10px]">Normal</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          {/* Conclusion du Biologiste */}
+                          {lr.labConclusion && (
+                            <div className="p-2.5 bg-cyan-50 border border-cyan-200 rounded-lg text-xs text-cyan-950 flex items-start justify-between gap-2">
+                              <div>
+                                <span className="font-bold block text-[11px] text-cyan-900 mb-0.5">💬 Conclusion du Laboratoire :</span>
+                                <p className="italic">{lr.labConclusion}</p>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  setConsultForm(prev => ({
+                                    ...prev,
+                                    notes: prev.notes ? `${prev.notes}\n[Labo ${lr.examType}] ${lr.labConclusion}` : `[Labo ${lr.examType}] ${lr.labConclusion}`
+                                  }));
+                                  setToastFeedback('Conclusion ajoutée aux notes de consultation !');
+                                }}
+                                className="shrink-0 px-2 py-1 bg-cyan-600 hover:bg-cyan-700 text-white rounded text-[10px] font-bold cursor-pointer transition shadow-xs"
+                              >
+                                + Copier dans mes notes
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Vitals + Consult */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
@@ -952,6 +1268,236 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
             <button onClick={submitConsultation} className="w-full py-3 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 flex items-center justify-center gap-2 cursor-pointer shadow-lg">
               <Send className="w-5 h-5" /> Valider — {formatAr(totalPres + labTotal + echoTotal)}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL COMPLETION DOSSIER MEDICAL PATIENT (PAR LE MEDECIN) */}
+      {showPatientEditModal && selectedPatient && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden animate-in fade-in duration-150">
+            <div className="p-4 bg-gradient-to-r from-indigo-700 to-blue-600 text-white flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <Stethoscope className="w-5 h-5 text-indigo-200" />
+                <div>
+                  <h3 className="font-bold text-base">Compléter le Dossier Médical Patient</h3>
+                  <p className="text-xs text-indigo-100">{selectedPatient.lastName} {selectedPatient.firstName} ({selectedPatient.dossier})</p>
+                </div>
+              </div>
+              <button onClick={() => setShowPatientEditModal(false)} className="p-1 hover:bg-white/20 rounded-lg text-white transition cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto text-sm">
+              {/* Section Profil Médical */}
+              <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200 space-y-3">
+                <h4 className="font-bold text-indigo-900 flex items-center gap-1.5 text-xs uppercase tracking-wider">
+                  <Droplets className="w-4 h-4 text-rose-600" /> Profil Médical & Risques Cliniques
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Groupe Sanguin</label>
+                    <select
+                      value={patientEditForm.bloodGroup}
+                      onChange={(e) => setPatientEditForm({ ...patientEditForm, bloodGroup: e.target.value })}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-semibold text-rose-700"
+                    >
+                      <option value="">-- Non renseigné --</option>
+                      <option value="A+">A+</option>
+                      <option value="A-">A-</option>
+                      <option value="B+">B+</option>
+                      <option value="B-">B-</option>
+                      <option value="AB+">AB+</option>
+                      <option value="AB-">AB-</option>
+                      <option value="O+">O+</option>
+                      <option value="O-">O-</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Allergies (séparées par virgules)</label>
+                    <input
+                      type="text"
+                      value={patientEditForm.allergiesText}
+                      onChange={(e) => setPatientEditForm({ ...patientEditForm, allergiesText: e.target.value })}
+                      placeholder="Ex: Pénicilline, Aspirine, Latex..."
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs text-red-700"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Antécédents Médicaux / Chirurgicaux (séparés par virgules)</label>
+                  <textarea
+                    rows={2}
+                    value={patientEditForm.antecedentsText}
+                    onChange={(e) => setPatientEditForm({ ...patientEditForm, antecedentsText: e.target.value })}
+                    placeholder="Ex: HTA sous Amlodipine, Diabète Type 2, Appendicectomie 2018..."
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Traitements Chroniques / Longue Durée (séparés par virgules)</label>
+                  <textarea
+                    rows={2}
+                    value={patientEditForm.chronicTreatmentsText}
+                    onChange={(e) => setPatientEditForm({ ...patientEditForm, chronicTreatmentsText: e.target.value })}
+                    placeholder="Ex: Metformine 1000mg 2x/j, Levothyrox 75µg..."
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs text-blue-800"
+                  />
+                </div>
+              </div>
+
+              {/* Section Base de Famille & Identité */}
+              <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200 space-y-3">
+                <h4 className="font-bold text-slate-800 flex items-center gap-1.5 text-xs uppercase tracking-wider">
+                  <Users className="w-4 h-4 text-indigo-600" /> Base de Famille & Identité Administrative
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Base de Famille (Nom du Foyer)</label>
+                    <input
+                      type="text"
+                      value={patientEditForm.famille}
+                      onChange={(e) => setPatientEditForm({ ...patientEditForm, famille: e.target.value })}
+                      placeholder="Ex: Famille RAKOTO, Famille DUPONT..."
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Lien Familial dans le Foyer</label>
+                    <select
+                      value={patientEditForm.lienFamilial}
+                      onChange={(e) => setPatientEditForm({ ...patientEditForm, lienFamilial: e.target.value })}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
+                    >
+                      <option value="">-- Sélectionner --</option>
+                      <option value="Chef de famille">Chef de famille</option>
+                      <option value="Époux / Épouse">Époux / Épouse</option>
+                      <option value="Enfant">Enfant</option>
+                      <option value="Parent (Père/Mère)">Parent (Père/Mère)</option>
+                      <option value="Autre ayant droit">Autre ayant droit</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">CIN / N° Sécurité Sociale (SSN)</label>
+                    <input
+                      type="text"
+                      value={patientEditForm.ssn}
+                      onChange={(e) => setPatientEditForm({ ...patientEditForm, ssn: e.target.value })}
+                      placeholder="N° CIN / Sécurité Sociale"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Matricule Interne / Société</label>
+                    <input
+                      type="text"
+                      value={patientEditForm.matricule}
+                      onChange={(e) => setPatientEditForm({ ...patientEditForm, matricule: e.target.value })}
+                      placeholder="N° Matricule..."
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Téléphone / Contact</label>
+                    <input
+                      type="text"
+                      value={patientEditForm.contact}
+                      onChange={(e) => setPatientEditForm({ ...patientEditForm, contact: e.target.value })}
+                      placeholder="034 XX XXX XX"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Adresse Domicile</label>
+                    <input
+                      type="text"
+                      value={patientEditForm.address}
+                      onChange={(e) => setPatientEditForm({ ...patientEditForm, address: e.target.value })}
+                      placeholder="Adresse complète..."
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-100 border-t border-slate-200 flex justify-end gap-2">
+              <button
+                onClick={() => setShowPatientEditModal(false)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold rounded-lg text-xs cursor-pointer transition"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={savePatientMedicalProfile}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg text-xs shadow-md flex items-center gap-1.5 cursor-pointer transition"
+              >
+                <Save className="w-4 h-4" /> Enregistrer le Dossier Médical
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIRMATION DE RETRAIT DE LA FILE */}
+      {patientToPurge && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-100 overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-rose-50/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-rose-100 text-rose-600 rounded-xl">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">Retirer de la file d'attente</h3>
+                  <p className="text-xs text-slate-500 font-mono">{patientToPurge.dossier}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setPatientToPurge(null)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs text-slate-600">
+              <p className="text-sm font-semibold text-slate-800">
+                Êtes-vous sûr de vouloir retirer <strong>{patientToPurge.lastName} {patientToPurge.firstName}</strong> de votre file de consultation ?
+              </p>
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-1 text-amber-900">
+                <p className="font-bold flex items-center gap-1 text-[11px]">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600" /> Dossier médical intact :
+                </p>
+                <p className="text-[11px]">
+                  Le dossier du patient, ses antécédents, ses constantes déjà enregistrées et son historique restent intégrés en base de données.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-2">
+              <button
+                onClick={() => setPatientToPurge(null)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold rounded-xl text-xs cursor-pointer transition"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={() => confirmPurgePatient(patientToPurge)}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs shadow-sm flex items-center gap-1.5 cursor-pointer transition"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Retirer de la file
+              </button>
+            </div>
           </div>
         </div>
       )}

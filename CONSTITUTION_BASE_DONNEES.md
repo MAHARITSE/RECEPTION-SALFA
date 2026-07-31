@@ -651,6 +651,7 @@ Le montant reste le montant calculé de la ligne : `prix unitaire × quantité �
 |--------|------|
 | `createVente(state, data, lines)` | Crée une vente + ses lignes, calcule les totaux, incrémente le compteur de facture, génère `numeroFacture` |
 | `addVentePayment(state, venteId, pay)` | Enregistre un paiement (partiel ou complet), met à jour `status` / `montantPaye` / `paidAt` |
+| `deleteAllCompanyBilling(state)` | Action du module Facturation Sociétés permettant de réinitialiser tous les relevés, comptes et règlements sociétés avec journal d'audit (`SUPPRESSION_TOTALE_FACTURATION_SOCIETES`) |
 | `getVenteLines(state, venteId)` | Récupère les lignes d'une vente |
 | `getVentePayments(state, venteId)` | Récupère les paiements d'une vente |
 | `computeVenteTotals(lines, remisePct)` | Calcule `subtotal`, `remiseMontant`, `montantFacture` |

@@ -17,8 +17,6 @@
 
   ::-webkit-scrollbar-track {
     @apply bg-transparent;
-
-
   }
 
   ::-webkit-scrollbar-thumb {
@@ -37,4 +35,121 @@
   input[type="range"]::-webkit-slider-thumb {
     @apply appearance-none w-5 h-5 bg-blue-600 rounded-full shadow-lg cursor-pointer;
   }
+}
+
+/* Dark Mode Theme Overrides */
+html.dark {
+  color-scheme: dark;
+}
+
+.dark body,
+.dark .bg-slate-50,
+.dark .bg-gray-50,
+.dark .bg-\[\#e8e8e8\],
+.dark .bg-\[\#f5f5f5\],
+.dark .bg-\[\#f0f0f0\] {
+  background-color: #0f172a !important;
+  color: #f8fafc;
+}
+
+.dark .bg-white {
+  background-color: #1e293b !important;
+  color: #f8fafc;
+}
+
+.dark .bg-slate-100 {
+  background-color: #334155 !important;
+  color: #f8fafc;
+}
+
+.dark .bg-slate-200 {
+  background-color: #475569 !important;
+  color: #f8fafc;
+}
+
+.dark .bg-\[\#cce5ff\] {
+  background-color: #1e3a8a !important;
+  color: #f8fafc !important;
+}
+
+.dark .bg-blue-50 {
+  background-color: #1e3a8a !important;
+  color: #bfdbfe !important;
+}
+
+.dark .bg-emerald-50 {
+  background-color: #064e3b !important;
+  color: #a7f3d0 !important;
+}
+
+.dark .bg-amber-50 {
+  background-color: #78350f !important;
+  color: #fde68a !important;
+}
+
+.dark .bg-rose-50,
+.dark .bg-red-50 {
+  background-color: #881337 !important;
+  color: #fecdd3 !important;
+}
+
+.dark .bg-indigo-50 {
+  background-color: #312e81 !important;
+  color: #c7d2fe !important;
+}
+
+.dark .bg-purple-50 {
+  background-color: #581c87 !important;
+  color: #e9d5ff !important;
+}
+
+.dark .text-slate-900,
+.dark .text-slate-800,
+.dark .text-slate-700,
+.dark .text-gray-900,
+.dark .text-gray-800,
+.dark .text-gray-700 {
+  color: #f1f5f9 !important;
+}
+
+.dark .text-slate-600,
+.dark .text-slate-500,
+.dark .text-gray-600,
+.dark .text-gray-500 {
+  color: #94a3b8 !important;
+}
+
+.dark .border,
+.dark .border-slate-200,
+.dark .border-slate-300,
+.dark .border-slate-100,
+.dark .border-gray-200,
+.dark .border-gray-300 {
+  border-color: #334155 !important;
+}
+
+.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.dark select,
+.dark textarea {
+  background-color: #0f172a !important;
+  color: #f8fafc !important;
+  border-color: #475569 !important;
+}
+
+.dark table thead tr,
+.dark table thead th {
+  background-color: #334155 !important;
+  color: #cbd5e1 !important;
+}
+
+.dark table tbody tr {
+  border-color: #334155 !important;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background-color: #475569;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background-color: #64748b;
 }

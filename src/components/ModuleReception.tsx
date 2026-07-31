@@ -7,19 +7,28 @@ import { printQueueTicket } from '../utils/printTicket';
 import {
   Search, Plus, Edit, Trash2, UserX, Activity,
   X, Check, Ban, Users, LogIn, Hospital,
-  Stethoscope, MessageCircle, Info, FileWarning
+  Stethoscope, MessageCircle, Info, FileWarning, Sun, Moon, AlertCircle
 } from 'lucide-react';
+import { useDarkMode } from './ThemeToggle';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; onStaffLogin: () => void; onOpenMessaging: () => void; }
-type ModalType = 'none' | 'add' | 'edit' | 'vitals' | 'blacklistConfirm' | 'blacklistReason' | 'blacklistList' | 'patientInfo';
+type ModalType = 'none' | 'add' | 'edit' | 'vitals' | 'blacklistConfirm' | 'blacklistReason' | 'blacklistList' | 'unblacklistConfirm' | 'deleteConfirm' | 'patientInfo';
 
 export default function ModuleReception({ state, setState, onStaffLogin, onOpenMessaging }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [patientToRestore, setPatientToRestore] = useState<Patient | null>(null);
+  const [unblacklistToast, setUnblacklistToast] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalType>('none');
   const [currentTime, setCurrentTime] = useState(new Date());
   const [blacklistReason, setBlacklistReason] = useState('');
+  const { isDark, toggle: toggleDarkMode } = useDarkMode();
 
+  const [patientTouched, setPatientTouched] = useState<Record<string, boolean>>({});
+  const [patientSubmitted, setPatientSubmitted] = useState(false);
+
+  const [vitalsTouched, setVitalsTouched] = useState<Record<string, boolean>>({});
+  const [vitalsSubmitted, setVitalsSubmitted] = useState(false);
 
   const [patientForm, setPatientForm] = useState({
     lastName: '', firstName: '', dateOfBirth: '', gender: 'F' as 'M' | 'F',
@@ -27,6 +36,53 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
     clientType: 'comptoir' as ClientType, company: '', subCompany: '',
     famille: '', lienFamilial: '',
   });
+
+  const getPatientFormErrors = (pf: typeof patientForm) => {
+    const errors: Record<string, string> = {};
+
+    if (!pf.lastName.trim()) {
+      errors.lastName = 'Le nom est obligatoire';
+    } else if (pf.lastName.trim().length < 2) {
+      errors.lastName = 'Le nom doit comporter au moins 2 caractères';
+    } else if (!/^[A-Za-zÀ-ÖØ-öø-ÿ\s'-]+$/.test(pf.lastName.trim())) {
+      errors.lastName = 'Le nom contient des caractères invalides';
+    }
+
+    if (!pf.firstName.trim()) {
+      errors.firstName = 'Le prénom est obligatoire';
+    } else if (pf.firstName.trim().length < 2) {
+      errors.firstName = 'Le prénom doit comporter au moins 2 caractères';
+    } else if (!/^[A-Za-zÀ-ÖØ-öø-ÿ\s'-]+$/.test(pf.firstName.trim())) {
+      errors.firstName = 'Le prénom contient des caractères invalides';
+    }
+
+    if (pf.dateOfBirth) {
+      const dob = new Date(pf.dateOfBirth);
+      const today = new Date();
+      if (isNaN(dob.getTime())) {
+        errors.dateOfBirth = 'Date de naissance invalide';
+      } else if (dob > today) {
+        errors.dateOfBirth = 'La date de naissance ne peut pas être dans le futur';
+      } else if (dob.getFullYear() < 1900) {
+        errors.dateOfBirth = 'Année de naissance trop ancienne (min 1900)';
+      }
+    }
+
+    if (pf.contact.trim()) {
+      const cleanPhone = pf.contact.replace(/[\s\-\.\+]/g, '');
+      if (!/^\d{8,15}$/.test(cleanPhone)) {
+        errors.contact = 'Numéro invalide (ex: 034 12 345 67, 8 à 15 chiffres)';
+      }
+    }
+
+    if (pf.clientType === 'societe' && !pf.company.trim()) {
+      errors.company = 'Veuillez sélectionner une société obligatoire';
+    }
+
+    return errors;
+  };
+
+  const patientErrors = getPatientFormErrors(patientForm);
 
   const [vitalsForm, setVitalsForm] = useState<VitalSigns>({
     temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '',
@@ -36,6 +92,78 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
   const [vitalsCompany, setVitalsCompany] = useState('');
   const [vitalsSubCompany, setVitalsSubCompany] = useState('');
   const [vitalsReadOnly, setVitalsReadOnly] = useState(false);
+
+  const getVitalsFormErrors = (vitals: VitalSigns, clientType: ClientType, company: string) => {
+    const errors: Record<string, string> = {};
+
+    if (vitals.temperature !== '') {
+      const val = parseFloat(vitals.temperature);
+      if (isNaN(val) || val < 30 || val > 45) {
+        errors.temperature = 'Entre 30.0 et 45.0 °C';
+      }
+    }
+
+    if (vitals.oxygenSaturation !== '') {
+      const val = parseFloat(vitals.oxygenSaturation);
+      if (isNaN(val) || val < 50 || val > 100) {
+        errors.oxygenSaturation = 'Entre 50 et 100 %';
+      }
+    }
+
+    const sys = vitals.bloodPressureSystolic !== '' ? parseFloat(vitals.bloodPressureSystolic) : null;
+    const dia = vitals.bloodPressureDiastolic !== '' ? parseFloat(vitals.bloodPressureDiastolic) : null;
+
+    if (sys !== null) {
+      if (isNaN(sys) || sys < 40 || sys > 280) {
+        errors.bloodPressureSystolic = 'Sys 40 - 280';
+      }
+    }
+
+    if (dia !== null) {
+      if (isNaN(dia) || dia < 20 || dia > 180) {
+        errors.bloodPressureDiastolic = 'Dia 20 - 180';
+      }
+    }
+
+    if (sys !== null && dia !== null && !isNaN(sys) && !isNaN(dia) && dia >= sys) {
+      errors.bloodPressureDiastolic = 'Dia doit être < Sys';
+    }
+
+    if (vitals.heartRate !== '') {
+      const val = parseFloat(vitals.heartRate);
+      if (isNaN(val) || val < 20 || val > 250) {
+        errors.heartRate = '20 - 250 bpm';
+      }
+    }
+
+    if (vitals.height !== '') {
+      const val = parseFloat(vitals.height);
+      if (isNaN(val) || val < 20 || val > 250) {
+        errors.height = '20 - 250 cm';
+      }
+    }
+
+    if (vitals.weight !== '') {
+      const val = parseFloat(vitals.weight);
+      if (isNaN(val) || val < 0.5 || val > 350) {
+        errors.weight = '0.5 - 350 kg';
+      }
+    }
+
+    if (clientType === 'societe' && !company.trim()) {
+      errors.vitalsCompany = 'Société obligatoire';
+    }
+
+    return errors;
+  };
+
+  const vitalsErrors = getVitalsFormErrors(vitalsForm, vitalsClientType, vitalsCompany);
+
+  const getBlacklistError = (reason: string) => {
+    if (!reason.trim()) return 'Le motif de blocage est obligatoire';
+    if (reason.trim().length < 3) return 'Le motif doit comporter au moins 3 caractères';
+    return null;
+  };
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -63,11 +191,16 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
     setVitalsClientType(patient.clientType === 'externe' ? 'comptoir' : patient.clientType);
     setVitalsCompany(patient.company || '');
     setVitalsSubCompany(patient.subCompany || '');
+    setVitalsTouched({});
+    setVitalsSubmitted(false);
     setModal('vitals');
   };
 
   const handleSaveVitalsAndSend = () => {
     if (!selectedPatient) return;
+    setVitalsSubmitted(true);
+    const errs = getVitalsFormErrors(vitalsForm, vitalsClientType, vitalsCompany);
+    if (Object.keys(errs).length > 0) return;
     if (selectedPatient.vitalSigns && !canEditVitals(selectedPatient)) { alert('Les paramètres sont verrouillés : modification autorisée pendant 24 heures seulement.'); return; }
     setState((prev) => {
       const next = {
@@ -86,7 +219,6 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
       };
       addAuditLog(next, 'PARAMETRES_ET_ENVOI', `${selectedPatient.dossier} → Envoyé médecin`, selectedPatient.id);
       addJourneyEvent(next, { patientId: selectedPatient.id, department: 'reception', action: 'Adressé au médecin', status: 'waiting_consultation', details: 'Paramètres vitaux saisis', actorName: 'Réception' });
-      addNotification(next, 'doctor', `📋 Nouveau patient: ${selectedPatient.lastName} ${selectedPatient.firstName}`, 'info');
       return next;
     });
     // Imprime un ticket de file d'attente (numéro auto = nombre de patients en attente + 1)
@@ -96,7 +228,10 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
   };
 
   const handleAddPatient = () => {
-    if (!patientForm.lastName || !patientForm.firstName) { alert('Nom et prénom obligatoires'); return; }
+    setPatientSubmitted(true);
+    const errs = getPatientFormErrors(patientForm);
+    if (Object.keys(errs).length > 0) return;
+
     const np: Patient = {
       id: uuidv4(), dossier: generateDossierNumber(patientForm.lastName),
       matricule: patientForm.matricule || undefined,
@@ -120,6 +255,10 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
 
   const handleEditPatient = () => {
     if (!selectedPatient) return;
+    setPatientSubmitted(true);
+    const errs = getPatientFormErrors(patientForm);
+    if (Object.keys(errs).length > 0) return;
+
     setState((prev) => ({
       ...prev,
       patients: prev.patients.map((p) => p.id === selectedPatient.id ? {
@@ -136,13 +275,22 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
   };
 
   const handleDeletePatient = () => {
-    if (!selectedPatient || !confirm(`Supprimer ${selectedPatient.dossier} ?`)) return;
+    if (!selectedPatient) return;
+    setModal('deleteConfirm');
+  };
+
+  const confirmDeletePatient = () => {
+    if (!selectedPatient) return;
+    const target = selectedPatient;
     setState((prev) => {
-      const next = { ...prev, patients: prev.patients.filter((p) => p.id !== selectedPatient.id) };
-      addAuditLog(next, 'SUPPRESSION', `Dossier supprimé: ${selectedPatient.dossier}`, selectedPatient.id);
+      const next = { ...prev, patients: prev.patients.filter((p) => p.id !== target.id) };
+      addAuditLog(next, 'SUPPRESSION', `Dossier supprimé: ${target.dossier}`, target.id);
       return next;
     });
+    setUnblacklistToast(`Le dossier ${target.dossier} (${target.lastName} ${target.firstName}) a été supprimé.`);
+    setTimeout(() => setUnblacklistToast(null), 5000);
     setSelectedPatient(null);
+    setModal('none');
   };
 
   // Le bouton principal « Blacklist » est un accès à la liste complète.
@@ -166,39 +314,58 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
       addAuditLog(next, 'BLACKLIST', `${selectedPatient.dossier} blacklisté — Motif : ${blacklistReason.trim()}`, selectedPatient.id);
       return next;
     });
+    setUnblacklistToast(`Le patient ${selectedPatient.lastName} ${selectedPatient.firstName} (${selectedPatient.dossier}) a été mis en liste noire.`);
+    setTimeout(() => setUnblacklistToast(null), 5000);
     setSelectedPatient(null);
     setModal('none');
   };
 
-  const restoreBlacklistedPatient = (patient: Patient) => {
-    if (!confirm(`Rétablir ${patient.lastName} ${patient.firstName} dans la liste normale ?`)) return;
+  const requestRestorePatient = (patient: Patient) => {
+    setPatientToRestore(patient);
+    setModal('unblacklistConfirm');
+  };
+
+  const confirmRestorePatient = () => {
+    if (!patientToRestore) return;
+    const target = patientToRestore;
 
     setState((prev) => {
       const next = {
         ...prev,
-        patients: prev.patients.map((p) => p.id === patient.id ? {
+        patients: prev.patients.map((p) => p.id === target.id ? {
           ...p,
           blacklisted: false,
           blacklistReason: undefined,
           blacklistDate: undefined,
         } : p),
       };
-      addAuditLog(next, 'UNBLACKLIST', `${patient.dossier} rétabli — remis dans la liste normale`, patient.id);
+      addAuditLog(next, 'UNBLACKLIST', `${target.dossier} rétabli — remis dans la liste normale`, target.id);
       return next;
     });
 
     // Évite de conserver un objet sélectionné avec l'ancien statut.
-    setSelectedPatient((current) => current?.id === patient.id ? {
+    setSelectedPatient((current) => current?.id === target.id ? {
       ...current,
       blacklisted: false,
       blacklistReason: undefined,
       blacklistDate: undefined,
     } : current);
+
+    setUnblacklistToast(`Le patient ${target.lastName} ${target.firstName} (${target.dossier}) a été rétabli dans la liste normale.`);
+    setTimeout(() => setUnblacklistToast(null), 5000);
+
+    setPatientToRestore(null);
+    const remaining = state.patients.filter((p) => p.blacklisted && p.id !== target.id);
+    if (remaining.length > 0) {
+      setModal('blacklistList');
+    } else {
+      setModal('none');
+    }
   };
 
   const handleBlacklistToggle = (patient: Patient) => {
     if (patient.blacklisted) {
-      restoreBlacklistedPatient(patient);
+      requestRestorePatient(patient);
     } else {
       setSelectedPatient(patient);
       setBlacklistReason('');
@@ -261,11 +428,12 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
   return (
     <div className="flex flex-col min-h-screen w-full bg-[#e8e8e8] text-slate-800 font-sans select-none">
       <header className="bg-gradient-to-b from-[#4a90d9] to-[#3a7bc8] text-white px-4 py-2 flex justify-between items-center shadow-md">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 shrink-0">
           <div className="flex items-center justify-center bg-white/20 backdrop-blur rounded-lg p-2"><Hospital className="w-7 h-7" /></div>
           <div><h1 className="text-2xl font-bold tracking-tight">MediCare HIS</h1><p className="text-blue-100 text-xs font-medium">Module Réception</p></div>
         </div>
-        <div className="flex items-center gap-6">
+
+        <div className="flex items-center gap-4 shrink-0">
 
           <div className="text-right bg-white/10 backdrop-blur rounded-lg px-4 py-1.5">
             <div className="text-xl font-mono font-bold">{currentTime.toLocaleTimeString('fr-FR')}</div>
@@ -284,7 +452,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
         </div>
       </header>
 
-      <section className="bg-[#f5f5f5] border-b border-slate-300 px-4 py-2">
+      <section className="bg-[#f5f5f5] border-b border-slate-300 px-4 py-2 sticky top-0 z-20 shadow-xs">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 flex-1 max-w-xl">
             <div className="relative flex-1">
@@ -294,8 +462,8 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
 
           </div>
           <div className="flex items-center gap-1">
-            <button onClick={() => { setModal('add'); setPatientForm({ ...patientForm, lastName: '', firstName: '', dateOfBirth: '', gender: 'F', address: '', contact: '', ssn: '', matricule: '', insureName: '', clientType: 'comptoir', company: '', subCompany: '' }); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold shadow transition cursor-pointer"><Plus className="h-4 w-4" /> Nouveau</button>
-            <button onClick={() => { if (!selectedPatient) return; setPatientForm({ lastName: selectedPatient.lastName, firstName: selectedPatient.firstName, dateOfBirth: selectedPatient.dateOfBirth === 'N/A' ? '' : selectedPatient.dateOfBirth, gender: selectedPatient.gender, address: selectedPatient.address, contact: selectedPatient.contact, ssn: selectedPatient.ssn, matricule: selectedPatient.matricule || '', insureName: selectedPatient.company || selectedPatient.insureName || '', clientType: selectedPatient.clientType === 'externe' ? 'comptoir' : selectedPatient.clientType, company: selectedPatient.company || '', subCompany: selectedPatient.subCompany || '', famille: selectedPatient.famille || '', lienFamilial: selectedPatient.lienFamilial || '' }); setModal('edit'); }} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Edit className="h-4 w-4" /> Modifier</button>
+            <button onClick={() => { setModal('add'); setPatientTouched({}); setPatientSubmitted(false); setPatientForm({ lastName: '', firstName: '', dateOfBirth: '', gender: 'F', address: '', contact: '', ssn: '', matricule: '', insureName: '', clientType: 'comptoir', company: '', subCompany: '', famille: '', lienFamilial: '' }); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold shadow transition cursor-pointer"><Plus className="h-4 w-4" /> Nouveau</button>
+            <button onClick={() => { if (!selectedPatient) return; setPatientTouched({}); setPatientSubmitted(false); setPatientForm({ lastName: selectedPatient.lastName, firstName: selectedPatient.firstName, dateOfBirth: selectedPatient.dateOfBirth === 'N/A' ? '' : selectedPatient.dateOfBirth, gender: selectedPatient.gender, address: selectedPatient.address, contact: selectedPatient.contact, ssn: selectedPatient.ssn, matricule: selectedPatient.matricule || '', insureName: selectedPatient.company || selectedPatient.insureName || '', clientType: selectedPatient.clientType === 'externe' ? 'comptoir' : selectedPatient.clientType, company: selectedPatient.company || '', subCompany: selectedPatient.subCompany || '', famille: selectedPatient.famille || '', lienFamilial: selectedPatient.lienFamilial || '' }); setModal('edit'); }} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Edit className="h-4 w-4" /> Modifier</button>
             <button onClick={handleDeletePatient} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Trash2 className="h-4 w-4" /> Supprimer</button>
             <div className="w-px h-6 bg-slate-300 mx-1" />
             <button onClick={() => selectedPatient && setModal('patientInfo')} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Info className="h-4 w-4" /> Info</button>
@@ -305,6 +473,21 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
       </section>
 
       <main className="flex-1 p-3">
+        {unblacklistToast && (
+          <div className="fixed inset-0 z-[9999] pointer-events-none flex items-center justify-center p-4">
+            <div className="pointer-events-auto max-w-md w-full p-4 sm:p-5 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 text-white rounded-2xl shadow-2xl border border-emerald-300/40 flex items-center justify-between gap-4 animate-in fade-in zoom-in-95">
+              <div className="flex items-center gap-3">
+                <div className="p-1.5 bg-white/20 rounded-lg shrink-0">
+                  <Check className="w-6 h-6 text-white" />
+                </div>
+                <span className="font-semibold text-sm leading-snug">{unblacklistToast}</span>
+              </div>
+              <button onClick={() => setUnblacklistToast(null)} className="text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/20 cursor-pointer transition">
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
         <div className="bg-white border border-slate-400 rounded shadow-lg overflow-hidden h-full flex flex-col">
           <div className="bg-gradient-to-b from-slate-100 to-slate-200 border-b border-slate-400 px-3 py-1.5 flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-600">📋 Patients — {filteredPatients.length} fiche(s)</span>
@@ -373,20 +556,117 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
           <div className="w-full max-w-xl max-h-[calc(100vh-2rem)] overflow-y-auto bg-[#f0f0f0] rounded border-2 border-slate-500 shadow-2xl">
             <div className="bg-gradient-to-r from-[#4a6fa5] to-[#3d5a80] px-3 py-1.5 flex justify-between items-center"><span className="text-white text-sm font-bold flex items-center gap-2"><Plus className="w-4 h-4" />{modal === 'add' ? 'NOUVEAU PATIENT' : 'MODIFIER PATIENT'}</span><button onClick={() => setModal('none')} className="text-white/80 hover:text-white hover:bg-white/20 rounded p-0.5 px-2 transition cursor-pointer text-sm">✕</button></div>
             <div className="p-4">
+              {patientSubmitted && Object.keys(patientErrors).length > 0 && (
+                <div className="mb-4 p-2.5 bg-rose-50 border border-rose-300 rounded text-xs text-rose-700 flex items-center gap-2 font-medium">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>Veuillez corriger les erreurs de saisie ci-dessous.</span>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4 text-xs">
                 <div className="space-y-3">
                   <div className="flex items-center gap-3"><label className="font-bold text-slate-700 w-16">Sexe</label><div className="flex border border-slate-400 rounded overflow-hidden"><button type="button" onClick={() => setPatientForm({ ...patientForm, gender: 'M' })} className={`px-4 py-1.5 font-bold transition cursor-pointer ${patientForm.gender === 'M' ? 'bg-blue-500 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'}`}>M</button><button type="button" onClick={() => setPatientForm({ ...patientForm, gender: 'F' })} className={`px-4 py-1.5 font-bold border-l border-slate-400 transition cursor-pointer ${patientForm.gender === 'F' ? 'bg-pink-500 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'}`}>F</button></div></div>
-                  <div><label className="block font-bold text-slate-700 mb-1">Nom *</label><input type="text" value={patientForm.lastName} onChange={(e) => setPatientForm({ ...patientForm, lastName: e.target.value })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 uppercase font-medium focus:outline-none focus:border-blue-500" /></div>
-                  <div><label className="block font-bold text-slate-700 mb-1">Prénom *</label><input type="text" value={patientForm.firstName} onChange={(e) => setPatientForm({ ...patientForm, firstName: e.target.value })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 uppercase font-medium focus:outline-none focus:border-blue-500" /></div>
-                  <div className="grid grid-cols-2 gap-2"><div><label className="block font-bold text-slate-700 mb-1">Date Naiss.</label><input type="date" value={patientForm.dateOfBirth} onChange={(e) => setPatientForm({ ...patientForm, dateOfBirth: e.target.value })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 focus:outline-none focus:border-blue-500" /></div><div><label className="block font-bold text-slate-700 mb-1">Age</label><input type="text" readOnly value={patientForm.dateOfBirth ? calculateAge(patientForm.dateOfBirth) : '—'} className="w-full bg-slate-200 border border-slate-400 rounded px-2 py-1.5" /></div></div>
-                  <div><label className="block font-bold text-slate-700 mb-1">Téléphone</label><input type="text" value={patientForm.contact} onChange={(e) => setPatientForm({ ...patientForm, contact: e.target.value })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 font-mono focus:outline-none focus:border-blue-500" /></div>
+                  
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Nom *</label>
+                    <input
+                      type="text"
+                      value={patientForm.lastName}
+                      onBlur={() => setPatientTouched((t) => ({ ...t, lastName: true }))}
+                      onChange={(e) => setPatientForm({ ...patientForm, lastName: e.target.value })}
+                      className={`w-full bg-white border rounded px-2 py-1.5 uppercase font-medium focus:outline-none ${ (patientTouched.lastName || patientSubmitted) && patientErrors.lastName ? 'border-rose-500 bg-rose-50/50 focus:border-rose-600' : 'border-slate-400 focus:border-blue-500'}`}
+                    />
+                    {(patientTouched.lastName || patientSubmitted) && patientErrors.lastName && (
+                      <span className="text-[11px] text-rose-600 font-medium mt-0.5 block">{patientErrors.lastName}</span>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Prénom *</label>
+                    <input
+                      type="text"
+                      value={patientForm.firstName}
+                      onBlur={() => setPatientTouched((t) => ({ ...t, firstName: true }))}
+                      onChange={(e) => setPatientForm({ ...patientForm, firstName: e.target.value })}
+                      className={`w-full bg-white border rounded px-2 py-1.5 uppercase font-medium focus:outline-none ${ (patientTouched.firstName || patientSubmitted) && patientErrors.firstName ? 'border-rose-500 bg-rose-50/50 focus:border-rose-600' : 'border-slate-400 focus:border-blue-500'}`}
+                    />
+                    {(patientTouched.firstName || patientSubmitted) && patientErrors.firstName && (
+                      <span className="text-[11px] text-rose-600 font-medium mt-0.5 block">{patientErrors.firstName}</span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Date Naiss.</label>
+                      <input
+                        type="date"
+                        value={patientForm.dateOfBirth}
+                        onBlur={() => setPatientTouched((t) => ({ ...t, dateOfBirth: true }))}
+                        onChange={(e) => setPatientForm({ ...patientForm, dateOfBirth: e.target.value })}
+                        className={`w-full bg-white border rounded px-2 py-1.5 focus:outline-none ${ (patientTouched.dateOfBirth || patientSubmitted) && patientErrors.dateOfBirth ? 'border-rose-500 bg-rose-50/50' : 'border-slate-400 focus:border-blue-500'}`}
+                      />
+                      {(patientTouched.dateOfBirth || patientSubmitted) && patientErrors.dateOfBirth && (
+                        <span className="text-[10px] text-rose-600 font-medium mt-0.5 block">{patientErrors.dateOfBirth}</span>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Age</label>
+                      <input type="text" readOnly value={patientForm.dateOfBirth ? calculateAge(patientForm.dateOfBirth) : '—'} className="w-full bg-slate-200 border border-slate-400 rounded px-2 py-1.5" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Téléphone</label>
+                    <input
+                      type="text"
+                      value={patientForm.contact}
+                      onBlur={() => setPatientTouched((t) => ({ ...t, contact: true }))}
+                      onChange={(e) => setPatientForm({ ...patientForm, contact: e.target.value })}
+                      className={`w-full bg-white border rounded px-2 py-1.5 font-mono focus:outline-none ${ (patientTouched.contact || patientSubmitted) && patientErrors.contact ? 'border-rose-500 bg-rose-50/50' : 'border-slate-400 focus:border-blue-500'}`}
+                      placeholder="Ex: 0102030405"
+                    />
+                    {(patientTouched.contact || patientSubmitted) && patientErrors.contact && (
+                      <span className="text-[11px] text-rose-600 font-medium mt-0.5 block">{patientErrors.contact}</span>
+                    )}
+                  </div>
                 </div>
+
                 <div className="space-y-3">
-                  <div><label className="block font-bold text-slate-700 mb-1">Matricule</label><input type="text" value={patientForm.matricule} onChange={(e) => setPatientForm({ ...patientForm, matricule: e.target.value })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 font-mono focus:outline-none focus:border-blue-500" /></div>
-                  <div><label className="block font-bold text-slate-700 mb-1">Société (libre)</label><input type="text" value={patientForm.company} onChange={(e) => setPatientForm({ ...patientForm, company: e.target.value })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 uppercase focus:outline-none focus:border-blue-500" /></div>
-                  <div><label className="block font-bold text-slate-700 mb-1">Adresse</label><input type="text" value={patientForm.address} onChange={(e) => setPatientForm({ ...patientForm, address: e.target.value })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 uppercase focus:outline-none focus:border-blue-500" /></div>
-                  <div><label className="block font-bold text-slate-700 mb-1">Type Client</label><select value={patientForm.clientType} onChange={(e) => setPatientForm({ ...patientForm, clientType: e.target.value as ClientType })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 focus:outline-none focus:border-blue-500 cursor-pointer"><option value="comptoir">Client Comptoir</option><option value="societe">Client Société</option></select></div>
-                  {patientForm.clientType === 'societe' && <div><label className="block font-bold text-slate-700 mb-1">Société</label><select value={patientForm.company} onChange={(e) => setPatientForm({ ...patientForm, company: e.target.value })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 focus:outline-none focus:border-blue-500 cursor-pointer"><option value="">—</option>{state.companies.map((c) => (<option key={c.id} value={c.name}>{c.name}</option>))}</select></div>}
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Matricule</label>
+                    <input type="text" value={patientForm.matricule} onChange={(e) => setPatientForm({ ...patientForm, matricule: e.target.value })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 font-mono focus:outline-none focus:border-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Société (libre)</label>
+                    <input type="text" value={patientForm.company} onChange={(e) => setPatientForm({ ...patientForm, company: e.target.value })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 uppercase focus:outline-none focus:border-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Adresse</label>
+                    <input type="text" value={patientForm.address} onChange={(e) => setPatientForm({ ...patientForm, address: e.target.value })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 uppercase focus:outline-none focus:border-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Type Client</label>
+                    <select value={patientForm.clientType} onChange={(e) => setPatientForm({ ...patientForm, clientType: e.target.value as ClientType })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 focus:outline-none focus:border-blue-500 cursor-pointer">
+                      <option value="comptoir">Client Comptoir</option>
+                      <option value="societe">Client Société</option>
+                    </select>
+                  </div>
+                  {patientForm.clientType === 'societe' && (
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Société *</label>
+                      <select
+                        value={patientForm.company}
+                        onBlur={() => setPatientTouched((t) => ({ ...t, company: true }))}
+                        onChange={(e) => setPatientForm({ ...patientForm, company: e.target.value })}
+                        className={`w-full bg-white border rounded px-2 py-1.5 focus:outline-none cursor-pointer ${ (patientTouched.company || patientSubmitted) && patientErrors.company ? 'border-rose-500 bg-rose-50/50' : 'border-slate-400 focus:border-blue-500'}`}
+                      >
+                        <option value="">— Sélectionner une société —</option>
+                        {state.companies.map((c) => (<option key={c.id} value={c.name}>{c.name}</option>))}
+                      </select>
+                      {(patientTouched.company || patientSubmitted) && patientErrors.company && (
+                        <span className="text-[11px] text-rose-600 font-medium mt-0.5 block">{patientErrors.company}</span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="flex items-center justify-center gap-3 mt-6 pt-4 border-t border-slate-300">
@@ -407,8 +687,18 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
       )}
       {modal === 'blacklistReason' && selectedPatient && (
         <ModalShell title="Motif du blocage" icon={<UserX className="w-5 h-5" />} onClose={() => setModal('none')}>
-          <p className="mb-3 text-sm text-slate-600">Indiquez le motif du blocage pour <strong>{selectedPatient.lastName} {selectedPatient.firstName}</strong>.</p><textarea autoFocus value={blacklistReason} onChange={(e) => setBlacklistReason(e.target.value)} placeholder="Ex. Impayés répétés…" className="min-h-28 w-full rounded-lg border border-slate-300 p-3 text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100" />
-          <div className="mt-4 flex justify-end gap-3"><button onClick={() => setModal('none')} className="rounded-lg px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100">Annuler</button><button onClick={saveBlacklist} disabled={!blacklistReason.trim()} className="rounded-lg bg-red-600 px-5 py-2 font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40">Confirmer</button></div>
+          <p className="mb-3 text-sm text-slate-600">Indiquez le motif du blocage pour <strong>{selectedPatient.lastName} {selectedPatient.firstName}</strong>.</p>
+          <textarea
+            autoFocus
+            value={blacklistReason}
+            onChange={(e) => setBlacklistReason(e.target.value)}
+            placeholder="Ex. Impayés répétés, comportement inapproprié..."
+            className={`min-h-28 w-full rounded-lg border p-3 text-sm outline-none ${getBlacklistError(blacklistReason) && blacklistReason !== '' ? 'border-rose-400 bg-rose-50/30 ring-2 ring-rose-100' : 'border-slate-300 focus:border-red-500 focus:ring-2 focus:ring-red-100'}`}
+          />
+          {getBlacklistError(blacklistReason) && (
+            <p className="mt-1 text-xs text-rose-600 font-medium">{getBlacklistError(blacklistReason)}</p>
+          )}
+          <div className="mt-4 flex justify-end gap-3"><button onClick={() => setModal('none')} className="rounded-lg px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100">Annuler</button><button onClick={saveBlacklist} disabled={!!getBlacklistError(blacklistReason)} className="rounded-lg bg-red-600 px-5 py-2 font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40">Confirmer</button></div>
         </ModalShell>
       )}
       {modal === 'blacklistList' && (
@@ -437,7 +727,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                       <td className="p-3 whitespace-nowrap">{patient.blacklistDate ? new Date(patient.blacklistDate).toLocaleDateString('fr-FR') : '—'}</td>
                       <td className="p-3 text-right">
                         <button
-                          onClick={() => restoreBlacklistedPatient(patient)}
+                          onClick={() => requestRestorePatient(patient)}
                           className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 cursor-pointer"
                           title="Rétablir dans la liste normale"
                         >
@@ -454,6 +744,64 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                 <p className="font-medium">Aucune personne en blacklist.</p>
               </div>
             )}
+          </div>
+        </ModalShell>
+      )}
+
+      {modal === 'unblacklistConfirm' && patientToRestore && (
+        <ModalShell title="Rétablir le patient" icon={<Check className="w-5 h-5 text-emerald-600" />} onClose={() => setModal('none')}>
+          <div className="space-y-4 text-sm">
+            <p className="text-slate-700">
+              Voulez-vous rétablir le patient <strong className="uppercase">{patientToRestore.lastName} {patientToRestore.firstName}</strong> (Dossier : <span className="font-mono text-blue-700">{patientToRestore.dossier}</span>) dans la liste normale ?
+            </p>
+            {patientToRestore.blacklistReason && (
+              <div className="p-2.5 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
+                <strong>Motif du blocage actuel :</strong> {patientToRestore.blacklistReason}
+              </div>
+            )}
+            <div className="flex justify-end gap-3 pt-3 border-t border-slate-200">
+              <button
+                onClick={() => setModal(blacklistedPatients.length > 0 ? 'blacklistList' : 'none')}
+                className="px-4 py-2 rounded-lg text-slate-600 font-semibold hover:bg-slate-100 transition cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={confirmRestorePatient}
+                className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition cursor-pointer shadow flex items-center gap-2"
+              >
+                <Check className="w-4 h-4" />
+                Confirmer le rétablissement
+              </button>
+            </div>
+          </div>
+        </ModalShell>
+      )}
+
+      {modal === 'deleteConfirm' && selectedPatient && (
+        <ModalShell title="Supprimer le patient" icon={<Trash2 className="w-5 h-5 text-rose-600" />} onClose={() => setModal('none')}>
+          <div className="space-y-4 text-sm">
+            <p className="text-slate-700">
+              Êtes-vous sûr de vouloir supprimer définitivement le dossier <strong className="font-mono text-blue-700">{selectedPatient.dossier}</strong> (<span className="uppercase">{selectedPatient.lastName} {selectedPatient.firstName}</span>) ?
+            </p>
+            <div className="p-2.5 bg-rose-50 border border-rose-200 rounded text-xs text-rose-800 font-medium">
+              ⚠️ Attention : cette action supprimera la fiche patient de la liste principale.
+            </div>
+            <div className="flex justify-end gap-3 pt-3 border-t border-slate-200">
+              <button
+                onClick={() => setModal('none')}
+                className="px-4 py-2 rounded-lg text-slate-600 font-semibold hover:bg-slate-100 transition cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={confirmDeletePatient}
+                className="px-5 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold transition cursor-pointer shadow flex items-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                Supprimer définitivement
+              </button>
+            </div>
           </div>
         </ModalShell>
       )}
@@ -477,6 +825,12 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
             </div>
             <div className="p-4">
               {vitalsReadOnly && <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">Lecture seule : le délai de modification de 24 heures est dépassé.</div>}
+              {vitalsSubmitted && Object.keys(vitalsErrors).length > 0 && (
+                <div className="mb-3 p-2 bg-rose-50 border border-rose-300 rounded text-xs text-rose-700 flex items-center gap-2 font-medium">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>Certaines constantes comparent des valeurs hors limites ou incohérentes.</span>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-xs mb-4">
                 {[ 
                   { label: '🌡️ Température (°C)', key: 'temperature' as const, step: '0.1' },
@@ -487,18 +841,35 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                   { label: '⚖️ Poids (kg)', key: 'weight' as const, step: '0.1' },
                   { label: '❤️ Fréq. Cardiaque', key: 'heartRate' as const, step: '1' },
                   { label: '🧪 TDR', key: 'tdr' as const, step: '' },
-                ].map((f) => (
-                  <div key={f.key} className="flex items-center justify-between">
-                    <label className="font-bold text-slate-700">{f.label}</label>
-                    {f.key === 'tdr' ? (
-                      <select value={vitalsForm.tdr || ''} disabled={vitalsReadOnly} onChange={(e) => setVitalsForm({ ...vitalsForm, tdr: e.target.value })} className="w-24 bg-white border border-slate-400 rounded px-2 py-1.5 text-center focus:outline-none focus:border-emerald-500 cursor-pointer"><option value="">—</option><option value="Positif">Positif</option><option value="Négatif">Négatif</option></select>
-                    ) : (
-                      <div className="flex items-center gap-1">
-                        <input type="number" step={f.step} inputMode={f.step === '0.1' ? 'decimal' : 'numeric'} disabled={vitalsReadOnly} value={(vitalsForm as any)[f.key]} onChange={(e) => setVitalsForm({ ...vitalsForm, [f.key]: e.target.value })} className="w-20 bg-white border border-slate-400 rounded px-2 py-1.5 text-center font-mono focus:outline-none focus:border-emerald-500" />
+                ].map((f) => {
+                  const hasErr = (vitalsTouched[f.key] || vitalsSubmitted) && vitalsErrors[f.key];
+                  return (
+                    <div key={f.key} className="flex flex-col gap-0.5">
+                      <div className="flex items-center justify-between">
+                        <label className="font-bold text-slate-700">{f.label}</label>
+                        {f.key === 'tdr' ? (
+                          <select value={vitalsForm.tdr || ''} disabled={vitalsReadOnly} onChange={(e) => setVitalsForm({ ...vitalsForm, tdr: e.target.value })} className="w-24 bg-white border border-slate-400 rounded px-2 py-1.5 text-center focus:outline-none focus:border-emerald-500 cursor-pointer"><option value="">—</option><option value="Positif">Positif</option><option value="Négatif">Négatif</option></select>
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              step={f.step}
+                              inputMode={f.step === '0.1' ? 'decimal' : 'numeric'}
+                              disabled={vitalsReadOnly}
+                              value={(vitalsForm as any)[f.key]}
+                              onBlur={() => setVitalsTouched((t) => ({ ...t, [f.key]: true }))}
+                              onChange={(e) => setVitalsForm({ ...vitalsForm, [f.key]: e.target.value })}
+                              className={`w-20 bg-white border rounded px-2 py-1.5 text-center font-mono focus:outline-none ${hasErr ? 'border-rose-500 bg-rose-50/50' : 'border-slate-400 focus:border-emerald-500'}`}
+                            />
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                ))}
+                      {hasErr && (
+                        <span className="text-[10px] text-rose-600 font-bold text-right">{vitalsErrors[f.key]}</span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
               <div className="border-t-2 border-dashed border-emerald-300 my-4" />
@@ -511,9 +882,19 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                       <option value="comptoir">Client Comptoir</option><option value="societe">Client Société</option>
                     </select>
                   </div>
-                  {vitalsClientType === 'societe' && <div><label className="block font-bold text-slate-700 mb-1">Société</label>
-                    <select value={vitalsCompany} onChange={(e) => setVitalsCompany(e.target.value)} className="w-full bg-white border border-amber-400 rounded px-2 py-1.5 focus:outline-none focus:border-amber-500 cursor-pointer">
-                      <option value="">—</option>{state.companies.map((c) => (<option key={c.id} value={c.name}>{c.name}</option>))}</select>
+                  {vitalsClientType === 'societe' && <div><label className="block font-bold text-slate-700 mb-1">Société *</label>
+                    <select
+                      value={vitalsCompany}
+                      onBlur={() => setVitalsTouched((t) => ({ ...t, vitalsCompany: true }))}
+                      onChange={(e) => setVitalsCompany(e.target.value)}
+                      className={`w-full bg-white border rounded px-2 py-1.5 focus:outline-none cursor-pointer ${ (vitalsTouched.vitalsCompany || vitalsSubmitted) && vitalsErrors.vitalsCompany ? 'border-rose-500 bg-rose-50/50' : 'border-amber-400 focus:border-amber-500'}`}
+                    >
+                      <option value="">— Sélectionner —</option>
+                      {state.companies.map((c) => (<option key={c.id} value={c.name}>{c.name}</option>))}
+                    </select>
+                    {(vitalsTouched.vitalsCompany || vitalsSubmitted) && vitalsErrors.vitalsCompany && (
+                      <span className="text-[10px] text-rose-600 font-bold mt-0.5 block">{vitalsErrors.vitalsCompany}</span>
+                    )}
                   </div>}
                 </div>
                 {vitalsClientType === 'societe' && <div className="mt-3"><label className="block font-bold text-slate-700 text-xs mb-1">Sous-société (libre)</label><input type="text" value={vitalsSubCompany} onChange={(e) => setVitalsSubCompany(e.target.value)} className="w-full bg-white border border-amber-400 rounded px-2 py-1.5 uppercase focus:outline-none focus:border-amber-500" /></div>}

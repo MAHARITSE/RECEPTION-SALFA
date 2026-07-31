@@ -35,7 +35,11 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
   const [search, setSearch] = useState('');
   const [filterCat, setFilterCat] = useState<string>('all');
   const [activeLab, setActiveLab] = useState<DispLab | null>(null);
-  const [resultValues, setResultValues] = useState<Record<string, number>>({});
+  const [resultValues, setResultValues] = useState<Record<string, string | number>>({});
+  const [resultAbnormal, setResultAbnormal] = useState<Record<string, boolean>>({});
+  const [resultComments, setResultComments] = useState<Record<string, string>>({});
+  const [labConclusion, setLabConclusion] = useState('');
+  const [biologicalAlert, setBiologicalAlert] = useState(false);
 
   // Nouvelle demande
   const [showNew, setShowNew] = useState(false);
@@ -77,31 +81,40 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
 
   // ---- Agrégation des demandes (consultations + autonomes) ----
   const allLabs: DispLab[] = [];
+  const seenLabIds = new Set<string>();
+
   state.consultations.forEach((c) => {
     const patient = state.patients.find((p) => p.id === c.patientId);
     const inv = state.invoices.find((i) => i.consultationId === c.id && i.status === 'paid');
     c.labRequests.forEach((lr) => {
-      const canProcess = !!inv || c.isEmergency;
-      allLabs.push({
-        lr, patient,
-        patientName: `${patient?.lastName || ''} ${patient?.firstName || ''}`.trim(),
-        doctorName: c.doctorName, source: 'consultation', consultationId: c.id,
-        paid: !!inv, billable: !canProcess,
-      });
+      if (!seenLabIds.has(lr.id)) {
+        seenLabIds.add(lr.id);
+        const canProcess = !!inv || c.isEmergency;
+        allLabs.push({
+          lr, patient,
+          patientName: `${patient?.lastName || ''} ${patient?.firstName || ''}`.trim(),
+          doctorName: c.doctorName, source: 'consultation', consultationId: c.id,
+          paid: !!inv, billable: !canProcess,
+        });
+      }
     });
   });
+
   state.labRequests.forEach((lr) => {
-    const patient = lr.patientId ? state.patients.find((p) => p.id === lr.patientId) : undefined;
-    const patientName = patient
-      ? `${patient.lastName} ${patient.firstName}`
-      : (lr.patientId ? 'Inconnu' : 'Patient externe');
-    const inv = lr.invoiceId ? state.invoices.find((i) => i.id === lr.invoiceId) : undefined;
-    const paid = inv?.status === 'paid';
-    allLabs.push({
-      lr, patient, patientName,
-      doctorName: state.users.find((u) => u.id === lr.requestedBy)?.name || '',
-      source: 'standalone', paid, billable: !paid,
-    });
+    if (!seenLabIds.has(lr.id)) {
+      seenLabIds.add(lr.id);
+      const patient = lr.patientId ? state.patients.find((p) => p.id === lr.patientId) : undefined;
+      const patientName = patient
+        ? `${patient.lastName} ${patient.firstName}`
+        : (lr.patientId ? 'Inconnu' : 'Patient externe');
+      const inv = lr.invoiceId ? state.invoices.find((i) => i.id === lr.invoiceId) : undefined;
+      const paid = inv?.status === 'paid';
+      allLabs.push({
+        lr, patient, patientName,
+        doctorName: state.users.find((u) => u.id === lr.requestedBy)?.name || '',
+        source: 'standalone', paid, billable: !paid,
+      });
+    }
   });
 
   // Le laboratoire ne liste que les examens déjà réglés / prêts à traiter.
@@ -159,23 +172,40 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
       { patientId: d.patient?.id || d.lr.patientId || '', department: 'laboratoire', action: 'Analyse en cours', details: d.lr.examType, actorId: state.currentUser?.id, actorName: state.currentUser?.name, labRequestId: d.lr.id });
     setActiveLab(d);
     setResultValues({});
+    setResultAbnormal({});
+    setResultComments({});
+    setLabConclusion(d.lr.labConclusion || '');
+    setBiologicalAlert(d.lr.biologicalAlert || false);
   };
 
   const submitResults = (d: DispLab) => {
     const results = d.lr.parameters.map((param) => {
-      const value = resultValues[param] || 0;
+      const valRaw = resultValues[param];
+      const valStr = valRaw !== undefined ? String(valRaw).trim() : '';
+      const valNum = parseFloat(valStr);
+      const valIsNumeric = !isNaN(valNum) && valStr !== '';
       const norm = LAB_NORMS[param];
+
+      let isAbn = resultAbnormal[param] ?? false;
+      if (valIsNumeric && norm) {
+        if (valNum < norm.min || valNum > norm.max) {
+          isAbn = true;
+        }
+      }
+
       return {
-        parameter: param, value,
+        parameter: param,
+        value: valIsNumeric ? valNum : (valStr || '—'),
         unit: norm?.unit || '',
-        normalMin: norm?.min || 0, normalMax: norm?.max || 0,
-        isAbnormal: norm ? value < norm.min || value > norm.max : false,
+        normalMin: norm?.min || 0,
+        normalMax: norm?.max || 0,
+        normalRangeText: norm ? `${norm.min} - ${norm.max} ${norm.unit}` : undefined,
+        isAbnormal: isAbn,
+        comments: resultComments[param] || '',
       };
     });
-    const hasAbnormal = results.some((r) => r.isAbnormal);
-    const targetUserId = d.consultationId
-      ? state.consultations.find((c) => c.id === d.consultationId)?.doctorId
-      : d.lr.requestedBy;
+
+    const hasAbnormal = results.some((r) => r.isAbnormal) || biologicalAlert;
 
     setState((prev) => {
       let next: AppState;
@@ -185,7 +215,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
           consultations: prev.consultations.map((c) =>
             c.id === d.consultationId
               ? { ...c, labRequests: c.labRequests.map((l) => (l.id === d.lr.id ? {
-                  ...l, status: 'completed', results, completedAt: new Date().toISOString(),
+                  ...l, status: 'completed', results, labConclusion, biologicalAlert: hasAbnormal, completedAt: new Date().toISOString(),
                   completedBy: prev.currentUser?.id || '', validatedBy: prev.currentUser?.id || '',
                 } : l)) }
               : c,
@@ -195,19 +225,12 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
         next = {
           ...prev,
           labRequests: prev.labRequests.map((l) => (l.id === d.lr.id ? {
-            ...l, status: 'completed', results, completedAt: new Date().toISOString(),
+            ...l, status: 'completed', results, labConclusion, biologicalAlert: hasAbnormal, completedAt: new Date().toISOString(),
             completedBy: prev.currentUser?.id || '', validatedBy: prev.currentUser?.id || '',
           } : l)),
         };
       }
       addAuditLog(next, 'RESULTATS_ANALYSE', `Résultats ${d.lr.examType} pour ${d.patientName}${hasAbnormal ? ' — ANORMAL' : ''}`, d.patient?.id || d.lr.patientId);
-      addNotification(
-        next, 'doctor',
-        hasAbnormal
-          ? `🚨 Résultats ANORMAUX — ${d.lr.examType} pour ${d.patientName}`
-          : `Résultats disponibles: ${d.lr.examType} pour ${d.patientName}`,
-        hasAbnormal ? 'critical' : 'info', targetUserId,
-      );
       addJourneyEvent(next, {
         patientId: d.patient?.id || d.lr.patientId || '', department: 'laboratoire',
         action: 'Résultats validés', status: 'completed',
@@ -219,7 +242,10 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
 
     setActiveLab(null);
     setResultValues({});
-    alert('Résultats validés et transmis au prescripteur !');
+    setResultAbnormal({});
+    setResultComments({});
+    setLabConclusion('');
+    setBiologicalAlert(false);
   };
 
   // ---- Nouvelle demande ----
@@ -286,7 +312,6 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
       };
       const next = { ...prev, labRequests: [...prev.labRequests, ...newRequests], invoices: [...prev.invoices, inv] };
       addAuditLog(next, 'DEMANDE_ANALYSE', `${chosen.map((c) => c.name).join(', ')} — ${formatAr(total)} (${patient.dossier})`, patient.id);
-      addNotification(next, 'cashier', `🧪 Analyses à facturer: ${patient.lastName} ${patient.firstName} — ${formatAr(total)}`, 'info');
       addJourneyEvent(next, { patientId: patient.id, department: 'laboratoire', action: 'Demande d\'analyse', status: 'analyses_pending', details: `${chosen.map((c) => c.name).join(', ')} — à facturer`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name });
       return next;
     });
@@ -429,33 +454,118 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
 
                     {/* Saisie des résultats */}
                     {isActive && (
-                      <div className="p-4 border-t border-slate-200">
-                        <h4 className="font-medium text-slate-700 mb-3 flex items-center gap-2"><FileSearch className="w-4 h-4" /> Saisie des résultats — {d.lr.examType}</h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="p-4 border-t border-slate-200 bg-slate-50/50">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                            <FileSearch className="w-4 h-4 text-cyan-600" /> Saisie Biologique des Résultats — {d.lr.examType}
+                          </h4>
+                          <label className="flex items-center gap-1.5 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-lg text-xs font-bold text-rose-700 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={biologicalAlert}
+                              onChange={(e) => setBiologicalAlert(e.target.checked)}
+                              className="w-4 h-4 text-rose-600 rounded"
+                            />
+                            <span>🚨 Alerte Biologique Majeure</span>
+                          </label>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
                           {d.lr.parameters.map((param) => {
                             const norm = LAB_NORMS[param];
+                            const curVal = resultValues[param] ?? '';
+                            const isNumericVal = typeof curVal === 'number' || (!isNaN(parseFloat(String(curVal))) && String(curVal).trim() !== '');
+                            const numVal = parseFloat(String(curVal));
+                            const autoAbn = isNumericVal && norm ? (numVal < norm.min || numVal > norm.max) : false;
+                            const isAbn = resultAbnormal[param] ?? autoAbn;
+
                             return (
-                              <div key={param} className="p-3 bg-slate-50 rounded-lg">
-                                <label className="text-sm font-medium text-slate-700">{param}</label>
-                                {norm && <div className="text-xs text-slate-400 mt-0.5">Normes: {norm.min} – {norm.max} {norm.unit}</div>}
-                                <div className="flex items-center gap-2 mt-1">
+                              <div key={param} className={`p-3 rounded-xl border transition-all ${isAbn ? 'bg-rose-50/80 border-rose-300' : 'bg-white border-slate-200'}`}>
+                                <div className="flex items-center justify-between mb-1">
+                                  <label className="text-xs font-bold text-slate-800">{param}</label>
+                                  {norm && <span className="text-[10px] text-slate-500 font-mono">Norme: {norm.min} – {norm.max} {norm.unit}</span>}
+                                </div>
+
+                                <div className="flex items-center gap-2">
                                   <input
-                                    type="number" step="0.01"
-                                    value={resultValues[param] || ''}
-                                    onChange={(e) => setResultValues({ ...resultValues, [param]: parseFloat(e.target.value) || 0 })}
-                                    className={`w-full px-3 py-1.5 border rounded-lg text-sm outline-none focus:ring-2 ${
-                                      resultValues[param] !== undefined && norm && (resultValues[param] < norm.min || resultValues[param] > norm.max)
-                                        ? 'border-red-400 focus:ring-red-500 bg-red-50' : 'border-slate-300 focus:ring-cyan-500'
+                                    type="text"
+                                    value={curVal}
+                                    onChange={(e) => {
+                                      const raw = e.target.value;
+                                      setResultValues({ ...resultValues, [param]: raw });
+                                    }}
+                                    placeholder={norm ? `Valeur en ${norm.unit}` : 'Résultat (ex: Négatif, Positif, 12.5...)'}
+                                    className={`w-full px-2.5 py-1.5 border rounded-lg text-xs font-mono outline-none ${
+                                      isAbn ? 'border-rose-400 bg-white text-rose-900 font-bold' : 'border-slate-300 focus:border-cyan-500'
                                     }`}
                                   />
-                                  <span className="text-xs text-slate-500 whitespace-nowrap">{norm?.unit || ''}</span>
+                                  {norm?.unit && <span className="text-xs text-slate-500 font-medium whitespace-nowrap">{norm.unit}</span>}
                                 </div>
-                                {resultValues[param] !== undefined && norm && (resultValues[param] < norm.min || resultValues[param] > norm.max) && (
-                                  <div className="flex items-center gap-1 mt-1 text-xs text-red-600"><AlertTriangle className="w-3 h-3" /> HORS NORMES</div>
-                                )}
+
+                                {/* Quick Qualitative Shortcuts */}
+                                <div className="flex flex-wrap gap-1 mt-1.5">
+                                  {['Négatif', 'Positif', 'Absence', 'Présence', 'Normal'].map((opt) => (
+                                    <button
+                                      key={opt}
+                                      type="button"
+                                      onClick={() => {
+                                        setResultValues({ ...resultValues, [param]: opt });
+                                        if (opt === 'Positif' || opt === 'Présence') {
+                                          setResultAbnormal({ ...resultAbnormal, [param]: true });
+                                        } else if (opt === 'Négatif' || opt === 'Absence' || opt === 'Normal') {
+                                          setResultAbnormal({ ...resultAbnormal, [param]: false });
+                                        }
+                                      }}
+                                      className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded text-[10px] cursor-pointer transition"
+                                    >
+                                      {opt}
+                                    </button>
+                                  ))}
+                                  <button
+                                    type="button"
+                                    onClick={() => setResultAbnormal({ ...resultAbnormal, [param]: !isAbn })}
+                                    className={`ml-auto px-1.5 py-0.5 rounded text-[10px] font-bold cursor-pointer transition ${
+                                      isAbn ? 'bg-rose-600 text-white' : 'bg-slate-200 text-slate-600 hover:bg-rose-100 hover:text-rose-700'
+                                    }`}
+                                  >
+                                    {isAbn ? '⚠️ Pathologique' : 'Cocher Anormal'}
+                                  </button>
+                                </div>
+
+                                {/* Parameter optional comment */}
+                                <input
+                                  type="text"
+                                  value={resultComments[param] || ''}
+                                  onChange={(e) => setResultComments({ ...resultComments, [param]: e.target.value })}
+                                  placeholder="Remarque / note (optionnel)"
+                                  className="w-full mt-1.5 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-[11px] text-slate-600 outline-none"
+                                />
                               </div>
                             );
                           })}
+                        </div>
+
+                        {/* Biologist / Lab Conclusion */}
+                        <div className="bg-white p-3 rounded-xl border border-slate-200 mb-3">
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            💬 Conclusion du Biologiste / Laboratoire
+                          </label>
+                          <textarea
+                            value={labConclusion}
+                            onChange={(e) => setLabConclusion(e.target.value)}
+                            rows={2}
+                            placeholder="Ex: Anémie microcytaire hypochrome marquée. Bilan martial et réticulocytes recommandés."
+                            className="w-full p-2 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+
+                        <div className="flex justify-end gap-2">
+                          <button onClick={() => setActiveLab(null)} className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 rounded-lg text-xs font-medium cursor-pointer">
+                            Annuler
+                          </button>
+                          <button onClick={() => submitResults(d)} className="px-4 py-1.5 bg-cyan-600 hover:bg-cyan-700 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 cursor-pointer shadow-sm">
+                            <Send className="w-3.5 h-3.5" /> Valider & Transmettre au Médecin
+                          </button>
                         </div>
                       </div>
                     )}
