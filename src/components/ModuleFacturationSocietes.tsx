@@ -62,6 +62,23 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [editingItems, setEditingItems] = useState<InvoiceItem[]>([]);
 
+  // States pour la Saisie Sage de la facture
+  const [sageForm, setSageForm] = useState<{
+    code: string;
+    description: string;
+    category: 'consultation' | 'lab' | 'pharmacy' | 'surgery' | 'hospitalization' | 'echo';
+    quantity: number;
+    unitPrice: number;
+  }>({
+    code: '',
+    description: '',
+    category: 'pharmacy',
+    quantity: 1,
+    unitPrice: 0,
+  });
+  const [selectedItemIndex, setSelectedItemIndex] = useState<number | null>(null);
+  const [sageSearchIdx, setSageSearchIdx] = useState<number>(0);
+
   // ====== MODAL : Règlement global mensuel ======
   const [payingAccount, setPayingAccount] = useState<CompanyBillingAccount | null>(null);
   const [payDate, setPayDate] = useState(today());
@@ -116,7 +133,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
         code: exam.code || exam.id,
         description: exam.name,
         category: 'lab',
-        price: exam.price,
+        price: exam.priceSociete || exam.priceComptoir || 0,
         familyLabel: 'Laboratoire',
         badgeColor: 'bg-blue-100 text-blue-800',
       });
@@ -125,7 +142,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
     // Ajouter tous les articles / médicaments / consommables
     (state.articles || []).forEach(art => {
       items.push({
-        code: art.id || art.code || 'PHA',
+        code: art.id || 'PHA',
         description: art.name,
         category: 'pharmacy',
         price: art.priceSociete || art.priceComptoir || 0,
@@ -195,7 +212,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
           company: acc.company,
           month: acc.month,
           amount: p.amount,
-          method: p.method,
+          method: p.method || 'Versement',
           reference: p.reference,
           observation: p.observation,
           beneficiaryLabel: beneficiary,
@@ -219,12 +236,12 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
       if ((inv.status === 'paid' || inv.paidAt) && !existingPayInvIds.has(inv.id)) {
         const pat = state.patients.find(pt => pt.id === inv.patientId);
         const patName = pat ? `${pat.lastName} ${pat.firstName}` : (inv.clientName || 'Salarié');
-        const isCompanyInv = Boolean(inv.clientType === 'societe' || inv.companyName);
+        const isCompanyInv = Boolean(inv.clientType === 'societe' || (inv as any).companyName);
         list.push({
           id: `invpay-${inv.id}`,
           date: inv.paidAt || inv.createdAt,
           type: 'individuel',
-          company: inv.companyName || (isCompanyInv ? 'Société conventionnée' : 'Patient individuel'),
+          company: (inv as any).companyName || (isCompanyInv ? 'Société conventionnée' : 'Patient individuel'),
           month: inv.createdAt.slice(0, 7),
           amount: inv.totalAmount,
           method: 'Versement / Caisse',
@@ -268,7 +285,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
             ...acc,
             payments: filteredPayments,
             paidAmount: newPaid,
-            status: newPaid >= acc.totalAmount ? ('paid' as const) : ('pending' as const),
+            status: newPaid >= acc.totalAmount ? ('paid' as const) : (newPaid > 0 ? ('partial' as const) : ('open' as const)),
           };
         });
       }
@@ -277,7 +294,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
           if (!p.invoiceIds!.includes(inv.id)) return inv;
           return {
             ...inv,
-            status: 'unpaid' as const,
+            status: 'pending' as const,
             paidAt: undefined,
             paidBy: undefined,
           };
@@ -292,7 +309,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
     const setComp = new Set<string>();
     state.companyBillingAccounts.forEach(a => setComp.add(a.company));
     state.invoices.forEach(i => {
-      if (i.companyName) setComp.add(i.companyName);
+      if ((i as any).companyName) setComp.add((i as any).companyName);
       else if (i.clientType === 'societe') setComp.add('Société conventionnée');
     });
     return Array.from(setComp).sort();
@@ -757,53 +774,116 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
     setEditingItems(enrichedItems);
     setSageSearch('');
     setSageCategoryFilter('all');
+    setSageForm({
+      code: '',
+      description: '',
+      category: 'pharmacy',
+      quantity: 1,
+      unitPrice: 0,
+    });
+    setSelectedItemIndex(null);
+    setSageSearchIdx(0);
   };
 
-  const addPremeditatedItem = (catalogItem: {
+  const sageNewItem = () => {
+    setSageForm({
+      code: '',
+      description: '',
+      category: 'pharmacy',
+      quantity: 1,
+      unitPrice: 0,
+    });
+    setSelectedItemIndex(null);
+    setSageSearch('');
+    setSageSearchIdx(0);
+  };
+
+  const sageSelectItem = (idx: number) => {
+    const item = editingItems[idx];
+    if (item) {
+      setSelectedItemIndex(idx);
+      setSageForm({
+        code: item.code || '',
+        description: item.description,
+        category: item.category,
+        quantity: item.quantity || 1,
+        unitPrice: item.unitPrice !== undefined ? item.unitPrice : item.amount,
+      });
+      setSageSearch('');
+    }
+  };
+
+  const sageSaveItem = () => {
+    if (!sageForm.description.trim()) return;
+    const amount = (sageForm.quantity || 1) * (sageForm.unitPrice || 0);
+    const itemToSave: InvoiceItem = {
+      code: sageForm.code || `ACT-${String(editingItems.length + 1).padStart(2, '0')}`,
+      description: sageForm.description,
+      category: sageForm.category,
+      quantity: sageForm.quantity,
+      unitPrice: sageForm.unitPrice,
+      amount: amount,
+    };
+
+    setEditingItems(prev => {
+      if (selectedItemIndex !== null && selectedItemIndex >= 0 && selectedItemIndex < prev.length) {
+        const copy = [...prev];
+        copy[selectedItemIndex] = itemToSave;
+        return copy;
+      } else {
+        return [...prev, itemToSave];
+      }
+    });
+
+    sageNewItem();
+  };
+
+  const sageDeleteItem = () => {
+    if (selectedItemIndex !== null && selectedItemIndex >= 0 && selectedItemIndex < editingItems.length) {
+      setEditingItems(prev => prev.filter((_, i) => i !== selectedItemIndex));
+    }
+    sageNewItem();
+  };
+
+  const sageSelectCatalogItem = (catalogItem: {
     code: string;
     description: string;
     category: 'consultation' | 'lab' | 'pharmacy' | 'surgery' | 'hospitalization' | 'echo';
     price: number;
   }) => {
-    setEditingItems(prev => {
-      const idx = prev.findIndex(item => item.code === catalogItem.code || (item.description.trim().toLowerCase() === catalogItem.description.trim().toLowerCase() && item.category === catalogItem.category));
-      if (idx >= 0) {
-        const next = [...prev];
-        const existing = next[idx];
-        const q = (Number(existing.quantity) || 1) + 1;
-        const pu = Number(existing.unitPrice !== undefined ? existing.unitPrice : existing.amount) || catalogItem.price;
-        next[idx] = {
-          ...existing,
-          quantity: q,
-          unitPrice: pu,
-          amount: q * pu,
-        };
-        return next;
-      }
-      return [
-        ...prev,
-        {
-          code: catalogItem.code,
-          description: catalogItem.description,
-          category: catalogItem.category,
-          quantity: 1,
-          unitPrice: catalogItem.price,
-          amount: catalogItem.price,
-        },
-      ];
+    setSageForm({
+      code: catalogItem.code,
+      description: catalogItem.description,
+      category: catalogItem.category,
+      quantity: 1,
+      unitPrice: catalogItem.price,
     });
+    setSageSearch('');
+    setSageSearchIdx(0);
+    // Focus quantity field
+    setTimeout(() => {
+      const qtyInput = document.getElementById('sage-qty-input');
+      if (qtyInput) (qtyInput as HTMLInputElement).focus();
+    }, 50);
   };
 
-  const updateEditingItem = (index: number, field: keyof InvoiceItem, value: any) => {
-    setEditingItems(prev => {
-      const next = [...prev];
-      const item = { ...next[index], [field]: value };
-      const q = Number(item.quantity) || 1;
-      const pu = Number(item.unitPrice !== undefined ? item.unitPrice : item.amount) || 0;
-      item.amount = q * pu;
-      next[index] = item;
-      return next;
-    });
+  const sageSearchKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSageSearchIdx(prev => Math.min(prev + 1, filteredSageCatalog.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSageSearchIdx(prev => Math.max(prev - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (filteredSageCatalog.length > 0 && sageSearch) {
+        sageSelectCatalogItem(filteredSageCatalog[sageSearchIdx]);
+      } else if (sageForm.description) {
+        sageSaveItem();
+      }
+    } else if (e.key === 'Escape') {
+      setSageSearch('');
+    }
   };
 
   const saveInvoiceItems = () => {
@@ -1705,7 +1785,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
       {/* ==================== MODAL : ÉDITION DES PRESCRIPTIONS / FACTURE ==================== */}
       {editingInvoice && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4" onClick={() => setEditingInvoice(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="p-4 bg-indigo-700 text-white flex justify-between items-center">
               <div className="flex items-center gap-2">
                 <Edit2 className="w-5 h-5 text-indigo-200" />
@@ -1716,31 +1796,94 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
               </button>
             </div>
 
-            <div className="p-4 space-y-3 text-xs max-h-[75vh] overflow-y-auto">
-              <p className="text-slate-600">Vous pouvez corriger ou ajouter des lignes d'actes, médicaments ou analyses pour cette facture :</p>
+            <div className="p-4 space-y-3 text-xs max-h-[80vh] overflow-y-auto">
+              <p className="text-slate-600">Vous pouvez corriger ou ajouter des lignes d'actes, médicaments ou analyses pour cette facture avec la saisie Sage et le catalogue prémédité :</p>
 
-              <div className="space-y-2">
-                {editingItems.map((item, idx) => (
-                  <div key={idx} className="flex gap-2 items-center bg-slate-50 p-2 border rounded-lg">
+              {/* SEARCH BAR (Saisie préméditée de tous mes articles) */}
+              <div className="relative">
+                <div className="flex gap-2">
+                  <div className="flex-1 relative">
                     <input
                       type="text"
-                      value={item.description}
-                      onChange={e => {
-                        const copy = [...editingItems];
-                        copy[idx].description = e.target.value;
-                        setEditingItems(copy);
+                      value={sageSearch}
+                      onChange={(e) => {
+                        setSageSearch(e.target.value);
+                        setSageSearchIdx(0);
                       }}
-                      className="flex-1 px-2.5 py-1.5 border rounded bg-white text-xs font-medium"
-                      placeholder="Désignation"
+                      onKeyDown={sageSearchKeyDown}
+                      className="w-full bg-white border border-indigo-400 rounded px-3 py-1.5 text-xs font-mono outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-500 text-slate-800"
+                      placeholder="🔍 Saisir ou rechercher un article / acte du catalogue (Saisie préméditée)..."
                     />
+                    {sageSearch.length >= 1 && filteredSageCatalog.length > 0 && (
+                      <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 rounded-b shadow-2xl z-40 max-h-48 overflow-y-auto">
+                        {filteredSageCatalog.map((item, idx) => (
+                          <div
+                            key={item.code}
+                            onClick={() => sageSelectCatalogItem(item)}
+                            className={`px-3 py-1.5 text-xs flex justify-between border-b border-slate-100 cursor-pointer ${idx === sageSearchIdx ? 'bg-indigo-500 text-white font-medium' : 'hover:bg-slate-50 text-slate-800'}`}
+                          >
+                            <span>[{item.code}] {item.description}</span>
+                            <span className="flex items-center gap-2">
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${item.badgeColor}`}>
+                                {item.familyLabel}
+                              </span>
+                              <span className={`font-mono font-medium ${idx === sageSearchIdx ? 'text-white' : 'text-indigo-600'}`}>
+                                {formatAr(item.price)}
+                              </span>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Filter category */}
+                  <select
+                    value={sageCategoryFilter}
+                    onChange={(e) => setSageCategoryFilter(e.target.value)}
+                    className="w-40 px-2 py-1.5 border border-slate-300 rounded bg-white font-medium text-slate-700 outline-none cursor-pointer"
+                  >
+                    <option value="all">Toutes catégories</option>
+                    <option value="consultation">Consultations</option>
+                    <option value="pharmacy">Pharmacie</option>
+                    <option value="lab">Laboratoire</option>
+                    <option value="echo">Échographie</option>
+                    <option value="hospitalization">Hospitalisation</option>
+                    <option value="surgery">Soins & Chirurgie</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* SAGE INPUT FORM BAR */}
+              <div className="bg-[#f8fafc] border border-slate-200 rounded p-3 shadow-inner">
+                <div className="grid grid-cols-12 gap-2 items-end">
+                  <div className="col-span-2">
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Code</label>
+                    <input
+                      type="text"
+                      value={sageForm.code}
+                      onChange={(e) => setSageForm(prev => ({ ...prev, code: e.target.value }))}
+                      className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs font-mono text-slate-800 focus:border-indigo-500 outline-none"
+                    />
+                  </div>
+
+                  <div className="col-span-4">
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Désignation</label>
+                    <input
+                      type="text"
+                      value={sageForm.description}
+                      onChange={(e) => setSageForm(prev => ({ ...prev, description: e.target.value }))}
+                      className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs font-semibold text-slate-800 focus:border-indigo-500 outline-none"
+                      placeholder="Ex: Amoxicilline 500mg"
+                    />
+                  </div>
+
+                  <div className="col-span-2">
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Catégorie</label>
                     <select
-                      value={item.category}
-                      onChange={e => {
-                        const copy = [...editingItems];
-                        copy[idx].category = e.target.value as any;
-                        setEditingItems(copy);
-                      }}
-                      className="w-32 px-2 py-1.5 border rounded bg-white text-xs font-semibold cursor-pointer"
+                      value={sageForm.category}
+                      onChange={(e) => setSageForm(prev => ({ ...prev, category: e.target.value as any }))}
+                      className="w-full bg-white border border-slate-300 rounded px-1.5 py-1 text-xs font-medium text-slate-800 focus:border-indigo-500 outline-none cursor-pointer"
                     >
                       <option value="consultation">Consultation</option>
                       <option value="pharmacy">Pharmacie</option>
@@ -1749,38 +1892,139 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                       <option value="hospitalization">Hospitalisation</option>
                       <option value="surgery">Bloc opératoire</option>
                     </select>
+                  </div>
+
+                  <div className="col-span-1">
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Qté</label>
+                    <input
+                      id="sage-qty-input"
+                      type="number"
+                      min={1}
+                      value={sageForm.quantity}
+                      onChange={(e) => setSageForm(prev => ({ ...prev, quantity: parseInt(e.target.value) || 1 }))}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); sageSaveItem(); } }}
+                      className="w-full bg-white border border-slate-300 rounded px-1.5 py-1 text-xs text-right font-mono text-slate-800 focus:border-indigo-500 outline-none"
+                    />
+                  </div>
+
+                  <div className="col-span-2">
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">P.U. (Ar)</label>
                     <input
                       type="number"
-                      value={item.amount}
-                      onChange={e => {
-                        const copy = [...editingItems];
-                        copy[idx].amount = Number(e.target.value);
-                        setEditingItems(copy);
-                      }}
-                      className="w-28 px-2.5 py-1.5 border rounded bg-white font-mono font-bold text-xs"
-                      placeholder="Prix (Ar)"
+                      value={sageForm.unitPrice}
+                      onChange={(e) => setSageForm(prev => ({ ...prev, unitPrice: parseFloat(e.target.value) || 0 }))}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); sageSaveItem(); } }}
+                      className="w-full bg-white border border-slate-300 rounded px-1.5 py-1 text-xs text-right font-mono text-slate-800 focus:border-indigo-500 outline-none"
                     />
-                    <button
-                      onClick={() => setEditingItems(editingItems.filter((_, i) => i !== idx))}
-                      className="p-1.5 text-rose-600 hover:bg-rose-100 rounded cursor-pointer"
-                      title="Supprimer la ligne"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
                   </div>
-                ))}
+
+                  <div className="col-span-1">
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Montant</label>
+                    <input
+                      type="text"
+                      readOnly
+                      value={((sageForm.quantity || 1) * (sageForm.unitPrice || 0)).toLocaleString('fr-FR')}
+                      className="w-full bg-slate-100 border border-slate-200 rounded px-1 py-1 text-xs text-right font-mono font-bold text-slate-600"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-1.5 mt-3 pt-2 border-t border-slate-200">
+                  <button
+                    onClick={sageNewItem}
+                    className="flex items-center gap-1 px-3 py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded shadow-sm text-slate-700 transition cursor-pointer text-xs font-semibold"
+                  >
+                    <Plus className="h-3.5 w-3.5 text-slate-500" /> Nouveau
+                  </button>
+                  <button
+                    onClick={sageDeleteItem}
+                    disabled={selectedItemIndex === null}
+                    className="flex items-center gap-1 px-3 py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded shadow-sm text-slate-700 disabled:opacity-45 transition cursor-pointer text-xs font-semibold"
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-rose-600" /> Supprimer
+                  </button>
+                  <button
+                    onClick={sageSaveItem}
+                    disabled={!sageForm.description.trim()}
+                    className="flex items-center gap-1 px-3 py-1 bg-sky-500 hover:bg-sky-600 text-white border border-sky-600 rounded shadow-sm font-semibold disabled:opacity-45 transition cursor-pointer text-xs"
+                  >
+                    <Save className="h-3.5 w-3.5" /> Enregistrer la ligne
+                  </button>
+                </div>
               </div>
 
-              <button
-                onClick={() => setEditingItems([...editingItems, { description: 'Nouvel acte / médicament', amount: 0, category: 'pharmacy' }])}
-                className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs flex items-center justify-center gap-1 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" /> Ajouter une ligne
-              </button>
+              {/* TABLE DES LIGNES DE LA FACTURE */}
+              <div className="bg-white border border-slate-300 rounded overflow-hidden shadow-xs">
+                <div className="px-3 py-2 bg-slate-50 border-b border-slate-300 font-semibold text-slate-700 flex justify-between items-center">
+                  <span>Lignes de la Facture ({editingItems.length})</span>
+                  <span className="text-[10px] text-slate-500 font-normal">Double-cliquez ou sélectionnez une ligne pour la modifier</span>
+                </div>
+                <div className="max-h-[220px] overflow-y-auto">
+                  <table className="w-full text-left border-collapse text-[11px]">
+                    <thead className="bg-slate-100 border-b border-slate-300 text-slate-600 sticky top-0 z-10">
+                      <tr className="divide-x divide-slate-200">
+                        <th className="p-2 font-semibold w-24">Code</th>
+                        <th className="p-2 font-semibold">Désignation / Acte</th>
+                        <th className="p-2 font-semibold w-28">Catégorie</th>
+                        <th className="p-2 font-semibold text-right w-14">Qté</th>
+                        <th className="p-2 font-semibold text-right w-24">P.U. (Ar)</th>
+                        <th className="p-2 font-semibold text-right w-28">Montant (Ar)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-150 font-mono">
+                      {editingItems.map((item, idx) => {
+                        const isSel = idx === selectedItemIndex;
+                        const categoryLabels: Record<string, string> = {
+                          consultation: 'Consultation',
+                          pharmacy: 'Pharmacie',
+                          lab: 'Laboratoire',
+                          echo: 'Échographie',
+                          hospitalization: 'Hospitalisation',
+                          surgery: 'Bloc opératoire',
+                        };
+                        const itemAmt = (item.quantity || 1) * (item.unitPrice !== undefined ? item.unitPrice : item.amount);
+                        return (
+                          <tr
+                            key={idx}
+                            onClick={() => sageSelectItem(idx)}
+                            className={`cursor-pointer divide-x divide-slate-200 transition-colors ${isSel ? 'bg-indigo-600 text-white font-medium' : 'hover:bg-indigo-50/50 text-slate-800'}`}
+                          >
+                            <td className="p-2 font-medium">{item.code || `ACT-${String(idx + 1).padStart(2, '0')}`}</td>
+                            <td className="p-2 font-sans font-medium">{item.description}</td>
+                            <td className="p-2 font-sans">
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                                isSel ? 'bg-indigo-700 text-white' :
+                                item.category === 'pharmacy' ? 'bg-emerald-100 text-emerald-800' :
+                                item.category === 'lab' ? 'bg-blue-100 text-blue-800' :
+                                item.category === 'echo' ? 'bg-purple-100 text-purple-800' :
+                                item.category === 'consultation' ? 'bg-indigo-100 text-indigo-800' :
+                                item.category === 'hospitalization' ? 'bg-amber-100 text-amber-800' :
+                                'bg-rose-100 text-rose-800'
+                              }`}>
+                                {categoryLabels[item.category] || item.category}
+                              </span>
+                            </td>
+                            <td className="p-2 text-right">{item.quantity || 1}</td>
+                            <td className="p-2 text-right">{(item.unitPrice !== undefined ? item.unitPrice : item.amount).toLocaleString('fr-FR')}</td>
+                            <td className={`p-2 text-right font-bold ${isSel ? 'text-white' : 'text-slate-900'}`}>{itemAmt.toLocaleString('fr-FR')}</td>
+                          </tr>
+                        );
+                      })}
+                      {editingItems.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="p-8 text-center text-slate-400 font-sans">
+                            Aucun acte ou prescription sur cette facture. Utilisez la recherche ou le formulaire ci-dessus pour ajouter des lignes.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
 
               <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg flex justify-between items-center text-sm font-bold text-indigo-900">
                 <span>Nouveau Total Facture :</span>
-                <span className="font-mono text-base">{formatAr(editingItems.reduce((s, i) => s + Number(i.amount || 0), 0))}</span>
+                <span className="font-mono text-base">{formatAr(editingItems.reduce((s, i) => s + ((i.quantity || 1) * (i.unitPrice !== undefined ? i.unitPrice : i.amount)), 0))}</span>
               </div>
             </div>
 
