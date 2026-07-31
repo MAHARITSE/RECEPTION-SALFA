@@ -35,6 +35,15 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   } | null>(null);
   const [rectificationText, setRectificationText] = useState('');
 
+  // === PAYMENT TAB: Sage-style prescription editor ===
+  const [prescEditActive, setPrescEditActive] = useState(false);
+  const [prescSearch, setPrescSearch] = useState('');
+  const [prescSearchIdx, setPrescSearchIdx] = useState(0);
+  const [prescForm, setPrescForm] = useState<Prescription>({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
+  const [prescSelLineId, setPrescSelLineId] = useState<string | null>(null);
+  const [prescIsNew, setPrescIsNew] = useState(true);
+  const prescSearchRef = useRef<HTMLInputElement>(null);
+
   // External sale (session-local: n'a pas besoin d'être partagé)
   const [extSearch, setExtSearch] = useState('');
   const [extSearchIdx, setExtSearchIdx] = useState(0);
@@ -665,6 +674,131 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     else if (e.key === 'Escape') setHbArtSearch('');
   };
 
+  // === PAYMENT TAB: Sage-style prescription editor functions ===
+  const prescFiltered = prescSearch.length >= 1
+    ? state.articles.filter(a => a.name.toLowerCase().includes(prescSearch.toLowerCase()) && !a.saleBlocked)
+    : [];
+
+  const prescLineAmt = (p: Prescription) => Math.round(p.unitPrice * p.quantity * (1 - p.discount / 100));
+
+  const prescSelectArticle = (articleId: string) => {
+    const a = state.articles.find(x => x.id === articleId);
+    if (!a) return;
+    if (a.saleBlocked) {
+      alert(`⛔ Vente bloquée pour « ${a.name} »${a.saleBlockReason ? ` — ${a.saleBlockReason}` : ''}.`);
+      return;
+    }
+    setPrescForm({
+      id: uuidv4(),
+      articleId: a.id,
+      articleName: a.name,
+      quantity: 1,
+      posology: '',
+      duration: '',
+      instructions: '',
+      unitPrice: getPrice(a, selPatient?.clientType || 'comptoir'),
+      discount: 0,
+      delivered: false,
+    });
+    setPrescIsNew(true);
+    setPrescSelLineId(null);
+    setPrescSearch('');
+    setTimeout(() => {
+      const qtyInput = document.getElementById('presc-qty-input');
+      qtyInput?.focus();
+      (qtyInput as HTMLInputElement)?.select();
+    }, 50);
+  };
+
+  const prescSave = () => {
+    if (!prescForm.articleName || !selPatient) return;
+    const art = state.articles.find(a => a.name === prescForm.articleName);
+    if (art && art.stockPharmacie <= 0) {
+      alert(`🚨 RUPTURE DE STOCK : « ${art.name} » (stock pharmacie = 0).\n\nVente impossible.`);
+      return;
+    }
+    const lineToSave: Prescription = { ...prescForm, id: prescForm.id || uuidv4() };
+    setState(prev => {
+      // If no consultation exists for this patient, create one
+      let targetConsultId = selConsultId;
+      let consultations = [...prev.consultations];
+      if (!targetConsultId) {
+        const newConsult: Consultation = {
+          id: uuidv4(),
+          patientId: selPatient!.id,
+          doctorId: prev.currentUser?.id || 'CAISSE',
+          doctorName: prev.currentUser?.name || 'Caisse Facturation',
+          date: new Date().toISOString(),
+          visitReason: 'Actes & Prescriptions — Saisie caisse',
+          diagnosis: '',
+          notes: '',
+          prescriptions: [],
+          labRequests: [],
+          hospitalizeRequested: false,
+          surgeryRequested: false,
+          isEmergency: false,
+          vitalSigns: { temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' },
+        };
+        consultations = [...consultations, newConsult];
+        targetConsultId = newConsult.id;
+        // Update selConsultId to point to the new consultation
+        setTimeout(() => setSelConsultId(targetConsultId), 0);
+      }
+      consultations = consultations.map(c => {
+        if (c.id !== targetConsultId) return c;
+        const exists = c.prescriptions.some(p => p.id === lineToSave.id);
+        return {
+          ...c,
+          prescriptions: prescIsNew || !exists
+            ? [...c.prescriptions, lineToSave]
+            : c.prescriptions.map(p => p.id === lineToSave.id ? lineToSave : p),
+        };
+      });
+      return { ...prev, consultations };
+    });
+    // Reset form
+    setPrescForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
+    setPrescIsNew(true);
+    setPrescSelLineId(null);
+    setPrescSearch('');
+    setTimeout(() => prescSearchRef.current?.focus(), 50);
+  };
+
+  const prescDelete = () => {
+    if (!prescSelLineId) return;
+    // Find the consultation containing this prescription
+    const targetConsultId = (() => {
+      if (selConsultId) return selConsultId;
+      // Find it from the patient's consultations
+      const c = state.consultations.find(c => c.patientId === selPatient?.id && c.prescriptions.some(p => p.id === prescSelLineId));
+      return c?.id;
+    })();
+    if (!targetConsultId) return;
+    setState(prev => ({
+      ...prev,
+      consultations: prev.consultations.map(c =>
+        c.id === targetConsultId
+          ? { ...c, prescriptions: c.prescriptions.filter(p => p.id !== prescSelLineId) }
+          : c
+      ),
+    }));
+    setPrescForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
+    setPrescIsNew(true);
+    setPrescSelLineId(null);
+    setPrescSearch('');
+  };
+
+  const prescKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setPrescSearchIdx(i => Math.min(i + 1, prescFiltered.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setPrescSearchIdx(i => Math.max(i - 1, 0)); }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (prescFiltered.length > 0 && prescSearch) prescSelectArticle(prescFiltered[prescSearchIdx].id);
+      else if (prescForm.articleName) prescSave();
+    }
+    else if (e.key === 'Escape') setPrescSearch('');
+  };
+
   const addPartialPay = (recordId: string) => {
     const rec = hbRecords.find(r => r.id === recordId);
     const amount = hbPayAmounts[recordId] || 0;
@@ -970,13 +1104,136 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                       </div>
                     </div>
 
-                    {/* === LISTE DES PRESCRIPTIONS === */}
+                    {/* === ACTES & PRESCRIPTIONS — Saisie Sage (éditable) === */}
                     <div className="border rounded-lg overflow-hidden mb-3">
-                      <div className="bg-slate-100 px-3 py-2 border-b font-bold text-sm text-slate-700 flex items-center gap-2">📋 Liste des prescriptions</div>
-                      <div className="overflow-x-auto max-h-[260px] overflow-y-auto">
+                      <div className="bg-emerald-600 px-3 py-2 border-b font-bold text-sm text-white flex items-center justify-between">
+                        <span className="flex items-center gap-2">📋 Actes & Prescriptions (Saisie Sage)</span>
+                        <button
+                          onClick={() => { setPrescEditActive(!prescEditActive); if (!prescEditActive) { setPrescSearch(''); setPrescForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false }); setPrescSelLineId(null); setPrescIsNew(true); } }}
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition ${prescEditActive ? 'bg-white/30 hover:bg-white/40 text-white' : 'bg-white text-emerald-700 hover:bg-emerald-50'}`}
+                        >
+                          {prescEditActive ? '✅ Terminer' : '✏️ Modifier'}
+                        </button>
+                      </div>
+
+                      {/* Sage-style edit bar (only when editing) */}
+                      {prescEditActive && (() => {
+                        const unpaidConsults = getConsults(selPatient.id);
+                        const allPrescriptions = unpaidConsults.flatMap(c => c.prescriptions);
+                        return (
+                          <div className="bg-[#f4f4f4] border-b border-slate-300 p-2">
+                            <div className="flex flex-wrap items-end gap-1.5">
+                              <div className="flex-1 min-w-[150px] relative">
+                                <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Article (↑↓ Entrée)</label>
+                                <input
+                                  ref={prescSearchRef}
+                                  type="text"
+                                  value={prescForm.articleName && !prescSearch ? prescForm.articleName : prescSearch}
+                                  onChange={e => { setPrescSearch(e.target.value); setPrescSearchIdx(0); if (prescForm.articleName && e.target.value !== prescForm.articleName) { setPrescForm(prev => ({ ...prev, articleName: '', articleId: '' })); } }}
+                                  onKeyDown={prescKeyDown}
+                                  className="w-full bg-white border border-blue-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500 text-slate-800"
+                                  placeholder="🔍 Saisir article..."
+                                  autoFocus
+                                />
+                                {prescSearch.length >= 1 && prescFiltered.length > 0 && (
+                                  <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 rounded-b shadow-2xl z-40 max-h-40 overflow-y-auto">
+                                    {prescFiltered.map((a, idx) => {
+                                      const isOut = a.stockPharmacie <= 0;
+                                      const isLow = !isOut && a.stockPharmacie <= a.minStockPharmacie && !a.alertDisabledPharmacie;
+                                      return (
+                                        <div
+                                          key={a.id}
+                                          onClick={() => !isOut && prescSelectArticle(a.id)}
+                                          title={isOut ? 'Rupture de stock — vente impossible' : undefined}
+                                          className={`px-3 py-1.5 text-xs flex justify-between border-b border-slate-100 ${isOut ? 'bg-red-50 text-red-700 cursor-not-allowed' : `cursor-pointer ${idx === prescSearchIdx ? 'bg-blue-500 text-white font-medium' : 'hover:bg-slate-50 text-slate-800'}`}`}
+                                        >
+                                          <span className={isOut ? 'line-through decoration-red-400/60' : ''}>[{a.family}] {a.name}</span>
+                                          <span className="flex items-center gap-2">
+                                            {isOut
+                                              ? <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-[9px] font-bold">🚨 RUPTURE</span>
+                                              : <span className={`font-mono text-[10px] ${idx === prescSearchIdx ? 'text-white/90' : isLow ? 'text-amber-600 font-bold' : 'text-slate-400'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>}
+                                            <span className={`font-mono ${isOut ? 'text-red-400' : idx === prescSearchIdx ? 'text-white' : 'text-blue-600 font-medium'}`}>{formatAr(getPrice(a, selPatient?.clientType || 'comptoir'))}</span>
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="w-16">
+                                <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Qté</label>
+                                <input
+                                  id="presc-qty-input"
+                                  type="number"
+                                  min={1}
+                                  value={prescForm.quantity}
+                                  onChange={e => setPrescForm(prev => ({ ...prev, quantity: parseInt(e.target.value) || 1 }))}
+                                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); prescSave(); } }}
+                                  className="w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-blue-500 text-slate-800"
+                                />
+                              </div>
+                              <div className="w-16">
+                                <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Rem%</label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={100}
+                                  value={prescForm.discount}
+                                  onChange={e => setPrescForm(prev => ({ ...prev, discount: parseInt(e.target.value) || 0 }))}
+                                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); prescSave(); } }}
+                                  className="w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-blue-500 text-slate-800"
+                                />
+                              </div>
+                              <div className="w-24">
+                                <label className="block text-[10px] font-bold text-slate-500 mb-0.5">P.U.</label>
+                                <input
+                                  type="number"
+                                  value={prescForm.unitPrice}
+                                  onChange={e => setPrescForm(prev => ({ ...prev, unitPrice: parseInt(e.target.value) || 0 }))}
+                                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); prescSave(); } }}
+                                  className="w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-blue-500 text-slate-800"
+                                />
+                              </div>
+                              <div className="w-28">
+                                <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Montant</label>
+                                <input
+                                  readOnly
+                                  value={formatAr(prescLineAmt(prescForm))}
+                                  className="w-full bg-slate-200 border border-slate-300 rounded px-1.5 py-0.5 text-xs text-right font-mono font-bold text-slate-700"
+                                />
+                              </div>
+                            </div>
+                            <div className="flex justify-end gap-1.5 mt-2">
+                              <button
+                                onClick={() => { setPrescForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false }); setPrescSelLineId(null); setPrescIsNew(true); setPrescSearch(''); setTimeout(() => prescSearchRef.current?.focus(), 50); }}
+                                className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded shadow-sm text-slate-700 transition cursor-pointer text-xs font-medium"
+                              >
+                                <Plus className="h-3.5 w-3.5 text-slate-500" /> Nouveau
+                              </button>
+                              <button
+                                onClick={prescDelete}
+                                disabled={!prescSelLineId}
+                                className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded shadow-sm text-slate-700 disabled:opacity-40 transition cursor-pointer text-xs font-medium"
+                              >
+                                <Trash2 className="h-3.5 w-3.5 text-rose-600" /> Supprimer
+                              </button>
+                              <button
+                                onClick={prescSave}
+                                disabled={!prescForm.articleName}
+                                className="flex items-center gap-1 px-2.5 py-1 bg-sky-500 hover:bg-sky-600 text-white border border-sky-600 rounded shadow-sm font-semibold disabled:opacity-40 transition cursor-pointer text-xs"
+                              >
+                                <Save className="h-3.5 w-3.5" /> Enregistrer
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Prescriptions + Lab + Echo table */}
+                      <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
                         <table className="w-full text-xs">
                           <thead className="bg-slate-50 border-b text-slate-600 sticky top-0">
-                            <tr>
+                            <tr className="divide-x divide-slate-200">
                               <th className="p-2 text-left min-w-[120px]">Article</th>
                               <th className="p-2 text-center w-8">Qté</th>
                               <th className="p-2 text-center w-8">Rem%</th>
@@ -988,7 +1245,7 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                           <tbody className="divide-y">
                             {(() => {
                               const unpaidConsults = getConsults(selPatient.id);
-                              // Medications
+                              // Medications (editable when prescEditActive)
                               const medicationItems = unpaidConsults.flatMap(c => c.prescriptions.map(p => ({
                                 description: p.articleName,
                                 quantity: p.quantity,
@@ -998,8 +1255,9 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                                 category: 'Médicament',
                                 categoryColor: 'bg-cyan-100 text-cyan-700',
                                 consultId: c.id,
+                                prescriptionId: p.id,
                               })));
-                              // Lab + Echo from pending invoices
+                              // Lab + Echo from pending invoices (non-editable)
                               const svcInvs = pendingServiceInvoices.filter(i => i.patientId === selPatient.id);
                               const serviceItems = svcInvs.flatMap(i => i.items.map(it => ({
                                 description: it.description,
@@ -1010,19 +1268,37 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                                 category: it.category === 'lab' ? 'Analyse' : it.category === 'echo' ? 'Échographie' : 'Service',
                                 categoryColor: it.category === 'lab' ? 'bg-teal-100 text-teal-700' : it.category === 'echo' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-700',
                                 consultId: i.id,
+                                prescriptionId: '',
                               })));
                               const allItems = [...medicationItems, ...serviceItems];
                               if (allItems.length === 0) return <tr><td colSpan={6} className="p-4 text-center text-slate-400">Aucune prescription</td></tr>;
-                              return allItems.map((item, idx) => (
-                                <tr key={idx} className="hover:bg-slate-50">
-                                  <td className="p-2 font-sans">{item.description}</td>
-                                  <td className="p-2 text-center font-mono">{item.quantity || '—'}</td>
-                                  <td className="p-2 text-center font-mono">{item.discount ? `${item.discount}%` : '—'}</td>
-                                  <td className="p-2 text-right font-mono">{item.unitPrice ? Number(item.unitPrice).toLocaleString('fr-FR') : '—'}</td>
-                                  <td className="p-2 text-right font-mono font-bold">{item.amount.toLocaleString('fr-FR')}</td>
-                                  <td className="p-2 text-center"><span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${item.categoryColor}`}>{item.category}</span></td>
-                                </tr>
-                              ));
+                              return allItems.map((item, idx) => {
+                                const isSel = prescEditActive && item.prescriptionId === prescSelLineId;
+                                return (
+                                  <tr
+                                    key={idx}
+                                    onClick={() => {
+                                      if (!prescEditActive || !item.prescriptionId) return;
+                                      const c = unpaidConsults.find(c => c.id === item.consultId);
+                                      const p = c?.prescriptions.find(pr => pr.id === item.prescriptionId);
+                                      if (p) {
+                                        setPrescForm({ ...p });
+                                        setPrescSelLineId(p.id);
+                                        setPrescIsNew(false);
+                                        setPrescSearch('');
+                                      }
+                                    }}
+                                    className={`divide-x divide-slate-200 ${isSel ? 'bg-blue-500 text-white font-medium' : prescEditActive && item.prescriptionId ? 'cursor-pointer hover:bg-slate-50' : 'hover:bg-slate-50'}`}
+                                  >
+                                    <td className="p-2 font-sans">{item.description}</td>
+                                    <td className="p-2 text-center font-mono">{item.quantity || '—'}</td>
+                                    <td className="p-2 text-center font-mono">{item.discount ? `${item.discount}%` : '—'}</td>
+                                    <td className="p-2 text-right font-mono">{item.unitPrice ? Number(item.unitPrice).toLocaleString('fr-FR') : '—'}</td>
+                                    <td className="p-2 text-right font-mono font-bold">{item.amount.toLocaleString('fr-FR')}</td>
+                                    <td className="p-2 text-center"><span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${item.categoryColor}`}>{item.category}</span></td>
+                                  </tr>
+                                );
+                              });
                             })()}
                           </tbody>
                           <tfoot className="bg-amber-50 border-t-2 border-amber-300">
