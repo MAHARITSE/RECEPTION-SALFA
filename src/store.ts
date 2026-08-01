@@ -18,8 +18,21 @@ export function calculateAge(bd: string): string {
   if (a < 1) return `${(t.getFullYear()-b.getFullYear())*12+t.getMonth()-b.getMonth()} Mois`;
   return `${a} Ans`;
 }
-export function formatAr(n: number): string { return n.toLocaleString('fr-FR') + ' Ar'; }
-export function formatMoney(n: number, currency: string = 'Ar'): string { return n.toLocaleString('fr-FR') + ' ' + currency; }
+/**
+ * Formate un montant provenant de l'état applicatif.
+ *
+ * Certaines anciennes factures enregistrées avant l'ajout du champ `amount`
+ * peuvent encore contenir une valeur absente ou non numérique. Le formatage ne
+ * doit jamais faire tomber tout un module pour une donnée historique incomplète.
+ */
+export function formatAr(n: number | null | undefined): string {
+  const amount = Number(n);
+  return (Number.isFinite(amount) ? amount : 0).toLocaleString('fr-FR') + ' Ar';
+}
+export function formatMoney(n: number | null | undefined, currency: string = 'Ar'): string {
+  const amount = Number(n);
+  return (Number.isFinite(amount) ? amount : 0).toLocaleString('fr-FR') + ' ' + currency;
+}
 export function getPrice(a: Article, ct: ClientType): number {
   if (ct === 'societe') return a.priceSociete;
   if (ct === 'externe') return a.priceExterne;
@@ -525,6 +538,10 @@ export interface AppState {
   inventorySessions: InventorySession[];   // inventaires
   movementHeaders: MovementHeader[];       // en-têtes de mouvement (achat, vente, transfert, inventaire, sortie)
   movementLines: MovementLine[];           // lignes associées aux mouvements
+  /** Table normalisée des lignes d'ordonnance, internes et externes. */
+  prescriptionLines: import('./types').PrescriptionLine[];
+  /** En-têtes des ordonnances saisies depuis l'onglet « Ordonnance externe ». */
+  externalPrescriptions: import('./types').ExternalPrescription[];
   /** Lignes de livraisons de pharmacie individuelles (ordonnances délivrées, etc.) */
   pharmaDeliveryItems: import('./types').PharmaDeliveryItem[];
   /** Clôtures et compilations des livraisons de garde de la pharmacie */
