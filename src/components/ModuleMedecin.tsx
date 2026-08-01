@@ -35,7 +35,7 @@ interface Props {
   setState: React.Dispatch<React.SetStateAction<AppState>>;
   onOpenMedicalRecord?: (patientId: string) => void;
 }
-type ViewMode = 'queue' | 'consultation' | 'my_consults';
+type ViewMode = 'queue' | 'consultation' | 'my_consults' | 'external_prescription';
 
 export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: Props) {
   const [view, setView] = useState<ViewMode>('queue');
@@ -48,8 +48,19 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
   const [vitals, setVitals] = useState<VitalSigns>({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' });
   const [lines, setLines] = useState<Prescription[]>([]);
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
-  const [lineForm, setLineForm] = useState<Prescription>({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
+  const [lineForm, setLineForm] = useState<Prescription>({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false, affectsStock: true });
   const [isNewLine, setIsNewLine] = useState(false);
+
+  // Ordonnance apportée par le patient / émise hors établissement.
+  const [externalPatientId, setExternalPatientId] = useState('');
+  const [externalPatientSearch, setExternalPatientSearch] = useState('');
+  const [externalPrescriber, setExternalPrescriber] = useState('');
+  const [externalNotes, setExternalNotes] = useState('');
+  const [externalLines, setExternalLines] = useState<Prescription[]>([]);
+  const [externalArticleId, setExternalArticleId] = useState('');
+  const [externalQuantity, setExternalQuantity] = useState(1);
+  const [externalPosology, setExternalPosology] = useState('');
+  const [externalAffectsStock, setExternalAffectsStock] = useState(true);
   const searchRef = useRef<HTMLInputElement>(null);
   const submittingRef = useRef(false);
   // Snapshot de la consultation ouverte via le bouton « Mod. » : permet de la
@@ -273,6 +284,121 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
 
   const lineAmount = (l: Prescription) => Math.round(l.unitPrice * l.quantity * (1 - l.discount / 100));
   const totalPres = lines.reduce((s, l) => s + lineAmount(l), 0);
+  const externalPatient = state.patients.find((p) => p.id === externalPatientId);
+  const externalPatientResults = externalPatientSearch.trim().length >= 2
+    ? state.patients.filter((p) => {
+        const q = externalPatientSearch.trim().toLowerCase();
+        return `${p.lastName} ${p.firstName} ${p.dossier} ${p.matricule || ''}`.toLowerCase().includes(q);
+      }).slice(0, 12)
+    : [];
+  const externalTotal = externalLines.reduce((sum, line) => sum + lineAmount(line), 0);
+
+  const addExternalLine = () => {
+    const article = state.articles.find((a) => a.id === externalArticleId);
+    if (!article || !externalPatient) return;
+    const unitPrice = getPrice(article, externalPatient.clientType);
+    setExternalLines((prev) => [...prev, {
+      id: uuidv4(), articleId: article.id, articleName: article.name,
+      quantity: Math.max(1, externalQuantity), posology: externalPosology.trim(),
+      duration: '', instructions: '', unitPrice, discount: 0, delivered: false,
+      affectsStock: externalAffectsStock,
+    }]);
+    setExternalArticleId('');
+    setExternalQuantity(1);
+    setExternalPosology('');
+    setExternalAffectsStock(true);
+  };
+
+  const saveExternalPrescription = () => {
+    if (!externalPatient || externalLines.length === 0) {
+      alert('Sélectionnez un patient et ajoutez au moins une ligne de médicament.');
+      return;
+    }
+    const createdAt = new Date().toISOString();
+    const consultationId = uuidv4();
+    const externalPrescriptionId = uuidv4();
+    const companyInvoiceId = externalPatient.clientType === 'societe' ? uuidv4() : undefined;
+    const normalizedLines = externalLines.map((line) => ({
+      ...line,
+      affectsStock: line.affectsStock !== false,
+      delivered: false,
+    }));
+    const consultation: Consultation = {
+      id: consultationId,
+      patientId: externalPatient.id,
+      doctorId: state.currentUser?.id || '',
+      doctorName: state.currentUser?.name || '',
+      date: createdAt,
+      vitalSigns: { temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' },
+      visitReason: 'Saisie d’une ordonnance externe',
+      diagnosis: 'Ordonnance externe',
+      notes: [externalPrescriber ? `Prescripteur externe : ${externalPrescriber}` : '', externalNotes].filter(Boolean).join(' — '),
+      prescriptions: normalizedLines,
+      labRequests: [], echoRequests: [], hospitalizeRequested: false, surgeryRequested: false, isEmergency: false,
+    };
+
+    setState((prev) => {
+      const next: AppState = {
+        ...prev,
+        consultations: [...prev.consultations, consultation],
+        invoices: companyInvoiceId ? [...prev.invoices, {
+          id: companyInvoiceId,
+          patientId: externalPatient.id,
+          consultationId,
+          clientName: externalPatient.company || `${externalPatient.lastName} ${externalPatient.firstName}`,
+          clientType: 'societe' as const,
+          items: normalizedLines.map((line) => ({
+            articleId: line.articleId,
+            description: `${line.articleName} × ${line.quantity}`,
+            quantity: line.quantity,
+            unitPrice: line.unitPrice,
+            affectsStock: line.affectsStock !== false,
+            amount: lineAmount(line),
+            category: 'pharmacy' as const,
+          })),
+          totalAmount: externalTotal,
+          patientCharge: 0,
+          status: 'pending' as const,
+          createdAt,
+          isExternal: false,
+        }] : prev.invoices,
+        externalPrescriptions: [...(prev.externalPrescriptions || []), {
+          id: externalPrescriptionId,
+          consultationId,
+          patientId: externalPatient.id,
+          prescriberName: externalPrescriber.trim() || undefined,
+          notes: externalNotes.trim() || undefined,
+          status: 'awaiting_payment',
+          createdAt,
+          createdBy: prev.currentUser?.id,
+          createdByName: prev.currentUser?.name,
+        }],
+        prescriptionLines: [...(prev.prescriptionLines || []), ...normalizedLines.map((line) => ({
+          ...line,
+          consultationId,
+          patientId: externalPatient.id,
+          externalPrescriptionId,
+          source: 'external' as const,
+          createdAt,
+          createdBy: prev.currentUser?.id,
+        }))],
+        patients: prev.patients.map((patient) => patient.id === externalPatient.id
+          ? { ...patient, status: 'consulted_awaiting_payment' as const, lastVisitAt: createdAt }
+          : patient),
+      };
+      addAuditLog(next, 'ORDONNANCE_EXTERNE_CREEE', `${externalPatient.dossier} — ${normalizedLines.length} ligne(s), ${formatAr(externalTotal)}`, externalPatient.id);
+      addJourneyEvent(next, { patientId: externalPatient.id, department: 'consultation', action: 'Ordonnance externe saisie', status: 'consulted_awaiting_payment', details: `${normalizedLines.length} médicament(s) en attente de paiement${externalPatient.clientType === 'societe' ? ' — transmis à la facturation société' : ''}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId, invoiceId: companyInvoiceId });
+      return next;
+    });
+
+    setExternalPatientId('');
+    setExternalPatientSearch('');
+    setExternalPrescriber('');
+    setExternalNotes('');
+    setExternalLines([]);
+    setToastFeedback('Ordonnance externe enregistrée et envoyée à la caisse');
+    setTimeout(() => setToastFeedback(null), 3000);
+  };
 
   const selectPatient = (pid: string) => {
     if (pid === selectedPatientId) {
@@ -286,7 +412,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     setLabDraft([]); setLabSearch(''); setEchoDraft([]); setEchoSearch('');
     setLabDraftIdx(-1); setEchoDraftIdx(-1);
     setArticleSearch('');
-    setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
+    setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false, affectsStock: true });
     setConsultForm({ visitReason: '', diagnosis: '', notes: '', isEmergency: false, hospitalizeRequested: false, surgeryRequested: false });
     if (p?.vitalSigns) setVitals({ ...p.vitalSigns }); else setVitals({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' });
     setState((prev) => {
@@ -345,7 +471,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     setSelectedPatientId(null); setConsultForm({ visitReason: '', diagnosis: '', notes: '', isEmergency: false, hospitalizeRequested: false, surgeryRequested: false });
     setVitals({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' });
     setLines([]); setSearchQuery(''); setSelectedLineId(null); setIsNewLine(false);
-    setArticleSearch(''); setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
+    setArticleSearch(''); setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false, affectsStock: true });
     setLabDraft([]); setLabSearch(''); setEchoDraft([]); setEchoSearch('');
     setLabDraftIdx(-1); setEchoDraftIdx(-1);
     setView('queue');
@@ -474,7 +600,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
       // On reste en mode édition (pas de nouvelle ligne)
       return;
     }
-    const nl: Prescription = { id: uuidv4(), articleId: a.id, articleName: a.name, quantity: 1, posology: '', duration: '', instructions: '', unitPrice: getPrice(a, clientType), discount: 0, delivered: false };
+    const nl: Prescription = { id: uuidv4(), articleId: a.id, articleName: a.name, quantity: 1, posology: '', duration: '', instructions: '', unitPrice: getPrice(a, clientType), discount: 0, delivered: false, affectsStock: true };
     setLineForm({ ...nl }); setSelectedLineId(nl.id); setIsNewLine(true); setArticleSearch(''); setArtSearchIdx(0);
   };
 
@@ -483,7 +609,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     setIsNewLine(false);
     setArticleSearch('');
     setArtSearchIdx(0);
-    setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
+    setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false, affectsStock: true });
   };
 
   const handleSaveLine = () => {
@@ -515,7 +641,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     if (!selectedLineId) return;
     setLines(prev => prev.filter(l => l.id !== selectedLineId));
     setSelectedLineId(null);
-    setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
+    setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false, affectsStock: true });
   };
 
   const consultationInvoiceIds = (s: AppState, consultationId: string) => new Set(
@@ -635,7 +761,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     setSelectedLineId(null);
     setIsNewLine(false);
     setArticleSearch('');
-    setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
+    setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false, affectsStock: true });
     // Restaurer les demandes d'analyses labo dans le brouillon
     const restoredLabDraft = (c.labRequests || []).map((lr) => {
       const catalogMatch = state.labCatalog.find((e) => e.name === lr.examType && e.code === lr.code);
@@ -675,6 +801,11 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     // Garde anti double-soumission : évite les doublons de factures labo/écho
     if (submittingRef.current) return;
     submittingRef.current = true;
+    // En modification, la nouvelle consultation remplace l'ancien identifiant.
+    const replacedConsultationId = editSnapshotRef.current?.consultation.id;
+    const replacedExternalPrescription = replacedConsultationId
+      ? (state.externalPrescriptions || []).find((header) => header.consultationId === replacedConsultationId)
+      : undefined;
     // Consultation validée : le snapshot d'annulation n'est plus nécessaire
     editSnapshotRef.current = null;
     // Ordonnance NON obligatoire : diagnostic seul, analyses et/ou échographies suffisent
@@ -721,6 +852,19 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
       let next: AppState = {
         ...prev,
         consultations: [...prev.consultations, consultation],
+        prescriptionLines: [...(prev.prescriptionLines || []).filter((line) => line.consultationId !== consultation.id && line.consultationId !== replacedConsultationId), ...consultation.prescriptions.map((line) => ({
+          ...line,
+          affectsStock: line.affectsStock !== false,
+          consultationId: consultation.id,
+          patientId: selectedPatientId,
+          externalPrescriptionId: replacedExternalPrescription?.id,
+          source: replacedExternalPrescription ? ('external' as const) : ('consultation' as const),
+          createdAt: consultation.date,
+          createdBy: prev.currentUser?.id,
+        }))],
+        externalPrescriptions: (prev.externalPrescriptions || []).map((header) =>
+          header.consultationId === replacedConsultationId ? { ...header, consultationId: consultation.id, status: 'awaiting_payment' as const } : header
+        ),
         patients: prev.patients.map((p) => p.id === selectedPatientId
           ? { ...p, status: nextStatus, lastVisitAt: new Date().toISOString() }
           : p),
@@ -767,7 +911,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     setSelectedPatientId(null); setConsultForm({ visitReason: '', diagnosis: '', notes: '', isEmergency: false, hospitalizeRequested: false, surgeryRequested: false });
     setVitals({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' });
     setLines([]); setSearchQuery(''); setSelectedLineId(null); setIsNewLine(false);
-    setArticleSearch(''); setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
+    setArticleSearch(''); setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false, affectsStock: true });
     setLabDraft([]); setLabSearch(''); setEchoDraft([]); setEchoSearch('');
     setLabDraftIdx(-1); setEchoDraftIdx(-1);
     setView('queue');
@@ -791,10 +935,43 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
           </div>
         </div>
       )}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="bg-white rounded-xl p-4 shadow-sm border cursor-pointer hover:border-amber-400" onClick={() => setView('queue')}><div className="flex items-center gap-3"><div className="p-2 bg-amber-100 rounded-lg"><Clock className="w-5 h-5 text-amber-600" /></div><div><div className="text-2xl font-bold">{myWaiting.length}</div><div className="text-sm text-slate-500">En attente</div></div></div></div>
         <div className="bg-white rounded-xl p-4 shadow-sm border cursor-pointer hover:border-emerald-400" onClick={() => setView('my_consults')}><div className="flex items-center gap-3"><div className="p-2 bg-green-100 rounded-lg"><CheckCircle className="w-5 h-5 text-green-600" /></div><div><div className="text-2xl font-bold">{myTodayConsults.length}</div><div className="text-sm text-slate-500">Mes consultations (auj.)</div></div></div></div>
+        <div className="bg-white rounded-xl p-4 shadow-sm border cursor-pointer hover:border-violet-400" onClick={() => setView('external_prescription')}><div className="flex items-center gap-3"><div className="p-2 bg-violet-100 rounded-lg"><FileText className="w-5 h-5 text-violet-600" /></div><div><div className="text-lg font-bold">Ordonnance externe</div><div className="text-sm text-slate-500">Saisie & facturation</div></div></div></div>
       </div>
+
+      {/* ORDONNANCE EXTERNE */}
+      {view === 'external_prescription' && (
+        <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+          <div className="p-4 bg-violet-700 text-white">
+            <h3 className="font-bold flex items-center gap-2"><FileText className="w-5 h-5" /> Saisie d’une ordonnance externe</h3>
+            <p className="text-xs text-violet-100 mt-1">Chaque ligne peut être facturée avec ou sans sortie du stock pharmacie.</p>
+          </div>
+          <div className="p-4 space-y-4">
+            <div className="grid md:grid-cols-3 gap-3">
+              <div className="relative">
+                <label className="block text-xs font-bold text-slate-600 mb-1">Patient / salarié *</label>
+                <input value={externalPatientSearch} onChange={(e) => { setExternalPatientSearch(e.target.value); setExternalPatientId(''); }} placeholder="Nom, dossier ou matricule..." className="w-full border rounded-lg px-3 py-2 text-sm" />
+                {externalPatientResults.length > 0 && !externalPatientId && <div className="absolute z-30 top-full left-0 right-0 bg-white border shadow-xl max-h-52 overflow-auto">{externalPatientResults.map((patient) => <button key={patient.id} type="button" onClick={() => { setExternalPatientId(patient.id); setExternalPatientSearch(`${patient.lastName} ${patient.firstName} (${patient.dossier})`); }} className="block w-full text-left px-3 py-2 hover:bg-violet-50 border-b text-sm cursor-pointer"><strong>{patient.lastName} {patient.firstName}</strong><span className="block text-xs text-slate-500">{patient.dossier}{patient.company ? ` — ${patient.company}` : ''}</span></button>)}</div>}
+              </div>
+              <label className="block text-xs font-bold text-slate-600">Prescripteur externe<input value={externalPrescriber} onChange={(e) => setExternalPrescriber(e.target.value)} placeholder="Dr / établissement (optionnel)" className="block w-full mt-1 border rounded-lg px-3 py-2 text-sm font-normal" /></label>
+              <label className="block text-xs font-bold text-slate-600">Observation<input value={externalNotes} onChange={(e) => setExternalNotes(e.target.value)} className="block w-full mt-1 border rounded-lg px-3 py-2 text-sm font-normal" /></label>
+            </div>
+
+            <div className="p-3 bg-slate-50 border rounded-xl grid md:grid-cols-12 gap-2 items-end">
+              <label className="md:col-span-4 text-xs font-bold text-slate-600">Médicament<select value={externalArticleId} onChange={(e) => setExternalArticleId(e.target.value)} className="block w-full mt-1 border rounded px-2 py-2 bg-white"><option value="">Choisir un article...</option>{state.articles.map((article) => <option key={article.id} value={article.id}>{article.name} — stock {article.stockPharmacie}</option>)}</select></label>
+              <label className="md:col-span-1 text-xs font-bold text-slate-600">Qté<input type="number" min={1} value={externalQuantity} onChange={(e) => setExternalQuantity(parseInt(e.target.value) || 1)} className="block w-full mt-1 border rounded px-2 py-2" /></label>
+              <label className="md:col-span-3 text-xs font-bold text-slate-600">Posologie<input value={externalPosology} onChange={(e) => setExternalPosology(e.target.value)} placeholder="1 cp matin et soir" className="block w-full mt-1 border rounded px-2 py-2" /></label>
+              <label className="md:col-span-2 flex items-center gap-2 p-2 bg-white border rounded cursor-pointer text-xs font-bold text-slate-700"><input type="checkbox" checked={externalAffectsStock} onChange={(e) => setExternalAffectsStock(e.target.checked)} className="h-4 w-4 accent-emerald-600" /> Impact stock</label>
+              <button type="button" onClick={addExternalLine} disabled={!externalArticleId || !externalPatient} className="md:col-span-2 px-3 py-2 bg-violet-600 text-white rounded font-bold text-xs disabled:opacity-40 cursor-pointer"><Plus className="w-4 h-4 inline" /> Ajouter</button>
+            </div>
+
+            <div className="border rounded-xl overflow-auto"><table className="w-full text-xs"><thead className="bg-slate-100"><tr><th className="p-2 text-left">Médicament</th><th className="p-2 text-right">Qté</th><th className="p-2 text-left">Posologie</th><th className="p-2 text-center">Impact stock</th><th className="p-2 text-right">Montant</th><th className="p-2"></th></tr></thead><tbody>{externalLines.map((line) => <tr key={line.id} className="border-t"><td className="p-2 font-bold">{line.articleName}</td><td className="p-2 text-right">{line.quantity}</td><td className="p-2">{line.posology || '—'}</td><td className="p-2 text-center"><button type="button" onClick={() => setExternalLines((prev) => prev.map((item) => item.id === line.id ? { ...item, affectsStock: item.affectsStock === false } : item))} className={`px-2 py-1 rounded font-bold cursor-pointer ${line.affectsStock !== false ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>{line.affectsStock !== false ? '✓ Oui' : 'Non'}</button></td><td className="p-2 text-right font-mono font-bold">{formatAr(lineAmount(line))}</td><td className="p-2 text-center"><button type="button" onClick={() => setExternalLines((prev) => prev.filter((item) => item.id !== line.id))} className="text-rose-600 cursor-pointer"><Trash2 className="w-4 h-4" /></button></td></tr>)}{externalLines.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-slate-400">Aucune ligne saisie.</td></tr>}</tbody><tfoot className="bg-violet-50 font-bold"><tr><td colSpan={4} className="p-2 text-right">TOTAL</td><td className="p-2 text-right font-mono">{formatAr(externalTotal)}</td><td /></tr></tfoot></table></div>
+            <div className="flex justify-end"><button type="button" onClick={saveExternalPrescription} disabled={!externalPatient || externalLines.length === 0} className="px-5 py-2.5 bg-violet-700 text-white rounded-lg font-bold disabled:opacity-40 cursor-pointer"><Send className="w-4 h-4 inline mr-1" /> Enregistrer et envoyer à la caisse</button></div>
+          </div>
+        </div>
+      )}
 
       {/* MY CONSULTS */}
       {view === 'my_consults' && (
@@ -1107,6 +1284,10 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
                   )}
                 </div>
                 <div className="w-14"><label className="block text-[9px] text-slate-500">Qté</label><input type="number" min={1} value={lineForm.quantity} onChange={(e)=>updateLineForm('quantity',parseInt(e.target.value)||1)} onKeyDown={(e)=>{ if(e.key==='Enter'){e.preventDefault();handleSaveLine();}}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono outline-none focus:border-blue-500" /></div>
+                <label className="w-20 flex flex-col items-center text-[9px] text-slate-500 cursor-pointer" title="Coché : la délivrance décrémentera le stock pharmacie">
+                  Impact stock
+                  <input type="checkbox" checked={lineForm.affectsStock !== false} onChange={(e)=>updateLineForm('affectsStock',e.target.checked)} className="mt-1 h-4 w-4 accent-emerald-600" />
+                </label>
                 <div className="w-28"><label className="block text-[9px] text-slate-500">Posologie</label><input type="text" value={lineForm.posology} onChange={(e)=>updateLineForm('posology',e.target.value)} onKeyDown={(e)=>{ if(e.key==='Enter'){e.preventDefault();handleSaveLine();}}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs outline-none focus:border-blue-500" placeholder="1cp 3x/j" /></div>
                 <div className="w-14"><label className="block text-[9px] text-slate-500">Remise%</label><input type="number" min={0} max={100} value={lineForm.discount} onChange={(e)=>updateLineForm('discount',parseInt(e.target.value)||0)} onKeyDown={(e)=>{ if(e.key==='Enter'){e.preventDefault();handleSaveLine();}}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono outline-none focus:border-blue-500" /></div>
                 <div className="w-20"><label className="block text-[9px] text-slate-500">P.U.</label><input type="text" readOnly value={formatAr(lineForm.unitPrice)} className="w-full bg-slate-200 border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono" /></div>
@@ -1123,19 +1304,19 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
             <div className="bg-white mx-2 mb-2 border-t border-slate-300 overflow-x-auto rounded-b">
               <table className="w-full text-left border-collapse text-[11px]">
                 <thead className="bg-slate-50 border-b border-slate-300 text-slate-600">
-                  <tr className="divide-x divide-slate-200"><th className="p-1 min-w-[130px]">Désignation</th><th className="p-1 text-right w-12">Qté</th><th className="p-1 w-24">Posologie</th><th className="p-1 text-center w-12">Rem%</th><th className="p-1 text-right w-20">P.U.</th><th className="p-1 text-right w-24">Montant</th></tr>
+                  <tr className="divide-x divide-slate-200"><th className="p-1 min-w-[130px]">Désignation</th><th className="p-1 text-right w-12">Qté</th><th className="p-1 text-center w-20">Impact stock</th><th className="p-1 w-24">Posologie</th><th className="p-1 text-center w-12">Rem%</th><th className="p-1 text-right w-20">P.U.</th><th className="p-1 text-right w-24">Montant</th></tr>
                 </thead>
                 <tbody className="divide-y font-mono">
                   {lines.map((l) => {
                     const isSel = l.id === selectedLineId;
                     return (<tr key={l.id} onClick={() => { setSelectedLineId(l.id); setIsNewLine(false); }} className={`cursor-pointer divide-x divide-slate-200 transition-colors ${isSel ? 'bg-blue-500 text-white font-medium' : 'hover:bg-slate-50 text-slate-800'}`}>
-                      <td className="p-1 font-sans">{l.articleName}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 font-sans">{l.posology || '—'}</td><td className="p-1 text-center">{l.discount > 0 ? `${l.discount}%` : '—'}</td><td className="p-1 text-right">{l.unitPrice.toLocaleString('fr-FR')}</td><td className="p-1 text-right font-bold">{lineAmount(l).toLocaleString('fr-FR')}</td>
+                      <td className="p-1 font-sans">{l.articleName}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 text-center font-sans">{l.affectsStock !== false ? '✓ Oui' : '— Non'}</td><td className="p-1 font-sans">{l.posology || '—'}</td><td className="p-1 text-center">{l.discount > 0 ? `${l.discount}%` : '—'}</td><td className="p-1 text-right">{l.unitPrice.toLocaleString('fr-FR')}</td><td className="p-1 text-right font-bold">{lineAmount(l).toLocaleString('fr-FR')}</td>
                     </tr>);
                   })}
-                  {lines.length === 0 && <tr><td colSpan={6} className="p-3 text-center text-slate-400 font-sans">Ordonnance optionnelle — tapez un article (↑↓ Entrée) ou validez sans médicament</td></tr>}
+                  {lines.length === 0 && <tr><td colSpan={7} className="p-3 text-center text-slate-400 font-sans">Ordonnance optionnelle — tapez un article (↑↓ Entrée) ou validez sans médicament</td></tr>}
                 </tbody>
                 {lines.length > 0 && <tfoot className="bg-emerald-50 border-t-2 border-emerald-300 font-sans">
-                  <tr className="divide-x divide-emerald-200"><td colSpan={4} className="p-1 text-right font-bold">TOTAL:</td><td colSpan={2} className="p-1 text-right font-mono font-bold text-lg text-emerald-800">{formatAr(totalPres)}</td></tr>
+                  <tr className="divide-x divide-emerald-200"><td colSpan={5} className="p-1 text-right font-bold">TOTAL:</td><td colSpan={2} className="p-1 text-right font-mono font-bold text-lg text-emerald-800">{formatAr(totalPres)}</td></tr>
                 </tfoot>}
               </table>
             </div>

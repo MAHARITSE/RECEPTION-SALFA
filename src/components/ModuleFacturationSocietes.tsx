@@ -24,14 +24,22 @@ const monthLabel = (month: string) =>
 const currentMonth = () => new Date().toISOString().slice(0, 7);
 const today = () => new Date().toISOString().slice(0, 10);
 
+/** Convertit les montants historiques/incomplets sans propager NaN dans l'interface. */
+const safeNumber = (value: unknown, fallback = 0) => {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+};
+
 const invoiceStatusLabel = (inv: Invoice, state: AppState) => {
+  const itemsTotal = (inv.items || []).reduce((sum, item) => sum + safeNumber(item.amount), 0);
+  const invoiceTotal = safeNumber(inv.totalAmount, itemsTotal);
   const totalPaid = state.companyBillingAccounts
-    .flatMap(a => a.payments.filter(p => p.invoiceIds?.includes(inv.id)).map(p => p.amount))
+    .flatMap(a => (a.payments || []).filter(p => p.invoiceIds?.includes(inv.id)).map(p => safeNumber(p.amount)))
     .reduce((s, v) => s + v, 0);
-  if (inv.status === 'paid') return { label: 'Payée', color: 'bg-emerald-100 text-emerald-700', paid: inv.totalAmount, balance: 0 };
-  if (totalPaid >= inv.totalAmount) return { label: 'Payée', color: 'bg-emerald-100 text-emerald-700', paid: inv.totalAmount, balance: 0 };
-  if (totalPaid > 0) return { label: 'Partiellement payée', color: 'bg-amber-100 text-amber-700', paid: totalPaid, balance: inv.totalAmount - totalPaid };
-  return { label: 'Impayée', color: 'bg-rose-100 text-rose-700', paid: 0, balance: inv.totalAmount };
+  if (inv.status === 'paid') return { label: 'Payée', color: 'bg-emerald-100 text-emerald-700', paid: invoiceTotal, balance: 0 };
+  if (totalPaid > 0 && totalPaid >= invoiceTotal) return { label: 'Payée', color: 'bg-emerald-100 text-emerald-700', paid: invoiceTotal, balance: 0 };
+  if (totalPaid > 0) return { label: 'Partiellement payée', color: 'bg-amber-100 text-amber-700', paid: totalPaid, balance: invoiceTotal - totalPaid };
+  return { label: 'Impayée', color: 'bg-rose-100 text-rose-700', paid: 0, balance: invoiceTotal };
 };
 
 const invoiceDesignation = (inv: Invoice, state: AppState, separator = ', ') => {
@@ -92,6 +100,8 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
   const [activeCategory, setActiveCategory] = useState<'consultation' | 'lab' | 'pharmacy' | 'surgery' | 'hospitalization' | 'echo'>('pharmacy');
   const [activeQuantity, setActiveQuantity] = useState(1);
   const [activeUnitPrice, setActiveUnitPrice] = useState(0);
+  const [activeAffectsStock, setActiveAffectsStock] = useState(true);
+  const [activeArticleId, setActiveArticleId] = useState<string | undefined>();
   const [sageSearchIdx, setSageSearchIdx] = useState(0);
   const sageSearchRef = useRef<HTMLInputElement>(null);
 
@@ -99,6 +109,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
     type CatalogCategory = 'consultation' | 'lab' | 'pharmacy' | 'surgery' | 'hospitalization' | 'echo';
     interface PredefinedItem {
       code: string;
+      articleId?: string;
       description: string;
       category: CatalogCategory;
       price: number;
@@ -126,7 +137,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
         code: exam.code || exam.id,
         description: exam.name,
         category: 'lab',
-        price: exam.price,
+        price: exam.priceSociete,
         familyLabel: 'Laboratoire',
         badgeColor: 'bg-blue-100 text-blue-800',
       });
@@ -135,7 +146,8 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
     // Ajouter tous les articles / médicaments / consommables
     (state.articles || []).forEach(art => {
       items.push({
-        code: art.id || art.code || 'PHA',
+        code: art.id || 'PHA',
+        articleId: art.id,
         description: art.name,
         category: 'pharmacy',
         price: art.priceSociete || art.priceComptoir || 0,
@@ -205,7 +217,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
           company: acc.company,
           month: acc.month,
           amount: p.amount,
-          method: p.method,
+          method: p.method || 'Non précisé',
           reference: p.reference,
           observation: p.observation,
           beneficiaryLabel: beneficiary,
@@ -229,12 +241,13 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
       if ((inv.status === 'paid' || inv.paidAt) && !existingPayInvIds.has(inv.id)) {
         const pat = state.patients.find(pt => pt.id === inv.patientId);
         const patName = pat ? `${pat.lastName} ${pat.firstName}` : (inv.clientName || 'Salarié');
-        const isCompanyInv = Boolean(inv.clientType === 'societe' || inv.companyName);
+        const invoiceCompany = pat?.company || (inv.clientType === 'societe' ? inv.clientName : undefined);
+        const isCompanyInv = Boolean(inv.clientType === 'societe' || invoiceCompany);
         list.push({
           id: `invpay-${inv.id}`,
           date: inv.paidAt || inv.createdAt,
           type: 'individuel',
-          company: inv.companyName || (isCompanyInv ? 'Société conventionnée' : 'Patient individuel'),
+          company: invoiceCompany || (isCompanyInv ? 'Société conventionnée' : 'Patient individuel'),
           month: inv.createdAt.slice(0, 7),
           amount: inv.totalAmount,
           method: 'Versement / Caisse',
@@ -278,7 +291,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
             ...acc,
             payments: filteredPayments,
             paidAmount: newPaid,
-            status: newPaid >= acc.totalAmount ? ('paid' as const) : ('pending' as const),
+            status: newPaid >= acc.totalAmount ? ('paid' as const) : newPaid > 0 ? ('partial' as const) : ('open' as const),
           };
         });
       }
@@ -287,7 +300,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
           if (!p.invoiceIds!.includes(inv.id)) return inv;
           return {
             ...inv,
-            status: 'unpaid' as const,
+            status: 'pending' as const,
             paidAt: undefined,
             paidBy: undefined,
           };
@@ -302,11 +315,12 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
     const setComp = new Set<string>();
     state.companyBillingAccounts.forEach(a => setComp.add(a.company));
     state.invoices.forEach(i => {
-      if (i.companyName) setComp.add(i.companyName);
-      else if (i.clientType === 'societe') setComp.add('Société conventionnée');
+      const patientCompany = i.patientId ? state.patients.find((patient) => patient.id === i.patientId)?.company : undefined;
+      if (patientCompany) setComp.add(patientCompany);
+      else if (i.clientType === 'societe') setComp.add(i.clientName || 'Société conventionnée');
     });
     return Array.from(setComp).sort();
-  }, [state.companyBillingAccounts, state.invoices]);
+  }, [state.companyBillingAccounts, state.invoices, state.patients]);
 
   const histAvailableMonths = useMemo(() => {
     const setM = new Set<string>();
@@ -557,6 +571,12 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
         if (inv.status === 'paid') return inv;
         return { ...inv, status: 'paid' as const, paidAt: iso, paidBy: prev.currentUser?.id };
       });
+      const paidConsultationIds = new Set(next.invoices
+        .filter((invoice) => payingAccount.invoiceIds.includes(invoice.id) && invoice.consultationId)
+        .map((invoice) => invoice.consultationId as string));
+      next.externalPrescriptions = (next.externalPrescriptions || []).map((header) =>
+        paidConsultationIds.has(header.consultationId) ? { ...header, status: 'paid' as const } : header
+      );
       next.patients = next.patients.map(p => {
         if (p.clientType !== 'societe' || p.company !== payingAccount.company) return p;
         return { ...p, lastVisitAt: iso };
@@ -678,6 +698,11 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
           paidBy: isNowFullyPaid ? prev.currentUser?.id : i.paidBy,
         };
       });
+      if (isNowFullyPaid && inv.consultationId) {
+        next.externalPrescriptions = (next.externalPrescriptions || []).map((header) =>
+          header.consultationId === inv.consultationId ? { ...header, status: 'paid' as const } : header
+        );
+      }
 
       // 2. Créer ou mettre à jour le compte de facturation société
       const invMonth = inv.createdAt.slice(0, 7);
@@ -757,15 +782,20 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
 
   const startEditingInvoice = (inv: Invoice) => {
     setEditingInvoice(inv);
-    const enrichedItems = inv.items.map((item, idx) => {
-      const q = item.quantity || 1;
-      const pu = item.unitPrice !== undefined ? item.unitPrice : (item.amount / q);
+    // Compatibilité avec les lignes créées par les anciennes versions : elles
+    // pouvaient ne contenir que unitPrice, ou uniquement amount.
+    const enrichedItems = (inv.items || []).map((item, idx) => {
+      const q = Math.max(1, safeNumber(item.quantity, 1));
+      const storedAmount = safeNumber(item.amount);
+      const pu = item.unitPrice !== undefined
+        ? safeNumber(item.unitPrice)
+        : storedAmount / q;
       return {
         ...item,
         code: item.code || `ACT-${String(idx + 1).padStart(2, '0')}`,
         quantity: q,
         unitPrice: pu,
-        amount: item.amount,
+        amount: item.amount !== undefined ? storedAmount : q * pu,
       };
     });
     setEditingItems(enrichedItems);
@@ -777,6 +807,8 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
     setActiveCategory('pharmacy');
     setActiveQuantity(1);
     setActiveUnitPrice(0);
+    setActiveAffectsStock(true);
+    setActiveArticleId(undefined);
     setSageSearchIdx(0);
   };
 
@@ -787,8 +819,13 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
       setActiveCode(item.code || '');
       setActiveDescription(item.description);
       setActiveCategory(item.category);
-      setActiveQuantity(item.quantity || 1);
-      setActiveUnitPrice(item.unitPrice !== undefined ? item.unitPrice : (item.amount / (item.quantity || 1)));
+      setActiveAffectsStock(item.affectsStock !== false);
+      setActiveArticleId(item.articleId);
+      const quantity = Math.max(1, safeNumber(item.quantity, 1));
+      setActiveQuantity(quantity);
+      setActiveUnitPrice(item.unitPrice !== undefined
+        ? safeNumber(item.unitPrice)
+        : safeNumber(item.amount) / quantity);
       setSageSearch('');
       setSageSearchIdx(0);
     }
@@ -801,6 +838,8 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
     setActiveCategory('pharmacy');
     setActiveQuantity(1);
     setActiveUnitPrice(0);
+    setActiveAffectsStock(true);
+    setActiveArticleId(undefined);
     setSageSearch('');
     setSageSearchIdx(0);
     setTimeout(() => sageSearchRef.current?.focus(), 50);
@@ -815,10 +854,12 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
 
     const newLine: InvoiceItem = {
       code: activeCode || `ACT-${String(editingItems.length + 1).padStart(2, '0')}`,
+      articleId: activeArticleId,
       description: activeDescription.trim(),
       category: activeCategory,
       quantity: qty,
       unitPrice: pu,
+      affectsStock: activeCategory === 'pharmacy' ? activeAffectsStock : false,
       amount: amount,
     };
 
@@ -847,13 +888,16 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
 
   const handleSelectCatalogItem = (catalogItem: {
     code: string;
+    articleId?: string;
     description: string;
     category: 'consultation' | 'lab' | 'pharmacy' | 'surgery' | 'hospitalization' | 'echo';
     price: number;
   }) => {
     setActiveCode(catalogItem.code);
+    setActiveArticleId(catalogItem.articleId);
     setActiveDescription(catalogItem.description);
     setActiveCategory(catalogItem.category);
+    setActiveAffectsStock(catalogItem.category === 'pharmacy');
     setActiveUnitPrice(catalogItem.price);
     if (activeQuantity <= 0) {
       setActiveQuantity(1);
@@ -953,11 +997,31 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
         }),
       };
 
-      // Si l'acte/facture provient d'une consultation, on met aussi à jour la consultation si nécessaire
+      // L'impact stock est exécuté à la délivrance pharmacie, jamais au simple
+      // enregistrement de la facture. On synchronise donc le choix avec la ligne
+      // d'ordonnance liée afin que la délivrance sache quoi décrémenter.
       if (editingInvoice.consultationId) {
-        next.consultations = next.consultations.map(c => {
-          if (c.id !== editingInvoice.consultationId) return c;
-          return c;
+        const pharmacyItems = normalizedItems.filter((item) => item.category === 'pharmacy');
+        next.consultations = next.consultations.map((consultation) => {
+          if (consultation.id !== editingInvoice.consultationId) return consultation;
+          return {
+            ...consultation,
+            prescriptions: consultation.prescriptions.map((prescription) => {
+              const item = pharmacyItems.find((candidate) =>
+                (candidate.articleId && candidate.articleId === prescription.articleId)
+                || candidate.description.toLowerCase().includes(prescription.articleName.toLowerCase())
+              );
+              return item ? { ...prescription, affectsStock: item.affectsStock !== false } : prescription;
+            }),
+          };
+        });
+        next.prescriptionLines = (next.prescriptionLines || []).map((line) => {
+          if (line.consultationId !== editingInvoice.consultationId) return line;
+          const item = pharmacyItems.find((candidate) =>
+            (candidate.articleId && candidate.articleId === line.articleId)
+            || candidate.description.toLowerCase().includes(line.articleName.toLowerCase())
+          );
+          return item ? { ...line, affectsStock: item.affectsStock !== false } : line;
         });
       }
 
@@ -1967,6 +2031,10 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                         className="w-full bg-slate-200 border border-slate-300 rounded px-2.5 py-1 text-xs text-right font-mono font-bold text-slate-600"
                       />
                     </div>
+                    <label className="col-span-2 flex items-center gap-2 px-2.5 py-1 bg-white border border-slate-300 rounded text-[10px] font-bold text-slate-700 cursor-pointer" title="La sortie sera appliquée lors de la délivrance par la pharmacie">
+                      <input type="checkbox" checked={activeAffectsStock} disabled={activeCategory !== 'pharmacy'} onChange={(e) => setActiveAffectsStock(e.target.checked)} className="h-4 w-4 accent-emerald-600" />
+                      Impact stock
+                    </label>
 
                   </div>
 
@@ -2008,6 +2076,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                       <th className="p-2">Désignation / Acte / Médicament</th>
                       <th className="p-2 w-32 text-center">Catégorie</th>
                       <th className="p-2 w-16 text-right">Qté</th>
+                      <th className="p-2 w-24 text-center">Impact stock</th>
                       <th className="p-2 w-24 text-right">P.U. (Ar)</th>
                       <th className="p-2 w-28 text-right">Montant (Ar)</th>
                     </tr>
@@ -2043,18 +2112,22 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                             </span>
                           </td>
                           <td className="p-2 text-right">{item.quantity || 1}</td>
+                          <td className="p-2 text-center font-sans text-[10px] font-bold">{item.category === 'pharmacy' ? (item.affectsStock !== false ? '✓ Oui' : 'Non') : '—'}</td>
                           <td className="p-2 text-right">
-                            {(item.unitPrice !== undefined ? item.unitPrice : (item.amount / (item.quantity || 1))).toLocaleString('fr-FR')}
+                            {safeNumber(item.unitPrice !== undefined
+                              ? item.unitPrice
+                              : safeNumber(item.amount) / Math.max(1, safeNumber(item.quantity, 1))
+                            ).toLocaleString('fr-FR')}
                           </td>
                           <td className={`p-2 text-right font-bold ${isSel ? 'text-white' : 'text-indigo-900'}`}>
-                            {item.amount.toLocaleString('fr-FR')}
+                            {safeNumber(item.amount).toLocaleString('fr-FR')}
                           </td>
                         </tr>
                       );
                     })}
                     {editingItems.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="p-6 text-center text-slate-400 font-sans">
+                        <td colSpan={7} className="p-6 text-center text-slate-400 font-sans">
                           Aucun acte ou prescription dans cette facture. Utilisez la Saisie Sage ci-dessus pour ajouter des lignes.
                         </td>
                       </tr>
