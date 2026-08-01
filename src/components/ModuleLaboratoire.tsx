@@ -9,7 +9,7 @@ import {
 import { printLabResultTicket } from '../utils/printTicket';
 import {
   FlaskConical, CheckCircle, AlertTriangle, Send, Microscope, FileSearch,
-  Plus, Search, Printer, Syringe, Check,
+  Plus, Search, Printer, Check,
 } from 'lucide-react';
 
 interface Props {
@@ -161,12 +161,6 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
     });
   };
 
-  const receiveSample = (d: DispLab) => {
-    patchLab(d, { sampleReceived: true, sampleReceivedAt: new Date().toISOString(), status: 'sample_received' },
-      { patientId: d.patient?.id || d.lr.patientId || '', department: 'laboratoire', action: 'Échantillon réceptionné', details: `${d.lr.examType} — ${d.lr.sampleType || sampleType}`, actorId: state.currentUser?.id, actorName: state.currentUser?.name, labRequestId: d.lr.id });
-    setActiveLab({ ...d, lr: { ...d.lr, status: 'sample_received', sampleReceived: true } });
-  };
-
   const startAnalysis = (d: DispLab) => {
     patchLab(d, { status: 'in_progress' },
       { patientId: d.patient?.id || d.lr.patientId || '', department: 'laboratoire', action: 'Analyse en cours', details: d.lr.examType, actorId: state.currentUser?.id, actorName: state.currentUser?.name, labRequestId: d.lr.id });
@@ -179,6 +173,8 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
   };
 
   const submitResults = (d: DispLab) => {
+    const missingParameters = d.lr.parameters.filter((param) => !String(resultValues[param] ?? '').trim());
+    if (missingParameters.length > 0 && !window.confirm(`Attention : ${missingParameters.length} paramètre(s) ne sont pas renseignés (${missingParameters.join(', ')}). Valider malgré tout ?`)) return;
     const results = d.lr.parameters.map((param) => {
       const valRaw = resultValues[param];
       const valStr = valRaw !== undefined ? String(valRaw).trim() : '';
@@ -329,11 +325,27 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
 
   return (
     <div className="space-y-6 flex flex-col">
+      {/* Poste de travail laboratoire — suivi simple des analyses */}
+      <section className="rounded-2xl overflow-hidden shadow-lg bg-gradient-to-br from-slate-900 via-cyan-950 to-teal-900 text-white">
+        <div className="p-5 sm:p-6 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+          <div>
+            <div className="text-xs font-bold tracking-[0.18em] text-cyan-200">LABORATOIRE · TEMPS RÉEL</div>
+            <h3 className="text-2xl font-bold mt-1 flex items-center gap-2">🔬 Poste laboratoire</h3>
+            <p className="text-sm text-slate-300 mt-1">Suivez la file d'attente, les analyses et les résultats validés.</p>
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-center text-xs">
+            <div className="rounded-xl border border-white/10 bg-white/10 px-4 py-2"><div className="font-bold text-lg">{counts.awaiting}</div><div className="text-slate-300">File d'attente</div></div>
+            <div className="rounded-xl border border-white/10 bg-white/10 px-4 py-2"><div className="font-bold text-lg">{counts.in_progress}</div><div className="text-slate-300">En analyse</div></div>
+            <div className="rounded-xl border border-white/10 bg-white/10 px-4 py-2"><div className="font-bold text-lg">{counts.completed}</div><div className="text-slate-300">Résultats faits</div></div>
+          </div>
+        </div>
+      </section>
+
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-200">
-          <div className="flex items-center gap-3"><div className="p-2 bg-cyan-100 rounded-lg"><Syringe className="w-5 h-5 text-cyan-600" /></div>
-            <div><div className="text-2xl font-bold text-slate-800">{counts.awaiting}</div><div className="text-sm text-slate-500">En attente / échantillon</div></div></div>
+          <div className="flex items-center gap-3"><div className="p-2 bg-cyan-100 rounded-lg"><FlaskConical className="w-5 h-5 text-cyan-600" /></div>
+            <div><div className="text-2xl font-bold text-slate-800">{counts.awaiting}</div><div className="text-sm text-slate-500">File d'attente</div></div></div>
         </div>
         <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-200">
           <div className="flex items-center gap-3"><div className="p-2 bg-blue-100 rounded-lg"><Microscope className="w-5 h-5 text-blue-600" /></div>
@@ -359,7 +371,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
 
 
           <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-cyan-500 text-sm" placeholder="Rechercher patient ou examen..." />
+          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-cyan-500 text-sm" placeholder={tab === 'completed' ? 'Rechercher une personne dans les résultats...' : 'Rechercher patient ou examen...'} />
         </div>
         <select value={filterCat} onChange={(e) => setFilterCat(e.target.value)} className="px-3 py-2 border border-slate-300 rounded-lg text-sm cursor-pointer">
           <option value="all">Toutes catégories</option>
@@ -371,9 +383,9 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="flex border-b border-slate-200 overflow-x-auto">
           {[
-            { key: 'awaiting' as Tab, label: `En attente (${counts.awaiting})` },
+            { key: 'awaiting' as Tab, label: `File d'attente (${counts.awaiting})` },
             { key: 'in_progress' as Tab, label: `En cours (${counts.in_progress})` },
-            { key: 'completed' as Tab, label: `Terminées (${counts.completed})` },
+            { key: 'completed' as Tab, label: `Résultats (${counts.completed})` },
             { key: 'all' as Tab, label: 'Toutes' },
           ].map((t) => (
             <button
@@ -422,8 +434,8 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
                           <span className="px-3 py-1.5 bg-amber-100 text-amber-800 rounded-lg text-xs font-semibold">En attente de paiement (caisse)</span>
                         )}
                         {st === 'paid' && (
-                          <button onClick={() => receiveSample(d)} className="px-3 py-1.5 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 text-xs flex items-center gap-1 cursor-pointer">
-                            <Syringe className="w-3.5 h-3.5" /> Réception échantillon
+                          <button onClick={() => startAnalysis(d)} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-xs flex items-center gap-1 cursor-pointer">
+                            <Microscope className="w-3.5 h-3.5" /> Démarrer l'analyse
                           </button>
                         )}
                         {(st === 'sample_received') && (
