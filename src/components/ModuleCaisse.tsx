@@ -198,7 +198,11 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     payingRef.current = true;
     const unpaidConsults = getConsults(selPatient.id);
     const medicationItems: InvoiceItem[] = unpaidConsults.flatMap(c => c.prescriptions.map(p => ({
+      articleId: p.articleId,
       description: `${p.articleName} × ${p.quantity}${p.discount > 0 ? ` (-${p.discount}%)` : ''}`,
+      quantity: p.quantity,
+      unitPrice: p.unitPrice,
+      affectsStock: p.affectsStock !== false,
       amount: Math.round(p.unitPrice * p.quantity * (1 - p.discount / 100)), category: 'pharmacy' as const,
     })));
     const serviceInvoices = pendingServiceInvoices.filter(i => i.patientId === selPatient.id);
@@ -279,6 +283,11 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
             ),
           };
         }),
+        externalPrescriptions: (prev.externalPrescriptions || []).map((header) =>
+          unpaidConsults.some((consultation) => consultation.id === header.consultationId)
+            ? { ...header, status: 'paid' as const }
+            : header
+        ),
         // lastVisitAt mis à jour au paiement (clients déjà payés inclus)
         patients: prev.patients.map(p => p.id === selPatient.id
           ? { ...p, status: 'invoice_paid' as const, lastVisitAt: paidAt }
