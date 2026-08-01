@@ -31,8 +31,7 @@ Le diagramme d'accompagnement se trouve dans le fichier [`schema-base-donnees.sv
 | Entité | Description |
 |--------|-------------|
 | **Consultations** | Actes médicaux : motif, diagnostic, notes, constantes, prescriptions, demandes labo/écho, hospitalisation, chirurgie. |
-| **Ordonnances / Prescriptions** | En-tête clinique conservé dans la consultation et table normalisée `prescriptionLines` pour chaque médicament (quantité, posologie, prix, délivrée oui/non, **impact stock oui/non**). |
-| **Ordonnances externes** | En-têtes `externalPrescriptions` saisis par le médecin pour une ordonnance provenant de l'extérieur, liés au patient, à une consultation technique et aux lignes normalisées. |
+| **Ordonnances / Prescriptions** | Lignes de médicaments prescrites par le médecin (quantité, posologie, durée, remise, délivrée oui/non). |
 | **Laboratoire** | Catalogue d'examens (`LabExamCatalog`) + demandes d'analyses (`LabRequest`) avec résultat, urgence, prélèvement, validation. |
 | **Échographies** | Demandes d'échographie liées aux consultations. |
 | **Hospitalisation** | Dossiers d'hospitalisation avec lignes d'actes et paiements partiels. |
@@ -77,9 +76,7 @@ Utilisateurs (1) ──< (N) Mouvements de stock     (magasinier / pharmacie)
 Sociétés     (1) ──< (N) Patients                (salariés rattachés)
 Patients     (1) ──< (N) Consultations
 Patients     (1) ──< (N) Factures
-Consultations(1) ──< (N) PrescriptionLines
-ExternalPrescriptions(1) ──< (N) PrescriptionLines
-Patients     (1) ──< (N) ExternalPrescriptions
+Consultations(1) ──< (N) Prescriptions
 Consultations(1) ──< (N) Demandes labo / écho
 Factures     (1) ──< (N) Lignes facture
 Factures     (1) ──< (N) Paiements
@@ -103,8 +100,6 @@ Utilisateurs (1) ──< (N) Messages (expéditeur & destinataire)
 4. **Le relevé mensuel** ne peut être soldé qu'après saisie du montant, de la date, du mode de paiement, de la référence et de l'observation ; le responsable facturation qui valide est enregistré.
 5. **Paiements partiels** supportés sur les factures *individuelles société* et les dossiers hospitalisation/bloc.
 6. **Le dossier patient**, ses paramètres vitaux et l'historique réglé sont **toujours conservés**.
-7. **Impact stock par ligne d'ordonnance** : `affectsStock = true` décrémente le stock pharmacie uniquement lors de la délivrance ; `false` permet la facturation et le suivi sans mouvement ni contrôle de disponibilité. L'enregistrement ou le paiement seul ne modifie jamais le stock.
-8. **Ordonnance externe** : elle doit être liée à un patient existant. Sa validation crée un en-tête externe, ses lignes normalisées et une consultation technique envoyée au circuit de paiement existant.
 
 ---
 

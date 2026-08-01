@@ -239,7 +239,7 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
 
     // Vérifier stock + blocages avant délivrance
     const blocked = consultation.prescriptions.filter((p) => {
-      if (p.delivered || p.affectsStock === false) return false;
+      if (p.delivered) return false;
       const art = state.articles.find((a) => a.name === p.articleName || a.id === p.articleId);
       return art?.saleBlocked;
     });
@@ -253,7 +253,7 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
       return;
     }
     const outOfStock = consultation.prescriptions.filter((p) => {
-      if (p.delivered || p.affectsStock === false) return false;
+      if (p.delivered) return false;
       const art = state.articles.find((a) => a.name === p.articleName || a.id === p.articleId);
       return !art || art.stockPharmacie < p.quantity;
     });
@@ -268,7 +268,7 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
       const venteLines: any[] = [];
 
       consultation.prescriptions.forEach((p) => {
-        if (p.delivered || p.affectsStock === false) return;
+        if (p.delivered) return;
         const idx = updatedArticles.findIndex((a) => a.name === p.articleName || a.id === p.articleId);
         if (idx >= 0) {
           updatedArticles[idx] = { ...updatedArticles[idx], stockPharmacie: Math.max(0, updatedArticles[idx].stockPharmacie - p.quantity) };
@@ -326,8 +326,6 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
         ...prev,
         consultations: updatedConsultations,
         articles: updatedArticles,
-        prescriptionLines: (prev.prescriptionLines || []).map((line) => line.consultationId === consultationId ? { ...line, delivered: true } : line),
-        externalPrescriptions: (prev.externalPrescriptions || []).map((header) => header.consultationId === consultationId ? { ...header, status: 'delivered' as const } : header),
         pharmaDeliveryItems: [...(prev.pharmaDeliveryItems || []), ...newDeliveryItems],
         patients: patient ? prev.patients.map((p) => p.id === consultation.patientId ? { ...p, status: newStatus as any } : p) : prev.patients,
       };
@@ -772,7 +770,6 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                               <th className="text-center py-2 font-semibold">Qté</th>
                               <th className="text-left py-2 font-semibold">Posologie</th>
                               <th className="text-right py-2 font-semibold">Stock Pharma</th>
-                              <th className="text-center py-2 font-semibold">Impact stock</th>
                               <th className="text-center py-2 font-semibold">Statut</th>
                             </tr>
                           </thead>
@@ -786,12 +783,9 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                                   <td className="py-2.5 font-bold text-slate-800">{p.articleName}</td>
                                   <td className="py-2.5 text-center font-mono font-bold text-purple-700">{p.quantity}</td>
                                   <td className="py-2.5 text-xs text-slate-600 font-sans">{p.posology || '—'}</td>
-                                  <td className={`py-2.5 text-right font-mono font-bold ${(art?.stockPharmacie || 0) <= 0 && p.affectsStock !== false ? 'text-red-600' : 'text-slate-700'}`}>{p.affectsStock === false ? '—' : (art?.stockPharmacie || 0)}</td>
-                                  <td className="py-2.5 text-center"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${p.affectsStock !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'}`}>{p.affectsStock !== false ? '✓ Oui' : 'Non'}</span></td>
+                                  <td className={`py-2.5 text-right font-mono font-bold ${(art?.stockPharmacie || 0) <= 0 ? 'text-red-600' : 'text-slate-700'}`}>{art?.stockPharmacie || 0}</td>
                                   <td className="py-2.5 text-center">
-                                    {p.affectsStock === false ? (
-                                      <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] rounded-full font-bold">Sans sortie stock</span>
-                                    ) : blocked ? (
+                                    {blocked ? (
                                       <span className="px-2 py-0.5 bg-orange-100 text-orange-800 text-[10px] rounded-full font-bold">⛔ Bloqué</span>
                                     ) : noStock ? (
                                       <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] rounded-full font-bold">Rupture</span>

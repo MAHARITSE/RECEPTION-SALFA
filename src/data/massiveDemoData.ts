@@ -509,21 +509,6 @@ export function createMassiveDemoState(): AppState {
     openedByUserId: 'USR-CASH',
   }));
 
-  // Table normalisée : une ligne d'ordonnance reste interrogeable sans parcourir
-  // le JSON imbriqué des consultations. Les ordonnances historiques impactent
-  // le stock par défaut, conformément au comportement antérieur.
-  const prescriptionLines: AppState['prescriptionLines'] = consultations.flatMap((consultation) =>
-    consultation.prescriptions.map((line) => ({
-      ...line,
-      affectsStock: line.affectsStock !== false,
-      consultationId: consultation.id,
-      patientId: consultation.patientId,
-      source: 'consultation' as const,
-      createdAt: consultation.date,
-      createdBy: consultation.doctorId,
-    }))
-  );
-
   return {
     currentUser: null,
     ticketSettings: {
@@ -599,8 +584,6 @@ export function createMassiveDemoState(): AppState {
     inventorySessions: [],
     movementHeaders,
     movementLines,
-    prescriptionLines,
-    externalPrescriptions: [],
     pharmaDeliveryItems,
     pharmaDeliveryClosings: [],
     pharmaClosingCounter: 0,

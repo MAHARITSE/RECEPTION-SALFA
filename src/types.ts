@@ -69,31 +69,6 @@ export interface Prescription {
   posology: string; duration: string; instructions: string;
   unitPrice: number; discount: number; // remise % par ligne
   delivered: boolean;
-  /** `false` = ligne facturée/suivie sans sortie du stock pharmacie. Par défaut : true. */
-  affectsStock?: boolean;
-}
-
-/** Table normalisée des lignes d'ordonnance (la consultation conserve son instantané). */
-export interface PrescriptionLine extends Prescription {
-  consultationId: string;
-  patientId: string;
-  externalPrescriptionId?: string;
-  source: 'consultation' | 'external';
-  createdAt: string;
-  createdBy?: string;
-}
-
-/** En-tête d'une ordonnance provenant d'un prescripteur externe à l'établissement. */
-export interface ExternalPrescription {
-  id: string;
-  consultationId: string;
-  patientId: string;
-  prescriberName?: string;
-  notes?: string;
-  status: 'awaiting_payment' | 'paid' | 'delivered';
-  createdAt: string;
-  createdBy?: string;
-  createdByName?: string;
 }
 
 export interface LabResult {
@@ -185,12 +160,9 @@ export interface Consultation {
 
 export interface InvoiceItem {
   code?: string;
-  articleId?: string;
   description: string;
   quantity?: number;
   unitPrice?: number;
-  /** Indique si la délivrance de cette ligne doit décrémenter le stock pharmacie. */
-  affectsStock?: boolean;
   amount: number;
   category: 'consultation' | 'lab' | 'pharmacy' | 'surgery' | 'hospitalization' | 'echo';
 }
