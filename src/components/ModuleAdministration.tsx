@@ -691,7 +691,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="flex min-h-0 flex-1 flex-col">
       {/* Toast Notification */}
       {toast && (
         <div className="fixed inset-0 z-[9999] pointer-events-none flex items-center justify-center p-4">
@@ -942,11 +942,10 @@ export default function ModuleAdministration({ state, setState }: Props) {
         </div>
       )}
 
-      {/* Main Admin Workspace Card */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="flex min-h-[calc(100vh-200px)]">
+      {/* Main Admin Workspace Card — occupe toute la fenêtre (hauteur restante) */}
+      <div className="flex min-h-0 flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           {/* Sidebar Menu administrateur */}
-          <aside className="w-72 shrink-0 border-r border-slate-800 bg-slate-900 text-white overflow-y-auto max-h-[calc(100vh-200px)]">
+          <aside className="w-72 shrink-0 border-r border-slate-800 bg-slate-900 text-white overflow-y-auto">
             <div className="sticky top-0 z-10 bg-slate-950/95 px-4 py-4 border-b border-white/10">
               <div className="flex items-center gap-2 font-bold text-sm text-emerald-400">
                 <Menu className="w-4 h-4 text-emerald-400" /> Console d'Administration
@@ -1010,7 +1009,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
           </aside>
 
           {/* Main Content Area */}
-          <section className="flex-1 min-w-0 bg-slate-50/70">
+          <section className="flex min-w-0 flex-1 flex-col bg-slate-50/70">
             {activeModule && (
               <div className="px-5 py-3 border-b bg-white flex items-center justify-between gap-3 shadow-xs">
                 <div>
@@ -1026,7 +1025,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
               </div>
             )}
 
-            <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 240px)' }}>
+            <div className="min-h-0 flex-1 overflow-y-auto p-6">
               {activeModule ? renderActiveModule() : (
                 <>
                   {/* ===== TAB 1: DASHBOARD ===== */}
@@ -2127,7 +2126,6 @@ export default function ModuleAdministration({ state, setState }: Props) {
               )}
             </div>
           </section>
-        </div>
       </div>
     </div>
   );
