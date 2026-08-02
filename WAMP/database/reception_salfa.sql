@@ -23,7 +23,7 @@ USE `reception_salfa`;
 -- ----------------------------------------------------------------------------
 --  Paramètres d'impression / établissement (1 seule ligne : id = 'default')
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_ticket_settings` (
+CREATE TABLE IF NOT EXISTS `parametres_impression` (
   `id`            VARCHAR(64) NOT NULL,
   `facility_name` VARCHAR(255) DEFAULT NULL,
   `currency`      VARCHAR(8)   DEFAULT NULL,
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS `salfa_ticket_settings` (
 --  Compteurs séquentiels (n° de facture, clôtures livraison pharmacie, dossiers)
 --  rows : id='factureCounter' / 'pharmaClosingCounter' / 'dossierCounter'
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_counters` (
+CREATE TABLE IF NOT EXISTS `compteurs` (
   `id`         VARCHAR(64) NOT NULL,
   `value`      BIGINT      NOT NULL DEFAULT 0,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS `salfa_counters` (
 -- ----------------------------------------------------------------------------
 --  Utilisateurs / comptes de connexion
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_users` (
+CREATE TABLE IF NOT EXISTS `utilisateurs` (
   `id`       VARCHAR(64) NOT NULL,
   `name`     VARCHAR(255) DEFAULT NULL,
   `role`     VARCHAR(32)  DEFAULT NULL,
@@ -55,13 +55,13 @@ CREATE TABLE IF NOT EXISTS `salfa_users` (
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `idx_users_role` (`role`)
+  KEY `idx_utilisateurs_role` (`role`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
 --  Patients
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_patients` (
+CREATE TABLE IF NOT EXISTS `patients` (
   `id`            VARCHAR(64) NOT NULL,
   `dossier`       VARCHAR(64) DEFAULT NULL,
   `matricule`     VARCHAR(64) DEFAULT NULL,
@@ -77,14 +77,14 @@ CREATE TABLE IF NOT EXISTS `salfa_patients` (
   `updated_at`    TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_patients_dossier` (`dossier`),
-  KEY `idx_patients_status` (`status`),
-  KEY `idx_patients_last_name` (`last_name`)
+  KEY `idx_patients_statut` (`status`),
+  KEY `idx_patients_nom` (`last_name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
 --  Consultations
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_consultations` (
+CREATE TABLE IF NOT EXISTS `consultations` (
   `id`         VARCHAR(64) NOT NULL,
   `patient_id` VARCHAR(64) DEFAULT NULL,
   `doctor_id`  VARCHAR(64) DEFAULT NULL,
@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS `salfa_consultations` (
 -- ----------------------------------------------------------------------------
 --  Factures historiques (compatibilité)
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_invoices` (
+CREATE TABLE IF NOT EXISTS `factures` (
   `id`              VARCHAR(64) NOT NULL,
   `patient_id`      VARCHAR(64) DEFAULT NULL,
   `consultation_id` VARCHAR(64) DEFAULT NULL,
@@ -110,14 +110,14 @@ CREATE TABLE IF NOT EXISTS `salfa_invoices` (
   `created_at`      VARCHAR(64) DEFAULT NULL,
   `data_json`       LONGTEXT   NOT NULL,
   PRIMARY KEY (`id`),
-  KEY `idx_invoices_patient` (`patient_id`),
-  KEY `idx_invoices_status` (`status`)
+  KEY `idx_factures_patient` (`patient_id`),
+  KEY `idx_factures_statut` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
 --  Table unifiée des VENTES (en-têtes) — entité centrale du reporting caisse
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_ventes` (
+CREATE TABLE IF NOT EXISTS `ventes` (
   `id`              VARCHAR(64) NOT NULL,
   `patient_id`      VARCHAR(64) DEFAULT NULL,
   `consultation_id` VARCHAR(64) DEFAULT NULL,
@@ -140,9 +140,9 @@ CREATE TABLE IF NOT EXISTS `salfa_ventes` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
---  Lignes de vente (1:N vers salfa_ventes)
+--  Lignes de vente (1:N vers ventes)
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_vente_lines` (
+CREATE TABLE IF NOT EXISTS `lignes_vente` (
   `id`         VARCHAR(64) NOT NULL,
   `vente_id`   VARCHAR(64) NOT NULL,
   `article_id` VARCHAR(64) DEFAULT NULL,
@@ -151,13 +151,13 @@ CREATE TABLE IF NOT EXISTS `salfa_vente_lines` (
   `unit_price` DECIMAL(15,2) DEFAULT 0,
   `data_json`  LONGTEXT   NOT NULL,
   PRIMARY KEY (`id`),
-  KEY `idx_vente_lines_vente` (`vente_id`)
+  KEY `idx_lignes_vente_vente` (`vente_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
 --  Paiements rattachés aux ventes (paiements partiels)
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_vente_payments` (
+CREATE TABLE IF NOT EXISTS `paiements_vente` (
   `id`       VARCHAR(64) NOT NULL,
   `vente_id` VARCHAR(64) NOT NULL,
   `amount`   DECIMAL(15,2) DEFAULT 0,
@@ -165,13 +165,13 @@ CREATE TABLE IF NOT EXISTS `salfa_vente_payments` (
   `date`     VARCHAR(64) DEFAULT NULL,
   `data_json` LONGTEXT  NOT NULL,
   PRIMARY KEY (`id`),
-  KEY `idx_vente_payments_vente` (`vente_id`)
+  KEY `idx_paiements_vente_vente` (`vente_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
 --  Catalogue articles / médicaments
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_articles` (
+CREATE TABLE IF NOT EXISTS `articles` (
   `id`            VARCHAR(64) NOT NULL,
   `name`          VARCHAR(255) DEFAULT NULL,
   `family`        VARCHAR(8)   DEFAULT NULL,
@@ -181,14 +181,14 @@ CREATE TABLE IF NOT EXISTS `salfa_articles` (
   `barcode`       VARCHAR(64)  DEFAULT NULL,
   `data_json`     LONGTEXT   NOT NULL,
   PRIMARY KEY (`id`),
-  KEY `idx_articles_family` (`family`),
-  KEY `idx_articles_name` (`name`)
+  KEY `idx_articles_famille` (`family`),
+  KEY `idx_articles_nom` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
 --  Sociétés conventionnées (facturation)
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_companies` (
+CREATE TABLE IF NOT EXISTS `societes` (
   `id`             VARCHAR(64) NOT NULL,
   `name`           VARCHAR(255) DEFAULT NULL,
   `settlement_mode` VARCHAR(24) DEFAULT NULL,
@@ -199,7 +199,7 @@ CREATE TABLE IF NOT EXISTS `salfa_companies` (
 -- ----------------------------------------------------------------------------
 --  Comptes de facturation mensuels des sociétés
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_company_billing_accounts` (
+CREATE TABLE IF NOT EXISTS `comptes_facturation_societes` (
   `id`            VARCHAR(64) NOT NULL,
   `company`       VARCHAR(255) DEFAULT NULL,
   `month`         VARCHAR(8)   DEFAULT NULL,
@@ -208,13 +208,13 @@ CREATE TABLE IF NOT EXISTS `salfa_company_billing_accounts` (
   `paid_amount`   DECIMAL(15,2) DEFAULT 0,
   `data_json`     LONGTEXT   NOT NULL,
   PRIMARY KEY (`id`),
-  KEY `idx_cba_company_month` (`company`, `month`)
+  KEY `idx_comptes_societes_mois` (`company`, `month`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
 --  Fournisseurs
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_fournisseurs` (
+CREATE TABLE IF NOT EXISTS `fournisseurs` (
   `id`      VARCHAR(64) NOT NULL,
   `name`    VARCHAR(255) DEFAULT NULL,
   `phone`   VARCHAR(64)  DEFAULT NULL,
@@ -225,7 +225,7 @@ CREATE TABLE IF NOT EXISTS `salfa_fournisseurs` (
 -- ----------------------------------------------------------------------------
 --  Familles d'articles
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_familles` (
+CREATE TABLE IF NOT EXISTS `familles` (
   `id`       VARCHAR(64) NOT NULL,
   `code`     VARCHAR(32) DEFAULT NULL,
   `name`     VARCHAR(255) DEFAULT NULL,
@@ -237,7 +237,7 @@ CREATE TABLE IF NOT EXISTS `salfa_familles` (
 -- ----------------------------------------------------------------------------
 --  Services destinataires du dépôt (pharmacie, bloc, soins...)
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_warehouse_services` (
+CREATE TABLE IF NOT EXISTS `services_depot` (
   `id`       VARCHAR(64) NOT NULL,
   `code`     VARCHAR(32) DEFAULT NULL,
   `name`     VARCHAR(255) DEFAULT NULL,
@@ -250,7 +250,7 @@ CREATE TABLE IF NOT EXISTS `salfa_warehouse_services` (
 -- ----------------------------------------------------------------------------
 --  Catalogue laboratoire (examens)
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_lab_catalog` (
+CREATE TABLE IF NOT EXISTS `catalogue_laboratoire` (
   `id`       VARCHAR(64) NOT NULL,
   `code`     VARCHAR(64) DEFAULT NULL,
   `name`     VARCHAR(255) DEFAULT NULL,
@@ -262,7 +262,7 @@ CREATE TABLE IF NOT EXISTS `salfa_lab_catalog` (
 -- ----------------------------------------------------------------------------
 --  Demandes d'analyses laboratoire
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_lab_requests` (
+CREATE TABLE IF NOT EXISTS `demandes_laboratoire` (
   `id`         VARCHAR(64) NOT NULL,
   `patient_id` VARCHAR(64) DEFAULT NULL,
   `consultation_id` VARCHAR(64) DEFAULT NULL,
@@ -272,13 +272,13 @@ CREATE TABLE IF NOT EXISTS `salfa_lab_requests` (
   `requested_at` VARCHAR(64) DEFAULT NULL,
   `data_json`  LONGTEXT NOT NULL,
   PRIMARY KEY (`id`),
-  KEY `idx_lab_requests_patient` (`patient_id`)
+  KEY `idx_demandes_laboratoire_patient` (`patient_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
 --  Parcours patient (timeline)
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_journey` (
+CREATE TABLE IF NOT EXISTS `parcours_patient` (
   `id`         VARCHAR(64) NOT NULL,
   `patient_id` VARCHAR(64) DEFAULT NULL,
   `timestamp`  VARCHAR(64) DEFAULT NULL,
@@ -286,13 +286,13 @@ CREATE TABLE IF NOT EXISTS `salfa_journey` (
   `action`     VARCHAR(255) DEFAULT NULL,
   `data_json`  LONGTEXT NOT NULL,
   PRIMARY KEY (`id`),
-  KEY `idx_journey_patient` (`patient_id`)
+  KEY `idx_parcours_patient_patient` (`patient_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
 --  Clôtures de caisse (Z)
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_cash_closings` (
+CREATE TABLE IF NOT EXISTS `clotures_caisse` (
   `id`         VARCHAR(64) NOT NULL,
   `date`       VARCHAR(64) DEFAULT NULL,
   `cashier_id` VARCHAR(64) DEFAULT NULL,
@@ -304,7 +304,7 @@ CREATE TABLE IF NOT EXISTS `salfa_cash_closings` (
 -- ----------------------------------------------------------------------------
 --  Journal d'audit
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_audit_logs` (
+CREATE TABLE IF NOT EXISTS `journaux_audit` (
   `id`        VARCHAR(64) NOT NULL,
   `timestamp` VARCHAR(64) DEFAULT NULL,
   `user_id`   VARCHAR(64) DEFAULT NULL,
@@ -316,7 +316,7 @@ CREATE TABLE IF NOT EXISTS `salfa_audit_logs` (
 -- ----------------------------------------------------------------------------
 --  Notifications
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_notifications` (
+CREATE TABLE IF NOT EXISTS `notifications` (
   `id`          VARCHAR(64) NOT NULL,
   `target_role` VARCHAR(32) DEFAULT NULL,
   `type`        VARCHAR(16) DEFAULT NULL,
@@ -329,7 +329,7 @@ CREATE TABLE IF NOT EXISTS `salfa_notifications` (
 -- ----------------------------------------------------------------------------
 --  Messagerie interne
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_messages` (
+CREATE TABLE IF NOT EXISTS `messages` (
   `id`           VARCHAR(64) NOT NULL,
   `from_user_id` VARCHAR(64) DEFAULT NULL,
   `to_user_id`   VARCHAR(64) DEFAULT NULL,
@@ -342,7 +342,7 @@ CREATE TABLE IF NOT EXISTS `salfa_messages` (
 -- ----------------------------------------------------------------------------
 --  Demandes de transfert de stock (central → service)
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_stock_transfers` (
+CREATE TABLE IF NOT EXISTS `transferts_stock` (
   `id`          VARCHAR(64) NOT NULL,
   `article_id`  VARCHAR(64) DEFAULT NULL,
   `quantity`    DECIMAL(15,2) DEFAULT 0,
@@ -356,7 +356,7 @@ CREATE TABLE IF NOT EXISTS `salfa_stock_transfers` (
 -- ----------------------------------------------------------------------------
 --  Entrées de stock (réceptions / achats)
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_stock_entries` (
+CREATE TABLE IF NOT EXISTS `entrees_stock` (
   `id`          VARCHAR(64) NOT NULL,
   `article_id`  VARCHAR(64) DEFAULT NULL,
   `quantity`    DECIMAL(15,2) DEFAULT 0,
@@ -369,7 +369,7 @@ CREATE TABLE IF NOT EXISTS `salfa_stock_entries` (
 -- ----------------------------------------------------------------------------
 --  Mouvements de stock (entrées/sorties/transferts/inventaire)
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_stock_movements` (
+CREATE TABLE IF NOT EXISTS `mouvements_stock` (
   `id`          VARCHAR(64) NOT NULL,
   `type`        VARCHAR(20) DEFAULT NULL,
   `article_id`  VARCHAR(64) DEFAULT NULL,
@@ -384,7 +384,7 @@ CREATE TABLE IF NOT EXISTS `salfa_stock_movements` (
 -- ----------------------------------------------------------------------------
 --  En-têtes de mouvement (achat, vente, transfert, inventaire, sortie)
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_movement_headers` (
+CREATE TABLE IF NOT EXISTS `entetes_mouvements` (
   `id`      VARCHAR(64) NOT NULL,
   `type`    VARCHAR(20) DEFAULT NULL,
   `ref`     VARCHAR(64) DEFAULT NULL,
@@ -395,9 +395,9 @@ CREATE TABLE IF NOT EXISTS `salfa_movement_headers` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
---  Lignes de mouvement (1:N vers salfa_movement_headers)
+--  Lignes de mouvement (1:N vers entetes_mouvements)
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_movement_lines` (
+CREATE TABLE IF NOT EXISTS `lignes_mouvements` (
   `id`          VARCHAR(64) NOT NULL,
   `movement_id` VARCHAR(64) NOT NULL,
   `article_id`  VARCHAR(64) DEFAULT NULL,
@@ -405,13 +405,13 @@ CREATE TABLE IF NOT EXISTS `salfa_movement_lines` (
   `quantity`    DECIMAL(15,2) DEFAULT 0,
   `data_json`   LONGTEXT NOT NULL,
   PRIMARY KEY (`id`),
-  KEY `idx_movement_lines_header` (`movement_id`)
+  KEY `idx_lignes_mouvements_entete` (`movement_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
 --  Sessions d'inventaire
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_inventory_sessions` (
+CREATE TABLE IF NOT EXISTS `sessions_inventaire` (
   `id`          VARCHAR(64) NOT NULL,
   `location`    VARCHAR(64) DEFAULT NULL,
   `status`      VARCHAR(16) DEFAULT NULL,
@@ -424,7 +424,7 @@ CREATE TABLE IF NOT EXISTS `salfa_inventory_sessions` (
 -- ----------------------------------------------------------------------------
 --  Lignes de livraison de pharmacie
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_pharma_delivery_items` (
+CREATE TABLE IF NOT EXISTS `lignes_livraison_pharmacie` (
   `id`             VARCHAR(64) NOT NULL,
   `consultation_id` VARCHAR(64) DEFAULT NULL,
   `patient_id`     VARCHAR(64) DEFAULT NULL,
@@ -438,7 +438,7 @@ CREATE TABLE IF NOT EXISTS `salfa_pharma_delivery_items` (
 -- ----------------------------------------------------------------------------
 --  Clôtures / compilations des livraisons de pharmacie (garde)
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_pharma_delivery_closings` (
+CREATE TABLE IF NOT EXISTS `clotures_livraison_pharmacie` (
   `id`            VARCHAR(64) NOT NULL,
   `closing_number` VARCHAR(64) DEFAULT NULL,
   `date`          VARCHAR(64) DEFAULT NULL,
@@ -450,7 +450,7 @@ CREATE TABLE IF NOT EXISTS `salfa_pharma_delivery_closings` (
 -- ----------------------------------------------------------------------------
 --  Dossiers Hospitalisation / Bloc opératoire
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `salfa_hb_records` (
+CREATE TABLE IF NOT EXISTS `dossiers_hospitalisation_bloc` (
   `id`          VARCHAR(64) NOT NULL,
   `patient_id`  VARCHAR(64) DEFAULT NULL,
   `patient_name` VARCHAR(255) DEFAULT NULL,

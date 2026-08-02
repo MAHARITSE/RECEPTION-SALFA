@@ -5,7 +5,8 @@ title RECEPTION SALFA - Installation WAMP (MySQL normalise)
 REM ============================================================================
 REM  RECEPTION SALFA - Installation dans WampServer
 REM  Copie la version WAMP vers C:\wamp64\www\reception-salfa et propose
-REM  l'import du schema MySQL normalise (database\reception_salfa.sql).
+REM  l'import du schema MySQL normalise (database\reception_salfa.sql) et la
+REM  migration optionnelle des anciennes tables prefixees salfa_.
 REM ============================================================================
 
 set "SRC=%~dp0.."
@@ -56,6 +57,7 @@ if defined MYSQL_CLIENT (
 REM --- 4. Import du schema normalise ------------------------------------------
 echo [3/4] Import du schema MySQL normalise...
 set "SQL_FILE=%DST%\database\reception_salfa.sql"
+set "MIGRATION_FILE=%DST%\database\migration_tables_francaises.sql"
 
 if defined MYSQL_CLIENT (
     "%MYSQL_CLIENT%" -h 127.0.0.1 -P 3306 -u root -e "source %SQL_FILE%" 2>nul
@@ -65,6 +67,13 @@ if defined MYSQL_CLIENT (
         echo          database\reception_salfa.sql
     ) else (
         echo        Import du schema termine (base reception_salfa).
+        "%MYSQL_CLIENT%" -h 127.0.0.1 -P 3306 -u root -e "source %MIGRATION_FILE%" 2>nul
+        if errorlevel 1 (
+            echo        Migration des anciens noms non executee : importez
+            echo          database\migration_tables_francaises.sql si necessaire.
+        ) else (
+            echo        Verification des anciens noms de tables terminee.
+        )
     )
 ) else (
     echo        Ouvrez http://localhost/phpmyadmin et importez :

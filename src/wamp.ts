@@ -10,14 +10,14 @@ import localSeedData from './data/localData.json';
  *  variable `VITE_WAMP_MODE=1`). Dans cette version :
  *
  *   • Au démarrage, l'application charge SON ÉTAT COMPLET depuis MySQL
- *     (tables normalisées `salfa_*`, via `api/index.php?action=read_all`) ;
+ *     (tables normalisées en français, via `api/index.php?action=read_all`) ;
  *   • À CHAQUE modification, l'état complet est automatiquement ré-enregistré
  *     dans les tables MySQL normalisées (`api/index.php?action=sync_all`) —
  *     patients, consultations, ventes, articles, messagerie, journal d'audit… ;
  *   • Aucune donnée applicative n'est conservée dans localStorage ou un fichier.
  *
  *  Les collections de l'application sont stockées UNE table par entité
- *  (`salfa_patients`, `salfa_ventes`, ...) — cf. WAMP/database/reception_salfa.sql.
+ *  (`patients`, `ventes`, ...) — cf. WAMP/database/reception_salfa.sql.
  *
  *  Dans le build standard (développement / Cloudflare), ce module est inactif
  *  et l'application conserve son comportement mémoire d'origine.
@@ -40,7 +40,7 @@ const LIST_DATASETS: (keyof AppState)[] = [
   'fournisseurs', 'familles', 'labCatalog', 'warehouseServices',
 ];
 
-/** Compteurs scalaires persistés dans la table salfa_counters. */
+/** Compteurs scalaires persistés dans la table compteurs. */
 const COUNTER_KEYS: (keyof AppState)[] = ['factureCounter', 'pharmaClosingCounter'];
 
 export interface WampSyncState {

@@ -33,7 +33,7 @@ try {
         }
     }
     // + table des compteurs, non référencée comme « collection »
-    $expected[] = 'salfa_counters';
+    $expected[] = 'compteurs';
     $expected = array_values(array_unique($expected));
 
     $found = $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
@@ -57,12 +57,12 @@ try {
         }
     };
 
-    $details[] = 'Patients : ' . $count('salfa_patients');
-    $details[] = 'Consultations : ' . $count('salfa_consultations');
-    $details[] = 'Ventes : ' . $count('salfa_ventes');
-    $details[] = 'Articles : ' . $count('salfa_articles');
-    $details[] = 'Utilisateurs : ' . $count('salfa_users');
-    $details[] = 'Compteurs : ' . $count('salfa_counters');
+    $details[] = 'Patients : ' . $count('patients');
+    $details[] = 'Consultations : ' . $count('consultations');
+    $details[] = 'Ventes : ' . $count('ventes');
+    $details[] = 'Articles : ' . $count('articles');
+    $details[] = 'Utilisateurs : ' . $count('utilisateurs');
+    $details[] = 'Compteurs : ' . $count('compteurs');
 } catch (Throwable $error) {
     $message = 'Connexion MySQL impossible. Vérifiez que WAMP (MySQL) est démarré, '
         . 'que la base reception_salfa existe et que api/config.php est correct.';
