@@ -44,8 +44,8 @@
     { "id": "art-003", "name": "Ibuprofène 400mg", "family": "MEDIC", "unit": "comprimé", "priceComptoir": 800, "priceSociete": 700, "priceExterne": 1000, "purchasePrice": 350, "stockCentral": 600, "stockPharmacie": 80, "minStockCentral": 50, "minStockPharmacie": 40 },
     { "id": "art-004", "name": "Oméprazole 20mg", "family": "MEDIC", "unit": "gélule", "priceComptoir": 1200, "priceSociete": 1000, "priceExterne": 1500, "purchasePrice": 500, "stockCentral": 300, "stockPharmacie": 15, "minStockCentral": 30, "minStockPharmacie": 20 },
     { "id": "art-005", "name": "Metformine 850mg", "family": "MEDIC", "unit": "comprimé", "priceComptoir": 900, "priceSociete": 800, "priceExterne": 1100, "purchasePrice": 400, "stockCentral": 350, "stockPharmacie": 60, "minStockCentral": 30, "minStockPharmacie": 25 },
-    { "id": "art-006", "name": "Tube EDTA", "family": "LABO", "unit": "unité", "priceComptoir": 300, "priceSociete": 250, "priceExterne": 400, "purchasePrice": 100, "stockCentral": 200, "stockPharmacie": 50, "minStockCentral": 30, "minStockPharmacie": 20 },
-    { "id": "art-007", "name": "Réactif Glycémie", "family": "LABO", "unit": "flacon", "priceComptoir": 5000, "priceSociete": 4500, "priceExterne": 6000, "purchasePrice": 2500, "stockCentral": 30, "stockPharmacie": 10, "minStockCentral": 5, "minStockPharmacie": 3, "supplier": "DISPHAR LABO", "expiryDate": "2027-03-31" },
+    { "id": "art-006", "name": "Tube EDTA", "family": "LAB", "unit": "unité", "priceComptoir": 300, "priceSociete": 250, "priceExterne": 400, "purchasePrice": 100, "stockCentral": 200, "stockPharmacie": 50, "minStockCentral": 30, "minStockPharmacie": 20 },
+    { "id": "art-007", "name": "Réactif Glycémie", "family": "LAB", "unit": "flacon", "priceComptoir": 5000, "priceSociete": 4500, "priceExterne": 6000, "purchasePrice": 2500, "stockCentral": 30, "stockPharmacie": 10, "minStockCentral": 5, "minStockPharmacie": 3, "supplier": "DISPHAR LABO", "expiryDate": "2027-03-31" },
     { "id": "art-008", "name": "Gel échographie", "family": "ECHO", "unit": "flacon", "priceComptoir": 5000, "priceSociete": 4000, "priceExterne": 6000, "purchasePrice": 2000, "stockCentral": 0, "stockPharmacie": 4, "minStockCentral": 5, "minStockPharmacie": 2 },
     { "id": "art-009", "name": "Composite dentaire", "family": "DENT", "unit": "seringue", "priceComptoir": 15000, "priceSociete": 12000, "priceExterne": 18000, "purchasePrice": 8000, "stockCentral": 15, "stockPharmacie": 5, "minStockCentral": 3, "minStockPharmacie": 2 },
     { "id": "art-010", "name": "Compresses stériles", "family": "MEDIC", "unit": "boîte", "priceComptoir": 1000, "priceSociete": 900, "priceExterne": 1200, "purchasePrice": 400, "stockCentral": 150, "stockPharmacie": 30, "minStockCentral": 20, "minStockPharmacie": 10 },
@@ -58,9 +58,9 @@
   ],
   "familles": [
     { "id": "fam-medic", "code": "MEDIC", "name": "Médicaments", "color": "#0D47A1", "order": 1 },
-    { "id": "fam-labo", "code": "LABO", "name": "Laboratoire", "color": "#10B981", "order": 2 },
-    { "id": "fam-dent", "code": "DENT", "name": "Dentaire", "color": "#8B5CF6", "order": 3 },
-    { "id": "fam-echo", "code": "ECHO", "name": "Échographie", "color": "#F59E0B", "order": 4 }
+    { "id": "fam-lab", "code": "LAB", "name": "Laboratoire", "color": "#10B981", "order": 2 },
+    { "id": "fam-echo", "code": "ECHO", "name": "Échographie", "color": "#F59E0B", "order": 3 },
+    { "id": "fam-dent", "code": "DENT", "name": "Dentaire", "color": "#8B5CF6", "order": 4 }
   ],
   "labCatalog": [
     { "id": "exam-001", "code": "LAB001", "name": "NFS", "category": "hematologie", "parameters": ["Globules Rouges", "Globules Blancs", "Hémoglobine", "Plaquettes", "Hématocrite"], "sampleType": "Sang veineux (EDTA)", "priceComptoir": 15000, "priceSociete": 13000, "priceExterne": 18000, "urgentPrice": 25000, "durationHours": 4 },

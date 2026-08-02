@@ -143,7 +143,7 @@
     <text x="125" y="22" text-anchor="middle" class="entity-title">ARTICLES</text>
     <line x1="0" y1="30" x2="250" y2="30" stroke="#1e40af"/>
     <text x="10" y="48" class="pk">PK id</text>
-    <text x="10" y="64" class="field">nom, famille (MEDIC|LABO|DENT|ECHO)</text>
+    <text x="10" y="64" class="field">nom, famille (MEDIC|LAB|DENT|ECHO)</text>
     <text x="10" y="80" class="field">unité, code-barres</text>
     <text x="10" y="96" class="field">prix_comptoir, prix_société, prix_externe</text>
     <text x="10" y="112" class="field">prix_achat, seuil_alerte central/pharma</text>
