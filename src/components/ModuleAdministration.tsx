@@ -187,6 +187,20 @@ export default function ModuleAdministration({ state, setState }: Props) {
     reader.readAsDataURL(file);
   };
 
+  const handleSecondLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 1024 * 1024) { showToast('⚠️ Image trop volumineuse (maximum 1 Mo)'); return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const result = ev.target?.result as string;
+      updateTicket({ secondLogoUrl: result });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const secondLogoInputRef = useRef<HTMLInputElement>(null);
+
   // ============ USERS MANAGEMENT ============
   const openAddUserModal = () => {
     setUserModal({
@@ -1260,6 +1274,59 @@ export default function ModuleAdministration({ state, setState }: Props) {
                                   </button>
                                 )}
                               </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Second Logo for A4/A5 Invoices */}
+                      <div className="rounded-2xl border border-slate-200 p-5 bg-white space-y-4 shadow-xs">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <h4 className="font-bold text-sm text-slate-800 flex items-center gap-2">
+                              <ImageIcon className="w-4 h-4 text-blue-600" /> Logo Additionnel (Factures A4/A5)
+                            </h4>
+                            <p className="text-xs text-slate-500 mt-1">Ce logo s'affiche sur les factures A4 et A5 à droite de l'en-tête.</p>
+                          </div>
+                        </div>
+                        <div className="flex flex-col sm:flex-row items-start gap-5">
+                          <div className="w-28 h-28 border-2 border-dashed border-slate-300 rounded-2xl flex items-center justify-center bg-slate-50 text-slate-400 overflow-hidden shrink-0 shadow-inner">
+                            {state.ticketSettings.secondLogoUrl ? (
+                              state.ticketSettings.secondLogoUrl.length <= 5 ? (
+                                <span className="text-5xl">{state.ticketSettings.secondLogoUrl}</span>
+                              ) : (
+                                <img src={state.ticketSettings.secondLogoUrl} alt="Logo Additionnel" className="w-full h-full object-contain p-2" />
+                              )
+                            ) : (
+                              <span className="text-xs text-slate-400 text-center px-2">Aucun logo configuré</span>
+                            )}
+                          </div>
+
+                          <div className="flex-1 space-y-4">
+                            <div>
+                              <label className="text-xs font-bold text-slate-700 block mb-1.5">Charger une image (PNG/JPEG) :</label>
+                              <div className="flex gap-2">
+                                <input ref={secondLogoInputRef} type="file" accept="image/*" onChange={handleSecondLogoUpload} className="hidden" />
+                                <button
+                                  onClick={() => secondLogoInputRef.current?.click()}
+                                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold cursor-pointer flex items-center gap-1.5 shadow-xs"
+                                >
+                                  <Upload className="w-3.5 h-3.5" /> Choisir une image (max 1 Mo)
+                                </button>
+                                {state.ticketSettings.secondLogoUrl && (
+                                  <button
+                                    onClick={() => updateTicket({ secondLogoUrl: '' })}
+                                    className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-semibold cursor-pointer flex items-center gap-1 border border-rose-200"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" /> Effacer
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
+                              <p className="text-xs text-blue-800">
+                                <strong>ℹ️ Information :</strong> Ce logo additionnel apparaît uniquement sur les factures A4 et A5 (factures individuelles et factures sociétés). Les tickets POS continuent d'afficher uniquement le logo principal de l'établissement.
+                              </p>
                             </div>
                           </div>
                         </div>
