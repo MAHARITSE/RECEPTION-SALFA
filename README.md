@@ -85,8 +85,8 @@ npx wrangler deploy
 
 Application compilée + API PHP + scripts SQL, à copier dans
 `C:\wamp64\www\reception-salfa`. **Toutes les données sont stockées
-strictement dans MySQL** dans des **tables normalisées** (`salfa_patients`,
-`salfa_ventes`, `salfa_articles`, …). Cette partie a été reconstruite en
+strictement dans MySQL** dans des **tables normalisées en français** (`patients`,
+`ventes`, `articles`, …). Cette partie a été reconstruite en
 s'inspirant de [LogBara](https://github.com/MAHARITSE/LogBara) (connexion en
 `127.0.0.1`, une table par entité, page de diagnostic MySQL) :
 

@@ -3,8 +3,8 @@
  * API d'état MySQL — RECEPTION SALFA (version WAMP normalisée)
  * ============================================================
  * Toutes les données de l'application compilée (WAMP/index.html) sont stockées
- * dans MySQL dans des tables normalisées (UNE table par entité : salfa_patients,
- * salfa_ventes, salfa_articles, ...). Ce script expose deux points d'entrée :
+ * dans MySQL dans des tables normalisées (UNE table par entité : patients,
+ * ventes, articles, ...). Ce script expose deux points d'entrée :
  *
  *   GET  index.php?action=read_all   → renvoie TOUTES les collections (l'app
  *                                      reconstitue son état complet au démarrage)

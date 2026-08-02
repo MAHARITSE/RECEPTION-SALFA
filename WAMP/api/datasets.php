@@ -22,18 +22,18 @@ function reception_salfa_datasets(): array
     return [
         'ticketSettings' => [
             'type' => 'single',
-            'table' => 'salfa_ticket_settings',
+            'table' => 'parametres_impression',
             'columns' => ['facility_name' => 'facilityName', 'currency' => 'currency'],
         ],
 
         'users' => [
             'type' => 'list',
-            'table' => 'salfa_users',
+            'table' => 'utilisateurs',
             'columns' => ['name' => 'name', 'role' => 'role'],
         ],
         'patients' => [
             'type' => 'list',
-            'table' => 'salfa_patients',
+            'table' => 'patients',
             'columns' => [
                 'dossier' => 'dossier', 'matricule' => 'matricule',
                 'first_name' => 'firstName', 'last_name' => 'lastName',
@@ -44,7 +44,7 @@ function reception_salfa_datasets(): array
         ],
         'consultations' => [
             'type' => 'list',
-            'table' => 'salfa_consultations',
+            'table' => 'consultations',
             'columns' => [
                 'patient_id' => 'patientId', 'doctor_id' => 'doctorId',
                 'doctor_name' => 'doctorName', 'date' => 'date',
@@ -52,7 +52,7 @@ function reception_salfa_datasets(): array
         ],
         'invoices' => [
             'type' => 'list',
-            'table' => 'salfa_invoices',
+            'table' => 'factures',
             'columns' => [
                 'patient_id' => 'patientId', 'consultation_id' => 'consultationId',
                 'client_type' => 'clientType', 'status' => 'status',
@@ -61,7 +61,7 @@ function reception_salfa_datasets(): array
         ],
         'ventes' => [
             'type' => 'list',
-            'table' => 'salfa_ventes',
+            'table' => 'ventes',
             'columns' => [
                 'patient_id' => 'patientId', 'consultation_id' => 'consultationId',
                 'numero_facture' => 'numeroFacture', 'type' => 'type',
@@ -73,7 +73,7 @@ function reception_salfa_datasets(): array
         ],
         'venteLines' => [
             'type' => 'list',
-            'table' => 'salfa_vente_lines',
+            'table' => 'lignes_vente',
             'columns' => [
                 'vente_id' => 'venteId', 'article_id' => 'articleId',
                 'article_name' => 'articleName', 'quantity' => 'quantity',
@@ -82,7 +82,7 @@ function reception_salfa_datasets(): array
         ],
         'ventePayments' => [
             'type' => 'list',
-            'table' => 'salfa_vente_payments',
+            'table' => 'paiements_vente',
             'columns' => [
                 'vente_id' => 'venteId', 'amount' => 'amount',
                 'method' => 'method', 'date' => 'date',
@@ -90,7 +90,7 @@ function reception_salfa_datasets(): array
         ],
         'articles' => [
             'type' => 'list',
-            'table' => 'salfa_articles',
+            'table' => 'articles',
             'columns' => [
                 'name' => 'name', 'family' => 'family', 'unit' => 'unit',
                 'stock_central' => 'stockCentral', 'stock_pharmacie' => 'stockPharmacie',
@@ -99,12 +99,12 @@ function reception_salfa_datasets(): array
         ],
         'companies' => [
             'type' => 'list',
-            'table' => 'salfa_companies',
+            'table' => 'societes',
             'columns' => ['name' => 'name', 'settlement_mode' => 'settlementMode'],
         ],
         'companyBillingAccounts' => [
             'type' => 'list',
-            'table' => 'salfa_company_billing_accounts',
+            'table' => 'comptes_facturation_societes',
             'columns' => [
                 'company' => 'company', 'month' => 'month', 'status' => 'status',
                 'total_amount' => 'totalAmount', 'paid_amount' => 'paidAmount',
@@ -112,27 +112,27 @@ function reception_salfa_datasets(): array
         ],
         'fournisseurs' => [
             'type' => 'list',
-            'table' => 'salfa_fournisseurs',
+            'table' => 'fournisseurs',
             'columns' => ['name' => 'name', 'phone' => 'phone'],
         ],
         'familles' => [
             'type' => 'list',
-            'table' => 'salfa_familles',
+            'table' => 'familles',
             'columns' => ['code' => 'code', 'name' => 'name', 'color' => 'color'],
         ],
         'warehouseServices' => [
             'type' => 'list',
-            'table' => 'salfa_warehouse_services',
+            'table' => 'services_depot',
             'columns' => ['code' => 'code', 'name' => 'name', 'kind' => 'kind', 'active' => 'active'],
         ],
         'labCatalog' => [
             'type' => 'list',
-            'table' => 'salfa_lab_catalog',
+            'table' => 'catalogue_laboratoire',
             'columns' => ['code' => 'code', 'name' => 'name', 'category' => 'category'],
         ],
         'labRequests' => [
             'type' => 'list',
-            'table' => 'salfa_lab_requests',
+            'table' => 'demandes_laboratoire',
             'columns' => [
                 'patient_id' => 'patientId', 'consultation_id' => 'consultationId',
                 'exam_type' => 'examType', 'status' => 'status',
@@ -141,7 +141,7 @@ function reception_salfa_datasets(): array
         ],
         'journey' => [
             'type' => 'list',
-            'table' => 'salfa_journey',
+            'table' => 'parcours_patient',
             'columns' => [
                 'patient_id' => 'patientId', 'timestamp' => 'timestamp',
                 'department' => 'department', 'action' => 'action',
@@ -149,27 +149,27 @@ function reception_salfa_datasets(): array
         ],
         'cashClosings' => [
             'type' => 'list',
-            'table' => 'salfa_cash_closings',
+            'table' => 'clotures_caisse',
             'columns' => ['date' => 'date', 'cashier_id' => 'cashierId', 'grand_total' => 'grandTotal'],
         ],
         'auditLogs' => [
             'type' => 'list',
-            'table' => 'salfa_audit_logs',
+            'table' => 'journaux_audit',
             'columns' => ['timestamp' => 'timestamp', 'user_id' => 'userId', 'action' => 'action'],
         ],
         'notifications' => [
             'type' => 'list',
-            'table' => 'salfa_notifications',
+            'table' => 'notifications',
             'columns' => ['target_role' => 'targetRole', 'type' => 'type', 'timestamp' => 'timestamp', 'read_flag' => 'read'],
         ],
         'messages' => [
             'type' => 'list',
-            'table' => 'salfa_messages',
+            'table' => 'messages',
             'columns' => ['from_user_id' => 'fromUserId', 'to_user_id' => 'toUserId', 'timestamp' => 'timestamp', 'read_flag' => 'read'],
         ],
         'stockTransfers' => [
             'type' => 'list',
-            'table' => 'salfa_stock_transfers',
+            'table' => 'transferts_stock',
             'columns' => [
                 'article_id' => 'articleId', 'quantity' => 'quantity', 'status' => 'status',
                 'target_service_id' => 'targetServiceId', 'requested_at' => 'requestedAt',
@@ -177,12 +177,12 @@ function reception_salfa_datasets(): array
         ],
         'stockEntries' => [
             'type' => 'list',
-            'table' => 'salfa_stock_entries',
+            'table' => 'entrees_stock',
             'columns' => ['article_id' => 'articleId', 'quantity' => 'quantity', 'supplier' => 'supplier', 'date' => 'date'],
         ],
         'stockMovements' => [
             'type' => 'list',
-            'table' => 'salfa_stock_movements',
+            'table' => 'mouvements_stock',
             'columns' => [
                 'type' => 'type', 'article_id' => 'articleId', 'quantity' => 'quantity',
                 'date' => 'date', 'from_location' => 'fromLocation', 'to_location' => 'toLocation',
@@ -190,12 +190,12 @@ function reception_salfa_datasets(): array
         ],
         'movementHeaders' => [
             'type' => 'list',
-            'table' => 'salfa_movement_headers',
+            'table' => 'entetes_mouvements',
             'columns' => ['type' => 'type', 'ref' => 'ref', 'date' => 'date', 'user_id' => 'userId'],
         ],
         'movementLines' => [
             'type' => 'list',
-            'table' => 'salfa_movement_lines',
+            'table' => 'lignes_mouvements',
             'columns' => [
                 'movement_id' => 'movementId', 'article_id' => 'articleId',
                 'article_name' => 'articleName', 'quantity' => 'quantity',
@@ -203,12 +203,12 @@ function reception_salfa_datasets(): array
         ],
         'inventorySessions' => [
             'type' => 'list',
-            'table' => 'salfa_inventory_sessions',
+            'table' => 'sessions_inventaire',
             'columns' => ['location' => 'location', 'status' => 'status', 'started_at' => 'startedAt', 'started_by' => 'startedBy'],
         ],
         'pharmaDeliveryItems' => [
             'type' => 'list',
-            'table' => 'salfa_pharma_delivery_items',
+            'table' => 'lignes_livraison_pharmacie',
             'columns' => [
                 'consultation_id' => 'consultationId', 'patient_id' => 'patientId',
                 'article_name' => 'articleName', 'quantity' => 'quantity', 'delivered_at' => 'deliveredAt',
@@ -216,20 +216,20 @@ function reception_salfa_datasets(): array
         ],
         'pharmaDeliveryClosings' => [
             'type' => 'list',
-            'table' => 'salfa_pharma_delivery_closings',
+            'table' => 'clotures_livraison_pharmacie',
             'columns' => ['closing_number' => 'closingNumber', 'date' => 'date', 'total_amount' => 'totalAmount'],
         ],
         'hbRecords' => [
             'type' => 'list',
-            'table' => 'salfa_hb_records',
+            'table' => 'dossiers_hospitalisation_bloc',
             'columns' => [
                 'patient_id' => 'patientId', 'patient_name' => 'patientName',
                 'type' => 'type', 'client_type' => 'clientType', 'opened_at' => 'openedAt',
             ],
         ],
 
-        // Compteurs séquentiels (scalaires → table salfa_counters)
-        'factureCounter' => ['type' => 'counter', 'table' => 'salfa_counters', 'counter_id' => 'factureCounter'],
-        'pharmaClosingCounter' => ['type' => 'counter', 'table' => 'salfa_counters', 'counter_id' => 'pharmaClosingCounter'],
+        // Compteurs séquentiels (scalaires → table compteurs)
+        'factureCounter' => ['type' => 'counter', 'table' => 'compteurs', 'counter_id' => 'factureCounter'],
+        'pharmaClosingCounter' => ['type' => 'counter', 'table' => 'compteurs', 'counter_id' => 'pharmaClosingCounter'],
     ];
 }

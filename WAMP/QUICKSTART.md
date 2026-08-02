@@ -1,7 +1,7 @@
 # Démarrage rapide WAMP — RECEPTION SALFA
 
 > ⚠️ Dans la version WAMP, **toutes les données sont stockées dans MySQL** dans
-> des **tables normalisées** (`salfa_patients`, `salfa_ventes`, …). L'application
+> des **tables normalisées** (`patients`, `ventes`, …). L'application
 > charge son état complet au démarrage et y sauvegarde automatiquement **chaque**
 > modification. Rien n'est conservé dans le navigateur ni dans un fichier JSON.
 
@@ -11,11 +11,18 @@
 2. Démarrer WAMP et vérifier que l'icône est **verte** (Apache **et** MySQL).
 3. Aller dans phpMyAdmin : `http://localhost/phpmyadmin`
 4. Importer : `database\reception_salfa.sql`
-   → crée la base `reception_salfa` + **toutes les tables normalisées**.
+   → crée la base `reception_salfa`, **toutes les tables normalisées** et les
+   données d'exemple.
 5. Ouvrir : `http://localhost/reception-salfa/`
 
-> Au premier lancement, si la base est vide, l'application y écrit son état
-> initial (comptes, paramètres d'impression, catalogue…).
+> Si vous mettez à jour une ancienne installation qui contient des tables
+> `salfa_*`, sauvegardez la base puis importez
+> `database\migration_tables_francaises.sql` **avant** d'ouvrir l'application.
+> Les données sont conservées et les tables sont renommées en français.
+
+> Le schéma importe 127 lignes de démonstration (comptes, patients,
+> consultations, ventes, stocks et laboratoire). Elles sont ajoutées uniquement
+> dans les tables vides afin de ne pas remplacer les données existantes.
 
 ## Option B — script automatique
 
@@ -32,7 +39,7 @@ WAMP\deployment\install_wamp.bat
 ## Vérifier que les données sont bien dans MySQL
 
 1. Faire une action dans l'application (ex. inscrire un patient).
-2. phpMyAdmin → base `reception_salfa` → table `salfa_patients`.
+2. phpMyAdmin → base `reception_salfa` → table `patients`.
 3. La ligne contient l'objet complet dans `data_json` + les colonnes utiles.
 4. Le badge vert en bas à gauche affiche « MySQL : toutes les données synchronisées ».
 

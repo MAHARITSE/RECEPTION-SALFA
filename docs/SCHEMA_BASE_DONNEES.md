@@ -107,6 +107,11 @@ Utilisateurs (1) ──< (N) Messages (expéditeur & destinataire)
 
 L'état de démonstration est construit par `src/data/massiveDemoData.ts`. Il ne contient aucune identité réelle : un générateur pseudo-aléatoire à graine fixe (`0x51af1a`) fabrique des identifiants, dossiers, matricules, contacts et adresses synthétiques. Les identifiants, dates et relations sont donc reproductibles à chaque restauration de la démo.
 
+Le jeu d'exemples initial (comptes, patients, factures, stocks, laboratoire…) de
+`src/data/localData.json` est également intégré à
+`WAMP/database/reception_salfa.sql`. Il est inséré lors d'une installation WAMP
+uniquement dans les tables vides.
+
 Le générateur couvre 24 mois (du 21 juillet 2024 au 21 juillet 2026) et produit notamment 3 000 patients aux couples nom/prénom uniques, 4 500 consultations, factures et ventes, plus de 9 000 lignes de ventes, des paiements, demandes/résultats de laboratoire, délivrances, achats/entrées et mouvements. Les listes doivent être filtrées ou paginées par les écrans avant rendu complet.
 
 ### Relations crédit société
