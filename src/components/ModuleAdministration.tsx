@@ -496,7 +496,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
     setConfirmModal({
       isOpen: true,
       title: '⛔ RÉINITIALISATION TOTALE DE LA BASE ?',
-      message: 'ATTENTION EXTRÊME : Cette action est IRREVOCABLE. Toutes les données saisies (patients, factures, catalogue d\'articles, utilisateurs, sociétés) seront EFFACÉES et remplacées par les données de démonstration initiales.',
+      message: 'ATTENTION EXTRÊME : Cette action est IRREVOCABLE. Toutes les données saisies (patients, factures, catalogue d\'articles, utilisateurs, sociétés) seront EFFACÉES et remplacées par les données locales du fichier localData.json.',
       confirmText: 'Confirmer la réinitialisation TOTALE',
       variant: 'danger',
       onConfirm: () => {

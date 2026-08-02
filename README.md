@@ -50,7 +50,7 @@ Application complète de gestion clinique et hospitalière (HIS — Hospital Inf
 ## 🛠️ Stack Technique
 
 - **Frontend :** React 18, TypeScript, Vite, Tailwind CSS, Lucide React icons, Motion
-- **Gestion d'état :** In-memory React state (`AppState`) avec persistance `localStorage`
+- **Gestion d'état :** In-memory React state (`AppState`), initialisé depuis le fichier de données local [`src/data/localData.json`](./src/data/localData.json) (modifiable à la main)
 - **Impression :** Support natif CSS Print & tickets de caisse 80x80
 
 ---
