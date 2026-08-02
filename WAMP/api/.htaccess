@@ -1,0 +1,6 @@
+Options -Indexes
+
+# Interdire l'accès direct aux fichiers de configuration / connexion / mapping
+<FilesMatch "^(config\.php|database\.php|datasets\.php)$">
+  Require all denied
+</FilesMatch>

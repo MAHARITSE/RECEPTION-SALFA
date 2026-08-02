@@ -1,60 +1,73 @@
-# RECEPTION SALFA — Version WAMP complète (100 % MySQL)
+# RECEPTION SALFA — Version WAMP complète (MySQL normalisé)
 
-Ce dossier `WAMP/` contient une version prête à copier dans WAMP : l'application
-compilée en un seul fichier, dont **TOUTES les données sont stockées dans MySQL**,
-de manière **stricte et exclusive** : aucune donnée applicative n'est conservée
-dans le navigateur (`localStorage`) ni dans un fichier JSON local.
+Ce dossier `WAMP/` contient une version prête à copier dans WAMP. **Toutes les
+données sont stockées dans MySQL**, de manière **strictement exclusive** (aucune
+donnée applicative dans `localStorage` ni dans un fichier JSON local).
 
-## 🗄️ Architecture de stockage — strictement MySQL
+Cette version a été **reconstruite en s'inspirant de [LogBara / Bar POS](https://github.com/MAHARITSE/LogBara)**
+pour régler le problème de connexion à MySQL de WAMP :
+
+- connexion MySQL en **`127.0.0.1`** (et non `localhost`, qui peut être résolu en
+  IPv6 `::1` et échouer sous Windows/WAMP) ;
+- **une table MySQL par entité métier** (`salfa_patients`, `salfa_ventes`,
+  `salfa_articles`, …) au lieu d'un seul blob JSON ;
+- page **`api/diagnostic.php`** pour vérifier l'installation en un coup d'œil ;
+- fichiers de configuration **protégés** par `.htaccess` ;
+- connexion PDO préparée, encodage `utf8mb4`.
+
+## 🗄️ Architecture de stockage — tables normalisées MySQL
 
 ```
-┌─────────────────────────────┐        ┌──────────────────────────────────────────┐
-│  WAMP/index.html            │  GET   │  PHP  api/state.php                      │
-│  (application React/Vite)   │ ─────▶ │  ──────────────────────────────────────  │
-│                             │  PUT   │  Table MySQL : salfa_app_state           │
-│  Au démarrage : charge tout │ ◀───── │  (base : reception_salfa)                │
-│  À chaque action : sauvegarde│        │  État complet : patients, consultations, │
-│  tout (patients, factures,  │        │  factures, ventes, pharmacies, labo,     │
-│  stocks, messages, audit…)  │        │  stocks, messagerie, journal d'audit…    │
-└─────────────────────────────┘        └──────────────────────────────────────────┘
+┌─────────────────────────────┐   JSON    ┌─────────────────────────────────────┐
+│  WAMP/index.html            │ ────────▶ │  PHP  api/index.php                 │
+│  (application React/Vite)   │  read_all │  ────────────────────────────────── │
+│                             │ ◀──────── │  Tables MySQL normalisées :         │
+│  Au démarrage : charge tout │   sync    │   salfa_patients, salfa_ventes,     │
+│  À chaque action : sauvegarde│ ───────▶ │   salfa_articles, salfa_users,       │
+│  (différée 800 ms)          │           │   salfa_consultations, ...          │
+└─────────────────────────────┘           └─────────────────────────────────────┘
 ```
 
-- **Au démarrage** : l'application charge son **état complet** depuis MySQL
-  (`GET api/state.php`) — il n'y a donc aucune perte de données au rechargement.
-- **À chaque modification** : l'application **sauvegarde automatiquement**
-  l'état complet dans MySQL (`PUT api/state.php`, sauvegarde différée 800 ms) —
-  tout est enregistré : dossiers patients, consultations, ordonnances, caisse,
-  ventes, pharmacie, stocks, laboratoire, messagerie, journal d'audit…
+- **Au démarrage** : l'application charge son état complet depuis MySQL
+  (`GET api/index.php?action=read_all`). Aucune perte de données au rechargement.
+- **À chaque modification** : l'application sauvegarde automatiquement l'état
+  complet dans les tables normalisées (`POST api/index.php?action=sync_all`,
+  sauvegarde différée 800 ms).
 - **À la fermeture de l'onglet** : un dernier enregistrement (`sendBeacon`) est
   envoyé pour ne perdre aucune saisie.
-- **Badge de synchronisation** (en bas à gauche de l'écran) : indique en direct
-  l'état de la liaison MySQL : `Chargement…`, `Sauvegarde…`, `Synchronisé` ou
-  `MySQL injoignable`.
+- **Badge de synchronisation** (en bas à gauche) : `Chargement…`, `Sauvegarde…`,
+  `Synchronisé` ou `MySQL injoignable`.
 
 ## Contenu
 
 ```text
 WAMP/
 ├── index.html                  # Application React/Vite compilée en un seul fichier
-├── .htaccess                   # Réécriture Apache + limites PHP pour l'API d'état
-├── api/                        # API PHP : état MySQL (state.php) + santé (health.php)
-├── config/db_config.php        # Connexion MySQL/PDO WAMP
-├── database/                   # Scripts SQL d'import MySQL
-├── apache/reception-salfa.conf # Exemple VirtualHost/Alias Apache
-├── deployment/                 # Scripts Windows d'installation/vérification
+├── .htaccess                   # Protections Apache + blocage des fichiers PHP sensibles
+├── api/
+│   ├── index.php               # API d'état JSON (read_all / sync_all / read / sync / health)
+│   ├── config.php              # Connexion MySQL (127.0.0.1, root, base reception_salfa)
+│   ├── database.php            # Connexion PDO (préparée, utf8mb4)
+│   ├── datasets.php            # Correspondance collections ↔ tables MySQL normalisées
+│   └── diagnostic.php          # Page de vérification de l'installation MySQL
+├── database/
+│   └── reception_salfa.sql     # Schéma normalisé (crée la base + toutes les tables)
+├── deployment/                 # Scripts Windows d'installation / vérification
 └── uploads/                    # Dossier fichiers téléversés
 ```
 
 ## Installation rapide
 
 1. Vérifier que WAMP est démarré et **vert** (Apache + MySQL).
-2. Copier le dossier `WAMP` dans `C:\wamp64\www\reception-salfa`.
-3. Importer **obligatoirement** dans MySQL (phpMyAdmin → `http://localhost/phpmyadmin`) :
-   - `database/import_wamp_state.sql` — crée la base `reception_salfa`, la table
-     `salfa_app_state` et y insère l'état initial complet.
-4. (Optionnel) `database/import_full.sql` — schéma relationnel classique de
-   démonstration, **non utilisé** par l'application compilée.
-5. Ouvrir : `http://localhost/reception-salfa/`.
+2. Copier le dossier `WAMP` vers `C:\wamp64\www\reception-salfa`.
+3. Importer **obligatoirement** le schéma dans MySQL :
+   - `database/reception_salfa.sql` → crée la base `reception_salfa` et **toutes
+     les tables normalisées** (phpMyAdmin → `http://localhost/phpmyadmin`).
+4. Ouvrir : `http://localhost/reception-salfa/`.
+
+> Au **premier** lancement, si la base ne contient encore aucun compte, l'application
+> y écrit automatiquement son état initial (utilisateurs, paramètres d'impression,
+> catalogue articles, laboratoire…).
 
 Vous pouvez aussi tout automatiser avec :
 
@@ -62,22 +75,17 @@ Vous pouvez aussi tout automatiser avec :
 WAMP\deployment\install_wamp.bat
 ```
 
-> ℹ️ Si la table `salfa_app_state` est absente ou vide, l'application démarre
-> quand même (état initial intégré) et ré-écrit immédiatement l'état dans MySQL :
-> le badge en bas à gauche confirme « MySQL : toutes les données synchronisées ».
-
 ## Vérifier que tout est bien dans MySQL
 
-1. Ouvrir phpMyAdmin → base `reception_salfa` → table `salfa_app_state`.
-2. La ligne `default` contient tout l'état applicatif dans `state_json`
-   (colonne `LONGTEXT`).
-3. La colonne `updated_at` change à **chaque** action effectuée dans l'application.
-4. Un `mysqldump` de la base `reception_salfa` constitue une sauvegarde complète
-   et fidèle de l'application.
+1. Ouvrir `http://localhost/reception-salfa/api/diagnostic.php` → la page indique
+   « Connexion MySQL réussie » et le nombre de tables présentes.
+2. phpMyAdmin → base `reception_salfa` : vous verrez **une table par entité**
+   (`salfa_patients`, `salfa_ventes`, `salfa_articles`, …).
+3. Dans chaque table, la colonne `data_json` contient l'objet complet ; les autres
+   colonnes (`id`, `nom`, `date`, `statut`, montants…) servent à l'interrogation.
+4. Un `mysqldump` de la base `reception_salfa` constitue une sauvegarde complète.
 
-## Comptes présents dans l'application compilée
-
-Ces comptes viennent de l'état initial (importé dans MySQL au moment du build) :
+## Comptes présents après le premier lancement
 
 | Rôle | Identifiant affiché | Mot de passe |
 |---|---|---|
@@ -92,28 +100,29 @@ Ces comptes viennent de l'état initial (importé dans MySQL au moment du build)
 
 ## API WAMP
 
-- Santé : `http://localhost/reception-salfa/api/health.php`
-- État (GET/PUT/POST) : `http://localhost/reception-salfa/api/state.php`
+- Santé (JSON) : `http://localhost/reception-salfa/api/index.php?action=health`
+- Lecture complète (JSON) : `http://localhost/reception-salfa/api/index.php?action=read_all`
+- Écriture complète (JSON, POST) : `.../api/index.php?action=sync_all`
+- Diagnostic (HTML) : `http://localhost/reception-salfa/api/diagnostic.php`
 
-`state.php` lit/écrit l'état complet dans la table `salfa_app_state` — c'est
-précisément ce que l'application utilise pour TOUTES ses données.
+`config.php` se connecte à `127.0.0.1:3306`, base `reception_salfa`, utilisateur
+`root`, mot de passe vide par défaut (paramétrable).
 
 ## Recompiler la version WAMP
-
-La version WAMP est générée depuis la source React avec le mode MySQL activé :
 
 ```bash
 npm run build:wamp      # génère dist/index.html avec VITE_WAMP_MODE=1
 cp dist/index.html WAMP/index.html
 ```
 
-Le build standard (`npm run build`) reste inchangé (données en mémoire,
-comportement d'origine, aucun appel à MySQL).
+Le build standard (`npm run build`) reste inchangé (données en mémoire).
 
-## Important
+## Si MySQL ne répond pas
 
-- **Strictement MySQL** : toutes les données applicatives de la partie WAMP sont
-  dans la table MySQL `salfa_app_state` — pas de JSON local, pas de localStorage.
-- Le fichier `index.html` est autonome : CSS et JavaScript sont intégrés.
-- Si vous changez le nom du dossier web, adaptez `APP_URL` dans
-  `config/db_config.php` et l'Alias Apache si vous l'utilisez.
+- Vérifier que MySQL/MariaDB est **vert** dans WAMP.
+- Vérifier `api/config.php` : hôte `127.0.0.1`, port `3306`, base `reception_salfa`,
+  utilisateur `root`, mot de passe vide par défaut.
+- Importer `database/reception_salfa.sql` (schéma obligatoire).
+- Tester `api/diagnostic.php` dans le navigateur.
+- L'application fonctionne quand même en mémoire mais le badge rouge
+  « MySQL injoignable » s'affiche : aucune donnée n'est alors sauvegardée.

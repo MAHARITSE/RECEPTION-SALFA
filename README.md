@@ -85,11 +85,16 @@ npx wrangler deploy
 
 Application compilée + API PHP + scripts SQL, à copier dans
 `C:\wamp64\www\reception-salfa`. **Toutes les données sont stockées
-strictement dans MySQL** (table `salfa_app_state`) :
+strictement dans MySQL** dans des **tables normalisées** (`salfa_patients`,
+`salfa_ventes`, `salfa_articles`, …). Cette partie a été reconstruite en
+s'inspirant de [LogBara](https://github.com/MAHARITSE/LogBara) (connexion en
+`127.0.0.1`, une table par entité, page de diagnostic MySQL) :
 
-- L'application chargée depuis MySQL au démarrage et sauvegarde
+- L'application est chargée depuis MySQL au démarrage et sauvegarde
   automatiquement **chaque modification** (patients, consultations, caisse,
   ventes, stocks, messagerie, journal d'audit…) ;
+- Connexion MySQL fiable en `127.0.0.1` (évite le bug IPv6 `::1` de WAMP) ;
+- Page de vérification : `http://localhost/reception-salfa/api/diagnostic.php` ;
 - Aucune donnée applicative dans `localStorage` ni dans un fichier JSON local.
 
 ➡️ Voir [`WAMP/README.md`](./WAMP/README.md) et [`WAMP/QUICKSTART.md`](./WAMP/QUICKSTART.md).

@@ -1,64 +1,14 @@
-# ============================================================
-# .htaccess - RECEPTION SALFA
-# Deployer ce fichier à la racine du dossier web sur WAMP
-# ============================================================
-
-# Active le module de réécriture
-<IfModule mod_rewrite.c>
-    RewriteEngine On
-    RewriteBase /reception-salfa/
-</IfModule>
-
-# Cache les fichiers sensibles
-<FilesMatch "\.(env|git|htaccess|htpasswd|ini|log|sh|sql|conf|bak|md)$">
-    Require all denied
-</FilesMatch>
-
-# Pour React Router (SPA)
-<IfModule mod_rewrite.c>
-    RewriteEngine On
-    RewriteBase /reception-salfa/
-    RewriteCond %{REQUEST_FILENAME} !-f
-    RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteRule ^index\.html$ - [L]
-    RewriteRule . index.html [L]
-</IfModule>
-
-# Compression GZIP
-<IfModule mod_deflate.c>
-    AddOutputFilterByType DEFLATE text/html text/css application/javascript application/json
-</IfModule>
-
-# Cache fichiers statiques
-<IfModule mod_expires.c>
-    ExpiresActive On
-    ExpiresByType text/css "access plus 1 month"
-    ExpiresByType application/javascript "access plus 1 month"
-    ExpiresByType image/png "access plus 1 year"
-    ExpiresByType image/jpeg "access plus 1 year"
-</IfModule>
-
-# Headers de sécurité
-<IfModule mod_headers.c>
-    Header set X-Content-Type-Options "nosniff"
-    Header set X-Frame-Options "SAMEORIGIN"
-    Header set X-XSS-Protection "1; mode=block"
-</IfModule>
-
-# Désactiver l'affichage du répertoire
 Options -Indexes
+DirectoryIndex index.html
 
-# Charset UTF-8
-AddDefaultCharset UTF-8
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Limites PHP pour l'API d'état MySQL (JSON complet de l'application).
-# L'état complet peut contenir des logos en base64 : on autorise de gros corps
-# de requête PUT/POST (api/state.php) sans pénaliser le reste de l'application.
-# ─────────────────────────────────────────────────────────────────────────────
-<IfModule mod_php.c>
-    php_value memory_limit 256M
-    php_value post_max_size 128M
-    php_value upload_max_filesize 128M
-    php_value max_execution_time 120
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set Referrer-Policy "same-origin"
+  Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
 </IfModule>
+
+# Protéger la configuration PHP (même sécurité que LogBara)
+<FilesMatch "^(config\.php|database\.php|datasets\.php)$">
+  Require all denied
+</FilesMatch>
