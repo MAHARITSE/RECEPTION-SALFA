@@ -11,7 +11,8 @@
 2. Démarrer WAMP et vérifier que l'icône est **verte** (Apache **et** MySQL).
 3. Aller dans phpMyAdmin : `http://localhost/phpmyadmin`
 4. Importer : `database\reception_salfa.sql`
-   → crée la base `reception_salfa` + **toutes les tables normalisées**.
+   → crée la base `reception_salfa`, **toutes les tables normalisées** et les
+   données d'exemple.
 5. Ouvrir : `http://localhost/reception-salfa/`
 
 > Si vous mettez à jour une ancienne installation qui contient des tables
@@ -19,8 +20,9 @@
 > `database\migration_tables_francaises.sql` **avant** d'ouvrir l'application.
 > Les données sont conservées et les tables sont renommées en français.
 
-> Au premier lancement, si la base est vide, l'application y écrit son état
-> initial (comptes, paramètres d'impression, catalogue…).
+> Le schéma importe 127 lignes de démonstration (comptes, patients,
+> consultations, ventes, stocks et laboratoire). Elles sont ajoutées uniquement
+> dans les tables vides afin de ne pas remplacer les données existantes.
 
 ## Option B — script automatique
 

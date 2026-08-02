@@ -9,8 +9,9 @@
 --     de l'application.
 --
 --  Le script renomme les tables sans modifier ni supprimer leurs données.
---  Si le nouveau schéma a déjà été importé, il copie d'abord les lignes absentes
---  dans les nouvelles tables, puis retire les anciennes tables `salfa_*`.
+--  Si le nouveau schéma (et ses exemples) a déjà été importé, les données de
+--  l'ancienne table restent la source de vérité : elles remplacent le contenu
+--  de la nouvelle table, puis l'ancienne table `salfa_*` est retirée.
 -- ============================================================================
 
 USE `reception_salfa`;
@@ -37,10 +38,18 @@ BEGIN
         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = nouvelle_table;
 
         IF nouvelle_existe > 0 THEN
-            -- Le nouveau schéma existe déjà : conserve ses lignes en cas de
-            -- doublon d'identifiant et récupère les lignes de l'ancienne table.
+            -- Le nouveau schéma et son jeu d'exemples ont peut-être déjà été
+            -- importés. L'ancienne table est alors prioritaire afin de ne pas
+            -- remplacer les données existantes par les exemples.
             SET @requete = CONCAT(
-                'INSERT IGNORE INTO `', REPLACE(nouvelle_table, '`', '``'),
+                'DELETE FROM `', REPLACE(nouvelle_table, '`', '``'), '`'
+            );
+            PREPARE requete FROM @requete;
+            EXECUTE requete;
+            DEALLOCATE PREPARE requete;
+
+            SET @requete = CONCAT(
+                'INSERT INTO `', REPLACE(nouvelle_table, '`', '``'),
                 '` SELECT * FROM `', REPLACE(ancienne_table, '`', '``'), '`'
             );
             PREPARE requete FROM @requete;
