@@ -34,7 +34,7 @@ Application complète de gestion clinique et hospitalière (HIS — Hospital Inf
 
 6. **📦 Magasinier & Stock Central**
    - Gestion du catalogue d'articles (Médicaments, Consommables labo/dentaire/écho).
-   - Suivi des 3 tarifs (Achat, Comptoir, Société, Externe).
+   - 3 prix de vente par article (Comptoir, Société, Externe) + prix d'Achat.
    - Gestion des fournisseurs, réceptions de commandes (Style Sage Line) et transferts entre dépôts.
 
 7. **🔬 Laboratoire**

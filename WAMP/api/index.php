@@ -75,7 +75,12 @@ function salfa_prepare_rows(array $rows, array $dataset): array
         }
         $dbRow = ['id' => $id, 'data_json' => reception_salfa_json_encode($row)];
         foreach ($dataset['columns'] as $column => $path) {
-            $dbRow[$column] = salfa_cast_value(salfa_extract($row, $path));
+            $value = salfa_cast_value(salfa_extract($row, $path));
+            // Propriété absente → la colonne n'est pas incluse : la valeur par
+            // défaut de la colonne s'applique (0 pour les prix, NULL sinon).
+            if ($value !== null) {
+                $dbRow[$column] = $value;
+            }
         }
         $prepared[] = $dbRow;
     }
@@ -152,6 +157,8 @@ $action = $_GET['action'] ?? '';
 try {
     $config = require __DIR__ . '/config.php';
     $pdo = reception_salfa_database($config);
+    // Mise à niveau automatique du schéma (colonnes tarifaires des articles)
+    reception_salfa_ensure_articles_price_columns($pdo);
     $datasets = reception_salfa_datasets();
 } catch (Throwable $e) {
     salfa_respond([

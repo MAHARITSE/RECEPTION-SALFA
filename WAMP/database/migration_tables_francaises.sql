@@ -9,7 +9,7 @@
 --     de l'application.
 --
 --  Le script renomme les tables sans modifier ni supprimer leurs données.
---  Si le nouveau schéma (et ses exemples) a déjà été importé, les données de
+--  Si le nouveau schéma (et sa configuration minimale) a déjà été importé, les données de
 --  l'ancienne table restent la source de vérité : elles remplacent le contenu
 --  de la nouvelle table, puis l'ancienne table `salfa_*` est retirée.
 -- ============================================================================
@@ -38,9 +38,9 @@ BEGIN
         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = nouvelle_table;
 
         IF nouvelle_existe > 0 THEN
-            -- Le nouveau schéma et son jeu d'exemples ont peut-être déjà été
+            -- Le nouveau schéma et sa configuration minimale ont peut-être déjà été
             -- importés. L'ancienne table est alors prioritaire afin de ne pas
-            -- remplacer les données existantes par les exemples.
+            -- remplacer les données existantes par la configuration minimale.
             SET @requete = CONCAT(
                 'DELETE FROM `', REPLACE(nouvelle_table, '`', '``'), '`'
             );
