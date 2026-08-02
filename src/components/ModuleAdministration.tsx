@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import type { UserRole, TicketSettings, Company, CompanySettlementMode, User } from '../types';
 import { formatAr, addAuditLog, migrateLegacyToVentes, createInitialState } from '../store';
+import { IS_WAMP_BUILD } from '../wamp';
 import type { AppState } from '../store';
 import ModuleReception from './ModuleReception';
 import ModuleMedecin from './ModuleMedecin';
@@ -493,16 +494,33 @@ export default function ModuleAdministration({ state, setState }: Props) {
   };
 
   const resetAllDatabase = () => {
+    const wampHint = IS_WAMP_BUILD
+      ? ' En mode MySQL (WAMP), les comptes utilisateurs, les paramètres d\'impression, les familles et les services sont conservés : il s\'agit de la configuration minimale nécessaire à la connexion.'
+      : ' En mode standard, les données seront remplacées par le jeu de démonstration local.';
     setConfirmModal({
       isOpen: true,
       title: '⛔ RÉINITIALISATION TOTALE DE LA BASE ?',
-      message: 'ATTENTION EXTRÊME : Cette action est IRREVOCABLE. Toutes les données saisies (patients, factures, catalogue d\'articles, utilisateurs, sociétés) seront EFFACÉES et remplacées par les données locales du fichier localData.json.',
+      message: `ATTENTION EXTRÊME : Cette action est IRREVOCABLE. Toutes les données saisies (patients, factures, ventes, catalogue d'articles, sociétés) seront EFFACÉES.${wampHint}`,
       confirmText: 'Confirmer la réinitialisation TOTALE',
       variant: 'danger',
       onConfirm: () => {
         try { localStorage.clear(); } catch { /* ignore */ }
         const freshState = createInitialState();
-        setState(() => freshState);
+        setState((prev) => {
+          // Mode WAMP (données dans MySQL) : on repart d'un état vide SANS données
+          // JSON, en conservant la configuration système indispensable (comptes de
+          // connexion, paramètres d'impression, familles, services).
+          if (IS_WAMP_BUILD) {
+            return {
+              ...freshState,
+              users: prev.users,
+              ticketSettings: prev.ticketSettings || freshState.ticketSettings,
+              familles: prev.familles?.length ? prev.familles : freshState.familles,
+              warehouseServices: prev.warehouseServices?.length ? prev.warehouseServices : freshState.warehouseServices,
+            };
+          }
+          return freshState;
+        });
         showToast('✅ Base de données entièrement réinitialisée');
         setConfirmModal((cm) => ({ ...cm, isOpen: false }));
       },

@@ -53,7 +53,7 @@ WAMP/
 │   ├── datasets.php            # Correspondance collections ↔ tables MySQL normalisées
 │   └── diagnostic.php          # Page de vérification de l'installation MySQL
 ├── database/
-│   ├── reception_salfa.sql                 # Schéma normalisé + données d'exemple
+│   ├── reception_salfa.sql                 # Schéma normalisé + configuration minimale
 │   └── migration_tables_francaises.sql     # Migration des anciennes tables salfa_ (si besoin)
 ├── deployment/                 # Scripts Windows d'installation / vérification
 └── uploads/                    # Dossier fichiers téléversés
@@ -65,14 +65,17 @@ WAMP/
 2. Copier le dossier `WAMP` vers `C:\wamp64\www\reception-salfa`.
 3. Importer **obligatoirement** le schéma dans MySQL :
    - `database/reception_salfa.sql` → crée la base `reception_salfa`, **toutes
-     les tables normalisées** et le jeu de données d'exemple (phpMyAdmin →
+     les tables normalisées** et la configuration minimale du système (phpMyAdmin →
      `http://localhost/phpmyadmin`).
 4. Ouvrir : `http://localhost/reception-salfa/`.
 
-> Le schéma charge 127 lignes de démonstration (utilisateurs, patients,
-> consultations, factures, stocks, laboratoire…). Elles proviennent de
-> `src/data/localData.json` et ne sont insérées que dans les tables vides :
-> réimporter le schéma ne remplace jamais des données déjà saisies.
+> **Aucune donnée JSON de démonstration n'est insérée** : le schéma ne charge
+> que la configuration minimale indispensable (comptes de connexion, paramètres
+> d'impression, familles d'articles, services du dépôt, compteurs à zéro).
+> Les patients, articles, ventes… partent d'une base **vide** et ne contiennent
+> que ce qui est saisi dans l'application. Les lignes de configuration ne sont
+> insérées que dans les tables vides : réimporter le schéma ne remplace jamais
+> des données déjà saisies.
 
 Vous pouvez aussi tout automatiser avec :
 
@@ -99,8 +102,9 @@ l'application mise à jour**. Le script renomme les tables et conserve les donn�
 
 Pour une nouvelle installation, importez uniquement
 `database/reception_salfa.sql` : les tables sont déjà sans préfixe, portent des
-noms français et contiennent les exemples. Le script `deployment/install_wamp.bat`
-lance aussi la migration, sans effet lorsqu'il n'y a aucune ancienne table.
+noms français et contiennent la configuration minimale (aucune donnée JSON de
+démonstration). Le script `deployment/install_wamp.bat` lance aussi la
+migration, sans effet lorsqu'il n'y a aucune ancienne table.
 
 ## Comptes présents après le premier lancement
 

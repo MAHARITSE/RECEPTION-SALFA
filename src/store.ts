@@ -5,7 +5,8 @@ import type {
   Message, StockTransfer, StockEntry, ClientType, ArticleFamily, TransferCategory,
   LabExamCatalog, LabCategory, LabRequest, PatientJourneyEvent, JourneyDepartment,
   WarehouseService, StockMovement, InventorySession, StockLocation,
-  MovementHeader, MovementLine, MovementType, Vente, VenteLine, VentePayment, VenteType, CompanyBillingAccount
+  MovementHeader, MovementLine, MovementType, Vente, VenteLine, VentePayment, VenteType, CompanyBillingAccount,
+  TicketSettings,
 } from './types';
 import localSeedData from './data/localData.json';
 
@@ -464,11 +465,87 @@ export interface AppState {
 }
 
 /**
- * État initial de l'application, chargé depuis le fichier de données local
- * `src/data/localData.json`. Le JSON est cloné à chaque appel afin de toujours
- * repartir d'une copie vierge (démarrage + « réinitialisation totale » admin).
+ * Paramètres d'impression / établissement par défaut (codés en dur).
+ * Utilisés par la version WAMP (MySQL) lorsqu'aucune valeur n'est encore
+ * enregistrée dans la table `parametres_impression` — aucune dépendance
+ * au fichier JSON de démonstration.
+ */
+export const DEFAULT_TICKET_SETTINGS: TicketSettings = {
+  facilityName: 'SALFA — Centre de Santé',
+  address: 'Antananarivo, Madagascar',
+  phone: '',
+  nif: '',
+  logoUrl: '',
+  secondLogoUrl: '',
+  receiptTitle: 'REÇU DE PAIEMENT',
+  footerMessage: 'Merci de votre visite. Prompt rétablissement !',
+  paperWidth: 80,
+  autoPrint: true,
+  showLogo: true,
+  showBarcode: true,
+  showSignature: true,
+  copies: 1,
+  currency: 'Ar',
+  paymentMethods: ['Espèces', 'Carte bancaire', 'Mobile Money', 'Virement', 'Chèque'],
+  invoicePrefix: 'FAC',
+};
+
+/**
+ * État de départ vide pour la version WAMP (100 % MySQL) : AUCUNE donnée
+ * JSON de démonstration. Seules les familles par défaut et les paramètres
+ * d'impression par défaut sont fournis ; les comptes utilisateurs et la
+ * configuration viennent du schéma SQL (table `utilisateurs`…).
+ */
+function createEmptyInitialState(): AppState {
+  return {
+    currentUser: null,
+    ticketSettings: JSON.parse(JSON.stringify(DEFAULT_TICKET_SETTINGS)),
+    patients: [],
+    consultations: [],
+    invoices: [],
+    cashClosings: [],
+    articles: [],
+    stockTransfers: [],
+    stockEntries: [],
+    auditLogs: [],
+    notifications: [],
+    messages: [],
+    users: [],
+    companies: [],
+    companyBillingAccounts: [],
+    fournisseurs: [],
+    familles: JSON.parse(JSON.stringify(DEFAULT_FAMILLES)),
+    journey: [],
+    labRequests: [],
+    labCatalog: [],
+    warehouseServices: [],
+    stockMovements: [],
+    inventorySessions: [],
+    movementHeaders: [],
+    movementLines: [],
+    pharmaDeliveryItems: [],
+    pharmaDeliveryClosings: [],
+    pharmaClosingCounter: 0,
+    hbRecords: [],
+    ventes: [],
+    venteLines: [],
+    ventePayments: [],
+    factureCounter: 0,
+  };
+}
+
+/**
+ * État initial de l'application :
+ *  - build standard (mémoire / Cloudflare) : chargé depuis le fichier de données
+ *    local `src/data/localData.json`, cloné à chaque appel pour toujours repartir
+ *    d'une copie vierge (démarrage + « réinitialisation totale » admin) ;
+ *  - build WAMP (`VITE_WAMP_MODE=1`, données dans MySQL) : état VIDE — aucune
+ *    donnée JSON n'est intégrée ni sauvegardée dans la base.
  */
 export function createInitialState(): AppState {
+  if (import.meta.env.VITE_WAMP_MODE === '1') {
+    return createEmptyInitialState();
+  }
   return normalizeFamilyBases(JSON.parse(JSON.stringify(localSeedData)) as AppState);
 }
 

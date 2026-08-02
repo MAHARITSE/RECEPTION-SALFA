@@ -24,6 +24,8 @@ $missing = [];
 try {
     $config = require __DIR__ . '/config.php';
     $pdo = reception_salfa_database($config);
+    // Mise à niveau automatique du schéma (colonnes tarifaires des articles)
+    reception_salfa_ensure_articles_price_columns($pdo);
 
     $datasets = reception_salfa_datasets();
     $expected = [];

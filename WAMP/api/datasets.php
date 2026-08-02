@@ -91,8 +91,13 @@ function reception_salfa_datasets(): array
         'articles' => [
             'type' => 'list',
             'table' => 'articles',
+            // 3 prix de vente (comptoir / société / externe) + prix d'achat
             'columns' => [
                 'name' => 'name', 'family' => 'family', 'unit' => 'unit',
+                'prix_achat' => 'purchasePrice',
+                'prix_comptoir' => 'priceComptoir',
+                'prix_societe' => 'priceSociete',
+                'prix_externe' => 'priceExterne',
                 'stock_central' => 'stockCentral', 'stock_pharmacie' => 'stockPharmacie',
                 'barcode' => 'barcode',
             ],

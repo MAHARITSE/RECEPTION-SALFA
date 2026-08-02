@@ -1,6 +1,5 @@
-import type { AppState } from './store';
+import { DEFAULT_TICKET_SETTINGS, type AppState } from './store';
 import type { TicketSettings } from './types';
-import localSeedData from './data/localData.json';
 
 /**
  * ─────────────────────────────────────────────────────────────────────────────
@@ -80,17 +79,17 @@ function buildDatasets(state: AppState): Record<string, unknown> {
   return datasets;
 }
 
-/** Reconstruit l'état applicatif complet depuis les datasets renvoyés par MySQL. */
+/** Reconstruit l'état applicatif complet depuis les datasets renvoyés par MySQL.
+ *  Aucune donnée JSON de démonstration : seul MySQL (et les valeurs par défaut
+ *  codées en dur ci-dessous) alimente l'état. */
 function reconstructState(datasets: Record<string, unknown>): AppState {
-  const seed = localSeedData as unknown as { ticketSettings: TicketSettings };
-
   const state: Record<string, unknown> = { currentUser: null };
   for (const key of LIST_DATASETS) {
     const value = datasets[key];
     state[key] = Array.isArray(value) ? value : [];
   }
   state.ticketSettings = (datasets.ticketSettings as TicketSettings | undefined)
-    ?? JSON.parse(JSON.stringify(seed.ticketSettings));
+    ?? JSON.parse(JSON.stringify(DEFAULT_TICKET_SETTINGS));
   for (const key of COUNTER_KEYS) {
     state[key] = typeof datasets[key] === 'number' ? (datasets[key] as number) : 0;
   }

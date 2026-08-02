@@ -1236,10 +1236,10 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                       <th className="p-2.5">Famille</th>
                       <th className="p-2.5">Code / Nom Article</th>
                       <th className="p-2.5">Unité</th>
-                      <th className="p-2.5 text-right">P. Achat</th>
-                      <th className="p-2.5 text-right text-blue-700">P. Comptoir</th>
-                      <th className="p-2.5 text-right text-indigo-700">P. Société</th>
-                      <th className="p-2.5 text-right text-purple-700">P. Externe</th>
+                      <th className="p-2.5 text-right">Prix d'Achat</th>
+                      <th className="p-2.5 text-right text-blue-700">Prix Comptoir</th>
+                      <th className="p-2.5 text-right text-indigo-700">Prix Société</th>
+                      <th className="p-2.5 text-right text-purple-700">Prix Externe</th>
                       <th className="p-2.5 text-center" title="Stock d'alerte Central / Pharmacie">Stock alerte C/P</th>
                       <th className="p-2.5 text-right">Actions</th>
                     </tr>
@@ -1313,15 +1313,15 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                             <input type="number" min={0} value={artForm.purchasePrice} onChange={e => setArtForm({ ...artForm, purchasePrice: parseInt(e.target.value) || 0 })} className="w-full px-2 py-1.5 border rounded font-mono text-sm" />
                           </div>
                           <div>
-                            <label className="block text-[11px] font-semibold text-blue-700 mb-0.5">P. Comptoir</label>
+                            <label className="block text-[11px] font-semibold text-blue-700 mb-0.5">Prix Comptoir</label>
                             <input type="number" min={0} value={artForm.priceComptoir} onChange={e => setArtForm({ ...artForm, priceComptoir: parseInt(e.target.value) || 0 })} className="w-full px-2 py-1.5 border rounded font-mono text-sm" />
                           </div>
                           <div>
-                            <label className="block text-[11px] font-semibold text-indigo-700 mb-0.5">P. Société</label>
+                            <label className="block text-[11px] font-semibold text-indigo-700 mb-0.5">Prix Société</label>
                             <input type="number" min={0} value={artForm.priceSociete} onChange={e => setArtForm({ ...artForm, priceSociete: parseInt(e.target.value) || 0 })} className="w-full px-2 py-1.5 border rounded font-mono text-sm" />
                           </div>
                           <div>
-                            <label className="block text-[11px] font-semibold text-purple-700 mb-0.5">P. Externe</label>
+                            <label className="block text-[11px] font-semibold text-purple-700 mb-0.5">Prix Externe</label>
                             <input type="number" min={0} value={artForm.priceExterne} onChange={e => setArtForm({ ...artForm, priceExterne: parseInt(e.target.value) || 0 })} className="w-full px-2 py-1.5 border rounded font-mono text-sm" />
                           </div>
                         </div>
@@ -1587,7 +1587,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                     </div>
                     <div className="w-24"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Famille</label><input readOnly value={labelForFamily(purchaseForm.family) || ''} className="w-full bg-slate-200 border border-slate-300 rounded px-2 py-1 text-xs text-slate-600 truncate" /></div>
                     <div className="w-20"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Quantité</label><input id="purchase-qty-input" type="number" min={1} value={purchaseForm.quantity} onChange={(e) => setPurchaseForm((prev) => ({ ...prev, quantity: parseInt(e.target.value) || 1 }))} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); purchaseSaveLine(); } }} className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs text-right font-mono" /></div>
-                    <div className="w-24"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">P. Achat Unitaire</label><input type="number" min={0} value={purchaseForm.purchasePrice} onChange={(e) => setPurchaseForm((prev) => ({ ...prev, purchasePrice: parseInt(e.target.value) || 0 }))} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); purchaseSaveLine(); } }} className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs text-right font-mono" /></div>
+                    <div className="w-24"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Prix d'Achat Unitaire</label><input type="number" min={0} value={purchaseForm.purchasePrice} onChange={(e) => setPurchaseForm((prev) => ({ ...prev, purchasePrice: parseInt(e.target.value) || 0 }))} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); purchaseSaveLine(); } }} className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs text-right font-mono" /></div>
                     <div className="w-28"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Date Péremption</label><input type="date" value={purchaseForm.expiryDate} onChange={(e) => setPurchaseForm((prev) => ({ ...prev, expiryDate: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); purchaseSaveLine(); } }} className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs font-mono" /></div>
                     <div className="w-28"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Total Ligne</label><input readOnly value={formatAr(purchaseForm.quantity * purchaseForm.purchasePrice)} className="w-full bg-slate-200 border border-slate-300 rounded px-2 py-1 text-xs text-right font-mono font-bold" /></div>
                   </div>
@@ -1607,7 +1607,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                         <th className="p-1.5">Famille</th>
                         <th className="p-1.5">Article</th>
                         <th className="p-1.5 text-right">Quantité</th>
-                        <th className="p-1.5 text-right">P. Achat</th>
+                        <th className="p-1.5 text-right">Prix d'Achat</th>
                         <th className="p-1.5 text-center">Péremption</th>
                         <th className="p-1.5 text-right">Montant Total</th>
                         <th className="p-1.5 text-center w-8"></th>
@@ -1655,7 +1655,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                         <th className="p-2">Date / Heure</th>
                         <th className="p-2">Article</th>
                         <th className="p-2 text-center">Quantité</th>
-                        <th className="p-2 text-right">P. Achat</th>
+                        <th className="p-2 text-right">Prix d'Achat</th>
                         <th className="p-2">Fournisseur</th>
                         <th className="p-2 font-mono">N° BL / Facture</th>
                       </tr>
