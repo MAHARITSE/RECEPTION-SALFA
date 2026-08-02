@@ -50,8 +50,57 @@ Application complète de gestion clinique et hospitalière (HIS — Hospital Inf
 ## 🛠️ Stack Technique
 
 - **Frontend :** React 18, TypeScript, Vite, Tailwind CSS, Lucide React icons, Motion
-- **Gestion d'état :** In-memory React state (`AppState`), initialisé depuis le fichier de données local [`src/data/localData.json`](./src/data/localData.json) (modifiable à la main)
 - **Impression :** Support natif CSS Print & tickets de caisse 80x80
+
+---
+
+## 📂 Structure du projet — 2 parties distinctes
+
+Le projet est divisé en **deux parties indépendantes**, chacune prête à déployer
+dans son environnement :
+
+```text
+RECEPTION-SALFA/
+├── workers/          #  PARTIE 1 — version JSON  → déployée sur workers.dev
+├── WAMP/             #  PARTIE 2 — version WAMP locale (100 % MySQL)
+├── src/              #  Source commune React/TypeScript (pour recompiler les 2)
+└── docs/ …           #  Documentation & modèles de données
+```
+
+### 🟦 PARTIE 1 — `workers/` : version JSON (Cloudflare Workers)
+
+Application **statique** en un seul fichier, données intégrées depuis
+[`src/data/localData.json`](./src/data/localData.json) (état en mémoire).
+À déployer sur **workers.dev** :
+
+```bash
+cd workers
+npx wrangler login
+npx wrangler deploy
+```
+
+➡️ Voir [`workers/README.md`](./workers/README.md) pour les détails.
+
+### 🟨 PARTIE 2 — `WAMP/` : version WAMP locale (100 % MySQL)
+
+Application compilée + API PHP + scripts SQL, à copier dans
+`C:\wamp64\www\reception-salfa`. **Toutes les données sont stockées
+strictement dans MySQL** (table `salfa_app_state`) :
+
+- L'application chargée depuis MySQL au démarrage et sauvegarde
+  automatiquement **chaque modification** (patients, consultations, caisse,
+  ventes, stocks, messagerie, journal d'audit…) ;
+- Aucune donnée applicative dans `localStorage` ni dans un fichier JSON local.
+
+➡️ Voir [`WAMP/README.md`](./WAMP/README.md) et [`WAMP/QUICKSTART.md`](./WAMP/QUICKSTART.md).
+
+### 🔄 Recompiler les deux parties (depuis la source commune)
+
+```bash
+npm install
+npm run build          # version JSON  → dist/index.html → copier vers workers/public/
+npm run build:wamp     # version WAMP  → dist/index.html → copier vers WAMP/index.html
+```
 
 ---
 
@@ -60,18 +109,3 @@ Application complète de gestion clinique et hospitalière (HIS — Hospital Inf
 - [`CONSTITUTION_BASE_DONNEES.md`](./CONSTITUTION_BASE_DONNEES.md) : Dictionnaire complet des tables et helpers du store React.
 - [`docs/SCHEMA_BASE_DONNEES.md`](./docs/SCHEMA_BASE_DONNEES.md) : Schéma relationnel et principes d'intégrité des données.
 - [`prompt.md`](./prompt.md) : Prompt de référence décrivant les spécifications métier et les rôles utilisateurs.
-
----
-
-## 💾 Exporter l'application ou déployer sur GitHub
-
-Si vous souhaitez exporter le code ou l'envoyer vers GitHub depuis **AI Studio** :
-
-1. **Exporter en fichier ZIP** :
-   - Cliquez sur l'icône de **Paramètres / Menu (⚙️)** en haut à droite de l'interface AI Studio.
-   - Sélectionnez l'option **Export** puis **Download ZIP**.
-
-2. **Exporter / Synchroniser vers GitHub** :
-   - Assurez-vous d'avoir autorisé et installé l'application **AI Studio GitHub App** sur votre compte GitHub.
-   - Dans le menu **Settings / Export**, choisissez **Export to GitHub**.
-   - Sélectionnez votre compte ou organisation et le nom du dépôt destination.

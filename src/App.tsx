@@ -1,6 +1,14 @@
-import { useState, useEffect, Component, type ReactNode, type ErrorInfo } from 'react';
+import { useState, useEffect, useRef, Component, type ReactNode, type ErrorInfo } from 'react';
 import type { User } from './types';
 import { createInitialState, migrateLegacyToVentes, type AppState } from './store';
+import {
+  IS_WAMP_BUILD,
+  initialWampSync,
+  loadStateFromMysql,
+  saveStateToMysql,
+  flushStateToMysql,
+  type WampSyncState,
+} from './wamp';
 import ModuleReception from './components/ModuleReception';
 import EcranConnexion from './components/EcranConnexion';
 import MiseEnPage from './components/MiseEnPage';
@@ -26,6 +34,46 @@ const roleTitles: Record<string, string> = {
 };
 
 type AppView = 'reception' | 'login' | 'staff' | 'medicalRecord';
+
+/* ─── Badge de synchronisation MySQL — visible UNIQUEMENT dans le build WAMP
+   (mode « toutes les données dans MySQL »). Affiche en direct l'état de la
+   liaison avec MySQL : chargement initial, sauvegarde, erreur ou synchronisé. ─── */
+function WampSyncBadge({ wamp }: { wamp: WampSyncState }) {
+  if (!wamp.enabled) return null;
+
+  const time = wamp.lastSavedAt ? new Date(wamp.lastSavedAt).toLocaleTimeString('fr-FR') : null;
+
+  let cls = 'border-slate-300 bg-slate-50/95 text-slate-600';
+  let icon = '🔄';
+  let label = 'Chargement des données MySQL…';
+
+  if (wamp.loading) {
+    icon = '🔄';
+    label = 'Chargement des données MySQL…';
+  } else if (wamp.error) {
+    cls = 'border-red-300 bg-red-50/95 text-red-700';
+    icon = '⚠️';
+    label = 'MySQL injoignable — données en mémoire uniquement';
+  } else if (wamp.syncing) {
+    cls = 'border-amber-300 bg-amber-50/95 text-amber-800';
+    icon = '💾';
+    label = 'Sauvegarde MySQL…';
+  } else if (wamp.usingMysql) {
+    cls = 'border-emerald-300 bg-emerald-50/95 text-emerald-700';
+    icon = '✅';
+    label = 'MySQL : toutes les données synchronisées';
+  }
+
+  return (
+    <div
+      className={`fixed bottom-5 left-5 z-[9990] flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold shadow-lg backdrop-blur ${cls}`}
+      title={time ? `Dernière sauvegarde MySQL : ${time}` : 'Synchronisation MySQL (WAMP)'}
+    >
+      <span className="leading-none">{icon}</span>
+      <span>{label}</span>
+    </div>
+  );
+}
 
 /* ─── Error Boundary : empêche l'écran blanc si un module plante ─── */
 interface EBState { hasError: boolean; error: Error | null; }
@@ -93,11 +141,96 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, EBState> {
 }
 
 function AppInner() {
-  const [state, setState] = useState<AppState>(createInitialState());
+  const [state, setState] = useState<AppState>(createInitialState);
   const [view, setView] = useState<AppView>('reception');
   const [showMessaging, setShowMessaging] = useState(false);
   const [messagingRecipientId, setMessagingRecipientId] = useState<string | null>(null);
   const [medicalRecordPatientId, setMedicalRecordPatientId] = useState<string | null>(null);
+
+  /* ─── WAMP / MySQL : état de la synchronisation ─── */
+  const [wamp, setWamp] = useState<WampSyncState>(initialWampSync);
+
+  // Références toujours à jour pour les effets « longue durée »
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const wampRef = useRef(wamp);
+  wampRef.current = wamp;
+  // État local initial (seed) — utilisé si MySQL ne contient encore aucune donnée
+  const seedRef = useRef(state);
+  // Après le chargement initial, on saute une seule sauvegarde redondante
+  const skipFirstSave = useRef(true);
+
+  /* ─── WAMP : au démarrage, TOUTES les données sont chargées depuis MySQL.
+     Si MySQL ne contient encore rien, l'état local initial y est écrit
+     immédiatement pour que la base serve de référence unique. ─── */
+  useEffect(() => {
+    if (!IS_WAMP_BUILD) {
+      setWamp((s) => ({ ...s, loading: false }));
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const stored = await loadStateFromMysql();
+      if (cancelled) return;
+      if (stored) {
+        setState(stored);
+        setWamp((s) => ({ ...s, loading: false, usingMysql: true, lastSavedAt: Date.now() }));
+      } else {
+        setWamp((s) => ({ ...s, loading: false }));
+        // Aucun état en base : on y écrit l'état initial (seed) sans tarder
+        const ok = await saveStateToMysql(seedRef.current);
+        if (!cancelled && ok) {
+          setWamp((s) => ({ ...s, usingMysql: true, lastSavedAt: Date.now() }));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* ─── WAMP : CHAQUE modification de l'état est automatiquement enregistrée
+     dans MySQL (sauvegarde différée de 800 ms pour regrouper les actions). ─── */
+  useEffect(() => {
+    if (!IS_WAMP_BUILD) return;
+    if (wamp.loading) return; // pendant le chargement initial on ne réécrit pas la base
+    if (skipFirstSave.current) {
+      // L'état vient d'être chargé depuis MySQL (ou écrit au démarrage) : rien à sauver
+      skipFirstSave.current = false;
+      return;
+    }
+    const t = window.setTimeout(() => {
+      setWamp((s) => ({ ...s, syncing: true }));
+      saveStateToMysql(state).then((ok) => {
+        setWamp((s) => ({
+          ...s,
+          syncing: false,
+          usingMysql: s.usingMysql || ok,
+          lastSavedAt: ok ? Date.now() : s.lastSavedAt,
+          error: ok ? null : (s.error ?? 'Échec de la sauvegarde MySQL.'),
+        }));
+      });
+    }, 800);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, wamp.loading]);
+
+  /* ─── WAMP : enregistrement final du dernier état à la fermeture de l'onglet
+     (pagehide / beforeunload) pour ne perdre AUCUNE donnée. ─── */
+  useEffect(() => {
+    if (!IS_WAMP_BUILD) return;
+    const flush = () => {
+      if (!wampRef.current.loading) flushStateToMysql(stateRef.current);
+    };
+    window.addEventListener('pagehide', flush);
+    window.addEventListener('beforeunload', flush);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      window.removeEventListener('beforeunload', flush);
+    };
+  }, []);
+
 
   // Migration automatique idempotente : au 1er chargement, les anciennes
   // factures + dossiers hospit/bloc sont dupliqués dans la table unifiée `ventes`.
@@ -153,17 +286,28 @@ function AppInner() {
       <>
         <ModuleReception state={state} setState={setState} onStaffLogin={() => setView('login')} onOpenMessaging={() => handleOpenMessagingWithRecipient(null)} />
         {showMessaging && <Messagerie state={state} setState={setState} onClose={handleCloseMessaging} initialRecipientId={messagingRecipientId} />}
+        <WampSyncBadge wamp={wamp} />
       </>
     );
   }
 
   /* ─── Vue Connexion ─── */
   if (view === 'login') {
-    return <EcranConnexion users={state.users} onLogin={handleLogin} onBack={() => setView('reception')} />;
+    return (
+      <>
+        <EcranConnexion users={state.users} onLogin={handleLogin} onBack={() => setView('reception')} />
+        <WampSyncBadge wamp={wamp} />
+      </>
+    );
   }
 
   if (!state.currentUser) {
-    return <EcranConnexion users={state.users} onLogin={handleLogin} onBack={() => setView('reception')} />;
+    return (
+      <>
+        <EcranConnexion users={state.users} onLogin={handleLogin} onBack={() => setView('reception')} />
+        <WampSyncBadge wamp={wamp} />
+      </>
+    );
   }
 
   /* ─── Vue Dossier Médical ─── */
@@ -186,6 +330,7 @@ function AppInner() {
           <ModuleDossierMedical state={state} patientId={medicalRecordPatientId} onBack={() => { setView('staff'); setMedicalRecordPatientId(null); }} />
         </MiseEnPage>
         {showMessaging && <Messagerie state={state} setState={setState} onClose={handleCloseMessaging} initialRecipientId={messagingRecipientId} />}
+        <WampSyncBadge wamp={wamp} />
       </>
     );
   }
@@ -221,6 +366,7 @@ function AppInner() {
         </ModuleErrorBoundary>
       </MiseEnPage>
       {showMessaging && <Messagerie state={state} setState={setState} onClose={handleCloseMessaging} initialRecipientId={messagingRecipientId} />}
+      <WampSyncBadge wamp={wamp} />
     </>
   );
 }
