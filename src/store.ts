@@ -7,7 +7,7 @@ import type {
   WarehouseService, StockMovement, InventorySession, StockLocation,
   MovementHeader, MovementLine, MovementType, Vente, VenteLine, VentePayment, VenteType, CompanyBillingAccount
 } from './types';
-import { createMassiveDemoState } from './data/massiveDemoData';
+import localSeedData from './data/localData.json';
 
 let dossierCounter = 100;
 export function generateDossierNumber(ln: string): string { dossierCounter++; return `${ln.substring(0,3).toUpperCase().padEnd(3,'X')}${dossierCounter}`; }
@@ -25,50 +25,6 @@ export function getPrice(a: Article, ct: ClientType): number {
   if (ct === 'externe') return a.priceExterne;
   return a.priceComptoir;
 }
-
-const art = (name: string, fam: ArticleFamily, unit: string, pc: number, ps: number, pe: number, pp: number, sc: number, sp: number, msc: number, msp: number): Article => (
-  { id: uuidv4(), name, family: fam, unit, priceComptoir: pc, priceSociete: ps, priceExterne: pe, purchasePrice: pp, stockCentral: sc, stockPharmacie: sp, minStockCentral: msc, minStockPharmacie: msp }
-);
-
-const seedArticles: Article[] = [
-  art('Paracétamol 500mg','MEDIC','comprimé',500,450,600,200,800,120,100,50),
-  art('Amoxicilline 1g','MEDIC','gélule',2000,1800,2500,1000,400,45,50,30),
-  art('Ibuprofène 400mg','MEDIC','comprimé',800,700,1000,350,600,80,50,40),
-  art('Oméprazole 20mg','MEDIC','gélule',1200,1000,1500,500,300,45,30,20),
-  art('Metformine 850mg','MEDIC','comprimé',900,800,1100,400,350,60,30,25),
-  art('Amlodipine 5mg','MEDIC','comprimé',1500,1300,1800,700,250,40,20,15),
-  art('Tube EDTA','LABO','unité',300,250,400,100,200,50,30,20),
-  art('Réactif Glycémie','LABO','flacon',5000,4500,6000,2500,30,10,5,3),
-  art('Bandelette urinaire','LABO','boîte',3000,2500,3500,1500,20,8,5,3),
-  art('Composite dentaire','DENT','seringue',15000,12000,18000,8000,15,5,3,2),
-  art('Anesthésique dentaire','DENT','cartouche',3000,2500,3500,1200,40,15,10,5),
-  art('Gel échographie','ECHO','flacon',5000,4000,6000,2000,12,4,5,2),
-  art('Papier thermique','ECHO','rouleau',2000,1800,2500,800,25,8,5,3),
-];
-
-const _mkCompany = (name: string, settlementMode: 'monthly_global' | 'per_invoice'): Company => ({
-  id: uuidv4(), name, paymentMode: 'Crédit', settlementMode,
-  createdAt: new Date().toISOString(),
-});
-const seedCompanies: Company[] = [
-  _mkCompany('JIRAMA', 'monthly_global'),
-  _mkCompany('TELMA', 'monthly_global'),
-  _mkCompany('AIR MADAGASCAR', 'per_invoice'),
-  _mkCompany('AMBATOVY', 'monthly_global'),
-  _mkCompany('QMM / RIO TINTO', 'per_invoice'),
-  _mkCompany('STAR BRASSERIES', 'per_invoice'),
-  _mkCompany('BNI MADAGASCAR', 'monthly_global'),
-  _mkCompany('SOCIMEX', 'per_invoice'),
-];
-
-/** Services d'entrepôt par défaut — le dépôt central disperse vers ces services */
-export const SEED_WAREHOUSE_SERVICES: WarehouseService[] = [
-  { id: 'svc-pharmacie', code: 'PHA', name: 'Pharmacie', kind: 'pharmacie', color: 'purple', active: true, createdAt: new Date().toISOString() },
-  { id: 'svc-bloc', code: 'BLOC', name: 'Bloc opératoire', kind: 'service', color: 'blue', active: true, createdAt: new Date().toISOString() },
-  { id: 'svc-soins', code: 'SOINS', name: 'Soins / Hospitalisation', kind: 'service', color: 'rose', active: true, createdAt: new Date().toISOString() },
-  { id: 'svc-labo', code: 'LABO', name: 'Laboratoire', kind: 'service', color: 'emerald', active: true, createdAt: new Date().toISOString() },
-  { id: 'svc-urgence', code: 'URG', name: 'Urgences', kind: 'service', color: 'amber', active: true, createdAt: new Date().toISOString() },
-];
 
 /** Stock d'un article pour une localisation (central | pharmacie | serviceId) */
 export function getArticleStock(a: Article, location: StockLocation): number {
@@ -465,47 +421,10 @@ export function migrateLegacyToVentes(state: AppState): { migratedInvoices: numb
 }
 
 
-const seedPatients: Patient[] = [
-  { id: uuidv4(), dossier: 'DUP102', firstName: 'Marie', lastName: 'DUPONT', dateOfBirth: '1990-07-22', age: '34 Ans', gender: 'F', address: 'TOAMASINA', contact: '033 98 765 43', ssn: '', allergies: [], chronicTreatments: [], antecedents: [], bloodGroup: 'A+', registeredAt: new Date().toISOString(), registeredBy: 'SYSTEM', status: 'registered', clientType: 'societe', company: 'JIRAMA', subCompany: 'Direction Régionale' },
-  { id: uuidv4(), dossier: 'RAK103', firstName: 'Solo', lastName: 'RAKOTO', dateOfBirth: '2015-11-08', age: '9 Ans', gender: 'M', address: 'FIANARANTSOA', contact: '032 11 222 33', ssn: '', insureName: 'RAKOTO JEAN', allergies: ['Aspirine'], chronicTreatments: [], antecedents: ['Asthme'], bloodGroup: 'B+', registeredAt: new Date().toISOString(), registeredBy: 'SYSTEM', status: 'registered', clientType: 'comptoir' },
-];
-
-
-
-
-
-const users: User[] = [
-  { id: 'DOC001', name: 'Dr. Jean Martin', role: 'doctor', password: 'doc123' },
-  { id: 'DOC002', name: 'Dr. Sophie Leclerc', role: 'doctor', password: 'doc123' },
-  { id: 'DOC003', name: 'Dr. Ahmed Benali', role: 'doctor', password: 'doc123' },
-  { id: 'CAS001', name: 'Caisse 1 - Pierre Duval', role: 'cashier', password: 'caisse123' },
-  { id: 'CAS002', name: 'Caisse 2 - Miora Kanto', role: 'cashier', password: 'caisse123' },
-  { id: 'PHA001', name: 'Pharmacie 1 - Fatima Benali', role: 'pharmacy', password: 'pharma123' },
-  { id: 'PHA002', name: 'Pharmacie 2 - Tiana Soa', role: 'pharmacy', password: 'pharma123' },
-  { id: 'MAG001', name: 'Ali Rasolofo', role: 'magasinier', password: 'mag123' },
-  { id: 'LAB001', name: 'Thomas Nguyen', role: 'laboratory', password: 'labo123' },
-  { id: 'ADM001', name: 'Admin Système', role: 'admin', password: 'admin123' },
-  { id: 'FAC001', name: 'Hanta RASOA', role: 'billing', password: 'fact123' },
-];
-
 export const CONSULTATION_FEE = 10000;
 export const LAB_FEE = 15000;
 export const LAB_FEE_URGENT = 25000;
 export const SURGERY_FEE = 500000;
-
-export const SEED_FOURNISSEURS: Fournisseur[] = [
-  { id: 'fourn-1', name: 'PHARMA LABS S.A.', contactPerson: 'M. Rabe', phone: '034 00 111 22', email: 'contact@pharmalabs.mg', address: 'Ankorondrano, Antananarivo', nif: '1000234567', stat: '51301 11 2018 0 00123' },
-  { id: 'fourn-2', name: 'MEDICIS IMPORT', contactPerson: 'Mme Razafy', phone: '033 11 222 33', email: 'ventes@medicis.mg', address: 'Ankorondrano, Antananarivo', nif: '1000345678', stat: '51301 11 2019 0 00456' },
-  { id: 'fourn-3', name: 'SANTE EQUIPEMENT MADAGASCAR', contactPerson: 'M. Jean', phone: '032 22 333 44', email: 'info@sem-madagascar.com', address: 'Isoraka, Antananarivo', nif: '1000456789', stat: '51301 11 2020 0 00789' },
-  { id: 'fourn-4', name: 'DISPHAR LABO', contactPerson: 'M. Andry', phone: '034 44 555 66', email: 'commande@disphar.mg', address: 'Andraharo, Antananarivo', nif: '1000567890', stat: '51301 11 2021 0 00321' },
-];
-
-export const SEED_FAMILLES: Famille[] = [
-  { id: 'fam-medic', code: 'MEDIC', name: 'Médicaments', color: '#0D47A1', order: 1 },
-  { id: 'fam-labo', code: 'LABO', name: 'Laboratoire', color: '#10B981', order: 2 },
-  { id: 'fam-dent', code: 'DENT', name: 'Dentaire', color: '#8B5CF6', order: 3 },
-  { id: 'fam-echo', code: 'ECHO', name: 'Échographie', color: '#F59E0B', order: 4 },
-];
 
 export interface AppState {
   currentUser: User | null; ticketSettings: import('./types').TicketSettings; patients: Patient[]; consultations: Consultation[];
@@ -544,8 +463,14 @@ export interface AppState {
   factureCounter: number;
 }
 
-/** Construit exclusivement le jeu de démonstration synthétique déterministe. */
-export function createInitialState(): AppState { return createMassiveDemoState(); }
+/**
+ * État initial de l'application, chargé depuis le fichier de données local
+ * `src/data/localData.json`. Le JSON est cloné à chaque appel afin de toujours
+ * repartir d'une copie vierge (démarrage + « réinitialisation totale » admin).
+ */
+export function createInitialState(): AppState {
+  return JSON.parse(JSON.stringify(localSeedData)) as AppState;
+}
 
 export function addAuditLog(s: AppState, action: string, details: string, patientId?: string): AuditLog {
   const l: AuditLog = { id: uuidv4(), timestamp: new Date().toISOString(), userId: s.currentUser?.id || 'SYSTEM', userName: s.currentUser?.name || 'Système', userRole: s.currentUser?.role || 'receptionist', action, details, patientId };
@@ -616,38 +541,6 @@ export function labCategoryLabel(c: LabCategory): string {
     hemostase: 'Hémostase', autre: 'Autre',
   }[c];
 }
-
-export const seedLabCatalog: LabExamCatalog[] = [
-  // Hématologie
-  { id: uuidv4(), code: 'HEM001', name: 'NFS', category: 'hematologie', parameters: ['Globules Rouges', 'Globules Blancs', 'Hémoglobine', 'Plaquettes', 'Hématocrite'], sampleType: 'Sang veineux (EDTA)', priceComptoir: 15000, priceSociete: 13000, priceExterne: 18000, urgentPrice: 25000, durationHours: 4 },
-  { id: uuidv4(), code: 'HEM002', name: 'Groupe Sanguin & Rhésus', category: 'hematologie', parameters: ['Groupe ABO', 'Rhésus'], sampleType: 'Sang veineux', priceComptoir: 10000, priceSociete: 9000, priceExterne: 12000, urgentPrice: 15000, durationHours: 2 },
-  { id: uuidv4(), code: 'HEM003', name: 'Réticulocytes', category: 'hematologie', parameters: ['Réticulocytes'], sampleType: 'Sang veineux (EDTA)', priceComptoir: 12000, priceSociete: 11000, priceExterne: 14000, urgentPrice: 20000, durationHours: 3 },
-  { id: uuidv4(), code: 'HEM004', name: 'TP / INR', category: 'hemostase', parameters: ['TP', 'INR'], sampleType: 'Sang veineux (citraté)', priceComptoir: 12000, priceSociete: 11000, priceExterne: 15000, urgentPrice: 20000, durationHours: 2 },
-  { id: uuidv4(), code: 'HEM005', name: 'TCA', category: 'hemostase', parameters: ['TCA'], sampleType: 'Sang veineux (citraté)', priceComptoir: 12000, priceSociete: 11000, priceExterne: 15000, urgentPrice: 20000, durationHours: 3 },
-  // Biochimie
-  { id: uuidv4(), code: 'BIO001', name: 'Glycémie à jeun', category: 'biochimie', parameters: ['Glucose'], sampleType: 'Sang veineux', priceComptoir: 8000, priceSociete: 7000, priceExterne: 10000, urgentPrice: 15000, durationHours: 1 },
-  { id: uuidv4(), code: 'BIO002', name: 'Créatinine', category: 'biochimie', parameters: ['Créatinine'], sampleType: 'Sang veineux', priceComptoir: 10000, priceSociete: 9000, priceExterne: 12000, urgentPrice: 18000, durationHours: 2 },
-  { id: uuidv4(), code: 'BIO003', name: 'Bilan hépatique', category: 'biochimie', parameters: ['ASAT', 'ALAT', 'GGT', 'Bilirubine'], sampleType: 'Sang veineux', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 40000, durationHours: 4 },
-  { id: uuidv4(), code: 'BIO004', name: 'Ionogramme (Na/K/Cl)', category: 'biochimie', parameters: ['Sodium', 'Potassium', 'Chlore'], sampleType: 'Sang veineux', priceComptoir: 15000, priceSociete: 13000, priceExterne: 18000, urgentPrice: 25000, durationHours: 2 },
-  { id: uuidv4(), code: 'BIO005', name: 'Bilan lipidique', category: 'biochimie', parameters: ['Cholestérol Total', 'HDL', 'LDL', 'Triglycérides'], sampleType: 'Sang veineux', priceComptoir: 20000, priceSociete: 18000, priceExterne: 25000, urgentPrice: 35000, durationHours: 4 },
-  { id: uuidv4(), code: 'BIO006', name: 'Urée', category: 'biochimie', parameters: ['Urée'], sampleType: 'Sang veineux', priceComptoir: 9000, priceSociete: 8000, priceExterne: 11000, urgentPrice: 16000, durationHours: 2 },
-  { id: uuidv4(), code: 'BIO007', name: 'Acide Urique', category: 'biochimie', parameters: ['Acide Urique'], sampleType: 'Sang veineux', priceComptoir: 9000, priceSociete: 8000, priceExterne: 11000, urgentPrice: 16000, durationHours: 2 },
-  { id: uuidv4(), code: 'BIO008', name: 'CRP', category: 'biochimie', parameters: ['CRP'], sampleType: 'Sang veineux', priceComptoir: 7000, priceSociete: 6000, priceExterne: 9000, urgentPrice: 12000, durationHours: 1 },
-  // Sérologie
-  { id: uuidv4(), code: 'SER001', name: 'Sérologie VIH', category: 'serologie', parameters: ['VIH'], sampleType: 'Sang (sérum)', priceComptoir: 20000, priceSociete: 18000, priceExterne: 25000, urgentPrice: 30000, durationHours: 24 },
-  { id: uuidv4(), code: 'SER002', name: 'Sérologie HBs (Hépatite B)', category: 'serologie', parameters: ['HBs'], sampleType: 'Sang (sérum)', priceComptoir: 18000, priceSociete: 16000, priceExterne: 22000, urgentPrice: 28000, durationHours: 24 },
-  { id: uuidv4(), code: 'SER003', name: 'Dengue IgM/IgG', category: 'serologie', parameters: ['Dengue IgM/IgG'], sampleType: 'Sang (sérum)', priceComptoir: 22000, priceSociete: 20000, priceExterne: 28000, urgentPrice: 35000, durationHours: 24 },
-  { id: uuidv4(), code: 'SER004', name: 'COVID-19 (PCR)', category: 'serologie', parameters: ['SARS-CoV-2'], sampleType: 'Prélèvement nasopharyngé', priceComptoir: 35000, priceSociete: 32000, priceExterne: 45000, urgentPrice: 50000, durationHours: 6 },
-  // Bactériologie
-  { id: uuidv4(), code: 'BAC001', name: 'ECBU (Culture + Antibiogramme)', category: 'bacteriologie', parameters: ['Culture', 'Antibiogramme'], sampleType: 'Urine (pot stérile)', priceComptoir: 15000, priceSociete: 13000, priceExterne: 18000, urgentPrice: 25000, durationHours: 48 },
-  { id: uuidv4(), code: 'BAC002', name: 'Hémocultures', category: 'bacteriologie', parameters: ['Culture'], sampleType: 'Sang veineux', priceComptoir: 20000, priceSociete: 18000, priceExterne: 25000, urgentPrice: 30000, durationHours: 72 },
-  // Parasitologie
-  { id: uuidv4(), code: 'PAR001', name: 'Goutte épaisse', category: 'parasitologie', parameters: ['Plasmodium'], sampleType: 'Sang veineux', priceComptoir: 10000, priceSociete: 9000, priceExterne: 12000, urgentPrice: 18000, durationHours: 4 },
-  { id: uuidv4(), code: 'PAR002', name: 'Coprologie', category: 'parasitologie', parameters: ['Parasites', 'Candida'], sampleType: 'Selles (pot propre)', priceComptoir: 8000, priceSociete: 7000, priceExterne: 10000, urgentPrice: 15000, durationHours: 24 },
-  // Immunologie
-  { id: uuidv4(), code: 'IMM001', name: 'TSH', category: 'immunologie', parameters: ['TSH'], sampleType: 'Sang (sérum)', priceComptoir: 18000, priceSociete: 16000, priceExterne: 22000, urgentPrice: 28000, durationHours: 24 },
-  { id: uuidv4(), code: 'IMM002', name: 'IgE totales', category: 'immunologie', parameters: ['IgE'], sampleType: 'Sang (sérum)', priceComptoir: 15000, priceSociete: 13000, priceExterne: 18000, urgentPrice: 24000, durationHours: 24 },
-];
 
 /**
  * Retire un passage de la file d'attente sans jamais supprimer le dossier patient.
