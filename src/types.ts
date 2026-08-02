@@ -1,6 +1,8 @@
 export type UserRole = 'receptionist' | 'doctor' | 'cashier' | 'pharmacy' | 'magasinier' | 'laboratory' | 'admin' | 'billing';
 export type ClientType = 'comptoir' | 'societe' | 'externe';
-export type ArticleFamily = 'MEDIC' | 'LABO' | 'DENT' | 'ECHO';
+// Code de famille d'article. La base des familles est dynamique (state.familles),
+// avec des codes par défaut : MEDIC, LAB, ECHO (et DENT conservé pour l'existant).
+export type ArticleFamily = string;
 export type PatientStatus = 'registered' | 'waiting_consultation' | 'in_consultation' | 'consulted_awaiting_payment' | 'invoice_paid' | 'medications_delivered' | 'analyses_pending' | 'analyses_complete' | 'completed';
 
 export interface User { id: string; name: string; role: UserRole; password?: string; }

@@ -469,7 +469,7 @@ export interface AppState {
  * repartir d'une copie vierge (démarrage + « réinitialisation totale » admin).
  */
 export function createInitialState(): AppState {
-  return JSON.parse(JSON.stringify(localSeedData)) as AppState;
+  return normalizeFamilyBases(JSON.parse(JSON.stringify(localSeedData)) as AppState);
 }
 
 export function addAuditLog(s: AppState, action: string, details: string, patientId?: string): AuditLog {
@@ -495,8 +495,63 @@ export function addNotification(s: AppState, targetRole: UserRole, message: stri
   s.notifications.unshift(n); return n;
 }
 
-export const ARTICLE_FAMILIES: ArticleFamily[] = ['MEDIC','LABO','DENT','ECHO'];
-export function familyLabel(f: ArticleFamily): string { return { MEDIC:'Médicaments', LABO:'Laboratoire', DENT:'Dentaire', ECHO:'Échographie' }[f]; }
+export const DEFAULT_FAMILLES: Famille[] = [
+  { id: 'fam-medic', code: 'MEDIC', name: 'Médicaments', color: '#0D47A1', order: 1 },
+  { id: 'fam-lab', code: 'LAB', name: 'Laboratoire', color: '#10B981', order: 2 },
+  { id: 'fam-echo', code: 'ECHO', name: 'Échographie', color: '#F59E0B', order: 3 },
+  // Conservé pour les données déjà présentes et les consommables dentaires.
+  { id: 'fam-dent', code: 'DENT', name: 'Dentaire', color: '#8B5CF6', order: 4 },
+];
+
+// Compatibilité : l'ancien code laboratoire était LABO. La nouvelle base demandée utilise LAB.
+export function normalizeFamilyCode(code?: string): string {
+  const c = (code || '').trim().toUpperCase();
+  return c === 'LABO' ? 'LAB' : c;
+}
+
+export const ARTICLE_FAMILIES: ArticleFamily[] = DEFAULT_FAMILLES.map((f) => f.code);
+
+export function getArticleFamilyCatalog(familles: Famille[] = []): Famille[] {
+  const byCode = new Map<string, Famille>();
+  DEFAULT_FAMILLES.forEach((f) => byCode.set(f.code, f));
+  familles.forEach((f, idx) => {
+    const code = normalizeFamilyCode(f.code);
+    if (!code) return;
+    byCode.set(code, { ...f, code, order: f.order ?? idx + 1 });
+  });
+  return Array.from(byCode.values()).sort((a, b) => (a.order ?? 999) - (b.order ?? 999) || a.name.localeCompare(b.name));
+}
+
+export function familyLabel(f: ArticleFamily | string | undefined, familles: Famille[] = []): string {
+  const code = normalizeFamilyCode(f);
+  const fam = getArticleFamilyCatalog(familles).find((x) => x.code === code);
+  return fam?.name || code || '—';
+}
+
+export function isLabFamily(code?: string): boolean { return normalizeFamilyCode(code) === 'LAB'; }
+export function isEchoFamily(code?: string): boolean { return normalizeFamilyCode(code) === 'ECHO'; }
+export function isMedicationEntryFamily(code?: string): boolean { return !isLabFamily(code) && !isEchoFamily(code); }
+
+/**
+ * Normalise la base des familles : MEDIC / LAB / ECHO sont toujours présents,
+ * LABO est migré vers LAB, et les articles suivent le nouveau code.
+ */
+export function normalizeFamilyBases(state: AppState): AppState {
+  const seen = new Set<string>();
+  const normalizedExisting = (state.familles || [])
+    .map((f, idx) => ({ ...f, code: normalizeFamilyCode(f.code), order: f.order ?? idx + 1 }))
+    .filter((f) => {
+      if (!f.code || seen.has(f.code)) return false;
+      seen.add(f.code);
+      return true;
+    });
+  const merged = getArticleFamilyCatalog(normalizedExisting).map((f, idx) => ({ ...f, order: idx + 1 }));
+  return {
+    ...state,
+    familles: merged,
+    articles: (state.articles || []).map((a) => ({ ...a, family: normalizeFamilyCode(a.family) })),
+  };
+}
 
 export const TRANSFER_CATEGORIES: TransferCategory[] = ['central', 'hospitalisation', 'bloc', 'approvisionnement'];
 export function transferCategoryLabel(c: TransferCategory): string {

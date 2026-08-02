@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Consultation, VitalSigns, Prescription, LabRequest, ClientType, Invoice, EchoRequest, PatientStatus, Patient } from '../types';
 import type { AppState } from '../store';
-import { addAuditLog, addNotification, formatAr, getPrice, addJourneyEvent, labCategoryLabel, purgePatientFromQueue, isPrescriptionPaid } from '../store';
+import { addAuditLog, addNotification, formatAr, getPrice, addJourneyEvent, labCategoryLabel, purgePatientFromQueue, isPrescriptionPaid, isMedicationEntryFamily } from '../store';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
 import { printLabResultTicket } from '../utils/printTicket';
 import { Stethoscope, History, Trash2, AlertTriangle, Heart, FileText, Clock, CheckCircle, Send, Search, Edit2, RotateCcw, Save, FlaskConical, Scan, Plus, X, Droplets, Users, Printer, Eye, CheckCircle2 } from 'lucide-react';
@@ -251,9 +251,10 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
   const toggleEchoUrgent = (examId: string) => setEchoDraft(echoDraft.map((d) => (d.examId === examId ? { ...d, urgent: !d.urgent } : d)));
   const updateEchoNotes = (examId: string, val: string) => setEchoDraft(echoDraft.map((d) => (d.examId === examId ? { ...d, notes: val } : d)));
 
-  // Article search across ALL families
+  // Saisie médicament : exclure les familles Laboratoire (LAB/LABO) et Échographie (ECHO).
+  // Les autres familles (MEDIC, DENT, familles ajoutées...) restent disponibles.
   const filteredArticles = articleSearch.length >= 1
-    ? state.articles.filter((a) => a.name.toLowerCase().includes(articleSearch.toLowerCase()))
+    ? state.articles.filter((a) => isMedicationEntryFamily(a.family) && a.name.toLowerCase().includes(articleSearch.toLowerCase()))
     : [];
 
   const today = new Date().toDateString();
@@ -1083,7 +1084,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
                     onChange={(e) => { setArticleSearch(e.target.value); setArtSearchIdx(0); }}
                     onKeyDown={handleSearchKeyDown}
                     className="w-full bg-white border border-blue-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500"
-                    placeholder="🔍 Tapez le nom..." />
+                    placeholder="🔍 Médicament / article hors LAB et ECHO..." />
                   {articleSearch.length >= 1 && filteredArticles.length > 0 && (
                     <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 rounded-b shadow-xl z-30 max-h-40 overflow-y-auto">
                       {filteredArticles.map((a, idx) => {

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Component, type ReactNode, type ErrorInfo } from 'react';
 import type { User } from './types';
-import { createInitialState, migrateLegacyToVentes, type AppState } from './store';
+import { createInitialState, migrateLegacyToVentes, normalizeFamilyBases, type AppState } from './store';
 import {
   IS_WAMP_BUILD,
   initialWampSync,
@@ -173,7 +173,7 @@ function AppInner() {
       const stored = await loadStateFromMysql();
       if (cancelled) return;
       if (stored) {
-        setState(stored);
+        setState(normalizeFamilyBases(stored));
         setWamp((s) => ({ ...s, loading: false, usingMysql: true, lastSavedAt: Date.now() }));
       } else {
         setWamp((s) => ({ ...s, loading: false }));
@@ -247,6 +247,16 @@ function AppInner() {
       return next;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Migration idempotente : base familles MEDIC / LAB / ECHO et ancien code LABO -> LAB.
+  useEffect(() => {
+    setState((prev) => {
+      const next = normalizeFamilyBases(prev);
+      const sameFamilies = JSON.stringify(prev.familles || []) === JSON.stringify(next.familles || []);
+      const sameArticles = JSON.stringify((prev.articles || []).map((a) => a.family)) === JSON.stringify((next.articles || []).map((a) => a.family));
+      return sameFamilies && sameArticles ? prev : next;
+    });
   }, []);
 
   const handleLogin = (user: User) => {
