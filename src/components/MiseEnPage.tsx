@@ -17,6 +17,8 @@ interface MiseEnPageProps {
   onOpenMessaging: () => void;
   onOpenMedicalRecord?: (patientId?: string) => void;
   unreadMessages: number;
+  /** Ouvre la mise en page en mode « pleine fenêtre » (hauteur = 100vh, pas de scroll de page) : utilisé par la console d'administration. */
+  fullHeight?: boolean;
   children: React.ReactNode;
 }
 
@@ -53,7 +55,7 @@ const roleBg: Record<string, string> = {
   admin: 'bg-slate-700',
 };
 
-export default function MiseEnPage({ user, patients = [], notifications, onLogout, onMarkRead, onOpenMessaging, onOpenMedicalRecord, unreadMessages, children }: MiseEnPageProps) {
+export default function MiseEnPage({ user, patients = [], notifications, onLogout, onMarkRead, onOpenMessaging, onOpenMedicalRecord, unreadMessages, fullHeight = false, children }: MiseEnPageProps) {
   const [showNotif, setShowNotif] = useState(false);
   const [activeToast, setActiveToast] = useState<NotifType | null>(null);
 
@@ -77,7 +79,7 @@ export default function MiseEnPage({ user, patients = [], notifications, onLogou
   }, [myNotifs]);
 
   return (
-    <div className="min-h-screen w-full bg-slate-50 overflow-auto relative">
+    <div className={`w-full bg-slate-50 relative ${fullHeight ? 'h-screen flex flex-col overflow-hidden' : 'min-h-screen overflow-auto'}`}>
       {/* Toast Popup Notification - Centré et colorisé */}
       {activeToast && (
         <div className="fixed inset-0 z-[9999] pointer-events-none flex items-center justify-center p-4">
@@ -232,8 +234,10 @@ export default function MiseEnPage({ user, patients = [], notifications, onLogou
       </header>
 
       {/* Tous les modules utilisent désormais toute la largeur disponible
-          de la fenêtre, comme le Module Réception. */}
-      <main className="w-full max-w-none min-w-0 px-4 sm:px-6 py-6 pb-20">
+          de la fenêtre, comme le Module Réception.
+          En mode `fullHeight` (console d'administration), le contenu occupe
+          toute la hauteur de la fenêtre et scrolle en interne (pas de scroll de page). */}
+      <main className={`w-full max-w-none min-w-0 px-4 sm:px-6 ${fullHeight ? 'flex-1 min-h-0 py-4 flex flex-col' : 'py-6 pb-20'}`}>
         {children}
       </main>
     </div>

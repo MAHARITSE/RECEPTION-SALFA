@@ -206,13 +206,16 @@ function AppInner() {
   return (
     <>
       <MiseEnPage user={state.currentUser} patients={state.patients} notifications={state.notifications} onLogout={handleLogout} onMarkRead={handleMarkRead}
-        onOpenMessaging={() => handleOpenMessagingWithRecipient(null)} onOpenMedicalRecord={state.currentUser.role === 'doctor' || state.currentUser.role === 'admin' ? handleOpenMedicalRecord : undefined} unreadMessages={myMsgCount}>
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold text-slate-800">{roleTitles[state.currentUser.role] || 'Module'}</h2>
-          <p className="text-slate-500 text-sm mt-1">
-            Connecté: <strong>{state.currentUser.name}</strong> ({state.currentUser.id}) — {new Date().toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-          </p>
-        </div>
+        onOpenMessaging={() => handleOpenMessagingWithRecipient(null)} onOpenMedicalRecord={state.currentUser.role === 'doctor' || state.currentUser.role === 'admin' ? handleOpenMedicalRecord : undefined} unreadMessages={myMsgCount}
+        fullHeight={state.currentUser.role === 'admin'}>
+        {state.currentUser.role !== 'admin' && (
+          <div className="mb-6">
+            <h2 className="text-2xl font-bold text-slate-800">{roleTitles[state.currentUser.role] || 'Module'}</h2>
+            <p className="text-slate-500 text-sm mt-1">
+              Connecté: <strong>{state.currentUser.name}</strong> ({state.currentUser.id}) — {new Date().toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            </p>
+          </div>
+        )}
         <ModuleErrorBoundary onReset={handleLogout}>
           {renderModule()}
         </ModuleErrorBoundary>
