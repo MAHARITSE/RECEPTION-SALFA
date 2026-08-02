@@ -1,5 +1,12 @@
 import type { Invoice, Patient, Company, TicketSettings } from '../types';
 
+/** Échappe les caractères HTML réservés */
+const escapeHtml = (value: string) => {
+  return value.replace(/[&<>"']/g, (char) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char] || char)
+  );
+};
+
 /** Convertit un nombre en toutes lettres en français pour le montant en Ariary */
 export function numberToFrenchWords(n: number): string {
   if (isNaN(n) || n === 0) return 'zéro Ariary';
@@ -88,7 +95,7 @@ export function formatArDec(n: number): string {
  * Génère et imprime la Facture Individuelle / Reçu Client au format officiel SALFA (A5/A4).
  */
 export function printSalfaIndividualInvoice(
-  _settings: TicketSettings,
+  settings: TicketSettings,
   invoice: Invoice,
   patient?: Patient,
   company?: Company,
@@ -162,6 +169,11 @@ export function printSalfaIndividualInvoice(
       display: flex;
       align-items: center;
       justify-content: center;
+    }
+    .logo-container img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
     }
     .header-text {
       text-align: center;
@@ -269,14 +281,14 @@ export function printSalfaIndividualInvoice(
       <div class="sub">NIF: 5000767080 &nbsp; STAT: 851 125 120 120 001 36</div>
       <div class="sub">E-mail: salfa.tulear@gmail.com</div>
     </div>
-    <div class="logo-container">
+    ${settings.secondLogoUrl ? `<div class="logo-container"><img src="${escapeHtml(settings.secondLogoUrl)}" alt="Logo Société" /></div>` : `<div class="logo-container">
       <svg width="50" height="50" viewBox="0 0 100 100">
         <circle cx="50" cy="50" r="45" fill="#003399"/>
         <path d="M50 15 L50 85 M15 50 L85 50" stroke="#ffffff" stroke-width="12"/>
         <path d="M50 35 C40 30 35 45 50 60 C65 45 60 30 50 35 Z" fill="#cc0000"/>
         <text x="50" y="92" text-anchor="middle" fill="#ffffff" font-size="12" font-weight="bold">SALFA</text>
       </svg>
-    </div>
+    </div>`}
   </div>
 
   <div class="doc-title">FACTURE &nbsp; ${invNumber}</div>
@@ -352,7 +364,7 @@ export function printSalfaIndividualInvoice(
  * Génère et imprime la Facture Récapitulative Société au format officiel SALFA (A4).
  */
 export function printSalfaCompanyMonthlyInvoice(
-  _settings: TicketSettings,
+  settings: TicketSettings,
   company: Company,
   invoices: Invoice[],
   monthYearStr: string,
@@ -455,6 +467,11 @@ export function printSalfaCompanyMonthlyInvoice(
       align-items: center;
       justify-content: center;
     }
+    .logo-container img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
     .header-text {
       text-align: center;
       flex: 1;
@@ -550,14 +567,14 @@ export function printSalfaCompanyMonthlyInvoice(
       <div class="title-lg" style="margin-top:3px;">HOPITALY LOTERANA TOLIARY TANAMBAO - BP : 99 Tél : 038 34 092 61-034 50 670 90</div>
       <div class="sub">NIF: 5000767080 &nbsp; STAT: 851 125 120 120 001FIANGONANA LOTERANA MALAGASY</div>
     </div>
-    <div class="logo-container">
+    ${settings.secondLogoUrl ? `<div class="logo-container"><img src="${escapeHtml(settings.secondLogoUrl)}" alt="Logo Société" /></div>` : `<div class="logo-container">
       <svg width="60" height="60" viewBox="0 0 100 100">
         <circle cx="50" cy="50" r="45" fill="#003399"/>
         <path d="M50 15 L50 85 M15 50 L85 50" stroke="#ffffff" stroke-width="12"/>
         <path d="M50 35 C40 30 35 45 50 60 C65 45 60 30 50 35 Z" fill="#cc0000"/>
         <text x="50" y="92" text-anchor="middle" fill="#ffffff" font-size="12" font-weight="bold">SALFA</text>
       </svg>
-    </div>
+    </div>`}
   </div>
 
   <div class="title-block">

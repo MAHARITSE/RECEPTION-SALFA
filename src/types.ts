@@ -11,6 +11,8 @@ export interface TicketSettings {
   logoUrl: string; receiptTitle: string; footerMessage: string;
   paperWidth: 58 | 80; autoPrint: boolean;
   showLogo: boolean;
+  /** Logo additionnel affiché uniquement sur les factures A4/A5 */
+  secondLogoUrl?: string;
   showBarcode: boolean;
   showSignature: boolean;
   copies: number; // nombre d'exemplaires à imprimer

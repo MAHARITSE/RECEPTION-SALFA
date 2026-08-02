@@ -517,6 +517,7 @@ export function createMassiveDemoState(): AppState {
       phone: '',
       nif: '',
       logoUrl: '',
+      secondLogoUrl: '',
       receiptTitle: 'REÇU DE PAIEMENT',
       footerMessage: 'Jeu de données fictif.',
       paperWidth: 80,
