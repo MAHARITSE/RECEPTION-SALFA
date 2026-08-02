@@ -65,7 +65,7 @@ if exist "%APACHE_EXTRA%" (
 )
 
 echo.
-echo [4/4] Import SQL optionnel...
+echo [4/4] Import SQL dans MySQL (strictement toutes les donnees dans MySQL)...
 set "MYSQL_EXE="
 for /R "%WAMP_PATH%\bin\mysql" %%M in (mysql.exe) do if not defined MYSQL_EXE set "MYSQL_EXE=%%M"
 
@@ -73,17 +73,19 @@ if defined MYSQL_EXE (
   echo Client MySQL detecte : !MYSQL_EXE!
   set /p DO_IMPORT="Importer maintenant la base reception_salfa ? (O/N): "
   if /I "!DO_IMPORT!"=="O" (
-    "!MYSQL_EXE!" -u root < "%TARGET_DIR%\database\import_full.sql"
-    if errorlevel 1 echo [ATTENTION] import_full.sql a signale une erreur.
+    echo   [REQUIS] import_wamp_state.sql : cree la base, la table salfa_app_state et l'etat initial
     "!MYSQL_EXE!" -u root < "%TARGET_DIR%\database\import_wamp_state.sql"
     if errorlevel 1 echo [ATTENTION] import_wamp_state.sql a signale une erreur.
+    echo   [OPTIONNEL] import_full.sql : schema relationnel classique (non utilise par l'application)
+    "!MYSQL_EXE!" -u root < "%TARGET_DIR%\database\import_full.sql"
+    if errorlevel 1 echo [ATTENTION] import_full.sql a signale une erreur.
   ) else (
     echo Import ignore. Vous pourrez importer les fichiers via phpMyAdmin.
   )
 ) else (
-  echo [INFO] mysql.exe introuvable. Importez les fichiers SQL via phpMyAdmin :
-  echo   %TARGET_DIR%\database\import_full.sql
-  echo   %TARGET_DIR%\database\import_wamp_state.sql
+  echo [INFO] mysql.exe introuvable. Importez via phpMyAdmin :
+  echo   [REQUIS]    %TARGET_DIR%\database\import_wamp_state.sql
+  echo   [OPTIONNEL] %TARGET_DIR%\database\import_full.sql
 )
 
 echo.

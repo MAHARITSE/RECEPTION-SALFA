@@ -50,3 +50,15 @@ Options -Indexes
 
 # Charset UTF-8
 AddDefaultCharset UTF-8
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Limites PHP pour l'API d'état MySQL (JSON complet de l'application).
+# L'état complet peut contenir des logos en base64 : on autorise de gros corps
+# de requête PUT/POST (api/state.php) sans pénaliser le reste de l'application.
+# ─────────────────────────────────────────────────────────────────────────────
+<IfModule mod_php.c>
+    php_value memory_limit 256M
+    php_value post_max_size 128M
+    php_value upload_max_filesize 128M
+    php_value max_execution_time 120
+</IfModule>

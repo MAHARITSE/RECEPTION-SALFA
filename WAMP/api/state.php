@@ -1,8 +1,26 @@
 <?php
+/**
+ * API d'état MySQL — RECEPTION SALFA (version WAMP)
+ * ==================================================
+ * TOUTES les données de l'application compilée (WAMP/index.html) sont stockées
+ * dans MySQL, dans la table `salfa_app_state` :
+ *
+ *   GET  api/state.php          → renvoie l'état complet (l'application le charge
+ *                                 au démarrage : patients, factures, stocks…)
+ *   PUT  api/state.php          → enregistre l'état complet (l'application
+ *                                 sauvegarde automatiquement CHAQUE modification)
+ *   POST api/state.php          → identique à PUT (utilisé par sendBeacon lors de
+ *                                 la fermeture de l'onglet pour ne rien perdre)
+ *
+ * Aucune donnée applicative n'est conservée ailleurs : pas de fichier JSON,
+ * pas de localStorage. MySQL est l'unique stockage (strictement MySQL).
+ */
+
 require_once __DIR__ . '/../config/db_config.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('X-Content-Type-Options: nosniff');
 
 function respond($payload, int $code = 200): void {
     http_response_code($code);
@@ -11,6 +29,7 @@ function respond($payload, int $code = 200): void {
 }
 
 function ensureStateTable(PDO $pdo): void {
+    // MySQL / MariaDB (WAMP) : LONGTEXT = jusqu'à 4 Go, suffisant pour l'état complet
     $pdo->exec("CREATE TABLE IF NOT EXISTS salfa_app_state (
         id VARCHAR(64) NOT NULL PRIMARY KEY,
         state_json LONGTEXT NOT NULL CHECK (JSON_VALID(state_json)),
@@ -48,6 +67,7 @@ if ($method === 'GET') {
     respond([
         'success' => true,
         'updatedAt' => $row['updated_at'],
+        'stateSize' => strlen($row['state_json']),
         'state' => json_decode($row['state_json'], true),
     ]);
 }
@@ -72,7 +92,11 @@ if ($method === 'PUT' || $method === 'POST') {
         ON DUPLICATE KEY UPDATE state_json = VALUES(state_json), updated_at = CURRENT_TIMESTAMP");
     $stmt->execute(['state_json' => $stateJson]);
 
-    respond(['success' => true, 'message' => 'État enregistré côté WAMP/MySQL.']);
+    respond([
+        'success' => true,
+        'message' => 'État enregistré côté WAMP/MySQL.',
+        'stateSize' => strlen($stateJson),
+    ]);
 }
 
 respond(['success' => false, 'message' => 'Méthode HTTP non autorisée.'], 405);

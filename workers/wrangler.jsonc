@@ -1,0 +1,19 @@
+{
+  // ============================================================
+  // PARTIE 1 — Version JSON (workers.dev)
+  // RECEPTION SALFA — application statique (React/Vite, fichier unique)
+  //
+  // Déploiement :
+  //   cd workers
+  //   npx wrangler login
+  //   npx wrangler deploy
+  //
+  // URL obtenue : https://reception-salfa.<sous-domaine>.workers.dev
+  // ============================================================
+  "name": "reception-salfa",
+  "compatibility_date": "2026-08-02",
+  "assets": {
+    "directory": "./public",
+    "not_found_handling": "single-page-application"
+  }
+}
