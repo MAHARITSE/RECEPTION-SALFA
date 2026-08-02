@@ -1,100 +1,86 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal EnableExtensions
+title RECEPTION SALFA - Installation WAMP (MySQL normalise)
 
-REM ============================================================
-REM RECEPTION SALFA - Installation de la version WAMP prête
-REM ============================================================
+REM ============================================================================
+REM  RECEPTION SALFA - Installation dans WampServer
+REM  Copie la version WAMP vers C:\wamp64\www\reception-salfa et propose
+REM  l'import du schema MySQL normalise (database\reception_salfa.sql).
+REM ============================================================================
 
-color 0A
-set "APP_NAME=reception-salfa"
-set "DEFAULT_WAMP=C:\wamp64"
-set "WAMP_PATH=%DEFAULT_WAMP%"
-
-REM Dossier WAMP source = parent du dossier deployment
-for %%I in ("%~dp0..") do set "SOURCE_DIR=%%~fI"
+set "SRC=%~dp0.."
+set "DST=C:\wamp64\www\reception-salfa"
+set "MYSQL_CLIENT="
 
 echo.
 echo ============================================================
-echo   RECEPTION SALFA - INSTALLATION WAMP COMPLETE
+echo   RECEPTION SALFA - Installation WAMP / MySQL normalise
 echo ============================================================
 echo.
-echo Source : %SOURCE_DIR%
-echo.
 
-if not exist "%WAMP_PATH%" (
-  echo [INFO] WAMP non trouve dans %WAMP_PATH%.
-  set /p WAMP_PATH="Chemin WAMP (ex: C:\wamp64): "
+REM --- 1. Verifier la source ------------------------------------------------
+if not exist "%SRC%\index.html" (
+    echo ERREUR : dossier source introuvable (%SRC%).
+    pause
+    exit /b 1
 )
 
-if not exist "%WAMP_PATH%" (
-  echo [ERREUR] Le chemin WAMP indique n'existe pas : %WAMP_PATH%
-  pause
-  exit /b 1
-)
-
-set "TARGET_DIR=%WAMP_PATH%\www\%APP_NAME%"
-
-echo [1/4] Creation du dossier cible...
-if not exist "%TARGET_DIR%" mkdir "%TARGET_DIR%"
+REM --- 2. Copier le dossier vers www ----------------------------------------
+echo [1/4] Copie vers %DST% ...
+if not exist "%DST%" mkdir "%DST%"
+xcopy "%SRC%\*" "%DST%\" /E /I /Y /Q >nul
 if errorlevel 1 (
-  echo [ERREUR] Impossible de creer %TARGET_DIR%.
-  pause
-  exit /b 1
+    echo ERREUR : copie impossible. Lancez ce script en Administrateur.
+    pause
+    exit /b 1
 )
-echo [OK] %TARGET_DIR%
+echo        Copie terminee.
 
-echo.
-echo [2/4] Copie des fichiers WAMP...
-xcopy "%SOURCE_DIR%\*" "%TARGET_DIR%\" /E /I /Y /Q >nul
-if errorlevel 1 (
-  echo [ERREUR] Echec de la copie.
-  pause
-  exit /b 1
-)
-echo [OK] Application copiee.
+REM --- 3. Verifier que WAMP (MySQL) est disponible --------------------------
+echo [2/4] Recherche du client MySQL de WAMP...
+for %%p in (
+    "%ProgramFiles%\wamp64\bin\mariadb\*\bin\mysql.exe"
+    "%ProgramFiles%\wamp64\bin\mysql\*\bin\mysql.exe"
+    "%ProgramFiles(x86)%\wamp64\bin\mariadb\*\bin\mysql.exe"
+    "%ProgramFiles(x86)%\wamp64\bin\mysql\*\bin\mysql.exe"
+    "C:\wamp64\bin\mariadb\*\bin\mysql.exe"
+    "C:\wamp64\bin\mysql\*\bin\mysql.exe"
+) do if exist "%%p" set "MYSQL_CLIENT=%%p"
 
-echo.
-echo [3/4] Configuration Apache optionnelle...
-set "APACHE_EXTRA=%WAMP_PATH%\conf\extra"
-if exist "%APACHE_EXTRA%" (
-  copy /Y "%SOURCE_DIR%\apache\reception-salfa.conf" "%APACHE_EXTRA%\reception-salfa.conf" >nul
-  echo [OK] Exemple de configuration copie : %APACHE_EXTRA%\reception-salfa.conf
-  echo Ajoutez dans httpd.conf si necessaire : Include conf/extra/reception-salfa.conf
+if defined MYSQL_CLIENT (
+    echo        Client MySQL trouve : %MYSQL_CLIENT%
 ) else (
-  echo [INFO] Dossier conf\extra introuvable, etape ignoree.
+    echo        Client MySQL non trouve - l'import se fera via phpMyAdmin.
 )
 
-echo.
-echo [4/4] Import SQL dans MySQL (strictement toutes les donnees dans MySQL)...
-set "MYSQL_EXE="
-for /R "%WAMP_PATH%\bin\mysql" %%M in (mysql.exe) do if not defined MYSQL_EXE set "MYSQL_EXE=%%M"
+REM --- 4. Import du schema normalise ------------------------------------------
+echo [3/4] Import du schema MySQL normalise...
+set "SQL_FILE=%DST%\database\reception_salfa.sql"
 
-if defined MYSQL_EXE (
-  echo Client MySQL detecte : !MYSQL_EXE!
-  set /p DO_IMPORT="Importer maintenant la base reception_salfa ? (O/N): "
-  if /I "!DO_IMPORT!"=="O" (
-    echo   [REQUIS] import_wamp_state.sql : cree la base, la table salfa_app_state et l'etat initial
-    "!MYSQL_EXE!" -u root < "%TARGET_DIR%\database\import_wamp_state.sql"
-    if errorlevel 1 echo [ATTENTION] import_wamp_state.sql a signale une erreur.
-    echo   [OPTIONNEL] import_full.sql : schema relationnel classique (non utilise par l'application)
-    "!MYSQL_EXE!" -u root < "%TARGET_DIR%\database\import_full.sql"
-    if errorlevel 1 echo [ATTENTION] import_full.sql a signale une erreur.
-  ) else (
-    echo Import ignore. Vous pourrez importer les fichiers via phpMyAdmin.
-  )
+if defined MYSQL_CLIENT (
+    "%MYSQL_CLIENT%" -h 127.0.0.1 -P 3306 -u root -e "source %SQL_FILE%" 2>nul
+    if errorlevel 1 (
+        echo        Import automatique impossible.
+        echo        Ouvrez http://localhost/phpmyadmin, puis importez :
+        echo          database\reception_salfa.sql
+    ) else (
+        echo        Import du schema termine (base reception_salfa).
+    )
 ) else (
-  echo [INFO] mysql.exe introuvable. Importez via phpMyAdmin :
-  echo   [REQUIS]    %TARGET_DIR%\database\import_wamp_state.sql
-  echo   [OPTIONNEL] %TARGET_DIR%\database\import_full.sql
+    echo        Ouvrez http://localhost/phpmyadmin et importez :
+    echo          database\reception_salfa.sql
 )
 
+REM --- 5. Recapitulatif -------------------------------------------------------
+echo [4/4] Fin de l'installation.
 echo.
 echo ============================================================
-echo   INSTALLATION TERMINEE
+echo   Pour verifier l'installation :
+echo     - API / Diagnostic : http://localhost/reception-salfa/api/diagnostic.php
+echo     - Application      : http://localhost/reception-salfa/
+echo   Si l'icone WAMP est verte et que le diagnostic repond
+echo   "Connexion MySQL reussie", tout est pret.
 echo ============================================================
-echo Application : http://localhost/%APP_NAME%/
-echo API sante  : http://localhost/%APP_NAME%/api/health.php
-echo Dossier    : %TARGET_DIR%
 echo.
 pause
-endlocal
+exit /b 0

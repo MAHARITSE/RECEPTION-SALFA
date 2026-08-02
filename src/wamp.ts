@@ -1,19 +1,23 @@
 import type { AppState } from './store';
+import type { TicketSettings } from './types';
+import localSeedData from './data/localData.json';
 
 /**
  * ─────────────────────────────────────────────────────────────────────────────
- *  MODE WAMP — TOUTES LES DONNÉES DANS MySQL
+ *  MODE WAMP — DONNÉES DANS MySQL (tables normalisées)
  * ─────────────────────────────────────────────────────────────────────────────
  *  Ce module est compilé uniquement dans la version WAMP (`npm run build:wamp`,
  *  variable `VITE_WAMP_MODE=1`). Dans cette version :
  *
  *   • Au démarrage, l'application charge SON ÉTAT COMPLET depuis MySQL
- *     (table `salfa_app_state`, via `api/state.php` en GET) ;
+ *     (tables normalisées `salfa_*`, via `api/index.php?action=read_all`) ;
  *   • À CHAQUE modification, l'état complet est automatiquement ré-enregistré
- *     dans MySQL (PUT) — patients, consultations, factures, ventes, messages,
- *     journal d'audit, stocks… absolument tout ;
- *   • Aucune donnée applicative n'est conservée dans localStorage ou dans un
- *     fichier : le stockage unique et exclusif est MySQL.
+ *     dans les tables MySQL normalisées (`api/index.php?action=sync_all`) —
+ *     patients, consultations, ventes, articles, messagerie, journal d'audit… ;
+ *   • Aucune donnée applicative n'est conservée dans localStorage ou un fichier.
+ *
+ *  Les collections de l'application sont stockées UNE table par entité
+ *  (`salfa_patients`, `salfa_ventes`, ...) — cf. WAMP/database/reception_salfa.sql.
  *
  *  Dans le build standard (développement / Cloudflare), ce module est inactif
  *  et l'application conserve son comportement mémoire d'origine.
@@ -23,8 +27,21 @@ import type { AppState } from './store';
 /** Vrai uniquement dans le build WAMP compilé avec VITE_WAMP_MODE=1 */
 export const IS_WAMP_BUILD: boolean = import.meta.env.VITE_WAMP_MODE === '1';
 
-/** URL relative de l'API d'état MySQL (identique pour localhost/reception-salfa/) */
-const STATE_URL = 'api/state.php';
+/** URL relative de l'API d'état MySQL (identique pour http://localhost/reception-salfa/) */
+const API_URL = 'api/index.php';
+
+/** Collections « liste » persistées dans MySQL (clé = nom de dataset). */
+const LIST_DATASETS: (keyof AppState)[] = [
+  'patients', 'consultations', 'invoices', 'ventes', 'venteLines', 'ventePayments',
+  'labRequests', 'journey', 'pharmaDeliveryItems', 'stockEntries', 'stockTransfers',
+  'stockMovements', 'movementHeaders', 'movementLines', 'companyBillingAccounts',
+  'hbRecords', 'messages', 'notifications', 'cashClosings', 'auditLogs',
+  'inventorySessions', 'pharmaDeliveryClosings', 'users', 'companies', 'articles',
+  'fournisseurs', 'familles', 'labCatalog', 'warehouseServices',
+];
+
+/** Compteurs scalaires persistés dans la table salfa_counters. */
+const COUNTER_KEYS: (keyof AppState)[] = ['factureCounter', 'pharmaClosingCounter'];
 
 export interface WampSyncState {
   /** Le build courant est un build WAMP (MySQL actif) */
@@ -50,22 +67,61 @@ export const initialWampSync: WampSyncState = {
   error: null,
 };
 
+/** Construit le payload `datasets` (état complet SANS la session courante). */
+function buildDatasets(state: AppState): Record<string, unknown> {
+  const datasets: Record<string, unknown> = {};
+  for (const key of LIST_DATASETS) {
+    datasets[key] = (state as unknown as Record<string, unknown>)[key] ?? [];
+  }
+  datasets.ticketSettings = state.ticketSettings;
+  for (const key of COUNTER_KEYS) {
+    datasets[key] = (state as unknown as Record<string, unknown>)[key] ?? 0;
+  }
+  return datasets;
+}
+
+/** Reconstruit l'état applicatif complet depuis les datasets renvoyés par MySQL. */
+function reconstructState(datasets: Record<string, unknown>): AppState {
+  const seed = localSeedData as unknown as { ticketSettings: TicketSettings };
+
+  const state: Record<string, unknown> = { currentUser: null };
+  for (const key of LIST_DATASETS) {
+    const value = datasets[key];
+    state[key] = Array.isArray(value) ? value : [];
+  }
+  state.ticketSettings = (datasets.ticketSettings as TicketSettings | undefined)
+    ?? JSON.parse(JSON.stringify(seed.ticketSettings));
+  for (const key of COUNTER_KEYS) {
+    state[key] = typeof datasets[key] === 'number' ? (datasets[key] as number) : 0;
+  }
+  return state as unknown as AppState;
+}
+
 /**
- * Charge l'état complet de l'application depuis MySQL.
- * @returns l'état stocké, ou null si aucun état n'existe / base indisponible.
+ * Charge l'état complet de l'application depuis MySQL (tables normalisées).
+ * @returns l'état stocké, ou null si la base est vide / indisponible.
  */
 export async function loadStateFromMysql(): Promise<AppState | null> {
   if (!IS_WAMP_BUILD) return null;
   try {
-    const res = await fetch(STATE_URL, {
+    const res = await fetch(`${API_URL}?action=read_all`, {
       method: 'GET',
       cache: 'no-store',
       headers: { Accept: 'application/json' },
     });
     if (!res.ok) return null;
     const data = await res.json();
-    if (data && data.success === true && data.state) {
-      return data.state as AppState;
+    if (data && data.success === true && data.datasets) {
+      // Base vraiment vierge (aucun compte ET aucun patient ET aucune vente) :
+      // on laisse l'app écrire l'état initial. Sinon, on charge la base existante
+      // sans jamais écraser des données déjà présentes.
+      const noUsers = !Array.isArray(data.datasets.users) || data.datasets.users.length === 0;
+      const noPatients = !Array.isArray(data.datasets.patients) || data.datasets.patients.length === 0;
+      const noVentes = !Array.isArray(data.datasets.ventes) || data.datasets.ventes.length === 0;
+      if (noUsers && noPatients && noVentes) {
+        return null;
+      }
+      return reconstructState(data.datasets as Record<string, unknown>);
     }
     return null;
   } catch (e) {
@@ -76,7 +132,7 @@ export async function loadStateFromMysql(): Promise<AppState | null> {
 }
 
 /**
- * Enregistre l'état complet dans MySQL (table `salfa_app_state`).
+ * Enregistre l'état complet dans les tables MySQL normalisées.
  * La session en cours (`currentUser`) n'est volontairement PAS persistée :
  * à chaque ouverture de l'application, la connexion repart de l'écran de login.
  * @returns true si la sauvegarde a réussi.
@@ -84,11 +140,10 @@ export async function loadStateFromMysql(): Promise<AppState | null> {
 export async function saveStateToMysql(state: AppState): Promise<boolean> {
   if (!IS_WAMP_BUILD) return false;
   try {
-    const { currentUser: _currentUser, ...persisted } = state;
-    const res = await fetch(STATE_URL, {
-      method: 'PUT',
+    const res = await fetch(`${API_URL}?action=sync_all`, {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ state: persisted }),
+      body: JSON.stringify({ datasets: buildDatasets(state) }),
     });
     if (!res.ok) return false;
     const data = await res.json();
@@ -103,16 +158,15 @@ export async function saveStateToMysql(state: AppState): Promise<boolean> {
 /**
  * Sauvegarde de secours utilisée à la fermeture de l'onglet (pagehide /
  * beforeunload) afin de ne perdre AUCUNE modification : envoi du dernier état
- * connu vers MySQL via `navigator.sendBeacon` (POST accepté par api/state.php).
+ * connu vers MySQL via `navigator.sendBeacon` (POST accepté par api/index.php).
  */
 export function flushStateToMysql(state: AppState): void {
   if (!IS_WAMP_BUILD) return;
   try {
-    const { currentUser: _currentUser, ...persisted } = state;
-    const blob = new Blob([JSON.stringify({ state: persisted })], {
+    const blob = new Blob([JSON.stringify({ datasets: buildDatasets(state) })], {
       type: 'application/json',
     });
-    navigator.sendBeacon(STATE_URL, blob);
+    navigator.sendBeacon(`${API_URL}?action=sync_all`, blob);
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn('[WAMP/MySQL] Envoi final impossible :', e);
