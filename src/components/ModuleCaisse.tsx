@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription } from '../types';
 import type { AppState } from '../store';
-import { addAuditLog, addNotification, formatAr, getPrice, calculateAge, generateDossierNumber, addJourneyEvent, generatePharmaClosingNumber, purgePatientFromQueue } from '../store';
+import { addAuditLog, addNotification, formatAr, formatNum, roundTo2, getPrice, calculateAge, generateDossierNumber, addJourneyEvent, generatePharmaClosingNumber, purgePatientFromQueue } from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText } from 'lucide-react';
 import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket } from '../utils/printTicket';
 import { printSalfaIndividualInvoice } from '../utils/printSalfaInvoice';
@@ -100,7 +100,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   // Helper: get all pending items for a patient (pharmacy + lab + echo)
   const getPendingAmount = (p: any) => {
     const cons = state.consultations.filter(c => c.patientId === p.id && !state.invoices.some(inv => inv.consultationId === c.id && inv.status === 'paid' && inv.items.some(it => it.category === 'pharmacy')));
-    let amt = cons.reduce((s, c) => s + c.prescriptions.reduce((ss, pr) => ss + Math.round(pr.unitPrice * pr.quantity * (1 - pr.discount / 100)), 0), 0);
+    let amt = cons.reduce((s, c) => s + c.prescriptions.reduce((ss, pr) => ss + roundTo2(pr.unitPrice * pr.quantity * (1 - pr.discount / 100)), 0), 0);
     const svcInvs = pendingServiceInvoices.filter(i => i.patientId === p.id);
     amt += svcInvs.reduce((s, i) => s + i.totalAmount, 0);
     return amt;
@@ -199,7 +199,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     const unpaidConsults = getConsults(selPatient.id);
     const medicationItems: InvoiceItem[] = unpaidConsults.flatMap(c => c.prescriptions.map(p => ({
       description: `${p.articleName} × ${p.quantity}${p.discount > 0 ? ` (-${p.discount}%)` : ''}`,
-      amount: Math.round(p.unitPrice * p.quantity * (1 - p.discount / 100)), category: 'pharmacy' as const,
+      amount: roundTo2(p.unitPrice * p.quantity * (1 - p.discount / 100)), category: 'pharmacy' as const,
     })));
     const serviceInvoices = pendingServiceInvoices.filter(i => i.patientId === selPatient.id);
     const serviceItems = serviceInvoices.flatMap(i => i.items);
@@ -321,7 +321,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const extFiltered = extSearch.length >= 1
     ? state.articles.filter(a => a.name.toLowerCase().includes(extSearch.toLowerCase()) && !a.saleBlocked)
     : [];
-  const extLineAmt = (l: HbLine) => Math.round(l.unitPrice * l.quantity * (1 - l.discount / 100));
+  const extLineAmt = (l: HbLine) => roundTo2(l.unitPrice * l.quantity * (1 - l.discount / 100));
   const extTotal = extLines.reduce((s, l) => s + extLineAmt(l), 0);
 
   const extSelectArticle = (articleId: string) => {
@@ -486,7 +486,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   };
 
   // === HOSPIT/BLOC ===
-  const hbLineAmt = (l: HbLine) => Math.round(l.unitPrice * l.quantity * (1 - l.discount / 100));
+  const hbLineAmt = (l: HbLine) => roundTo2(l.unitPrice * l.quantity * (1 - l.discount / 100));
   const hbPatFiltered = hbPatSearch.length >= 1 ? state.patients.filter(p => `${p.lastName} ${p.firstName}`.toLowerCase().includes(hbPatSearch.toLowerCase()) || p.dossier.toLowerCase().includes(hbPatSearch.toLowerCase())) : [];
 
   const hbSelectPatient = (patientId: string) => {
@@ -854,7 +854,7 @@ h1{font-size:18px;color:#0369a1;border-bottom:2px solid #0369a1;padding-bottom:6
 ${recapData.map(d => `<tr><td>${d.date}</td><td>${d.patientName}</td><td class="bold">${d.articleName}</td><td class="bold">${d.quantity}</td><td>${d.deliveredByName}</td></tr>`).join('')}
 </tbody>
 </table>
-<div class="total" style="padding:8px">Total articles livrés : ${pharmaTotalItems} — Valeur totale : ${pharmaTotalAmount.toLocaleString('fr-FR')} Ar</div>
+<div class="total" style="padding:8px">Total articles livrés : ${pharmaTotalItems} — Valeur totale : ${formatNum(pharmaTotalAmount)} Ar</div>
 ${(window as any).printScript ? (window as any).printScript(false) : '<script>window.onload=function(){window.print();}</script>'}
 </body></html>`;
           const iframe = document.createElement('iframe');
@@ -994,7 +994,7 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                                 quantity: p.quantity,
                                 discount: p.discount,
                                 unitPrice: p.unitPrice,
-                                amount: Math.round(p.unitPrice * p.quantity * (1 - p.discount / 100)),
+                                amount: roundTo2(p.unitPrice * p.quantity * (1 - p.discount / 100)),
                                 category: 'Médicament',
                                 categoryColor: 'bg-cyan-100 text-cyan-700',
                                 consultId: c.id,
@@ -1018,8 +1018,8 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                                   <td className="p-2 font-sans">{item.description}</td>
                                   <td className="p-2 text-center font-mono">{item.quantity || '—'}</td>
                                   <td className="p-2 text-center font-mono">{item.discount ? `${item.discount}%` : '—'}</td>
-                                  <td className="p-2 text-right font-mono">{item.unitPrice ? Number(item.unitPrice).toLocaleString('fr-FR') : '—'}</td>
-                                  <td className="p-2 text-right font-mono font-bold">{item.amount.toLocaleString('fr-FR')}</td>
+                                  <td className="p-2 text-right font-mono">{item.unitPrice ? formatNum(Number(item.unitPrice)) : '—'}</td>
+                                  <td className="p-2 text-right font-mono font-bold">{formatNum(item.amount)}</td>
                                   <td className="p-2 text-center"><span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${item.categoryColor}`}>{item.category}</span></td>
                                 </tr>
                               ));
@@ -1066,8 +1066,8 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                         </div>);
                       })}</div>}
                     </div>
-                    <div className="w-14"><label className="block text-[9px] text-slate-500">Qté</label><input type="number" min={1} value={extLineForm.quantity} onChange={e => setExtLineForm({...extLineForm, quantity: parseInt(e.target.value)||1})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono outline-none" /></div>
-                    <div className="w-14"><label className="block text-[9px] text-slate-500">Rem%</label><input type="number" min={0} max={100} value={extLineForm.discount} onChange={e => setExtLineForm({...extLineForm, discount: parseInt(e.target.value)||0})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono outline-none" /></div>
+                    <div className="w-14"><label className="block text-[9px] text-slate-500">Qté</label><input type="number" min={1} value={extLineForm.quantity} onChange={e => setExtLineForm({...extLineForm, quantity: parseFloat(e.target.value)||1})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono outline-none" /></div>
+                    <div className="w-14"><label className="block text-[9px] text-slate-500">Rem%</label><input type="number" min={0} max={100} value={extLineForm.discount} onChange={e => setExtLineForm({...extLineForm, discount: parseFloat(e.target.value)||0})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono outline-none" /></div>
                     <div className="w-20"><label className="block text-[9px] text-slate-500">P.U.</label><input readOnly value={formatAr(extLineForm.unitPrice)} className="w-full bg-slate-200 border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono" /></div>
                     <div className="w-24"><label className="block text-[9px] text-slate-500">Montant</label><input readOnly value={formatAr(extLineAmt(extLineForm))} className="w-full bg-slate-200 border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono font-bold" /></div>
                     <div className="w-32"><label className="block text-[9px] text-slate-500" title="La date est conservée après chaque validation : plusieurs sorties possibles le même jour">Date sortie 📌</label><input type="date" value={extLineForm.dateSort || ''} onChange={e => setExtLineForm({...extLineForm, dateSort: e.target.value})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs font-mono outline-none focus:border-blue-500" title="Date de sortie — conservée après validation de la ligne" /></div>
@@ -1079,7 +1079,7 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                 </div>
                 <div className="bg-white mx-2 mb-2 border-t border-slate-300 overflow-x-auto rounded-b">
                   <table className="w-full text-[11px]"><thead className="bg-slate-50 border-b text-slate-600"><tr className="divide-x divide-slate-200"><th className="p-1 min-w-[130px]">Article</th><th className="p-1 text-right w-12">Qté</th><th className="p-1 text-center w-12">Rem%</th><th className="p-1 text-right w-20">P.U.</th><th className="p-1 text-right w-24">Montant</th><th className="p-1 w-28">Date sortie</th></tr></thead>
-                    <tbody className="divide-y font-mono">{extLines.map(l => (<tr key={l.id} onClick={() => { setExtSelLineId(l.id); setExtLineForm({...l}); setExtIsNew(false); }} className={`cursor-pointer divide-x divide-slate-200 ${l.id === extSelLineId ? 'bg-blue-500 text-white' : 'hover:bg-slate-50'}`}><td className="p-1 font-sans">{l.articleName}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 text-center">{l.discount > 0 ? `${l.discount}%` : '—'}</td><td className="p-1 text-right">{l.unitPrice.toLocaleString('fr-FR')}</td><td className="p-1 text-right font-bold">{extLineAmt(l).toLocaleString('fr-FR')}</td><td className="p-1 font-sans text-slate-500">{l.dateSort || '—'}</td></tr>))}
+                    <tbody className="divide-y font-mono">{extLines.map(l => (<tr key={l.id} onClick={() => { setExtSelLineId(l.id); setExtLineForm({...l}); setExtIsNew(false); }} className={`cursor-pointer divide-x divide-slate-200 ${l.id === extSelLineId ? 'bg-blue-500 text-white' : 'hover:bg-slate-50'}`}><td className="p-1 font-sans">{l.articleName}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 text-center">{l.discount > 0 ? `${l.discount}%` : '—'}</td><td className="p-1 text-right">{formatNum(l.unitPrice)}</td><td className="p-1 text-right font-bold">{formatNum(extLineAmt(l))}</td><td className="p-1 font-sans text-slate-500">{l.dateSort || '—'}</td></tr>))}
                       {extLines.length === 0 && <tr><td colSpan={6} className="p-3 text-center text-slate-400 font-sans">Tapez un article</td></tr>}
                     </tbody>
                     {extLines.length > 0 && <tfoot className="bg-emerald-50 border-t-2 border-emerald-300"><tr><td colSpan={4} className="p-1 text-right font-bold font-sans">TOTAL:</td><td colSpan={2} className="p-1 text-right font-mono font-bold text-lg">{formatAr(extTotal)}</td></tr></tfoot>}
@@ -1130,14 +1130,14 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                             <button onClick={() => deleteHbRecord(record.id)} className="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs cursor-pointer transition font-medium flex items-center gap-1" title="Supprimer ce dossier (Facture 0 Ar)"><Trash2 className="w-3.5 h-3.5" /> Supprimer</button>
                           )}
                           {reste > 0 && <>
-                            <input type="number" min={1} max={reste} value={hbPayAmounts[record.id] || ''} onChange={e => setHbPayAmounts(prev => ({ ...prev, [record.id]: Math.max(0, Math.min(parseInt(e.target.value) || 0, reste)) }))} className="w-24 px-2 py-1 border rounded text-xs text-right outline-none" placeholder="Montant" />
+                            <input type="number" min={1} max={reste} value={hbPayAmounts[record.id] || ''} onChange={e => setHbPayAmounts(prev => ({ ...prev, [record.id]: Math.max(0, Math.min(parseFloat(e.target.value) || 0, reste)) }))} className="w-24 px-2 py-1 border rounded text-xs text-right outline-none" placeholder="Montant" />
                             <button onClick={() => addPartialPay(record.id)} disabled={!hbPayAmounts[record.id] || hbPayAmounts[record.id] > reste} className="px-2 py-1 bg-amber-600 text-white rounded text-xs cursor-pointer disabled:opacity-40">💰 Payer</button>
                           </>}
                         </div>
                       </div>
                       {isOpen && (
                         <div className="p-3 border-t bg-white">
-                          {record.lines.length > 0 && <table className="w-full text-[11px] mb-2"><thead className="bg-slate-100"><tr><th className="p-1 text-left w-16">Date</th><th className="p-1 text-left">Article</th><th className="p-1 text-right">Qté</th><th className="p-1 text-right">P.U.</th><th className="p-1 text-right">Montant</th><th className="p-1 text-center w-8">Action</th></tr></thead><tbody>{record.lines.map(l => (<tr key={l.id} className="border-b border-slate-100"><td className="p-1 text-slate-500">{l.dateSort || '—'}</td><td className="p-1">{l.articleName}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 text-right font-mono">{l.unitPrice.toLocaleString('fr-FR')}</td><td className="p-1 text-right font-mono font-bold">{hbLineAmt(l).toLocaleString('fr-FR')}</td><td className="p-1 text-center"><button onClick={() => { askConfirmation({ title: 'Suppression de ligne', message: `Supprimer la ligne "${l.articleName}" ?`, confirmText: 'Supprimer', type: 'danger', onConfirm: () => { updateHbRecords(hbRecords.map(r => r.id === record.id ? { ...r, lines: r.lines.filter(x => x.id !== l.id) } : r)); setConfirmModalState(prev => ({ ...prev, isOpen: false })); } }); }} className="text-rose-600 hover:text-rose-800 p-0.5 cursor-pointer" title="Supprimer la ligne"><Trash2 className="w-3.5 h-3.5 text-rose-600" /></button></td></tr>))}</tbody></table>}
+                          {record.lines.length > 0 && <table className="w-full text-[11px] mb-2"><thead className="bg-slate-100"><tr><th className="p-1 text-left w-16">Date</th><th className="p-1 text-left">Article</th><th className="p-1 text-right">Qté</th><th className="p-1 text-right">P.U.</th><th className="p-1 text-right">Montant</th><th className="p-1 text-center w-8">Action</th></tr></thead><tbody>{record.lines.map(l => (<tr key={l.id} className="border-b border-slate-100"><td className="p-1 text-slate-500">{l.dateSort || '—'}</td><td className="p-1">{l.articleName}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 text-right font-mono">{formatNum(l.unitPrice)}</td><td className="p-1 text-right font-mono font-bold">{formatNum(hbLineAmt(l))}</td><td className="p-1 text-center"><button onClick={() => { askConfirmation({ title: 'Suppression de ligne', message: `Supprimer la ligne "${l.articleName}" ?`, confirmText: 'Supprimer', type: 'danger', onConfirm: () => { updateHbRecords(hbRecords.map(r => r.id === record.id ? { ...r, lines: r.lines.filter(x => x.id !== l.id) } : r)); setConfirmModalState(prev => ({ ...prev, isOpen: false })); } }); }} className="text-rose-600 hover:text-rose-800 p-0.5 cursor-pointer" title="Supprimer la ligne"><Trash2 className="w-3.5 h-3.5 text-rose-600" /></button></td></tr>))}</tbody></table>}
                           {record.lines.length === 0 && <p className="text-slate-400 text-xs text-center py-2">Aucun article — cliquez "+ Article"</p>}
                           {record.payments.length > 0 && <div className="mt-2 text-[10px] text-slate-500 border-t pt-1"><div className="font-bold mb-1">Historique paiements :</div>{record.payments.map((p, i) => (<div key={i}>{new Date(p.date).toLocaleString('fr-FR',{hour:'2-digit',minute:'2-digit'})} — {formatAr(p.amount)} — {p.receivedBy === 'pharmacie' ? '🏥 Pharmacie' : '💵 Caisse'} : {p.paidBy}</div>))}</div>}
                         </div>
@@ -1319,7 +1319,7 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                         type="number"
                         min={1}
                         value={hbArtForm.quantity}
-                        onChange={e => setHbArtForm(prev => ({ ...prev, quantity: parseInt(e.target.value) || 1 }))}
+                        onChange={e => setHbArtForm(prev => ({ ...prev, quantity: parseFloat(e.target.value) || 1 }))}
                         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
                         className="w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-blue-500 text-slate-800"
                       />
@@ -1331,7 +1331,7 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                         min={0}
                         max={100}
                         value={hbArtForm.discount}
-                        onChange={e => setHbArtForm(prev => ({ ...prev, discount: parseInt(e.target.value) || 0 }))}
+                        onChange={e => setHbArtForm(prev => ({ ...prev, discount: parseFloat(e.target.value) || 0 }))}
                         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
                         className="w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-blue-500 text-slate-800"
                       />
@@ -1341,7 +1341,7 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                       <input
                         type="number"
                         value={hbArtForm.unitPrice}
-                        onChange={e => setHbArtForm(prev => ({ ...prev, unitPrice: parseInt(e.target.value) || 0 }))}
+                        onChange={e => setHbArtForm(prev => ({ ...prev, unitPrice: parseFloat(e.target.value) || 0 }))}
                         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
                         className="w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-blue-500 text-slate-800"
                       />
@@ -1416,8 +1416,8 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                             <td className="p-1 font-sans">{l.articleName}</td>
                             <td className="p-1 text-right">{l.quantity}</td>
                             <td className="p-1 text-center">{l.discount ? `${l.discount}%` : '—'}</td>
-                            <td className="p-1 text-right">{l.unitPrice.toLocaleString('fr-FR')}</td>
-                            <td className="p-1 text-right font-bold">{hbLineAmt(l).toLocaleString('fr-FR')}</td>
+                            <td className="p-1 text-right">{formatNum(l.unitPrice)}</td>
+                            <td className="p-1 text-right font-bold">{formatNum(hbLineAmt(l))}</td>
                             <td className="p-1 font-sans text-slate-500">{l.dateSort || '—'}</td>
                             <td className="p-1 text-center">
                               <button onClick={(e) => {

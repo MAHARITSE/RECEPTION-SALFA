@@ -990,7 +990,7 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                                   type="number"
                                   min={0}
                                   value={a.minStockPharmacie}
-                                  onChange={(e) => updateAlertThreshold(a.id, parseInt(e.target.value) || 0)}
+                                  onChange={(e) => updateAlertThreshold(a.id, parseFloat(e.target.value) || 0)}
                                   className="w-16 px-1.5 py-1 border border-slate-300 rounded text-center font-mono text-xs outline-none focus:border-purple-500 bg-white"
                                   title="Stock d'alerte : en dessous, l'article est signalé « stock bas »"
                                 />

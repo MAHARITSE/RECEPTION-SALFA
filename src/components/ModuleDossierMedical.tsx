@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import type { AppState } from '../store';
-import { formatAr, labCategoryLabel, paidPrescriptionsForConsultation, safeInvoiceItemDescriptions } from '../store';
+import { formatAr, roundTo2, labCategoryLabel, paidPrescriptionsForConsultation, safeInvoiceItemDescriptions } from '../store';
 import type { LabRequest, Consultation, Invoice, HbRecord } from '../types';
 import { printDossierTicket, printLabResultTicket } from '../utils/printTicket';
 import {
@@ -820,7 +820,7 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
                           name: p.articleName,
                           info: [p.posology, p.duration, p.instructions].filter(Boolean).join(' · ') || undefined,
                           qty: p.quantity,
-                          amount: Math.round(p.unitPrice * p.quantity * (1 - p.discount / 100)),
+                          amount: roundTo2(p.unitPrice * p.quantity * (1 - p.discount / 100)),
                           sTxt: p.delivered ? '✓ délivré' : 'à délivrer',
                           sCol: p.delivered ? 'text-emerald-600' : 'text-amber-600',
                         }));

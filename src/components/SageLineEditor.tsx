@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Plus, Trash2, Save } from 'lucide-react';
-import { formatAr } from '../store';
+import { formatAr, formatNum, roundTo2 } from '../store';
 
 export interface SageLine {
   id: string;
@@ -58,8 +58,8 @@ export default function SageLineEditor({ lines, onLinesChange, columns, searchPl
       const pu = key === 'unitPrice' ? Number(value) : (updated.unitPrice || 0);
       const disc = key === 'discount' ? Number(value) : (updated.discount || 0);
       const net = pu - (pu * disc / 100);
-      updated.netPrice = Math.round(net);
-      updated.amount = Math.round(qty * net);
+      updated.netPrice = roundTo2(net);
+      updated.amount = roundTo2(qty * net);
       return updated;
     });
   };
@@ -185,7 +185,7 @@ export default function SageLineEditor({ lines, onLinesChange, columns, searchPl
                     const isNum = col.type === 'number' || col.type === 'readonly';
                     return (
                       <td key={col.key} className={`p-1 ${isNum ? 'text-right' : ''} ${col.key === 'amount' ? 'font-bold' : ''} truncate`}>
-                        {typeof val === 'number' ? val.toLocaleString('fr-FR') : (val || '')}
+                        {typeof val === 'number' ? formatNum(val) : (val || '')}
                       </td>
                     );
                   })}

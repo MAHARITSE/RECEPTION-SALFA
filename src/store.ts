@@ -19,8 +19,18 @@ export function calculateAge(bd: string): string {
   if (a < 1) return `${(t.getFullYear()-b.getFullYear())*12+t.getMonth()-b.getMonth()} Mois`;
   return `${a} Ans`;
 }
-export function formatAr(n: number): string { return n.toLocaleString('fr-FR') + ' Ar'; }
-export function formatMoney(n: number, currency: string = 'Ar'): string { return n.toLocaleString('fr-FR') + ' ' + currency; }
+export function formatAr(n: number): string {
+  return (n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Ar';
+}
+export function formatMoney(n: number, currency: string = 'Ar'): string {
+  return (n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + currency;
+}
+export function formatNum(n: number): string {
+  return (n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+export function roundTo2(n: number): number {
+  return Math.round((n || 0) * 100) / 100;
+}
 export function getPrice(a: Article, ct: ClientType): number {
   if (ct === 'societe') return a.priceSociete;
   if (ct === 'externe') return a.priceExterne;
@@ -144,7 +154,7 @@ export function ligneVenteSubtotal(line: Pick<VenteLine, 'quantity' | 'unitPrice
 export function ligneVenteNet(line: Pick<VenteLine, 'quantity' | 'unitPrice' | 'discount'>): number {
   const base = ligneVenteSubtotal(line);
   const rem = (line.discount || 0) / 100;
-  return Math.round(base * (1 - rem));
+  return roundTo2(base * (1 - rem));
 }
 
 /** Calcule les totaux d'une vente à partir de ses lignes + remise globale. */
@@ -155,11 +165,11 @@ export function computeVenteTotals(
   const subtotal = lines.reduce((s, l) => s + ligneVenteSubtotal(l), 0);
   const remiseLignes = lines.reduce((s, l) => s + (ligneVenteSubtotal(l) - ligneVenteNet(l)), 0);
   const baseApresRemiseLignes = subtotal - remiseLignes;
-  const remiseGlobale = Math.round(baseApresRemiseLignes * ((globalRemisePct || 0) / 100));
-  const montantFacture = Math.max(0, baseApresRemiseLignes - remiseGlobale);
+  const remiseGlobale = roundTo2(baseApresRemiseLignes * ((globalRemisePct || 0) / 100));
+  const montantFacture = Math.max(0, roundTo2(baseApresRemiseLignes - remiseGlobale));
   return {
     subtotal,
-    remiseMontant: remiseLignes + remiseGlobale,
+    remiseMontant: roundTo2(remiseLignes + remiseGlobale),
     montantFacture,
   };
 }

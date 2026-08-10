@@ -15,7 +15,7 @@ const escapeHtml = (value: string) => {
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#039;', '"': '&quot;' }[char] || char));
 };
 
-const money = (amount: number) => `${amount.toLocaleString('fr-FR')} Ar`;
+const money = (amount: number) => `${(amount || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Ar`;
 
 /** Largeur et marges dépendent du format papier choisi (58 ou 80 mm). */
 function paperMetrics(width: 58 | 80) {
@@ -590,7 +590,7 @@ export function printDossierTicket(
     .slice()
     .reverse()
     .map(
-      (i) => `<div style="display:flex;justify-content:space-between;border-bottom:1px dotted #ddd;padding:1px 0"><span>${i.paidAt ? new Date(i.paidAt).toLocaleDateString('fr-FR') : '—'} — ${i.status === 'paid' ? 'Payée' : 'En attente'}</span><span><strong>${i.patientCharge.toLocaleString('fr-FR')} Ar</strong></span></div>`,
+      (i) => `<div style="display:flex;justify-content:space-between;border-bottom:1px dotted #ddd;padding:1px 0"><span>${i.paidAt ? new Date(i.paidAt).toLocaleDateString('fr-FR') : '—'} — ${i.status === 'paid' ? 'Payée' : 'En attente'}</span><span><strong>${(i.patientCharge || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Ar</strong></span></div>`,
     )
     .join('');
 
