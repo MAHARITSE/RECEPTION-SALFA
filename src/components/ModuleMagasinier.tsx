@@ -7,7 +7,7 @@ import type {
 } from '../types';
 import type { AppState } from '../store';
 import {
-  addAuditLog, addNotification, formatAr, ARTICLE_FAMILIES, familyLabel, getArticleFamilyCatalog, normalizeFamilyCode,
+  addAuditLog, addNotification, formatAr, formatNum, ARTICLE_FAMILIES, familyLabel, getArticleFamilyCatalog, normalizeFamilyCode,
   transferCategoryLabel, TRANSFER_CATEGORIES,
   applyStockDelta, getArticleStock, locationLabel,
   createMovementWithLines,
@@ -741,7 +741,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
 
       const updatedLines: InventoryLine[] = sess.lines.map((l) => {
         const raw = invCounts[l.articleId];
-        const counted = raw === undefined || raw === '' ? l.theoreticalQty : parseInt(raw, 10);
+        const counted = raw === undefined || raw === '' ? l.theoreticalQty : parseFloat(raw);
         const c = Number.isFinite(counted) ? counted : l.theoreticalQty;
         return { ...l, countedQty: c, difference: c - l.theoreticalQty };
       });
@@ -1187,7 +1187,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                               type="number"
                               min={0}
                               value={a.minStockCentral}
-                              onChange={(e) => updateCentralAlertThreshold(a.id, parseInt(e.target.value) || 0)}
+                              onChange={(e) => updateCentralAlertThreshold(a.id, parseFloat(e.target.value) || 0)}
                               className="w-16 px-1.5 py-1 border border-slate-300 rounded text-center font-mono text-xs outline-none focus:border-blue-500 bg-white"
                               title="Stock d'alerte : en dessous, l'article est signalé « stock bas »"
                             />
@@ -1310,19 +1310,19 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                           <div>
                             <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Prix d'Achat</label>
-                            <input type="number" min={0} value={artForm.purchasePrice} onChange={e => setArtForm({ ...artForm, purchasePrice: parseInt(e.target.value) || 0 })} className="w-full px-2 py-1.5 border rounded font-mono text-sm" />
+                            <input type="number" min={0} value={artForm.purchasePrice} onChange={e => setArtForm({ ...artForm, purchasePrice: parseFloat(e.target.value) || 0 })} className="w-full px-2 py-1.5 border rounded font-mono text-sm" />
                           </div>
                           <div>
                             <label className="block text-[11px] font-semibold text-blue-700 mb-0.5">Prix Comptoir</label>
-                            <input type="number" min={0} value={artForm.priceComptoir} onChange={e => setArtForm({ ...artForm, priceComptoir: parseInt(e.target.value) || 0 })} className="w-full px-2 py-1.5 border rounded font-mono text-sm" />
+                            <input type="number" min={0} value={artForm.priceComptoir} onChange={e => setArtForm({ ...artForm, priceComptoir: parseFloat(e.target.value) || 0 })} className="w-full px-2 py-1.5 border rounded font-mono text-sm" />
                           </div>
                           <div>
                             <label className="block text-[11px] font-semibold text-indigo-700 mb-0.5">Prix Société</label>
-                            <input type="number" min={0} value={artForm.priceSociete} onChange={e => setArtForm({ ...artForm, priceSociete: parseInt(e.target.value) || 0 })} className="w-full px-2 py-1.5 border rounded font-mono text-sm" />
+                            <input type="number" min={0} value={artForm.priceSociete} onChange={e => setArtForm({ ...artForm, priceSociete: parseFloat(e.target.value) || 0 })} className="w-full px-2 py-1.5 border rounded font-mono text-sm" />
                           </div>
                           <div>
                             <label className="block text-[11px] font-semibold text-purple-700 mb-0.5">Prix Externe</label>
-                            <input type="number" min={0} value={artForm.priceExterne} onChange={e => setArtForm({ ...artForm, priceExterne: parseInt(e.target.value) || 0 })} className="w-full px-2 py-1.5 border rounded font-mono text-sm" />
+                            <input type="number" min={0} value={artForm.priceExterne} onChange={e => setArtForm({ ...artForm, priceExterne: parseFloat(e.target.value) || 0 })} className="w-full px-2 py-1.5 border rounded font-mono text-sm" />
                           </div>
                         </div>
                       </div>
@@ -1330,22 +1330,22 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                       <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-3">
                         <h4 className="font-bold text-amber-900 text-xs flex items-center gap-1.5"><Bell className="w-4 h-4 text-amber-600" /> Stocks d'alerte & notifications</h4>
                         <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="font-bold block text-slate-700 mb-1">Stock d'alerte Dépôt Central</label>
-                            <input type="number" min={0} value={artForm.minStockCentral} onChange={e => setArtForm({ ...artForm, minStockCentral: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg text-sm bg-white" />
-                            <label className="mt-1.5 flex items-center gap-2 text-[11px] text-slate-600 cursor-pointer">
-                              <input type="checkbox" checked={artForm.alertDisabledCentral} onChange={e => setArtForm({ ...artForm, alertDisabledCentral: e.target.checked })} className="w-3.5 h-3.5 rounded text-amber-600" />
-                              🔕 Désactiver l'alerte (central)
-                            </label>
-                          </div>
-                          <div>
-                            <label className="font-bold block text-slate-700 mb-1">Stock d'alerte Pharmacie</label>
-                            <input type="number" min={0} value={artForm.minStockPharmacie} onChange={e => setArtForm({ ...artForm, minStockPharmacie: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg text-sm bg-white" />
-                            <label className="mt-1.5 flex items-center gap-2 text-[11px] text-slate-600 cursor-pointer">
-                              <input type="checkbox" checked={artForm.alertDisabledPharmacie} onChange={e => setArtForm({ ...artForm, alertDisabledPharmacie: e.target.checked })} className="w-3.5 h-3.5 rounded text-amber-600" />
-                              🔕 Désactiver l'alerte (pharmacie)
-                            </label>
-                          </div>
+                        <div>
+                          <label className="font-bold block text-slate-700 mb-1">Stock d'alerte Dépôt Central</label>
+                          <input type="number" min={0} value={artForm.minStockCentral} onChange={e => setArtForm({ ...artForm, minStockCentral: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg text-sm bg-white" />
+                          <label className="mt-1.5 flex items-center gap-2 text-[11px] text-slate-600 cursor-pointer">
+                            <input type="checkbox" checked={artForm.alertDisabledCentral} onChange={e => setArtForm({ ...artForm, alertDisabledCentral: e.target.checked })} className="w-3.5 h-3.5 rounded text-amber-600" />
+                            🔕 Désactiver l'alerte (central)
+                          </label>
+                        </div>
+                        <div>
+                          <label className="font-bold block text-slate-700 mb-1">Stock d'alerte Pharmacie</label>
+                          <input type="number" min={0} value={artForm.minStockPharmacie} onChange={e => setArtForm({ ...artForm, minStockPharmacie: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg text-sm bg-white" />
+                          <label className="mt-1.5 flex items-center gap-2 text-[11px] text-slate-600 cursor-pointer">
+                            <input type="checkbox" checked={artForm.alertDisabledPharmacie} onChange={e => setArtForm({ ...artForm, alertDisabledPharmacie: e.target.checked })} className="w-3.5 h-3.5 rounded text-amber-600" />
+                            🔕 Désactiver l'alerte (pharmacie)
+                          </label>
+                        </div>
                         </div>
                         <p className="text-[10px] text-amber-800">En dessous du stock d'alerte, l'article est signalé « stock bas ». L'alerte peut être désactivée par article et par dépôt — la vente reste bloquée en cas de rupture même si l'alerte est off.</p>
                       </div>
@@ -1586,8 +1586,8 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                       )}
                     </div>
                     <div className="w-24"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Famille</label><input readOnly value={labelForFamily(purchaseForm.family) || ''} className="w-full bg-slate-200 border border-slate-300 rounded px-2 py-1 text-xs text-slate-600 truncate" /></div>
-                    <div className="w-20"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Quantité</label><input id="purchase-qty-input" type="number" min={1} value={purchaseForm.quantity} onChange={(e) => setPurchaseForm((prev) => ({ ...prev, quantity: parseInt(e.target.value) || 1 }))} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); purchaseSaveLine(); } }} className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs text-right font-mono" /></div>
-                    <div className="w-24"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Prix d'Achat Unitaire</label><input type="number" min={0} value={purchaseForm.purchasePrice} onChange={(e) => setPurchaseForm((prev) => ({ ...prev, purchasePrice: parseInt(e.target.value) || 0 }))} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); purchaseSaveLine(); } }} className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs text-right font-mono" /></div>
+                    <div className="w-20"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Quantité</label><input id="purchase-qty-input" type="number" min={1} value={purchaseForm.quantity} onChange={(e) => setPurchaseForm((prev) => ({ ...prev, quantity: parseFloat(e.target.value) || 1 }))} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); purchaseSaveLine(); } }} className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs text-right font-mono" /></div>
+                    <div className="w-24"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Prix d'Achat Unitaire</label><input type="number" min={0} value={purchaseForm.purchasePrice} onChange={(e) => setPurchaseForm((prev) => ({ ...prev, purchasePrice: parseFloat(e.target.value) || 0 }))} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); purchaseSaveLine(); } }} className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs text-right font-mono" /></div>
                     <div className="w-28"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Date Péremption</label><input type="date" value={purchaseForm.expiryDate} onChange={(e) => setPurchaseForm((prev) => ({ ...prev, expiryDate: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); purchaseSaveLine(); } }} className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs font-mono" /></div>
                     <div className="w-28"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Total Ligne</label><input readOnly value={formatAr(purchaseForm.quantity * purchaseForm.purchasePrice)} className="w-full bg-slate-200 border border-slate-300 rounded px-2 py-1 text-xs text-right font-mono font-bold" /></div>
                   </div>
@@ -1619,7 +1619,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                           <td className="p-1.5 font-sans">{labelForFamily(l.family)}</td>
                           <td className="p-1.5 font-sans font-medium">{l.articleName}</td>
                           <td className="p-1.5 text-right">{l.quantity}</td>
-                          <td className="p-1.5 text-right">{l.purchasePrice.toLocaleString('fr-FR')} Ar</td>
+                          <td className="p-1.5 text-right">{formatNum(l.purchasePrice)} Ar</td>
                           <td className="p-1.5 text-center">{l.expiryDate ? new Date(l.expiryDate).toLocaleDateString('fr-FR') : '—'}</td>
                           <td className="p-1.5 text-right font-bold text-emerald-700">{formatAr(l.amount)}</td>
                           <td className="p-1.5 text-center"><button onClick={() => setPurchaseLines(purchaseLines.filter(x => x.id !== l.id))} className="text-rose-600 cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button></td>
@@ -1767,7 +1767,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                       <tbody>
                         {activeInv.lines.map((l) => {
                           const raw = invCounts[l.articleId];
-                          const counted = raw === undefined || raw === '' ? null : parseInt(raw, 10);
+                          const counted = raw === undefined || raw === '' ? null : parseFloat(raw);
                           const diff = counted === null || !Number.isFinite(counted) ? 0 : counted - l.theoreticalQty;
                           return (
                             <tr key={l.articleId} className={`border-b ${diff !== 0 && counted !== null ? 'bg-amber-50' : ''}`}>
@@ -1813,7 +1813,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="font-bold block mb-1">Quantité</label>
-                        <input type="number" min={1} value={dispQty} onChange={(e) => setDispQty(parseInt(e.target.value) || 1)} className="w-full px-3 py-2 border rounded-lg" />
+                        <input type="number" min={1} value={dispQty} onChange={(e) => setDispQty(parseFloat(e.target.value) || 1)} className="w-full px-3 py-2 border rounded-lg" />
                       </div>
                       <div>
                         <label className="font-bold block mb-1">Service destinataire</label>
@@ -1851,7 +1851,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                       </div>
                       <div>
                         <label className="font-bold block mb-1">Quantité à déduire</label>
-                        <input type="number" min={1} value={exitQty} onChange={(e) => setExitQty(parseInt(e.target.value) || 1)} className="w-full px-3 py-2 border rounded-lg" />
+                        <input type="number" min={1} value={exitQty} onChange={(e) => setExitQty(parseFloat(e.target.value) || 1)} className="w-full px-3 py-2 border rounded-lg" />
                       </div>
                     </div>
                     <div>

@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { AppState } from '../store';
 import {
   addAuditLog, billingStatusClasses, billingStatusLabel,
-  formatAr, getCompanyInvoicesForMonth, addJourneyEvent, safeInvoiceItemDescriptions, familyLabel,
+  formatAr, formatNum, getCompanyInvoicesForMonth, addJourneyEvent, safeInvoiceItemDescriptions, familyLabel,
 } from '../store';
 import type { CompanyBillingAccount, CompanySettlementMode, Invoice, InvoiceItem } from '../types';
 import {
@@ -1940,7 +1940,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                         type="number"
                         min={1}
                         value={activeQuantity}
-                        onChange={e => setActiveQuantity(parseInt(e.target.value) || 1)}
+                        onChange={e => setActiveQuantity(parseFloat(e.target.value) || 1)}
                         className="w-full bg-white border border-slate-300 rounded px-2.5 py-1 text-xs text-right font-mono text-slate-800 outline-none focus:border-slate-500"
                       />
                     </div>
@@ -1963,7 +1963,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                       <input
                         type="text"
                         readOnly
-                        value={(activeQuantity * activeUnitPrice).toLocaleString('fr-FR')}
+                        value={formatNum(activeQuantity * activeUnitPrice)}
                         className="w-full bg-slate-200 border border-slate-300 rounded px-2.5 py-1 text-xs text-right font-mono font-bold text-slate-600"
                       />
                     </div>
@@ -2044,10 +2044,10 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                           </td>
                           <td className="p-2 text-right">{item.quantity || 1}</td>
                           <td className="p-2 text-right">
-                            {(item.unitPrice !== undefined ? item.unitPrice : (item.amount / (item.quantity || 1))).toLocaleString('fr-FR')}
+                            {formatNum(item.unitPrice !== undefined ? item.unitPrice : (item.amount / (item.quantity || 1)))}
                           </td>
                           <td className={`p-2 text-right font-bold ${isSel ? 'text-white' : 'text-indigo-900'}`}>
-                            {item.amount.toLocaleString('fr-FR')}
+                            {formatNum(item.amount)}
                           </td>
                         </tr>
                       );

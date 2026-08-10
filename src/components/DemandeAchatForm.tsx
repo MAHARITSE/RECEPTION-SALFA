@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Article, TransferCategory } from '../types';
-import { familyLabel, formatAr, transferCategoryLabel, transferCategoryColor, TRANSFER_CATEGORIES } from '../store';
+import { familyLabel, formatAr, formatNum, transferCategoryLabel, transferCategoryColor, TRANSFER_CATEGORIES } from '../store';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
 import { Plus, Trash2, Save, X, Send, Edit3 } from 'lucide-react';
 
@@ -338,14 +338,14 @@ export default function DemandeAchatForm({
 
                 <div className="w-20"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Quantité</label>
                   <input id="req-qty-input" type="number" min={1} value={reqLineForm.quantity}
-                    onChange={e => setReqLineForm(prev => ({ ...prev, quantity: parseInt(e.target.value) || 1, amount: (parseInt(e.target.value) || 1) * (prev.purchasePrice || 0) }))}
+                    onChange={e => setReqLineForm(prev => ({ ...prev, quantity: parseFloat(e.target.value) || 1, amount: (parseFloat(e.target.value) || 1) * (prev.purchasePrice || 0) }))}
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); reqSaveLine(); } }}
                     className="w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-slate-500 text-slate-800" />
                 </div>
 
                 <div className="w-24"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">P. Achat</label>
                   <input type="number" min={0} value={reqLineForm.purchasePrice}
-                    onChange={e => setReqLineForm(prev => ({ ...prev, purchasePrice: parseInt(e.target.value) || 0, amount: prev.quantity * (parseInt(e.target.value) || 0) }))}
+                    onChange={e => setReqLineForm(prev => ({ ...prev, purchasePrice: parseFloat(e.target.value) || 0, amount: prev.quantity * (parseFloat(e.target.value) || 0) }))}
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); reqSaveLine(); } }}
                     className="w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-slate-500 text-slate-800" />
                 </div>
@@ -403,9 +403,9 @@ export default function DemandeAchatForm({
                         <td className="p-1 font-sans"><span className={`px-1 rounded text-[10px] ${isSel ? 'bg-white/20 text-white font-medium' : 'bg-slate-200 text-slate-700'}`}>{familyLabel(l.family)}</span></td>
                         <td className="p-1 font-sans">{l.articleName}</td>
                         <td className="p-1 text-right">{l.quantity}</td>
-                        <td className="p-1 text-right">{l.purchasePrice.toLocaleString('fr-FR')}</td>
+                        <td className="p-1 text-right">{formatNum(l.purchasePrice)}</td>
                         <td className="p-1 text-center">{l.expiryDate ? new Date(l.expiryDate).toLocaleDateString('fr-FR') : '—'}</td>
-                        <td className="p-1 text-right font-bold">{l.amount.toLocaleString('fr-FR')}</td>
+                        <td className="p-1 text-right font-bold">{formatNum(l.amount)}</td>
                         <td className="p-1 font-sans text-xs truncate">{l.notes || '—'}</td>
                         <td className="p-1 text-center">
                           <button
