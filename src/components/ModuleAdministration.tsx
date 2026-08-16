@@ -15,7 +15,7 @@ import TableEtablissements from './TableEtablissements';
 import {
   Trash2, Plus, X, Check, Download, Upload,
   Eye, Settings as SettingsIcon, Users, Building2,
-  Receipt, FileText, Shield, Database, Printer, Image as ImageIcon,
+  Receipt, FileText, Shield, Database, Printer,
   CreditCard, AlertCircle, Search, RefreshCw, Copy, Activity,
   Key, Edit2, Hospital, Stethoscope, Pill, Package, FlaskConical,
   Menu, LayoutDashboard, AlertTriangle, ArrowRight, HardDrive, FileSpreadsheet, Lock, Unlock, CheckCircle2,
@@ -27,7 +27,7 @@ interface Props {
   setState: React.Dispatch<React.SetStateAction<AppState>>;
 }
 
-type Tab = 'dashboard' | 'etablissements' | 'societe' | 'tickets' | 'users' | 'companies' | 'audit' | 'backup' | 'system';
+type Tab = 'dashboard' | 'etablissements' | 'tickets' | 'users' | 'companies' | 'audit' | 'backup' | 'system';
 type AppModuleKey = 'reception' | 'doctor' | 'medicalRecords' | 'cashier' | 'pharmacy' | 'magasinier' | 'laboratory' | 'billing';
 
 const roleLabels: Record<string, string> = {
@@ -42,12 +42,9 @@ const roleLabels: Record<string, string> = {
 
 const ALL_ROLES: UserRole[] = ['doctor', 'cashier', 'pharmacy', 'magasinier', 'laboratory', 'billing', 'admin'];
 
-const LOGO_EMOJIS = ['🏥', '⚕️', '💊', '🔬', '🏨', '🏢', '🩺', '⭐', '❤️', '🛡️', '🍺', '🍷', '☕', '🍽️'];
-
 const TABS: { key: Tab; label: string; icon: any; desc: string }[] = [
   { key: 'dashboard', label: 'Tableau de bord', icon: LayoutDashboard, desc: 'Vue d\'ensemble & supervision générale' },
-  { key: 'etablissements', label: 'Société / Hôpital', icon: Landmark, desc: 'Table d\'identification : raison sociale, NIF, STAT, agrément' },
-  { key: 'societe', label: 'Établissement & En-tête', icon: Building2, desc: 'Identité, NIF, STAT, adresse, Logo' },
+  { key: 'etablissements', label: 'Société / Hôpital', icon: Landmark, desc: 'Identification, coordonnées, agrément, logo et en-tête des documents' },
   { key: 'tickets', label: 'Tickets POS & Format', icon: Printer, desc: 'Format 58/80mm, options & aperçu direct' },
   { key: 'users', label: 'Personnel & Accès', icon: Users, desc: 'Comptes utilisateurs, rôles & sécurisation' },
   { key: 'companies', label: 'Sociétés & Conventions', icon: CreditCard, desc: 'Entreprises & modes de règlement' },
@@ -133,7 +130,6 @@ export default function ModuleAdministration({ state, setState }: Props) {
 
   // Aperçu Ticket
   const [showPreview, setShowPreview] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const restoreInputRef = useRef<HTMLInputElement>(null);
 
 
@@ -178,32 +174,6 @@ export default function ModuleAdministration({ state, setState }: Props) {
     });
     showToast('Paramètres de l\'établissement mis à jour');
   };
-
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 1024 * 1024) { showToast('⚠️ Image trop volumineuse (maximum 1 Mo)'); return; }
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const result = ev.target?.result as string;
-      updateTicket({ logoUrl: result });
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleSecondLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 1024 * 1024) { showToast('⚠️ Image trop volumineuse (maximum 1 Mo)'); return; }
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const result = ev.target?.result as string;
-      updateTicket({ secondLogoUrl: result });
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const secondLogoInputRef = useRef<HTMLInputElement>(null);
 
   // ============ USERS MANAGEMENT ============
   const openAddUserModal = () => {
@@ -1180,7 +1150,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
                         <div className="p-5 border border-slate-200 rounded-2xl bg-white space-y-3 shadow-xs">
                           <h4 className="font-bold text-sm text-slate-800 flex items-center justify-between border-b pb-2">
                             <span className="flex items-center gap-2"><Building2 className="w-4 h-4 text-indigo-600" /> Configuration de l'établissement</span>
-                            <button onClick={() => selectAdminTab('societe')} className="text-xs text-indigo-600 font-semibold hover:underline cursor-pointer">Modifier</button>
+                            <button onClick={() => selectAdminTab('etablissements')} className="text-xs text-indigo-600 font-semibold hover:underline cursor-pointer">Modifier</button>
                           </h4>
                           <ul className="text-xs space-y-2 text-slate-600">
                             <li className="flex justify-between border-b border-slate-100 pb-1.5">
@@ -1239,196 +1209,6 @@ export default function ModuleAdministration({ state, setState }: Props) {
                   {/* ===== TAB 2: IDENTIFICATION SOCIÉTÉ / HÔPITAL ===== */}
                   {tab === 'etablissements' && (
                     <TableEtablissements state={state} setState={setState} showToast={showToast} />
-                  )}
-
-                  {tab === 'societe' && (
-                    <div className="space-y-6 max-w-4xl">
-                      <div>
-                        <h3 className="font-bold text-slate-800 text-xl flex items-center gap-2.5">
-                          <Building2 className="w-6 h-6 text-indigo-600" /> Établissement & En-tête des documents
-                        </h3>
-                        <p className="text-xs text-slate-500 mt-0.5">Identité juridique, coordonnées fiscales et visuel de logo apparaissant sur les reçus, factures et bilans.</p>
-                      </div>
-
-                      {/* Logo selection card */}
-                      <div className="rounded-2xl border border-slate-200 p-5 bg-white space-y-4 shadow-xs">
-                        <h4 className="font-bold text-sm text-slate-800 flex items-center gap-2">
-                          <ImageIcon className="w-4 h-4 text-purple-600" /> Logo de l'Établissement
-                        </h4>
-                        <div className="flex flex-col sm:flex-row items-start gap-5">
-                          <div className="w-28 h-28 border-2 border-dashed border-slate-300 rounded-2xl flex items-center justify-center bg-slate-50 text-slate-400 overflow-hidden shrink-0 shadow-inner">
-                            {state.ticketSettings.logoUrl ? (
-                              state.ticketSettings.logoUrl.length <= 5 ? (
-                                <span className="text-5xl">{state.ticketSettings.logoUrl}</span>
-                              ) : (
-                                <img src={state.ticketSettings.logoUrl} alt="Logo" className="w-full h-full object-contain p-2" />
-                              )
-                            ) : (
-                              <span className="text-xs text-slate-400 text-center px-2">Aucun logo configuré</span>
-                            )}
-                          </div>
-
-                          <div className="flex-1 space-y-4">
-                            <div>
-                              <label className="text-xs font-bold text-slate-700 block mb-1.5">Emojis médicaux prédéfinis :</label>
-                              <div className="flex flex-wrap gap-2">
-                                {LOGO_EMOJIS.map((e) => (
-                                  <button
-                                    key={e}
-                                    onClick={() => updateTicket({ logoUrl: e })}
-                                    className={`w-9 h-9 rounded-xl text-lg flex items-center justify-center transition cursor-pointer ${
-                                      state.ticketSettings.logoUrl === e ? 'bg-indigo-600 text-white shadow-md scale-105' : 'bg-slate-100 hover:bg-slate-200'
-                                    }`}
-                                  >
-                                    {e}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-
-                            <div>
-                              <label className="text-xs font-bold text-slate-700 block mb-1.5">Ou charger une image locale (PNG/JPEG) :</label>
-                              <div className="flex gap-2">
-                                <input ref={fileInputRef} type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
-                                <button
-                                  onClick={() => fileInputRef.current?.click()}
-                                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-semibold cursor-pointer flex items-center gap-1.5 shadow-xs"
-                                >
-                                  <Upload className="w-3.5 h-3.5" /> Choisir une image (max 1 Mo)
-                                </button>
-                                {state.ticketSettings.logoUrl && (
-                                  <button
-                                    onClick={() => updateTicket({ logoUrl: '' })}
-                                    className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-semibold cursor-pointer flex items-center gap-1 border border-rose-200"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" /> Effacer
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Second Logo for A4/A5 Invoices */}
-                      <div className="rounded-2xl border border-slate-200 p-5 bg-white space-y-4 shadow-xs">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <h4 className="font-bold text-sm text-slate-800 flex items-center gap-2">
-                              <ImageIcon className="w-4 h-4 text-blue-600" /> Logo Additionnel (Factures A4/A5)
-                            </h4>
-                            <p className="text-xs text-slate-500 mt-1">Ce logo s'affiche sur les factures A4 et A5 à droite de l'en-tête.</p>
-                          </div>
-                        </div>
-                        <div className="flex flex-col sm:flex-row items-start gap-5">
-                          <div className="w-28 h-28 border-2 border-dashed border-slate-300 rounded-2xl flex items-center justify-center bg-slate-50 text-slate-400 overflow-hidden shrink-0 shadow-inner">
-                            {state.ticketSettings.secondLogoUrl ? (
-                              state.ticketSettings.secondLogoUrl.length <= 5 ? (
-                                <span className="text-5xl">{state.ticketSettings.secondLogoUrl}</span>
-                              ) : (
-                                <img src={state.ticketSettings.secondLogoUrl} alt="Logo Additionnel" className="w-full h-full object-contain p-2" />
-                              )
-                            ) : (
-                              <span className="text-xs text-slate-400 text-center px-2">Aucun logo configuré</span>
-                            )}
-                          </div>
-
-                          <div className="flex-1 space-y-4">
-                            <div>
-                              <label className="text-xs font-bold text-slate-700 block mb-1.5">Charger une image (PNG/JPEG) :</label>
-                              <div className="flex gap-2">
-                                <input ref={secondLogoInputRef} type="file" accept="image/*" onChange={handleSecondLogoUpload} className="hidden" />
-                                <button
-                                  onClick={() => secondLogoInputRef.current?.click()}
-                                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold cursor-pointer flex items-center gap-1.5 shadow-xs"
-                                >
-                                  <Upload className="w-3.5 h-3.5" /> Choisir une image (max 1 Mo)
-                                </button>
-                                {state.ticketSettings.secondLogoUrl && (
-                                  <button
-                                    onClick={() => updateTicket({ secondLogoUrl: '' })}
-                                    className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-semibold cursor-pointer flex items-center gap-1 border border-rose-200"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" /> Effacer
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
-                              <p className="text-xs text-blue-800">
-                                <strong>ℹ️ Information :</strong> Ce logo additionnel apparaît uniquement sur les factures A4 et A5 (factures individuelles et factures sociétés). Les tickets POS continuent d'afficher uniquement le logo principal de l'établissement.
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* General Identity Form */}
-                      <div className="rounded-2xl border border-slate-200 p-5 bg-white space-y-4 shadow-xs">
-                        <h4 className="font-bold text-sm text-slate-800">Coordonnées Officielles & Fiscales</h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div>
-                            <label className="text-xs font-bold text-slate-700 block mb-1">Nom de l'établissement *</label>
-                            <input
-                              value={state.ticketSettings.facilityName}
-                              onChange={e => updateTicket({ facilityName: e.target.value })}
-                              className="w-full px-3.5 py-2 border rounded-xl text-sm font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs font-bold text-slate-700 block mb-1">Sous-titre / En-tête secondaire</label>
-                            <input
-                              value={state.ticketSettings.ticketFooter2 || ''}
-                              onChange={e => updateTicket({ ticketFooter2: e.target.value })}
-                              className="w-full px-3.5 py-2 border rounded-xl text-sm text-slate-800 outline-none"
-                              placeholder="Ex: Centre Médical & Urgences 24/7"
-                            />
-                          </div>
-                          <div className="sm:col-span-2">
-                            <label className="text-xs font-bold text-slate-700 block mb-1">Adresse physique complète</label>
-                            <input
-                              value={state.ticketSettings.address}
-                              onChange={e => updateTicket({ address: e.target.value })}
-                              className="w-full px-3.5 py-2 border rounded-xl text-sm text-slate-800 outline-none"
-                              placeholder="Ex: Ambohibao, Antananarivo 101"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs font-bold text-slate-700 block mb-1">Téléphone de contact</label>
-                            <input
-                              value={state.ticketSettings.phone}
-                              onChange={e => updateTicket({ phone: e.target.value })}
-                              className="w-full px-3.5 py-2 border rounded-xl text-sm text-slate-800 outline-none"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs font-bold text-slate-700 block mb-1">Adresse E-mail</label>
-                            <input
-                              value={state.ticketSettings.email || ''}
-                              onChange={e => updateTicket({ email: e.target.value })}
-                              className="w-full px-3.5 py-2 border rounded-xl text-sm text-slate-800 outline-none"
-                              placeholder="contact@salfa.mg"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs font-bold text-slate-700 block mb-1">NIF (Identification Fiscale)</label>
-                            <input
-                              value={state.ticketSettings.nif}
-                              onChange={e => updateTicket({ nif: e.target.value })}
-                              className="w-full px-3.5 py-2 border rounded-xl text-sm font-mono text-slate-800 outline-none"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs font-bold text-slate-700 block mb-1">Préfixe de numérotation des factures</label>
-                            <input
-                              value={state.ticketSettings.invoicePrefix}
-                              onChange={e => updateTicket({ invoicePrefix: e.target.value.toUpperCase() })}
-                              className="w-full px-3.5 py-2 border rounded-xl text-sm uppercase font-mono text-slate-800 outline-none"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
                   )}
 
                   {/* ===== TAB 3: TICKETS POS ===== */}
