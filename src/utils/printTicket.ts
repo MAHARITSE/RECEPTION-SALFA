@@ -21,10 +21,10 @@ const money = (amount: number) => `${(amount || 0).toLocaleString('fr-FR', { min
 function paperMetrics(width: 58 | 80) {
   if (width === 58) {
     // Format étroit : 58mm, marges réduites, police plus petite
-    return { width, padding: '3mm', fontSize: '9.5px', headingSize: '11px', totalSize: '11.5px', logoMaxW: '30mm', logoMaxH: '14mm', barcodeSize: '12px' };
+    return { width, padding: '3mm', fontSize: '9.5px', headingSize: '11px', totalSize: '11.5px', logoMaxW: '30mm', logoMaxH: '14mm' };
   }
   // Format standard 80mm
-  return { width, padding: '4mm', fontSize: '10.5px', headingSize: '12.5px', totalSize: '13px', logoMaxW: '45mm', logoMaxH: '18mm', barcodeSize: '15px' };
+  return { width, padding: '4mm', fontSize: '10.5px', headingSize: '12.5px', totalSize: '13px', logoMaxW: '45mm', logoMaxH: '18mm' };
 }
 
 interface TicketBase {
@@ -95,7 +95,6 @@ function buildTicketHtml(t: TicketBase) {
     .amount{text-align:right;white-space:nowrap;padding-left:1.5mm}
     .total{font-size:${m.totalSize};font-weight:bold}
     .heading{font-size:${m.headingSize};font-weight:bold}
-    .barcode{letter-spacing:2px;font-size:${m.barcodeSize};margin-top:1.5mm}
     .signature{margin-top:5mm;display:flex;justify-content:space-between;gap:4mm;font-size:8.5px}
     .signature span{width:48%;border-top:1px solid #000;padding-top:1mm;text-align:center}
     .right{text-align:right}
@@ -197,11 +196,6 @@ export function printPaymentTicket(
       <tr><td>Total articles</td><td class="amount">${money(invoice.totalAmount)}</td></tr>
       <tr class="total"><td>TOTAL PAYÉ</td><td class="amount">${money(invoice.patientCharge)}</td></tr>
     </table>
-    <div class="barcode center">*${escapeHtml(invoice.id.slice(0, 12).toUpperCase())}*</div>
-    <div class="signature">
-      <span>${escapeHtml(cashier?.name || 'Caissier')}</span>
-      <span>Client</span>
-    </div>
   `;
   const html = buildTicketHtml({
     settings,
