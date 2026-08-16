@@ -319,10 +319,6 @@ export function printLabRequestTicket(
     <div class="rule"></div>
     <div class="bold heading">EXAMENS DEMANDÉS</div>
     <table>${lines || '<tr><td><i>Aucun examen</i></td></tr>'}</table>
-    <div class="signature">
-      <span>Préleveur</span>
-      <span>${escapeHtml(doctor.name)}</span>
-    </div>
   `;
   const html = buildTicketHtml({
     settings,
@@ -364,10 +360,6 @@ export function printEchoRequestTicket(
     <div class="rule"></div>
     <div class="bold heading">ÉCHOGRAPHIES DEMANDÉES</div>
     <table>${lines || '<tr><td><i>Aucune échographie</i></td></tr>'}</table>
-    <div class="signature">
-      <span>Technicien</span>
-      <span>${escapeHtml(doctor.name)}</span>
-    </div>
   `;
   const html = buildTicketHtml({
     settings,
