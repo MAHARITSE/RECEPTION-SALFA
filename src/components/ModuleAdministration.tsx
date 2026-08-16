@@ -650,13 +650,6 @@ export default function ModuleAdministration({ state, setState }: Props) {
             <span>TOTAL PAYÉ</span>
             <span>15 000 {s.currency}</span>
           </div>
-          {s.showBarcode && <div className="text-center mt-2" style={{ letterSpacing: '2px', fontSize: isNarrow ? '12px' : '15px' }}>*FAC-2026-0001*</div>}
-          {s.showSignature && (
-            <div className="flex justify-between mt-4" style={{ fontSize: '8.5px' }}>
-              <span className="border-t border-black w-2/5 pt-0.5 text-center">Caissier</span>
-              <span className="border-t border-black w-2/5 pt-0.5 text-center">Client</span>
-            </div>
-          )}
           <div className="border-t-4 border-double border-black my-2"></div>
           <div className="text-center" style={{ fontSize: '8.5px' }}>{s.footerMessage}</div>
         </div>
@@ -1269,24 +1262,6 @@ export default function ModuleAdministration({ state, setState }: Props) {
                               className="w-4 h-4 rounded text-blue-600 cursor-pointer"
                             />
                             <span>Lancer l'impression automatique dès la validation des règlements à la caisse</span>
-                          </label>
-                          <label className="text-xs font-bold text-slate-700 flex items-center gap-2.5 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={state.ticketSettings.showBarcode}
-                              onChange={e => updateTicket({ showBarcode: e.target.checked })}
-                              className="w-4 h-4 rounded text-blue-600 cursor-pointer"
-                            />
-                            <span>Afficher le code-barres textuel du numéro de la facture</span>
-                          </label>
-                          <label className="text-xs font-bold text-slate-700 flex items-center gap-2.5 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={state.ticketSettings.showSignature}
-                              onChange={e => updateTicket({ showSignature: e.target.checked })}
-                              className="w-4 h-4 rounded text-blue-600 cursor-pointer"
-                            />
-                            <span>Afficher les zones d'émargement et signature (Caissier & Client)</span>
                           </label>
                         </div>
                       </div>
