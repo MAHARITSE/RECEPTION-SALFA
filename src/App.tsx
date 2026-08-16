@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, Component, type ReactNode, type ErrorInfo } from 'react';
 import type { User } from './types';
 import { createInitialState, ensureEtablissements, migrateLegacyToVentes, normalizeFamilyBases, type AppState } from './store';
+import { loadStateFromBrowser, saveStateToBrowser } from './browserDb';
 import {
   IS_WAMP_BUILD,
   initialWampSync,
@@ -149,6 +150,8 @@ function AppInner() {
 
   /* ─── WAMP / MySQL : état de la synchronisation ─── */
   const [wamp, setWamp] = useState<WampSyncState>(initialWampSync);
+  // Hors WAMP, les données métier sont conservées dans IndexedDB du navigateur.
+  const [browserDbLoading, setBrowserDbLoading] = useState(!IS_WAMP_BUILD);
 
   // Références toujours à jour pour les effets « longue durée »
   const stateRef = useRef(state);
@@ -159,6 +162,7 @@ function AppInner() {
   const seedRef = useRef(state);
   // Après le chargement initial, on saute une seule sauvegarde redondante
   const skipFirstSave = useRef(true);
+  const skipFirstBrowserSave = useRef(true);
 
   /* ─── WAMP : au démarrage, TOUTES les données sont chargées depuis MySQL.
      Si MySQL ne contient encore rien, l'état local initial y est écrit
@@ -188,6 +192,46 @@ function AppInner() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* ─── MODE NAVIGATEUR : base locale IndexedDB ───
+     Cette voie est strictement séparée de WAMP : aucune requête MySQL n'est
+     effectuée. Les données restent dans le profil du navigateur. */
+  useEffect(() => {
+    if (IS_WAMP_BUILD) return;
+    let cancelled = false;
+    (async () => {
+      const stored = await loadStateFromBrowser();
+      if (cancelled) return;
+      if (stored) {
+        setState(ensureEtablissements(normalizeFamilyBases(stored)));
+      } else {
+        // Première ouverture : initialise la base locale avec le jeu de départ.
+        await saveStateToBrowser(seedRef.current);
+      }
+      if (!cancelled) setBrowserDbLoading(false);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* ─── MODE NAVIGATEUR : sauvegarde automatique dans IndexedDB ─── */
+  useEffect(() => {
+    if (IS_WAMP_BUILD || browserDbLoading) return;
+    if (skipFirstBrowserSave.current) {
+      skipFirstBrowserSave.current = false;
+      return;
+    }
+    const timer = window.setTimeout(() => { void saveStateToBrowser(state); }, 500);
+    return () => window.clearTimeout(timer);
+  }, [state, browserDbLoading]);
+
+  /* Une dernière écriture est demandée à la fermeture de l'onglet. */
+  useEffect(() => {
+    if (IS_WAMP_BUILD) return;
+    const flush = () => { void saveStateToBrowser(stateRef.current); };
+    window.addEventListener('pagehide', flush);
+    return () => window.removeEventListener('pagehide', flush);
   }, []);
 
   /* ─── WAMP : CHAQUE modification de l'état est automatiquement enregistrée
