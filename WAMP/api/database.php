@@ -53,6 +53,97 @@ function reception_salfa_json_decode(string $json): array
 }
 
 /**
+ * Mise à niveau automatique du schéma : crée la table `etablissements`
+ * (identification de la société / de l'hôpital) sur les installations
+ * existantes qui n'ont pas encore réimporté `reception_salfa.sql`.
+ *
+ * Aucune donnée n'est écrasée : la table est créée uniquement si elle
+ * n'existe pas, et une fiche principale minimale est insérée quand elle est
+ * vide (reprise des informations de `parametres_impression` si disponibles).
+ */
+function reception_salfa_ensure_etablissements_table(PDO $pdo): void
+{
+    try {
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS `etablissements` (
+                `id`              VARCHAR(64)  NOT NULL,
+                `code`            VARCHAR(32)  DEFAULT NULL,
+                `name`            VARCHAR(255) DEFAULT NULL,
+                `trade_name`      VARCHAR(255) DEFAULT NULL,
+                `type`            VARCHAR(32)  DEFAULT NULL,
+                `nif`             VARCHAR(64)  DEFAULT NULL,
+                `stat`            VARCHAR(64)  DEFAULT NULL,
+                `numero_agrement` VARCHAR(64)  DEFAULT NULL,
+                `city`            VARCHAR(128) DEFAULT NULL,
+                `phone`           VARCHAR(64)  DEFAULT NULL,
+                `email`           VARCHAR(191) DEFAULT NULL,
+                `active`          TINYINT(1)   NOT NULL DEFAULT 1,
+                `is_principal`    TINYINT(1)   NOT NULL DEFAULT 0,
+                `data_json`       LONGTEXT     NOT NULL,
+                `created_at`      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                `updated_at`      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (`id`),
+                KEY `idx_etablissements_code` (`code`),
+                KEY `idx_etablissements_principal` (`is_principal`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+        );
+
+        $count = (int) $pdo->query('SELECT COUNT(*) FROM `etablissements`')->fetchColumn();
+        if ($count > 0) {
+            return;
+        }
+
+        // Reprise des informations déjà saisies dans les paramètres d'impression.
+        $settings = [];
+        try {
+            $json = $pdo->query("SELECT `data_json` FROM `parametres_impression` WHERE `id` = 'default'")->fetchColumn();
+            if (is_string($json) && $json !== '') {
+                $settings = reception_salfa_json_decode($json);
+            }
+        } catch (Throwable $e) {
+            $settings = [];
+        }
+
+        $name = (string) ($settings['facilityName'] ?? 'Établissement principal');
+        $etablissement = [
+            'id' => 'etb-principal',
+            'code' => 'ETB-001',
+            'name' => $name,
+            'tradeName' => $name,
+            'type' => 'centre_sante',
+            'nif' => (string) ($settings['nif'] ?? ''),
+            'stat' => '',
+            'address' => (string) ($settings['address'] ?? ''),
+            'city' => '',
+            'country' => 'Madagascar',
+            'phone' => (string) ($settings['phone'] ?? ''),
+            'email' => (string) ($settings['email'] ?? ''),
+            'website' => (string) ($settings['website'] ?? ''),
+            'logoUrl' => (string) ($settings['logoUrl'] ?? ''),
+            'active' => true,
+            'isPrincipal' => true,
+        ];
+
+        $stmt = $pdo->prepare(
+            'INSERT INTO `etablissements`
+                (`id`, `code`, `name`, `trade_name`, `type`, `nif`, `stat`, `numero_agrement`,
+                 `city`, `phone`, `email`, `active`, `is_principal`, `data_json`)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?)'
+        );
+        $stmt->execute([
+            $etablissement['id'], $etablissement['code'], $etablissement['name'], $etablissement['tradeName'],
+            $etablissement['type'], $etablissement['nif'], $etablissement['stat'], '',
+            $etablissement['city'], $etablissement['phone'], $etablissement['email'],
+            reception_salfa_json_encode($etablissement),
+        ]);
+    } catch (Throwable $e) {
+        // Mise à niveau best-effort : l'API continue de fonctionner même si la
+        // création automatique échoue (droits insuffisants, etc.).
+        return;
+    }
+}
+
+/**
  * Mise à niveau automatique du schéma (compatible MySQL ET MariaDB, qui ne
  * supporte pas `ADD COLUMN IF NOT EXISTS`).
  *

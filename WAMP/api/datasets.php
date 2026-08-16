@@ -26,6 +26,19 @@ function reception_salfa_datasets(): array
             'columns' => ['facility_name' => 'facilityName', 'currency' => 'currency'],
         ],
 
+        // Identification de la société / de l'hôpital exploitant
+        'etablissements' => [
+            'type' => 'list',
+            'table' => 'etablissements',
+            'columns' => [
+                'code' => 'code', 'name' => 'name', 'trade_name' => 'tradeName',
+                'type' => 'type', 'nif' => 'nif', 'stat' => 'stat',
+                'numero_agrement' => 'numeroAgrement',
+                'city' => 'city', 'phone' => 'phone', 'email' => 'email',
+                'active' => 'active', 'is_principal' => 'isPrincipal',
+            ],
+        ],
+
         'users' => [
             'type' => 'list',
             'table' => 'utilisateurs',

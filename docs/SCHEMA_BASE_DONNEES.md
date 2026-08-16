@@ -22,6 +22,7 @@ Le diagramme d'accompagnement se trouve dans le fichier [`schema-base-donnees.sv
 
 | Entité | Description |
 |--------|-------------|
+| **Établissements** | Identification de la société / de l'hôpital exploitant : raison sociale, nom commercial, nature (hôpital, clinique, centre de santé, société…), forme juridique, NIF / STAT / RCS, agrément sanitaire, CNaPS, coordonnées, représentant légal, coordonnées bancaires et logo. La fiche `principale` alimente l'en-tête des tickets, reçus et factures. |
 | **Utilisateurs** | Comptes du personnel : `doctor`, `cashier`, `pharmacy`, `magasinier`, `laboratory`, `billing`, `admin`. |
 | **Patients** | Dossiers patients (n° dossier, identité, groupe sanguin, allergies, constantes, type de client, société rattachée, **base de famille** et lien familial). |
 | **Sociétés** | Entreprises conventionnées — systématiquement en `Crédit`, avec un sous-mode `global_mensuel` ou `individuel par facture`. |

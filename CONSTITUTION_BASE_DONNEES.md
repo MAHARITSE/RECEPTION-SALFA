@@ -465,6 +465,69 @@ Toutes les entités sont stockées dans des tableaux typés TypeScript.
 
 ---
 
+## 📋 29. TABLE `etablissements` — IDENTIFICATION DE LA SOCIÉTÉ / DE L'HÔPITAL
+
+Table de référence identifiant la ou les entités juridiques exploitant l'application
+(hôpital, clinique, centre de santé, société…). La ligne marquée `isPrincipal`
+alimente automatiquement l'en-tête des tickets, reçus et factures (`ticketSettings`).
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `id` | `string (UUID)` | Identifiant unique |
+| `code` | `string` | Code interne court (ex : ETB-001) — unique |
+| `name` | `string` | Raison sociale / dénomination officielle |
+| `tradeName` | `string?` | Nom commercial / enseigne affichée sur les documents |
+| `type` | `EtablissementType` | `hopital` \| `clinique` \| `centre_sante` \| `cabinet` \| `laboratoire` \| `pharmacie` \| `societe` \| `autre` |
+| `legalForm` | `string?` | Forme juridique (SA, SARL, Association, ONG, Établissement public…) |
+| `nif` | `string?` | Numéro d'Identification Fiscale |
+| `stat` | `string?` | Numéro statistique |
+| `rcs` | `string?` | RCS / Registre du commerce |
+| `numeroAgrement` | `string?` | Agrément / autorisation d'ouverture sanitaire |
+| `numeroCnaps` | `string?` | Immatriculation employeur (CNaPS) |
+| `capital` | `string?` | Capital social |
+| `address` | `string?` | Adresse (lot, quartier, rue) |
+| `city` | `string?` | Ville |
+| `postalCode` | `string?` | Code postal |
+| `region` | `string?` | Région / province |
+| `country` | `string?` | Pays |
+| `phone` | `string?` | Téléphone principal |
+| `phone2` | `string?` | Téléphone secondaire |
+| `fax` | `string?` | Fax |
+| `email` | `string?` | Adresse e-mail |
+| `website` | `string?` | Site web |
+| `directorName` | `string?` | Représentant légal |
+| `directorTitle` | `string?` | Fonction du représentant (Directeur, Médecin-chef…) |
+| `directorPhone` | `string?` | Téléphone du représentant |
+| `bankName` | `string?` | Banque (encaissements virement / chèque) |
+| `bankAccount` | `string?` | N° de compte / RIB |
+| `logoUrl` | `string?` | Logo (data URL ou emoji) |
+| `notes` | `string?` | Observations |
+| `active` | `boolean` | Établissement actif |
+| `isPrincipal` | `boolean` | Établissement de référence des documents imprimés (un seul) |
+| `createdAt` | `string (ISO)?` | Date de création |
+| `updatedAt` | `string (ISO)?` | Dernière modification |
+
+**Helpers (`src/store.ts`)**
+
+| Fonction | Rôle |
+|----------|------|
+| `getEtablissementPrincipal(state)` | Retourne l'établissement principal actif |
+| `etablissementFullAddress(e)` | Adresse postale complète formatée |
+| `etablissementTypeLabel(type)` | Libellé lisible de la nature de l'entité |
+| `makeEtablissement(partial)` | Construit une fiche complète (id, dates, valeurs par défaut) |
+| `normalizeEtablissements(list)` | Garantit un seul établissement principal actif |
+| `ticketSettingsFromEtablissement(settings, e)` | Reprend la fiche dans l'en-tête des documents |
+| `ensureEtablissements(state)` | Crée la fiche initiale depuis `ticketSettings` si la table est vide |
+
+**Persistance MySQL (WAMP)** — table `etablissements` :
+colonnes interrogeables `code`, `name`, `trade_name`, `type`, `nif`, `stat`,
+`numero_agrement`, `city`, `phone`, `email`, `active`, `is_principal` + `data_json`
+(objet complet). La table est créée automatiquement par l'API si elle manque.
+
+**Interface** — Administration → *Société / Hôpital* (`src/components/TableEtablissements.tsx`).
+
+---
+
 ## 📋 25. TABLES AUXILIAIRES
 
 ### `fournisseurs`

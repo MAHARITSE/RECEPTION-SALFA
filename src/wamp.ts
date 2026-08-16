@@ -36,7 +36,7 @@ const LIST_DATASETS: (keyof AppState)[] = [
   'stockMovements', 'movementHeaders', 'movementLines', 'companyBillingAccounts',
   'hbRecords', 'messages', 'notifications', 'cashClosings', 'auditLogs',
   'inventorySessions', 'pharmaDeliveryClosings', 'users', 'companies', 'articles',
-  'fournisseurs', 'familles', 'labCatalog', 'warehouseServices',
+  'fournisseurs', 'familles', 'labCatalog', 'warehouseServices', 'etablissements',
 ];
 
 /** Compteurs scalaires persistés dans la table compteurs. */

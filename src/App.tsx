@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Component, type ReactNode, type ErrorInfo } from 'react';
 import type { User } from './types';
-import { createInitialState, migrateLegacyToVentes, normalizeFamilyBases, type AppState } from './store';
+import { createInitialState, ensureEtablissements, migrateLegacyToVentes, normalizeFamilyBases, type AppState } from './store';
 import {
   IS_WAMP_BUILD,
   initialWampSync,
@@ -173,7 +173,7 @@ function AppInner() {
       const stored = await loadStateFromMysql();
       if (cancelled) return;
       if (stored) {
-        setState(normalizeFamilyBases(stored));
+        setState(ensureEtablissements(normalizeFamilyBases(stored)));
         setWamp((s) => ({ ...s, loading: false, usingMysql: true, lastSavedAt: Date.now() }));
       } else {
         setWamp((s) => ({ ...s, loading: false }));

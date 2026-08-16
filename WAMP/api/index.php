@@ -159,6 +159,8 @@ try {
     $pdo = reception_salfa_database($config);
     // Mise à niveau automatique du schéma (colonnes tarifaires des articles)
     reception_salfa_ensure_articles_price_columns($pdo);
+    // Mise à niveau automatique du schéma (table d'identification société/hôpital)
+    reception_salfa_ensure_etablissements_table($pdo);
     $datasets = reception_salfa_datasets();
 } catch (Throwable $e) {
     salfa_respond([

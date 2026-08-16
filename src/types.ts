@@ -352,6 +352,79 @@ export interface Famille {
   order?: number;
 }
 
+/* ====== IDENTIFICATION DE LA SOCIÉTÉ / DE L'HÔPITAL ====== */
+
+/** Nature juridique / sanitaire de l'entité exploitante. */
+export type EtablissementType =
+  | 'hopital'
+  | 'clinique'
+  | 'centre_sante'
+  | 'cabinet'
+  | 'laboratoire'
+  | 'pharmacie'
+  | 'societe'
+  | 'autre';
+
+/**
+ * TABLE `etablissements` — Identification de la société ou de l'hôpital
+ * exploitant l'application (raison sociale, identifiants fiscaux, agrément
+ * sanitaire, coordonnées, représentant légal, coordonnées bancaires).
+ *
+ * Un seul établissement porte le drapeau `isPrincipal` : c'est lui qui
+ * alimente l'en-tête des tickets, reçus et factures (`ticketSettings`).
+ */
+export interface Etablissement {
+  id: string;
+  /** Code interne court (ex : SALFA-ANT) */
+  code: string;
+  /** Raison sociale / dénomination officielle */
+  name: string;
+  /** Nom commercial ou enseigne affichée */
+  tradeName?: string;
+  /** Nature de l'entité (hôpital, clinique, société…) */
+  type: EtablissementType;
+  /** Forme juridique (SA, SARL, Association, ONG, Établissement public…) */
+  legalForm?: string;
+
+  /* Identifiants légaux et fiscaux */
+  nif?: string;                 // Numéro d'Identification Fiscale
+  stat?: string;                // Numéro statistique
+  rcs?: string;                 // RCS / Registre du commerce
+  numeroAgrement?: string;      // Agrément / autorisation d'ouverture sanitaire
+  numeroCnaps?: string;         // Immatriculation employeur (CNaPS)
+  capital?: string;             // Capital social
+
+  /* Coordonnées */
+  address?: string;
+  city?: string;
+  postalCode?: string;
+  region?: string;
+  country?: string;
+  phone?: string;
+  phone2?: string;
+  fax?: string;
+  email?: string;
+  website?: string;
+
+  /* Représentant légal */
+  directorName?: string;
+  directorTitle?: string;
+  directorPhone?: string;
+
+  /* Coordonnées bancaires (encaissements par virement / chèque) */
+  bankName?: string;
+  bankAccount?: string;
+
+  /* Visuel & état */
+  logoUrl?: string;
+  notes?: string;
+  active: boolean;
+  /** Établissement de référence utilisé sur les documents imprimés */
+  isPrincipal: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 /** Sous-mode de règlement des factures société */
 export type CompanySettlementMode = 'monthly_global' | 'per_invoice';
 
