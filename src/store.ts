@@ -6,7 +6,7 @@ import type {
   LabExamCatalog, LabCategory, LabRequest, PatientJourneyEvent, JourneyDepartment,
   WarehouseService, StockMovement, InventorySession, StockLocation,
   MovementHeader, MovementLine, MovementType, Vente, VenteLine, VentePayment, VenteType, CompanyBillingAccount,
-  TicketSettings,
+  TicketSettings, Etablissement, EtablissementType,
 } from './types';
 import localSeedData from './data/localData.json';
 
@@ -447,6 +447,8 @@ export interface AppState {
   companyBillingAccounts: CompanyBillingAccount[];
   fournisseurs: Fournisseur[];
   familles: Famille[];
+  /** Identification de la société / de l'hôpital exploitant (raison sociale, NIF, STAT, agrément…) */
+  etablissements: Etablissement[];
   journey: PatientJourneyEvent[];          // parcours patient (timeline)
   labRequests: LabRequest[];               // demandes d'analyse autonomes
   labCatalog: LabExamCatalog[];            // catalogue d'examens
@@ -500,6 +502,101 @@ export const DEFAULT_TICKET_SETTINGS: TicketSettings = {
   invoicePrefix: 'FAC',
 };
 
+/* ====== IDENTIFICATION DE LA SOCIÉTÉ / DE L'HÔPITAL (table `etablissements`) ====== */
+
+/** Libellés des natures d'établissement. */
+export const ETABLISSEMENT_TYPES: { value: EtablissementType; label: string }[] = [
+  { value: 'hopital', label: 'Hôpital' },
+  { value: 'clinique', label: 'Clinique' },
+  { value: 'centre_sante', label: 'Centre de santé' },
+  { value: 'cabinet', label: 'Cabinet médical' },
+  { value: 'laboratoire', label: 'Laboratoire d\'analyses' },
+  { value: 'pharmacie', label: 'Pharmacie / Dépôt' },
+  { value: 'societe', label: 'Société / Entité juridique' },
+  { value: 'autre', label: 'Autre' },
+];
+
+export function etablissementTypeLabel(t?: EtablissementType | string): string {
+  return ETABLISSEMENT_TYPES.find((x) => x.value === t)?.label || 'Autre';
+}
+
+/** Établissement de référence (principal actif, sinon 1er actif, sinon 1er). */
+export function getEtablissementPrincipal(state: Pick<AppState, 'etablissements'>): Etablissement | undefined {
+  const list = state.etablissements || [];
+  return list.find((e) => e.isPrincipal && e.active) || list.find((e) => e.active) || list[0];
+}
+
+/** Adresse postale complète formatée d'un établissement. */
+export function etablissementFullAddress(e?: Etablissement): string {
+  if (!e) return '';
+  return [e.address, [e.postalCode, e.city].filter(Boolean).join(' '), e.region, e.country]
+    .map((p) => (p || '').trim())
+    .filter(Boolean)
+    .join(', ');
+}
+
+/** Crée un établissement complet à partir d'une saisie partielle. */
+export function makeEtablissement(data: Partial<Etablissement> = {}): Etablissement {
+  const now = new Date().toISOString();
+  return {
+    id: data.id || uuidv4(),
+    code: (data.code || '').trim().toUpperCase(),
+    name: (data.name || '').trim(),
+    tradeName: data.tradeName,
+    type: data.type || 'hopital',
+    legalForm: data.legalForm,
+    nif: data.nif, stat: data.stat, rcs: data.rcs,
+    numeroAgrement: data.numeroAgrement, numeroCnaps: data.numeroCnaps, capital: data.capital,
+    address: data.address, city: data.city, postalCode: data.postalCode,
+    region: data.region, country: data.country || 'Madagascar',
+    phone: data.phone, phone2: data.phone2, fax: data.fax,
+    email: data.email, website: data.website,
+    directorName: data.directorName, directorTitle: data.directorTitle, directorPhone: data.directorPhone,
+    bankName: data.bankName, bankAccount: data.bankAccount,
+    logoUrl: data.logoUrl, notes: data.notes,
+    active: data.active ?? true,
+    isPrincipal: data.isPrincipal ?? false,
+    createdAt: data.createdAt || now,
+    updatedAt: now,
+  };
+}
+
+/** Applique les informations d'un établissement sur l'en-tête des documents imprimés. */
+export function ticketSettingsFromEtablissement(
+  settings: TicketSettings,
+  e: Etablissement,
+): TicketSettings {
+  return {
+    ...settings,
+    facilityName: e.tradeName?.trim() || e.name,
+    address: etablissementFullAddress(e) || settings.address,
+    phone: e.phone || settings.phone,
+    email: e.email ?? settings.email,
+    website: e.website ?? settings.website,
+    nif: e.nif || settings.nif,
+    logoUrl: e.logoUrl || settings.logoUrl,
+  };
+}
+
+/**
+ * Garantit qu'un seul établissement est marqué principal et que la liste reste
+ * cohérente (un principal actif au minimum lorsqu'il existe des lignes).
+ */
+export function normalizeEtablissements(list: Etablissement[] = []): Etablissement[] {
+  if (!list.length) return [];
+  let principalFound = false;
+  const normalized = list.map((e) => {
+    const isPrincipal = !!e.isPrincipal && e.active !== false && !principalFound;
+    if (isPrincipal) principalFound = true;
+    return { ...e, active: e.active !== false, isPrincipal };
+  });
+  if (!principalFound) {
+    const idx = normalized.findIndex((e) => e.active);
+    if (idx >= 0) normalized[idx] = { ...normalized[idx], isPrincipal: true };
+  }
+  return normalized;
+}
+
 /**
  * État de départ vide pour la version WAMP (100 % MySQL) : AUCUNE donnée
  * JSON de démonstration. Seules les familles par défaut et les paramètres
@@ -525,6 +622,7 @@ function createEmptyInitialState(): AppState {
     companyBillingAccounts: [],
     fournisseurs: [],
     familles: JSON.parse(JSON.stringify(DEFAULT_FAMILLES)),
+    etablissements: [],
     journey: [],
     labRequests: [],
     labCatalog: [],
@@ -554,9 +652,36 @@ function createEmptyInitialState(): AppState {
  */
 export function createInitialState(): AppState {
   if (import.meta.env.VITE_WAMP_MODE === '1') {
-    return createEmptyInitialState();
+    return ensureEtablissements(createEmptyInitialState());
   }
-  return normalizeFamilyBases(JSON.parse(JSON.stringify(localSeedData)) as AppState);
+  return ensureEtablissements(normalizeFamilyBases(JSON.parse(JSON.stringify(localSeedData)) as AppState));
+}
+
+/**
+ * Garantit la présence de la table `etablissements` : si elle est absente ou
+ * vide, une fiche d'identification est créée automatiquement à partir des
+ * paramètres d'impression déjà configurés (aucune donnée n'est perdue).
+ */
+export function ensureEtablissements(state: AppState): AppState {
+  const existing = normalizeEtablissements(state.etablissements || []);
+  if (existing.length) return { ...state, etablissements: existing };
+
+  const ts = state.ticketSettings || DEFAULT_TICKET_SETTINGS;
+  const principal = makeEtablissement({
+    code: 'ETB-001',
+    name: ts.facilityName || 'Établissement principal',
+    tradeName: ts.facilityName,
+    type: 'centre_sante',
+    nif: ts.nif,
+    address: ts.address,
+    phone: ts.phone,
+    email: ts.email,
+    website: ts.website,
+    logoUrl: ts.logoUrl,
+    active: true,
+    isPrincipal: true,
+  });
+  return { ...state, etablissements: [principal] };
 }
 
 export function addAuditLog(s: AppState, action: string, details: string, patientId?: string): AuditLog {

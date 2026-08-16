@@ -34,6 +34,34 @@ CREATE TABLE IF NOT EXISTS `parametres_impression` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------------------------
+--  Identification de la société / de l'hôpital exploitant
+--  (raison sociale, identifiants fiscaux, agrément sanitaire, coordonnées,
+--   représentant légal et coordonnées bancaires).
+--  La ligne marquée `is_principal = 1` alimente l'en-tête des documents.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `etablissements` (
+  `id`              VARCHAR(64)  NOT NULL,
+  `code`            VARCHAR(32)  DEFAULT NULL,
+  `name`            VARCHAR(255) DEFAULT NULL,
+  `trade_name`      VARCHAR(255) DEFAULT NULL,
+  `type`            VARCHAR(32)  DEFAULT NULL,
+  `nif`             VARCHAR(64)  DEFAULT NULL,
+  `stat`            VARCHAR(64)  DEFAULT NULL,
+  `numero_agrement` VARCHAR(64)  DEFAULT NULL,
+  `city`            VARCHAR(128) DEFAULT NULL,
+  `phone`           VARCHAR(64)  DEFAULT NULL,
+  `email`           VARCHAR(191) DEFAULT NULL,
+  `active`          TINYINT(1)   NOT NULL DEFAULT 1,
+  `is_principal`    TINYINT(1)   NOT NULL DEFAULT 0,
+  `data_json`       LONGTEXT     NOT NULL,
+  `created_at`      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_etablissements_code` (`code`),
+  KEY `idx_etablissements_principal` (`is_principal`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------------------------------------------------------
 --  Compteurs séquentiels (n° de facture, clôtures livraison pharmacie, dossiers)
 --  rows : id='factureCounter' / 'pharmaClosingCounter' / 'dossierCounter'
 -- ----------------------------------------------------------------------------
@@ -486,6 +514,18 @@ FROM (
     SELECT 'default' AS `id`, '{"facilityName":"SALFA — Centre de Santé","address":"Antananarivo, Madagascar","phone":"","nif":"","logoUrl":"","secondLogoUrl":"","receiptTitle":"REÇU DE PAIEMENT","footerMessage":"Merci de votre visite. Prompt rétablissement !","paperWidth":80,"autoPrint":true,"showLogo":true,"showBarcode":true,"showSignature":true,"copies":1,"currency":"Ar","paymentMethods":["Espèces","Carte bancaire","Mobile Money","Virement","Chèque"],"invoicePrefix":"FAC","id":"default"}' AS `data_json`, 'SALFA — Centre de Santé' AS `facility_name`, 'Ar' AS `currency`
 ) AS `config_minimale`
 WHERE NOT EXISTS (SELECT 1 FROM `parametres_impression`);
+
+-- Configuration : etablissements (identification société / hôpital — 1 ligne principale)
+INSERT INTO `etablissements` (`id`, `data_json`, `code`, `name`, `trade_name`, `type`, `nif`, `stat`, `numero_agrement`, `city`, `phone`, `email`, `active`, `is_principal`)
+SELECT `id`, `data_json`, `code`, `name`, `trade_name`, `type`, `nif`, `stat`, `numero_agrement`, `city`, `phone`, `email`, `active`, `is_principal`
+FROM (
+    SELECT 'etb-principal' AS `id`,
+           '{"id":"etb-principal","code":"ETB-001","name":"SALFA — Centre de Santé","tradeName":"SALFA — Centre de Santé","type":"centre_sante","legalForm":"","nif":"","stat":"","rcs":"","numeroAgrement":"","numeroCnaps":"","capital":"","address":"Antananarivo, Madagascar","city":"Antananarivo","postalCode":"","region":"","country":"Madagascar","phone":"","phone2":"","fax":"","email":"","website":"","directorName":"","directorTitle":"Directeur","directorPhone":"","bankName":"","bankAccount":"","logoUrl":"","notes":"","active":true,"isPrincipal":true}' AS `data_json`,
+           'ETB-001' AS `code`, 'SALFA — Centre de Santé' AS `name`, 'SALFA — Centre de Santé' AS `trade_name`,
+           'centre_sante' AS `type`, '' AS `nif`, '' AS `stat`, '' AS `numero_agrement`,
+           'Antananarivo' AS `city`, '' AS `phone`, '' AS `email`, 1 AS `active`, 1 AS `is_principal`
+) AS `config_minimale`
+WHERE NOT EXISTS (SELECT 1 FROM `etablissements`);
 
 -- Configuration : utilisateurs / comptes de connexion (11 comptes)
 INSERT INTO `utilisateurs` (`id`, `data_json`, `name`, `role`)

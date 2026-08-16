@@ -106,6 +106,18 @@ noms français et contiennent la configuration minimale (aucune donnée JSON de
 démonstration). Le script `deployment/install_wamp.bat` lance aussi la
 migration, sans effet lorsqu'il n'y a aucune ancienne table.
 
+### Table `etablissements` (identification société / hôpital)
+
+La table `etablissements` identifie la ou les entités exploitant l'application
+(raison sociale, nature, forme juridique, NIF / STAT / RCS, agrément sanitaire,
+CNaPS, coordonnées, représentant légal, coordonnées bancaires, logo). La ligne
+`is_principal = 1` alimente l'en-tête des tickets, reçus et factures.
+
+Elle est gérée depuis **Administration → Société / Hôpital**. Sur une base déjà
+installée, **aucune action manuelle n'est nécessaire** : l'API la crée
+automatiquement au premier appel et y insère une fiche principale reprenant les
+informations déjà saisies dans `parametres_impression`.
+
 ## Comptes présents après le premier lancement
 
 | Rôle | Identifiant affiché | Mot de passe |

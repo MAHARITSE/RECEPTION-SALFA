@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import type { UserRole, TicketSettings, Company, CompanySettlementMode, User } from '../types';
-import { formatAr, addAuditLog, migrateLegacyToVentes, createInitialState } from '../store';
+import { formatAr, addAuditLog, ensureEtablissements, migrateLegacyToVentes, createInitialState } from '../store';
 import { IS_WAMP_BUILD } from '../wamp';
 import type { AppState } from '../store';
 import ModuleReception from './ModuleReception';
@@ -11,13 +11,15 @@ import ModuleMagasinier from './ModuleMagasinier';
 import ModuleLaboratoire from './ModuleLaboratoire';
 import ModuleFacturationSocietes from './ModuleFacturationSocietes';
 import ModuleDossierMedical from './ModuleDossierMedical';
+import TableEtablissements from './TableEtablissements';
 import {
   Trash2, Plus, X, Check, Download, Upload,
   Eye, Settings as SettingsIcon, Users, Building2,
   Receipt, FileText, Shield, Database, Printer, Image as ImageIcon,
   CreditCard, AlertCircle, Search, RefreshCw, Copy, Activity,
   Key, Edit2, Hospital, Stethoscope, Pill, Package, FlaskConical,
-  Menu, LayoutDashboard, AlertTriangle, ArrowRight, HardDrive, FileSpreadsheet, Lock, Unlock, CheckCircle2
+  Menu, LayoutDashboard, AlertTriangle, ArrowRight, HardDrive, FileSpreadsheet, Lock, Unlock, CheckCircle2,
+  Landmark
 } from 'lucide-react';
 
 interface Props {
@@ -25,7 +27,7 @@ interface Props {
   setState: React.Dispatch<React.SetStateAction<AppState>>;
 }
 
-type Tab = 'dashboard' | 'societe' | 'tickets' | 'users' | 'companies' | 'audit' | 'backup' | 'system';
+type Tab = 'dashboard' | 'etablissements' | 'societe' | 'tickets' | 'users' | 'companies' | 'audit' | 'backup' | 'system';
 type AppModuleKey = 'reception' | 'doctor' | 'medicalRecords' | 'cashier' | 'pharmacy' | 'magasinier' | 'laboratory' | 'billing';
 
 const roleLabels: Record<string, string> = {
@@ -44,6 +46,7 @@ const LOGO_EMOJIS = ['🏥', '⚕️', '💊', '🔬', '🏨', '🏢', '🩺', '
 
 const TABS: { key: Tab; label: string; icon: any; desc: string }[] = [
   { key: 'dashboard', label: 'Tableau de bord', icon: LayoutDashboard, desc: 'Vue d\'ensemble & supervision générale' },
+  { key: 'etablissements', label: 'Société / Hôpital', icon: Landmark, desc: 'Table d\'identification : raison sociale, NIF, STAT, agrément' },
   { key: 'societe', label: 'Établissement & En-tête', icon: Building2, desc: 'Identité, NIF, STAT, adresse, Logo' },
   { key: 'tickets', label: 'Tickets POS & Format', icon: Printer, desc: 'Format 58/80mm, options & aperçu direct' },
   { key: 'users', label: 'Personnel & Accès', icon: Users, desc: 'Comptes utilisateurs, rôles & sécurisation' },
@@ -438,7 +441,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
     const backupState = restoreModal.parsedState;
 
     setState((prev) => {
-      const next = {
+      const next = ensureEtablissements({
         ...prev,
         ...backupState,
         currentUser: prev.currentUser,
@@ -446,7 +449,10 @@ export default function ModuleAdministration({ state, setState }: Props) {
         venteLines: backupState.venteLines || [],
         ventePayments: backupState.ventePayments || [],
         factureCounter: backupState.factureCounter || 0,
-      };
+        // Sauvegardes antérieures à la table d'identification : la fiche
+        // actuelle est conservée puis complétée si nécessaire.
+        etablissements: backupState.etablissements?.length ? backupState.etablissements : prev.etablissements,
+      });
       migrateLegacyToVentes(next);
       addAuditLog(next, 'IMPORT_BACKUP', `Restauré depuis ${restoreModal.fileName}`);
       return next;
@@ -483,6 +489,8 @@ export default function ModuleAdministration({ state, setState }: Props) {
             warehouseServices: prev.warehouseServices,
             fournisseurs: prev.fournisseurs,
             familles: prev.familles,
+            // Identification de la société / de l'hôpital : jamais purgée
+            etablissements: prev.etablissements,
           };
           addAuditLog(fresh, 'RESET_SYSTEM', 'Réinitialisation des données opérationnelles');
           return fresh;
@@ -517,6 +525,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
               ticketSettings: prev.ticketSettings || freshState.ticketSettings,
               familles: prev.familles?.length ? prev.familles : freshState.familles,
               warehouseServices: prev.warehouseServices?.length ? prev.warehouseServices : freshState.warehouseServices,
+              etablissements: prev.etablissements?.length ? prev.etablissements : freshState.etablissements,
             };
           }
           return freshState;
@@ -1227,6 +1236,11 @@ export default function ModuleAdministration({ state, setState }: Props) {
                   )}
 
                   {/* ===== TAB 2: SOCIETE & ETABLISSEMENT ===== */}
+                  {/* ===== TAB 2: IDENTIFICATION SOCIÉTÉ / HÔPITAL ===== */}
+                  {tab === 'etablissements' && (
+                    <TableEtablissements state={state} setState={setState} showToast={showToast} />
+                  )}
+
                   {tab === 'societe' && (
                     <div className="space-y-6 max-w-4xl">
                       <div>
@@ -2122,6 +2136,10 @@ export default function ModuleAdministration({ state, setState }: Props) {
                           <div className="p-3 bg-slate-50 border rounded-xl space-y-1">
                             <span className="text-slate-500 block">Lignes d'Audit</span>
                             <strong className="text-base text-slate-900 font-mono">{state.auditLogs.length}</strong>
+                          </div>
+                          <div className="p-3 bg-slate-50 border rounded-xl space-y-1">
+                            <span className="text-slate-500 block">Sociétés / Hôpitaux</span>
+                            <strong className="text-base text-slate-900 font-mono">{state.etablissements?.length || 0}</strong>
                           </div>
                         </div>
 
