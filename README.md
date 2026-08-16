@@ -99,11 +99,19 @@ s'inspirant de [LogBara](https://github.com/MAHARITSE/LogBara) (connexion en
 
 ➡️ Voir [`WAMP/README.md`](./WAMP/README.md) et [`WAMP/QUICKSTART.md`](./WAMP/QUICKSTART.md).
 
+### 🌐 Version navigateur (hors WAMP)
+
+La version standard (`npm run build` ou `npm run dev`) conserve les données de
+l'application dans **IndexedDB**, la base locale du navigateur. Les données ne
+sont pas envoyées à MySQL et restent dans le profil / navigateur utilisé. La
+session de connexion n'est pas conservée : il faut se reconnecter après avoir
+fermé l'application.
+
 ### 🔄 Recompiler les deux parties (depuis la source commune)
 
 ```bash
 npm install
-npm run build          # version JSON  → dist/index.html → copier vers workers/public/
+npm run build          # version navigateur (base locale IndexedDB) → dist/index.html → copier vers workers/public/
 npm run build:wamp     # version WAMP  → dist/index.html → copier vers WAMP/index.html
 ```
 
