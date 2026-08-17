@@ -14,6 +14,7 @@ interface MiseEnPageProps {
   notifications: NotifType[];
   onLogout: () => void;
   onMarkRead: (id: string) => void;
+  onNotificationAction?: (id: string, accepted: boolean) => void;
   onOpenMessaging: () => void;
   onOpenMedicalRecord?: (patientId?: string) => void;
   unreadMessages: number;
@@ -55,12 +56,12 @@ const roleBg: Record<string, string> = {
   admin: 'bg-slate-700',
 };
 
-export default function MiseEnPage({ user, patients = [], notifications, onLogout, onMarkRead, onOpenMessaging, onOpenMedicalRecord, unreadMessages, fullHeight = false, children }: MiseEnPageProps) {
+export default function MiseEnPage({ user, patients = [], notifications, onLogout, onMarkRead, onNotificationAction, onOpenMessaging, onOpenMedicalRecord, unreadMessages, fullHeight = false, children }: MiseEnPageProps) {
   const [showNotif, setShowNotif] = useState(false);
   const [activeToast, setActiveToast] = useState<NotifType | null>(null);
 
   const myNotifs = notifications.filter(
-    (n) => (user.role === 'pharmacy' || user.role === 'magasinier') &&
+    (n) => (user.role === 'pharmacy' || user.role === 'magasinier' || user.role === 'cashier') &&
            (n.targetRole === user.role || n.targetUserId === user.id)
   );
   const unreadCount = myNotifs.filter((n) => !n.read).length;
@@ -105,6 +106,12 @@ export default function MiseEnPage({ user, patients = [], notifications, onLogou
               </div>
               <div className="text-sm font-semibold text-white mt-0.5 leading-snug">
                 {activeToast.message}
+                {activeToast.action?.type === 'pharmacy-unblock' && (
+                  <div className="flex gap-2 mt-3">
+                    <button onClick={() => { onNotificationAction?.(activeToast.id, true); setActiveToast(null); }} className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white text-xs font-bold cursor-pointer">Oui, débloquer</button>
+                    <button onClick={() => { onNotificationAction?.(activeToast.id, false); setActiveToast(null); }} className="px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white text-xs font-bold cursor-pointer">Non</button>
+                  </div>
+                )}
               </div>
               <div className="text-[10px] text-white/70 mt-1">
                 {new Date(activeToast.timestamp).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
@@ -144,7 +151,7 @@ export default function MiseEnPage({ user, patients = [], notifications, onLogou
 
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             {/* Notifications — réservées à la Pharmacie et au Magasinier (alertes stock & approvisionnements) */}
-            {(user.role === 'pharmacy' || user.role === 'magasinier') && (
+            {(user.role === 'pharmacy' || user.role === 'magasinier' || user.role === 'cashier') && (
               <div className="relative">
                 <button
                   onClick={() => setShowNotif(!showNotif)}

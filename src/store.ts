@@ -690,7 +690,7 @@ export function addAuditLog(s: AppState, action: string, details: string, patien
 }
 export function addNotification(s: AppState, targetRole: UserRole, message: string, type: 'info'|'warning'|'critical' = 'info', targetUserId?: string): Notification | null {
   // RÈGLE : Seules les notifications pour la Pharmacie et le Magasinier (ruptures de stock, réapprovisionnement, alertes stock) sont autorisées
-  if (targetRole !== 'pharmacy' && targetRole !== 'magasinier') {
+  if (targetRole !== 'pharmacy' && targetRole !== 'magasinier' && targetRole !== 'cashier') {
     return null;
   }
   const lowerMsg = message.toLowerCase();

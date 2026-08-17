@@ -330,7 +330,12 @@ export interface Message {
 }
 
 export interface AuditLog { id: string; timestamp: string; userId: string; userName: string; userRole: UserRole; action: string; details: string; patientId?: string; }
-export interface Notification { id: string; targetRole: UserRole; targetUserId?: string; message: string; type: 'info' | 'warning' | 'critical'; timestamp: string; read: boolean; }
+export interface Notification {
+  id: string; targetRole: UserRole; targetUserId?: string; message: string;
+  type: 'info' | 'warning' | 'critical'; timestamp: string; read: boolean;
+  /** Action proposée directement dans la notification (ex. validation d'un déblocage). */
+  action?: { type: 'pharmacy-unblock'; articleId: string; articleName: string };
+}
 export interface Fournisseur {
   id: string;
   name: string;
