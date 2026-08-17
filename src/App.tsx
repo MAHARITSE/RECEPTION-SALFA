@@ -8,6 +8,8 @@ import {
   loadStateFromMysql,
   saveStateToMysql,
   flushStateToMysql,
+  serializeDatasets,
+  mergeRemoteState,
   type WampSyncState,
 } from './wamp';
 import ModuleReception from './components/ModuleReception';
@@ -164,6 +166,29 @@ function AppInner() {
   const skipFirstSave = useRef(true);
   const skipFirstBrowserSave = useRef(true);
 
+  /* ─── SYNC MULTI-POSTES (WAMP/MySQL ou plusieurs onglets du build navigateur) ───
+     Chaque poste ne voit pas les saisies des autres tant qu'il n'a pas rechargé.
+     On rafraîchit donc automatiquement l'état depuis la source commune :
+       • build WAMP      → sondage MySQL régulier + au retour sur l'onglet ;
+       • build navigateur→ événement `storage` (autre onglet), focus + sondage.
+     La fusion conserve les saisies locales non sauvegardées et propage les
+     suppressions, sans boucle de sauvegarde infinie entre les postes. ─── */
+  const lastPushedRef = useRef<AppState | null>(null);
+  const lastPushedJsonRef = useRef<string>('');
+  const remoteSyncBusyRef = useRef(false);
+
+  const markPushed = (savedState: AppState) => {
+    lastPushedRef.current = savedState;
+    lastPushedJsonRef.current = serializeDatasets(savedState);
+  };
+
+  const applyRemoteState = (remote: AppState | null) => {
+    if (!remote) return;
+    // Rien de nouveau côté distant depuis notre dernière sauvegarde : on ignore.
+    if (serializeDatasets(remote) === lastPushedJsonRef.current) return;
+    setState((prev) => mergeRemoteState(prev, remote, lastPushedRef.current));
+  };
+
   /* ─── WAMP : au démarrage, TOUTES les données sont chargées depuis MySQL.
      Si MySQL ne contient encore rien, l'état local initial y est écrit
      immédiatement pour que la base serve de référence unique. ─── */
@@ -177,13 +202,17 @@ function AppInner() {
       const stored = await loadStateFromMysql();
       if (cancelled) return;
       if (stored) {
-        setState(prepareLoadedState(stored));
+        const prepared = prepareLoadedState(stored);
+        setState(prepared);
+        markPushed(prepared);
         setWamp((s) => ({ ...s, loading: false, usingMysql: true, lastSavedAt: Date.now() }));
       } else {
         setWamp((s) => ({ ...s, loading: false }));
         // Aucun état en base : on y écrit l'état initial (seed) sans tarder
-        const ok = await saveStateToMysql(prepareLoadedState(seedRef.current));
+        const seed = prepareLoadedState(seedRef.current);
+        const ok = await saveStateToMysql(seed);
         if (!cancelled && ok) {
+          markPushed(seed);
           setWamp((s) => ({ ...s, usingMysql: true, lastSavedAt: Date.now() }));
         }
       }
@@ -204,10 +233,14 @@ function AppInner() {
       const stored = await loadStateFromBrowser();
       if (cancelled) return;
       if (stored) {
-        setState(prepareLoadedState(stored));
+        const prepared = prepareLoadedState(stored);
+        setState(prepared);
+        markPushed(prepared);
       } else {
         // Première ouverture : initialise la base locale avec le jeu de départ.
-        await saveStateToBrowser(prepareLoadedState(seedRef.current));
+        const seed = prepareLoadedState(seedRef.current);
+        const ok = await saveStateToBrowser(seed);
+        if (!cancelled && ok) markPushed(seed);
       }
       if (!cancelled) setBrowserDbLoading(false);
     })();
@@ -222,7 +255,9 @@ function AppInner() {
       skipFirstBrowserSave.current = false;
       return;
     }
-    const timer = window.setTimeout(() => { void saveStateToBrowser(state); }, 500);
+    const timer = window.setTimeout(() => {
+      void saveStateToBrowser(state).then((ok) => { if (ok) markPushed(state); });
+    }, 500);
     return () => window.clearTimeout(timer);
   }, [state, browserDbLoading]);
 
@@ -246,15 +281,38 @@ function AppInner() {
     }
     const t = window.setTimeout(() => {
       setWamp((s) => ({ ...s, syncing: true }));
-      saveStateToMysql(state).then((ok) => {
-        setWamp((s) => ({
-          ...s,
-          syncing: false,
-          usingMysql: s.usingMysql || ok,
-          lastSavedAt: ok ? Date.now() : s.lastSavedAt,
-          error: ok ? null : (s.error ?? 'Échec de la sauvegarde MySQL.'),
-        }));
-      });
+      // Lecture-fusion-écriture : on recharge l'état MySQL le plus récent AVANT
+      // d'écrire, afin de ne JAMAIS écraser les saisies des autres postes
+      // (le dernier qui écrit ne gagne plus : les données de tous convergent).
+      loadStateFromMysql()
+        .then((remote) => {
+          let toSave = stateRef.current;
+          if (remote) {
+            const remoteJson = serializeDatasets(remote);
+            if (remoteJson !== lastPushedJsonRef.current) {
+              toSave = mergeRemoteState(stateRef.current, remote, lastPushedRef.current);
+              // On applique aussi la fusion à l'écran local (file d'attente caisse,
+              // laboratoire, etc. mis à jour en direct).
+              setState((prev) => mergeRemoteState(prev, remote, lastPushedRef.current));
+            }
+          }
+          return saveStateToMysql(toSave).then((ok) => {
+            // `markPushed` reflète EXACTEMENT l'état envoyé : les saisies locales
+            // survenues pendant l'écriture restent « non poussées » et seront
+            // sauvegardées au prochain cycle (elles ne peuvent pas être perdues).
+            if (ok) markPushed(toSave);
+            return ok;
+          });
+        })
+        .then((ok) => {
+          setWamp((s) => ({
+            ...s,
+            syncing: false,
+            usingMysql: s.usingMysql || ok,
+            lastSavedAt: ok ? Date.now() : s.lastSavedAt,
+            error: ok ? null : (s.error ?? 'Échec de la sauvegarde MySQL.'),
+          }));
+        });
     }, 800);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -273,6 +331,56 @@ function AppInner() {
       window.removeEventListener('pagehide', flush);
       window.removeEventListener('beforeunload', flush);
     };
+  }, []);
+
+  /* ─── SYNC MULTI-POSTES — rafraîchissement automatique de l'état distant ───
+     WAMP (MySQL) : sondage régulier + rechargement au retour sur l'onglet.
+     Build navigateur : événement `storage` (autre onglet), retour au focus et
+     sondage de secours — l'état commun est dans IndexedDB/localStorage.
+     La fusion (`mergeRemoteState`) préserve les saisies locales non encore
+     sauvegardées ; on ne met à jour l'écran que si le distant a réellement changé. ─── */
+  useEffect(() => {
+    let cancelled = false;
+
+    const refreshRemote = () => {
+      if (cancelled || remoteSyncBusyRef.current) return;
+      if (document.visibilityState === 'hidden') return;
+      if (IS_WAMP_BUILD && wampRef.current.loading) return;
+      remoteSyncBusyRef.current = true;
+      const promise = IS_WAMP_BUILD ? loadStateFromMysql() : loadStateFromBrowser();
+      promise
+        .then((remote) => { if (!cancelled) applyRemoteState(remote); })
+        .catch(() => { /* état distant indisponible : on réessaiera au prochain cycle */ })
+        .finally(() => { remoteSyncBusyRef.current = false; });
+    };
+
+    // Sondage périodique : ~10 s en WAMP (réseau local MySQL), ~6 s en navigateur (local).
+    const timer = window.setInterval(refreshRemote, IS_WAMP_BUILD ? 10000 : 6000);
+
+    // Retour sur l'onglet / prise de focus : rafraîchissement immédiat.
+    const onFocus = () => refreshRemote();
+    const onVisibility = () => { if (document.visibilityState === 'visible') refreshRemote(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+
+    // Build navigateur : l'écriture d'un AUTRE onglet déclenche l'événement `storage`.
+    let onStorage: ((e: StorageEvent) => void) | null = null;
+    if (!IS_WAMP_BUILD) {
+      onStorage = (e: StorageEvent) => {
+        // L'événement porte sur la clé de secours (localStorage) : on relit la base complète.
+        if (e.key === null || e.key === 'reception_salfa_state_v1') refreshRemote();
+      };
+      window.addEventListener('storage', onStorage);
+    }
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+      if (onStorage) window.removeEventListener('storage', onStorage);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
 

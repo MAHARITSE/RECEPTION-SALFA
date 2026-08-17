@@ -35,6 +35,14 @@ pour régler le problème de connexion à MySQL de WAMP :
 - **À chaque modification** : l'application sauvegarde automatiquement l'état
   complet dans les tables normalisées (`POST api/index.php?action=sync_all`,
   sauvegarde différée 800 ms).
+- **Multi-poste en direct** : l'application sonde MySQL toutes les ~10 s (et à
+  chaque retour sur l'onglet) et fusionne les saisies des autres postes dans
+  l'écran courant — la file d'attente de la caisse reçoit par exemple les
+  consultations validées par le médecin sans rechargement de page.
+- **Lecture-fusion-écriture** : avant chaque sauvegarde, l'état MySQL le plus
+  récent est relu et fusionné avec les saisies locales (les éléments créés
+  localement depuis la dernière sauvegarde sont conservés, les suppressions
+  locales se propagent). Un poste n'écrase donc jamais le travail des autres.
 - **À la fermeture de l'onglet** : un dernier enregistrement (`sendBeacon`) est
   envoyé pour ne perdre aucune saisie.
 - **Badge de synchronisation** (en bas à gauche) : `Chargement…`, `Sauvegarde…`,

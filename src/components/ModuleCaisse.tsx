@@ -1,17 +1,26 @@
 import { useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription, Article } from '../types';
+import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription, Article, Patient, LabCategory } from '../types';
 import type { AppState } from '../store';
 import {
   addAuditLog, addNotification, formatAr, formatNum, roundTo2, getPrice, calculateAge,
   generateDossierNumber, addJourneyEvent, generatePharmaClosingNumber, purgePatientFromQueue,
-  familyManagesStock,
+  familyManagesStock, isLabFamily, isEchoFamily, isLabEchoExamArticle,
 } from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText } from 'lucide-react';
 import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket } from '../utils/printTicket';
 import { printSalfaIndividualInvoice } from '../utils/printSalfaInvoice';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
 import ConfirmModal from './ConfirmModal';
+
+/** Patient factice utilisé pour imprimer les bons d'analyse / d'échographie des ventes externes. */
+const EXT_CLIENT_PATIENT: Patient = {
+  id: 'ext', dossier: 'EXT', matricule: undefined, firstName: '', lastName: 'Client Externe',
+  dateOfBirth: '', age: '—', gender: 'M', address: '', contact: '', ssn: '',
+  insureName: undefined, clientType: 'externe', company: undefined, subCompany: undefined,
+  allergies: [], chronicTreatments: [], antecedents: [],
+  registeredAt: '', registeredBy: '', status: 'completed',
+};
 interface Props {
   state: AppState;
   setState: React.Dispatch<React.SetStateAction<AppState>>;
@@ -359,7 +368,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     }
     // Gestion des stocks : un article en rupture pharmacie ne peut pas faire l'objet d'une vente
     // (sauf famille non gérée en stock)
-    if (managesStock(a) && a.stockPharmacie <= 0) {
+    if (managesStock(a) && !isLabEchoExamArticle(a) && a.stockPharmacie <= 0) {
       alert(`🚨 RUPTURE DE STOCK : « ${a.name} » (stock pharmacie = 0).\n\nCet article ne peut pas être vendu. Demandez un réapprovisionnement à la pharmacie.`);
       return;
     }
@@ -371,8 +380,8 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     if (!extLineForm.articleName) return;
     // Contrôle stock pharmacie à la validation de la ligne (sauf famille non gérée en stock)
     const art = state.articles.find(a => a.name === extLineForm.articleName);
-    if (art && managesStock(art) && art.stockPharmacie <= 0) { alert(`🚨 RUPTURE DE STOCK : « ${art.name} » (stock pharmacie = 0).\n\nVente impossible.`); return; }
-    if (art && managesStock(art) && extLineForm.quantity > art.stockPharmacie) {
+    if (art && managesStock(art) && !isLabEchoExamArticle(art) && art.stockPharmacie <= 0) { alert(`🚨 RUPTURE DE STOCK : « ${art.name} » (stock pharmacie = 0).\n\nVente impossible.`); return; }
+    if (art && managesStock(art) && !isLabEchoExamArticle(art) && extLineForm.quantity > art.stockPharmacie) {
       if (!confirm(`⚠️ Stock pharmacie insuffisant pour « ${art.name} » : ${art.stockPharmacie} disponible(s), ${extLineForm.quantity} demandée(s).\n\nEnregistrer quand même ?`)) return;
     }
     const lineToSave: HbLine = { ...extLineForm, dateSort: extLineForm.dateSort || new Date().toISOString().split('T')[0] };
@@ -410,20 +419,20 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       return;
     }
     // Contrôle rupture : un article en rupture pharmacie ne peut pas faire l'objet d'une vente
-    // (sauf famille non gérée en stock)
+    // (sauf famille non gérée en stock, ou examen LABO/ECHO — prestation de service sans stock)
     const outLines = extLines.filter((l) => {
       const art = state.articles.find((a) => a.name === l.articleName);
-      return !art || (managesStock(art) && art.stockPharmacie <= 0);
+      return !art || (managesStock(art) && !isLabEchoExamArticle(art) && art.stockPharmacie <= 0);
     });
     if (outLines.length > 0) {
       alert(`🚨 RUPTURE DE STOCK — vente impossible pour :\n${outLines.map((l) => `• ${l.articleName} (stock pharmacie = 0)`).join('\n')}\n\nRetirez ces lignes ou demandez un réapprovisionnement.`);
       return;
     }
     // Contrôle quantités : avertissement si la quantité vendue dépasse le stock disponible
-    // (sauf famille non gérée en stock)
+    // (sauf famille non gérée en stock, ou examen LABO/ECHO)
     const insuffLines = extLines.filter((l) => {
       const art = state.articles.find((a) => a.name === l.articleName);
-      return !!art && managesStock(art) && art.stockPharmacie < l.quantity;
+      return !!art && managesStock(art) && !isLabEchoExamArticle(art) && art.stockPharmacie < l.quantity;
     });
     if (insuffLines.length > 0) {
       const detail = insuffLines.map((l) => {
@@ -433,15 +442,13 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       if (!confirm(`⚠️ Stock insuffisant pour :\n${detail}\n\nEncaisser quand même ?`)) return;
     }
 
-    // Séparer les médicaments (family === 'MEDIC') des autres articles
-    const medicamentLines = extLines.filter((l) => {
-      const art = state.articles.find((a) => a.name === l.articleName);
-      return art?.family === 'MEDIC';
-    });
-    const nonMedicamentLines = extLines.filter((l) => {
-      const art = state.articles.find((a) => a.name === l.articleName);
-      return art?.family !== 'MEDIC';
-    });
+    // Classification des lignes : médicaments (ordonnance pharmacie), examens LABO (demandes
+    // transmises au laboratoire), examens ECHO (rattachés à la consultation externe) et autres articles.
+    const lineArt = (l: HbLine) => state.articles.find((a) => a.name === l.articleName);
+    const medicamentLines = extLines.filter((l) => lineArt(l)?.family === 'MEDIC');
+    const labExamLines = extLines.filter((l) => isLabEchoExamArticle(lineArt(l)) && isLabFamily(lineArt(l)?.family));
+    const echoExamLines = extLines.filter((l) => isLabEchoExamArticle(lineArt(l)) && isEchoFamily(lineArt(l)?.family));
+    const nonMedicamentLines = extLines.filter((l) => !medicamentLines.includes(l) && !labExamLines.includes(l) && !echoExamLines.includes(l));
 
     const invId = uuidv4();
     const now = new Date().toISOString();
@@ -451,14 +458,50 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       role: 'cashier',
     };
 
+    // Demandes d'analyses autonomes (state.labRequests) — la vente est déjà encaissée :
+    // elles arrivent DIRECTEMENT dans la file d'attente du laboratoire (statut 'paid').
+    const newLabRequests: LabRequest[] = labExamLines.map((l) => {
+      const a = lineArt(l);
+      return {
+        id: uuidv4(),
+        examType: a?.name || l.articleName,
+        code: a?.code || a?.barcode,
+        category: (a?.category as LabCategory | undefined) || 'biochimie',
+        parameters: a?.parameters?.length ? [...a.parameters] : [a?.name || l.articleName],
+        urgent: false,
+        status: 'paid' as const,
+        sampleType: a?.sampleType,
+        requestedBy: state.currentUser?.id || 'CASHIER',
+        requestedAt: now,
+        invoiceId: invId,
+        price: extLineAmt(l),
+      };
+    });
+
+    // Demandes d'échographies — rattachées à la consultation externe ci-dessous (même
+    // flux que le médecin), visibles dans le dossier / suivi imagerie avec le statut 'paid'.
+    const newEchoRequests: EchoRequest[] = echoExamLines.map((l) => {
+      const a = lineArt(l);
+      return {
+        id: uuidv4(),
+        examType: a?.name || l.articleName,
+        urgent: false,
+        status: 'paid' as const,
+        requestedBy: state.currentUser?.id || 'CASHIER',
+        requestedAt: now,
+        invoiceId: invId,
+        price: extLineAmt(l),
+      };
+    });
+
     let extConsultId: string | undefined = undefined;
     let newConsultations: Consultation[] = [];
 
-    if (medicamentLines.length > 0) {
+    if (medicamentLines.length > 0 || echoExamLines.length > 0) {
       extConsultId = uuidv4();
       const prescriptions: Prescription[] = medicamentLines.map((l) => ({
         id: uuidv4(),
-        articleId: state.articles.find((a) => a.name === l.articleName)?.id || '',
+        articleId: lineArt(l)?.id || '',
         articleName: l.articleName,
         quantity: l.quantity,
         posology: 'Vente externe',
@@ -468,17 +511,20 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         discount: l.discount,
         delivered: false,
       }));
+      const visitReason = 'Vente externe'
+        + (medicamentLines.length > 0 && echoExamLines.length > 0 ? ' — Pharmacie + Échographie'
+          : echoExamLines.length > 0 ? ' — Échographie' : ' — Pharmacie');
       const extConsult: Consultation = {
         id: extConsultId,
         patientId: '',
         doctorId: state.currentUser?.id || 'CASHIER',
         doctorName: extDoctor.name,
         date: now,
-        visitReason: 'Vente externe — Pharmacie',
+        visitReason,
         diagnosis: 'Client Externe',
         prescriptions,
         labRequests: [],
-        echoRequests: [],
+        echoRequests: newEchoRequests,
         hospitalizeRequested: false,
         surgeryRequested: false,
         isEmergency: false,
@@ -493,7 +539,10 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       consultationId: extConsultId,
       clientName: 'Client Externe',
       clientType: 'externe',
-      items: extLines.map(l => ({ description: `${l.articleName} × ${l.quantity}`, amount: extLineAmt(l), category: 'pharmacy' as const })),
+      items: extLines.map((l) => {
+        const category: InvoiceItem['category'] = labExamLines.includes(l) ? 'lab' : echoExamLines.includes(l) ? 'echo' : 'pharmacy';
+        return { description: `${l.articleName} × ${l.quantity}`, amount: extLineAmt(l), category };
+      }),
       totalAmount: extTotal,
       patientCharge: extTotal,
       status: 'paid',
@@ -504,8 +553,9 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     };
 
     setState(prev => {
-      // Décrémenter stock pharmacie uniquement pour les articles NON-médicaments (les médicaments le seront lors de la délivrance pharmacie)
-      // Les articles des familles non gérées en stock ne sont pas décomptés.
+      // Décrémenter stock pharmacie uniquement pour les articles physiques non-médicaments
+      // (les médicaments le seront lors de la délivrance pharmacie ; les examens LABO/ECHO
+      // sont des prestations sans stock ; les familles non gérées ne sont pas décomptées).
       let articles = [...prev.articles];
       nonMedicamentLines.forEach((l) => {
         const idx = articles.findIndex((a) => a.name === l.articleName);
@@ -517,13 +567,31 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         ...prev,
         invoices: [...prev.invoices, inv],
         consultations: [...prev.consultations, ...newConsultations],
+        labRequests: [...prev.labRequests, ...newLabRequests],
         articles
       };
-      const parts = medicamentLines.length > 0 ? 'médicaments' : '';
-      addAuditLog(next, 'VENTE_EXTERNE', `Client Externe — ${formatAr(extTotal)}${parts ? ` (${parts})` : ''}${medicamentLines.length > 0 ? ' — ordonnance ajoutée à la file d\'attente pharmacie' : ''}`);
+      const parts = [
+        medicamentLines.length > 0 ? 'médicaments' : '',
+        labExamLines.length > 0 ? 'analyses' : '',
+        echoExamLines.length > 0 ? 'échographies' : '',
+      ].filter(Boolean).join(' + ');
+      addAuditLog(next, 'VENTE_EXTERNE', `Client Externe — ${formatAr(extTotal)}${parts ? ` (${parts})` : ''}${medicamentLines.length > 0 ? ' — ordonnance ajoutée à la file d\'attente pharmacie' : ''}${labExamLines.length > 0 ? ' — demandes transmises au laboratoire' : ''}${echoExamLines.length > 0 ? ' — bons imprimés' : ''}`);
       return next;
     });
+    // 1) Ticket caisse (reçu de paiement)
     openThermalTicket(state.ticketSettings, inv, undefined, state.currentUser || undefined);
+    // 2) Bon d'analyse — uniquement les examens demandés — après le ticket caisse
+    if (newLabRequests.length > 0) {
+      setTimeout(() => {
+        printLabRequestTicket(state.ticketSettings, EXT_CLIENT_PATIENT, extDoctor, new Date(), newLabRequests);
+      }, 900);
+    }
+    // 3) Bon d'échographie — uniquement les examens demandés
+    if (newEchoRequests.length > 0) {
+      setTimeout(() => {
+        printEchoRequestTicket(state.ticketSettings, EXT_CLIENT_PATIENT, extDoctor, new Date(), newEchoRequests);
+      }, newLabRequests.length > 0 ? 1800 : 900);
+    }
 
     setExtLines([]); setExtSearch('');
   };
@@ -993,16 +1061,19 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                         <input ref={extSearchRef} type="text" value={extLineForm.articleName && !extSearch ? extLineForm.articleName : extSearch} onChange={e => { setExtSearch(e.target.value); setExtSearchIdx(0); }} onKeyDown={extKeyDown} className="w-full bg-white border border-blue-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-blue-600" placeholder="🔍 Tapez..." />
                         {extSearch.length >= 1 && extFiltered.length > 0 && <div className="absolute top-full left-0 right-0 bg-white border rounded-b shadow-xl z-30 max-h-36 overflow-y-auto">{extFiltered.map((a, idx) => {
                           const manages = managesStock(a);
-                          const isOut = manages && a.stockPharmacie <= 0;
-                          const isLow = manages && !isOut && a.stockPharmacie <= a.minStockPharmacie && !a.alertDisabledPharmacie;
+                          const isExam = isLabEchoExamArticle(a);
+                          const isOut = manages && !isExam && a.stockPharmacie <= 0;
+                          const isLow = manages && !isOut && !isExam && a.stockPharmacie <= a.minStockPharmacie && !a.alertDisabledPharmacie;
                           return (<div key={a.id} onClick={() => extSelectArticle(a.id)} title={isOut ? 'Rupture de stock — vente impossible' : undefined} className={`px-2 py-1 text-xs flex justify-between border-b ${isOut ? 'bg-red-50 text-red-700 cursor-not-allowed' : `cursor-pointer ${idx === extSearchIdx ? 'bg-blue-100' : 'hover:bg-blue-50'}`}`}>
                             <span className={isOut ? 'line-through decoration-red-400/60' : ''}>[{a.family}] {a.name}</span>
                             <span className="flex items-center gap-2">
                               {isOut
                                 ? <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-[9px] font-bold">🚨 RUPTURE — invendable</span>
-                                : manages
-                                  ? <span className={`font-mono text-[10px] ${isLow ? 'text-amber-600 font-bold' : 'text-slate-400'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>
-                                  : <span className="font-mono text-[10px] text-slate-400" title="Famille non gérée en stock">stock: —</span>}
+                                : isExam
+                                  ? <span className={`font-mono text-[10px] ${isLabFamily(a.family) ? 'text-teal-600' : 'text-indigo-600'}`} title="Prestation d'examen — non gérée en stock">{isLabFamily(a.family) ? '🧪 Examen labo' : '📡 Examen écho'}</span>
+                                  : manages
+                                    ? <span className={`font-mono text-[10px] ${isLow ? 'text-amber-600 font-bold' : 'text-slate-400'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>
+                                    : <span className="font-mono text-[10px] text-slate-400" title="Famille non gérée en stock">stock: —</span>}
                               <span className={`font-mono ${isOut ? 'text-red-400' : 'text-blue-600'}`}>{formatAr(getPrice(a, 'externe'))}</span>
                             </span>
                           </div>);

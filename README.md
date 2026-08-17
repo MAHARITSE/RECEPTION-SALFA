@@ -19,6 +19,8 @@ Application complète de gestion clinique et hospitalière (HIS — Hospital Inf
 
 3. **💰 Caisse & Facturation**
    - Émission des factures comptoir, sociétés et ventes externes.
+   - Vente directe client externe : médicaments, articles et **examens** (analyses LABO + échographies ECHO de la base d'articles unifiée) — bons d'analyse et d'échographie imprimés après encaissement, demandes transmises au laboratoire (file d'attente « Patient externe »).
+   - File d'attente de paiement alimentée par les validations des médecins, synchronisée en direct entre les postes (sondage MySQL + fusion automatique en version WAMP ; événements `storage` entre onglets en version navigateur).
    - Gestion des remises, acomptes et règlements multi-modes (Espèces, Chèque, Virement, Mobile Money).
    - Reçus et factures au format d'impression standard et tickets 80x80mm.
    - Clôture de caisse de garde avec récapitulatif comptable.
