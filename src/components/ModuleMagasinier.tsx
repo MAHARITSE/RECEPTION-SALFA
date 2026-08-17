@@ -39,6 +39,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
 
   // === ARTICLES / CATALOGUE ===
   const [searchArticle, setSearchArticle] = useState('');
+  const [familyCatalogFilter, setFamilyCatalogFilter] = useState<string>('all');
   const [showArticleModal, setShowArticleModal] = useState(false);
   const [editingArtId, setEditingArtId] = useState<string | null>(null);
   const [artForm, setArtForm] = useState<{
@@ -858,7 +859,9 @@ export default function ModuleMagasinier({ state, setState }: Props) {
 
   const filteredCatalogArticles = state.articles.filter((a) => {
     const q = searchArticle.toLowerCase();
-    return a.name.toLowerCase().includes(q) || labelForFamily(a.family).toLowerCase().includes(q) || (a.barcode || '').includes(q);
+    const matchQ = a.name.toLowerCase().includes(q) || labelForFamily(a.family).toLowerCase().includes(q) || (a.barcode || '').includes(q) || (a.code || '').toLowerCase().includes(q);
+    const matchFam = familyCatalogFilter === 'all' || normalizeFamilyCode(a.family) === normalizeFamilyCode(familyCatalogFilter);
+    return matchQ && matchFam;
   });
 
   const filteredSuppliers = fournisseurs.filter((f) => {
@@ -1184,9 +1187,25 @@ export default function ModuleMagasinier({ state, setState }: Props) {
           {tab === 'articles' && (
             <div className="space-y-4">
               <div className="flex justify-between items-center flex-wrap gap-2">
-                <div className="relative flex-1 max-w-md">
-                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-                  <input type="text" value={searchArticle} onChange={(e) => setSearchArticle(e.target.value)} className="w-full pl-9 pr-3 py-1.5 border rounded-lg text-sm outline-none" placeholder="Rechercher un article du catalogue..." />
+                <div className="flex items-center gap-2 flex-1 max-w-2xl">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                    <input type="text" value={searchArticle} onChange={(e) => setSearchArticle(e.target.value)} className="w-full pl-9 pr-3 py-1.5 border rounded-lg text-sm outline-none" placeholder="Rechercher un article (médicaments, analyses LABO, examens ECHO...)..." />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Filter className="w-4 h-4 text-slate-400" />
+                    <select
+                      value={familyCatalogFilter}
+                      onChange={(e) => setFamilyCatalogFilter(e.target.value)}
+                      className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white outline-none cursor-pointer font-medium text-slate-700"
+                    >
+                      <option value="all">Toutes les familles ({state.articles.length})</option>
+                      {articleFamilies.map(f => {
+                        const count = state.articles.filter(a => normalizeFamilyCode(a.family) === normalizeFamilyCode(f.code)).length;
+                        return <option key={f.code} value={f.code}>{f.name} ({f.code}) — {count}</option>;
+                      })}
+                    </select>
+                  </div>
                 </div>
                 <button onClick={openNewArticleModal} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 cursor-pointer text-xs font-semibold shadow">
                   <Plus className="w-4 h-4" /> Nouvel article
@@ -1209,29 +1228,48 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredCatalogArticles.map((a) => (
-                      <tr key={a.id} className="border-b hover:bg-slate-50">
-                        <td className="p-2.5"><span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-[10px] font-bold">{labelForFamily(a.family)}</span></td>
-                        <td className="p-2.5 font-semibold text-slate-900">
-                          {a.name}
-                          {a.barcode && <span className="block text-[10px] font-mono text-slate-400">Barcode: {a.barcode}</span>}
-                        </td>
-                        <td className="p-2.5 text-slate-500">{a.unit}</td>
-                        <td className="p-2.5 text-right font-mono text-slate-600">{formatAr(a.purchasePrice)}</td>
-                        <td className="p-2.5 text-right font-mono font-bold text-blue-700">{formatAr(a.priceComptoir)}</td>
-                        <td className="p-2.5 text-right font-mono text-indigo-700">{formatAr(a.priceSociete)}</td>
-                        <td className="p-2.5 text-right font-mono text-purple-700">{formatAr(a.priceExterne)}</td>
-                        <td className="p-2.5 text-center font-mono text-slate-500">{a.minStockCentral} / {a.minStockPharmacie}</td>
-                        <td className="p-2.5 text-right">
-                          <button onClick={() => openEditArticleModal(a)} className="p-1 text-blue-600 hover:bg-blue-50 rounded cursor-pointer mr-1" title="Modifier fiche">
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => deleteArticle(a.id, a.name)} className="p-1 text-rose-600 hover:bg-rose-50 rounded cursor-pointer" title="Supprimer">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {filteredCatalogArticles.map((a) => {
+                      const famCode = normalizeFamilyCode(a.family);
+                      const badgeClass = famCode === 'LABO' ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                        : famCode === 'ECHO' ? 'bg-amber-100 text-amber-800 border-amber-300'
+                        : famCode === 'MEDIC' ? 'bg-blue-100 text-blue-800 border-blue-300'
+                        : famCode === 'DENT' ? 'bg-purple-100 text-purple-800 border-purple-300'
+                        : 'bg-slate-100 text-slate-700 border-slate-300';
+
+                      return (
+                        <tr key={a.id} className="border-b hover:bg-slate-50">
+                          <td className="p-2.5">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${badgeClass}`}>
+                              {labelForFamily(a.family)}
+                            </span>
+                          </td>
+                          <td className="p-2.5 font-semibold text-slate-900">
+                            {a.name}
+                            {(a.code || a.barcode) && (
+                              <span className="block text-[10px] font-mono text-slate-400">
+                                {a.code ? `Code: ${a.code}` : ''} {a.barcode ? `• Barcode: ${a.barcode}` : ''}
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-2.5 text-slate-500">{a.unit}</td>
+                          <td className="p-2.5 text-right font-mono text-slate-600">{formatAr(a.purchasePrice)}</td>
+                          <td className="p-2.5 text-right font-mono font-bold text-blue-700">{formatAr(a.priceComptoir)}</td>
+                          <td className="p-2.5 text-right font-mono text-indigo-700">{formatAr(a.priceSociete)}</td>
+                          <td className="p-2.5 text-right font-mono text-purple-700">{formatAr(a.priceExterne)}</td>
+                          <td className="p-2.5 text-center font-mono text-slate-500">
+                            {a.alertDisabledCentral && a.alertDisabledPharmacie ? <span className="text-slate-400 italic">Off</span> : `${a.minStockCentral} / ${a.minStockPharmacie}`}
+                          </td>
+                          <td className="p-2.5 text-right">
+                            <button onClick={() => openEditArticleModal(a)} className="p-1 text-blue-600 hover:bg-blue-50 rounded cursor-pointer mr-1" title="Modifier fiche">
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => deleteArticle(a.id, a.name)} className="p-1 text-rose-600 hover:bg-rose-50 rounded cursor-pointer" title="Supprimer">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

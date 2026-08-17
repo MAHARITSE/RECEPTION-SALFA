@@ -709,16 +709,16 @@ export function addNotification(s: AppState, targetRole: UserRole, message: stri
 
 export const DEFAULT_FAMILLES: Famille[] = [
   { id: 'fam-medic', code: 'MEDIC', name: 'Médicaments', color: '#0D47A1', order: 1 },
-  { id: 'fam-lab', code: 'LAB', name: 'Laboratoire', color: '#10B981', order: 2 },
+  { id: 'fam-labo', code: 'LABO', name: 'Laboratoire', color: '#10B981', order: 2 },
   { id: 'fam-echo', code: 'ECHO', name: 'Échographie', color: '#F59E0B', order: 3 },
   // Conservé pour les données déjà présentes et les consommables dentaires.
   { id: 'fam-dent', code: 'DENT', name: 'Dentaire', color: '#8B5CF6', order: 4 },
 ];
 
-// Compatibilité : l'ancien code laboratoire était LABO. La nouvelle base demandée utilise LAB.
+// Base familles standard : normalise vers majuscules et convertit l'ancien code LAB vers LABO
 export function normalizeFamilyCode(code?: string): string {
   const c = (code || '').trim().toUpperCase();
-  return c === 'LABO' ? 'LAB' : c;
+  return c === 'LAB' ? 'LABO' : c;
 }
 
 export const ARTICLE_FAMILIES: ArticleFamily[] = DEFAULT_FAMILLES.map((f) => f.code);
@@ -740,13 +740,22 @@ export function familyLabel(f: ArticleFamily | string | undefined, familles: Fam
   return fam?.name || code || '—';
 }
 
-export function isLabFamily(code?: string): boolean { return normalizeFamilyCode(code) === 'LAB'; }
-export function isEchoFamily(code?: string): boolean { return normalizeFamilyCode(code) === 'ECHO'; }
-export function isMedicationEntryFamily(code?: string): boolean { return !isLabFamily(code) && !isEchoFamily(code); }
+export function isLabFamily(code?: string): boolean {
+  const c = normalizeFamilyCode(code);
+  return c === 'LABO' || c === 'LAB';
+}
+
+export function isEchoFamily(code?: string): boolean {
+  return normalizeFamilyCode(code) === 'ECHO';
+}
+
+export function isMedicationEntryFamily(code?: string): boolean {
+  return !isLabFamily(code) && !isEchoFamily(code);
+}
 
 /**
- * Normalise la base des familles : MEDIC / LAB / ECHO sont toujours présents,
- * LABO est migré vers LAB, et les articles suivent le nouveau code.
+ * Normalise la base des familles : MEDIC / LABO / ECHO sont toujours présents,
+ * LAB est migré vers LABO, et les articles suivent le code normalisé.
  */
 export function normalizeFamilyBases(state: AppState): AppState {
   const seen = new Set<string>();
@@ -807,6 +816,98 @@ export function labCategoryLabel(c: LabCategory): string {
     bacteriologie: 'Bactériologie', parasitologie: 'Parasitologie', immunologie: 'Immunologie',
     hemostase: 'Hémostase', autre: 'Autre',
   }[c];
+}
+
+export const DEFAULT_LAB_CATALOG: LabExamCatalog[] = [
+  { id: 'exam-001', code: 'LAB001', name: 'NFS', category: 'hematologie', parameters: ['Globules Rouges', 'Globules Blancs', 'Hémoglobine', 'Plaquettes', 'Hématocrite'], sampleType: 'Sang veineux (EDTA)', priceComptoir: 15000, priceSociete: 13000, priceExterne: 18000, urgentPrice: 25000, durationHours: 4 },
+  { id: 'exam-002', code: 'LAB002', name: 'Glycémie à jeun', category: 'biochimie', parameters: ['Glucose'], sampleType: 'Sang veineux', priceComptoir: 8000, priceSociete: 7000, priceExterne: 10000, urgentPrice: 15000, durationHours: 1 },
+  { id: 'exam-003', code: 'LAB003', name: 'Créatinine', category: 'biochimie', parameters: ['Créatinine'], sampleType: 'Sang veineux', priceComptoir: 10000, priceSociete: 9000, priceExterne: 12000, urgentPrice: 18000, durationHours: 2 },
+  { id: 'exam-004', code: 'LAB004', name: 'CRP', category: 'biochimie', parameters: ['CRP'], sampleType: 'Sang veineux', priceComptoir: 7000, priceSociete: 6000, priceExterne: 9000, urgentPrice: 12000, durationHours: 1 },
+  { id: 'exam-005', code: 'LAB005', name: 'Groupe Sanguin & Rhésus', category: 'hematologie', parameters: ['Groupe ABO', 'Rhésus'], sampleType: 'Sang veineux', priceComptoir: 10000, priceSociete: 9000, priceExterne: 12000, urgentPrice: 15000, durationHours: 2 },
+  { id: 'exam-006', code: 'LAB006', name: 'ECBU (Culture + Antibiogramme)', category: 'bacteriologie', parameters: ['Culture', 'Antibiogramme'], sampleType: 'Urine (pot stérile)', priceComptoir: 15000, priceSociete: 13000, priceExterne: 18000, urgentPrice: 25000, durationHours: 48 },
+  { id: 'exam-007', code: 'LAB007', name: 'Goutte épaisse', category: 'parasitologie', parameters: ['Plasmodium'], sampleType: 'Sang veineux', priceComptoir: 10000, priceSociete: 9000, priceExterne: 12000, urgentPrice: 18000, durationHours: 4 },
+  { id: 'exam-008', code: 'LAB008', name: 'TP / INR', category: 'hemostase', parameters: ['TP', 'INR'], sampleType: 'Sang veineux (citraté)', priceComptoir: 12000, priceSociete: 11000, priceExterne: 15000, urgentPrice: 20000, durationHours: 2 },
+  { id: 'exam-009', code: 'LAB009', name: 'Bilan lipidique complet', category: 'biochimie', parameters: ['Cholestérol Total', 'HDL', 'LDL', 'Triglycérides'], sampleType: 'Sang veineux', priceComptoir: 20000, priceSociete: 18000, priceExterne: 25000, urgentPrice: 30000, durationHours: 2 },
+  { id: 'exam-010', code: 'LAB010', name: 'Bilan hépatique complet', category: 'biochimie', parameters: ['ASAT', 'ALAT', 'GGT', 'Bilirubine'], sampleType: 'Sang veineux', priceComptoir: 22000, priceSociete: 20000, priceExterne: 28000, urgentPrice: 35000, durationHours: 2 },
+  { id: 'exam-011', code: 'LAB011', name: 'Bilan rénal complet', category: 'biochimie', parameters: ['Créatinine', 'Urée', 'Acide Urique'], sampleType: 'Sang veineux', priceComptoir: 18000, priceSociete: 16000, priceExterne: 22000, urgentPrice: 28000, durationHours: 2 },
+  { id: 'exam-012', code: 'LAB012', name: 'Ionogramme sanguin', category: 'biochimie', parameters: ['Sodium', 'Potassium', 'Chlore'], sampleType: 'Sang veineux', priceComptoir: 15000, priceSociete: 13000, priceExterne: 18000, urgentPrice: 22000, durationHours: 2 },
+  { id: 'exam-013', code: 'LAB013', name: 'TDR Paludisme', category: 'parasitologie', parameters: ['TDR Paludisme'], sampleType: 'Sang capillaire', priceComptoir: 5000, priceSociete: 4500, priceExterne: 6000, urgentPrice: 8000, durationHours: 1 },
+  { id: 'exam-014', code: 'LAB014', name: 'Sérologie VIH / Syphilis', category: 'serologie', parameters: ['VIH 1/2', 'TPHA/VDRL'], sampleType: 'Sang veineux', priceComptoir: 12000, priceSociete: 10000, priceExterne: 15000, urgentPrice: 20000, durationHours: 2 },
+];
+
+/* ====== CATALOGUE ÉCHOGRAPHIE ====== */
+export interface EchoExamCatalog {
+  id: string;
+  code: string;
+  name: string;
+  priceComptoir: number;
+  priceSociete: number;
+  priceExterne: number;
+  urgentPrice: number;
+}
+
+export const DEFAULT_ECHO_CATALOG: EchoExamCatalog[] = [
+  { id: 'echo-abd', code: 'ECH001', name: 'Échographie abdominale', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 35000 },
+  { id: 'echo-pel', code: 'ECH002', name: 'Échographie pelvienne', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 35000 },
+  { id: 'echo-obs', code: 'ECH003', name: 'Échographie obstétricale', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 35000 },
+  { id: 'echo-car', code: 'ECH004', name: 'Échographie cardiaque (ETT)', priceComptoir: 40000, priceSociete: 35000, priceExterne: 45000, urgentPrice: 50000 },
+  { id: 'echo-ren', code: 'ECH005', name: 'Échographie rénale', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 35000 },
+  { id: 'echo-thy', code: 'ECH006', name: 'Échographie thyroïdienne', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 35000 },
+  { id: 'echo-mam', code: 'ECH007', name: 'Échographie mammaire', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 35000 },
+  { id: 'echo-pmo', code: 'ECH008', name: 'Échographie des parties molles', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 35000 },
+  { id: 'echo-dop', code: 'ECH009', name: 'Échographie Doppler', priceComptoir: 35000, priceSociete: 30000, priceExterne: 40000, urgentPrice: 45000 },
+  { id: 'echo-pro', code: 'ECH010', name: 'Échographie prostatique', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 35000 },
+];
+
+/**
+ * Extrait ou dérive le catalogue des échographies depuis la base unifiée des articles (famille ECHO).
+ */
+export function getEchoCatalog(articles: Article[] = []): EchoExamCatalog[] {
+  const echoArts = articles.filter(a => isEchoFamily(a.family) && a.unit !== 'flacon' && a.unit !== 'boîte');
+  if (echoArts.length === 0) return DEFAULT_ECHO_CATALOG;
+  return echoArts.map((a, idx) => ({
+    id: a.id,
+    code: a.code || a.barcode || `ECH${String(idx + 1).padStart(3, '0')}`,
+    name: a.name,
+    priceComptoir: a.priceComptoir,
+    priceSociete: a.priceSociete,
+    priceExterne: a.priceExterne,
+    urgentPrice: a.urgentPrice || (a.priceComptoir ? Math.round(a.priceComptoir * 1.4) : 35000),
+  }));
+}
+
+/**
+ * Extrait ou synchronise le catalogue du laboratoire depuis la base unifiée des articles (famille LABO).
+ */
+export function getLabCatalog(articles: Article[] = [], existingCatalog: LabExamCatalog[] = []): LabExamCatalog[] {
+  const labArts = articles.filter(a => isLabFamily(a.family) && a.unit !== 'unité' && a.unit !== 'flacon' && a.unit !== 'boîte');
+  if (labArts.length === 0) return existingCatalog.length > 0 ? existingCatalog : DEFAULT_LAB_CATALOG;
+  const catalogMap = new Map<string, LabExamCatalog>();
+  existingCatalog.forEach(e => {
+    catalogMap.set(e.id, e);
+    catalogMap.set(e.name.toLowerCase(), e);
+  });
+  DEFAULT_LAB_CATALOG.forEach(e => {
+    if (!catalogMap.has(e.id)) catalogMap.set(e.id, e);
+    if (!catalogMap.has(e.name.toLowerCase())) catalogMap.set(e.name.toLowerCase(), e);
+  });
+  return labArts.map((a, idx) => {
+    const matched = catalogMap.get(a.id) || catalogMap.get(a.name.toLowerCase());
+    return {
+      id: a.id,
+      code: a.code || a.barcode || matched?.code || `LAB${String(idx + 1).padStart(3, '0')}`,
+      name: a.name,
+      category: (a.category as LabCategory) || matched?.category || 'biochimie',
+      parameters: a.parameters || matched?.parameters || [a.name],
+      sampleType: a.sampleType || matched?.sampleType || 'Sang veineux',
+      priceComptoir: a.priceComptoir,
+      priceSociete: a.priceSociete,
+      priceExterne: a.priceExterne,
+      urgentPrice: a.urgentPrice || matched?.urgentPrice || (a.priceComptoir ? Math.round(a.priceComptoir * 1.5) : 25000),
+      durationHours: a.durationHours || matched?.durationHours || 4,
+      defaultUrgent: matched?.defaultUrgent || false,
+    };
+  });
 }
 
 /**
