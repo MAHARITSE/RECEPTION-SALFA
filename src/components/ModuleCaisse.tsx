@@ -73,34 +73,6 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const [extServiceSearch, setExtServiceSearch] = useState('');
   const [extServiceSearchIdx, setExtServiceSearchIdx] = useState(0);
 
-  // Demandes externes déjà enregistrées (analyses labo + échographies) — file d'attente visible dans la vente externe
-  const extLabQueue: { lr: LabRequest; paid: boolean }[] = (state.labRequests || [])
-    .filter((lr) => !lr.patientId)
-    .map((lr) => {
-      const inv = lr.invoiceId ? state.invoices.find((i) => i.id === lr.invoiceId) : undefined;
-      return { lr, paid: inv?.status === 'paid' };
-    })
-    .sort((a, b) => (b.lr.requestedAt || '').localeCompare(a.lr.requestedAt || ''));
-  const extEchoQueue: { er: EchoRequest; consultationId: string }[] = state.consultations
-    .filter((c) => !c.patientId && (c.echoRequests || []).length > 0)
-    .flatMap((c) => (c.echoRequests || []).map((er) => ({ er, consultationId: c.id })))
-    .sort((a, b) => (b.er.requestedAt || '').localeCompare(a.er.requestedAt || ''));
-
-  // Statuts d'affichage pour les demandes externes
-  const extLabStatusLabel = (lr: LabRequest): { label: string; cls: string } => {
-    switch (lr.status) {
-      case 'completed': return { label: '✓ Résultats faits', cls: 'bg-emerald-100 text-emerald-700' };
-      case 'in_progress': return { label: '🔬 En cours d\'analyse', cls: 'bg-cyan-100 text-cyan-700' };
-      case 'sample_received': return { label: '🩸 Échantillon reçu', cls: 'bg-blue-100 text-blue-700' };
-      case 'paid': return { label: '⏳ En attente laboratoire', cls: 'bg-amber-100 text-amber-700' };
-      default: return { label: 'À facturer', cls: 'bg-slate-100 text-slate-600' };
-    }
-  };
-  const extEchoStatusLabel = (er: EchoRequest): { label: string; cls: string } => {
-    if (er.status === 'completed') return { label: '✓ Fait', cls: 'bg-emerald-100 text-emerald-700' };
-    return { label: '⏳ En attente imagerie', cls: 'bg-amber-100 text-amber-700' };
-  };
-
   // Hospit/Bloc — la liste est PARTAGÉE entre Caisse et Pharmacie (state global),
   // car peu importe qui saisit (caisse ou pharmacie de garde), c'est le paiement qui fait foi.
   const hbRecords: HbRecord[] = state.hbRecords || [];
@@ -1244,70 +1216,6 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
 
                 <button onClick={extPay} disabled={extLines.length === 0 && extServices.length === 0} className="w-full py-3 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 disabled:opacity-40 cursor-pointer flex items-center justify-center gap-2"><CreditCard className="w-5 h-5" /> Encaisser {formatAr(extTotal)}</button>
 
-                {/* FILE D'ATTENTE DES DEMANDES EXTERNES — ANALYSES & ÉCHOS */}
-                {(extLabQueue.length > 0 || extEchoQueue.length > 0) && (
-                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-                    <div className="bg-white border border-teal-200 rounded-lg overflow-hidden">
-                      <div className="px-3 py-2 bg-teal-50 border-b border-teal-200 flex items-center justify-between">
-                        <span className="font-bold text-xs text-teal-800 flex items-center gap-1.5"><FlaskConical className="w-4 h-4" /> Analyses externes — laboratoire</span>
-                        <span className="px-2 py-0.5 rounded-full bg-teal-600 text-white text-[10px] font-bold">{extLabQueue.filter((x) => x.lr.status !== 'completed').length}</span>
-                      </div>
-                      <div className="divide-y max-h-64 overflow-y-auto">
-                        {extLabQueue.map(({ lr }) => {
-                          const st = extLabStatusLabel(lr);
-                          return (
-                            <div key={lr.id} className="px-3 py-2 flex justify-between items-center gap-2">
-                              <div className="min-w-0">
-                                <div className="text-xs font-semibold text-slate-800">{lr.examType}{lr.urgent && <span className="ml-1 text-[10px] text-red-600 font-bold">🚨</span>}</div>
-                                <div className="text-[10px] text-slate-400">Client externe · {lr.requestedAt ? new Date(lr.requestedAt).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}</div>
-                              </div>
-                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ${st.cls}`}>{st.label}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    <div className="bg-white border border-indigo-200 rounded-lg overflow-hidden">
-                      <div className="px-3 py-2 bg-indigo-50 border-b border-indigo-200 flex items-center justify-between">
-                        <span className="font-bold text-xs text-indigo-800 flex items-center gap-1.5"><Scan className="w-4 h-4" /> Échographies externes</span>
-                        <span className="px-2 py-0.5 rounded-full bg-indigo-600 text-white text-[10px] font-bold">{extEchoQueue.filter((x) => x.er.status !== 'completed').length}</span>
-                      </div>
-                      <div className="divide-y max-h-64 overflow-y-auto">
-                        {extEchoQueue.map(({ er, consultationId }) => {
-                          const st = extEchoStatusLabel(er);
-                          return (
-                            <div key={er.id} className="px-3 py-2 flex justify-between items-center gap-2">
-                              <div className="min-w-0">
-                                <div className="text-xs font-semibold text-slate-800">{er.examType}{er.urgent && <span className="ml-1 text-[10px] text-red-600 font-bold">🚨</span>}</div>
-                                <div className="text-[10px] text-slate-400">Client externe · {er.requestedAt ? new Date(er.requestedAt).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}</div>
-                              </div>
-                              <div className="flex items-center gap-1.5">
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ${st.cls}`}>{st.label}</span>
-                                {er.status !== 'completed' && (
-                                  <button
-                                    onClick={() => {
-                                      if (!confirm(`Marquer « ${er.examType} » comme FAIT pour le client externe ?`)) return;
-                                      setState((prev) => ({
-                                        ...prev,
-                                        consultations: prev.consultations.map((c) =>
-                                          c.id === consultationId
-                                            ? { ...c, echoRequests: (c.echoRequests || []).map((x) => x.id === er.id ? { ...x, status: 'completed' as const, completedAt: new Date().toISOString() } : x) }
-                                            : c
-                                        ),
-                                      }));
-                                    }}
-                                    className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold cursor-pointer whitespace-nowrap"
-                                    title="Marquer l'échographie comme réalisée"
-                                  >✓ Fait</button>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
           )}
