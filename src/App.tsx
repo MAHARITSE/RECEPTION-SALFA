@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Component, type ReactNode, type ErrorInfo } from 'react';
 import type { User } from './types';
-import { createInitialState, ensureEtablissements, migrateLegacyToVentes, normalizeFamilyBases, addAuditLog, addNotification, type AppState } from './store';
+import { createInitialState, prepareLoadedState, migrateLegacyToVentes, normalizeFamilyBases, addAuditLog, addNotification, type AppState } from './store';
 import { loadStateFromBrowser, saveStateToBrowser } from './browserDb';
 import {
   IS_WAMP_BUILD,
@@ -177,12 +177,12 @@ function AppInner() {
       const stored = await loadStateFromMysql();
       if (cancelled) return;
       if (stored) {
-        setState(ensureEtablissements(normalizeFamilyBases(stored)));
+        setState(prepareLoadedState(stored));
         setWamp((s) => ({ ...s, loading: false, usingMysql: true, lastSavedAt: Date.now() }));
       } else {
         setWamp((s) => ({ ...s, loading: false }));
         // Aucun état en base : on y écrit l'état initial (seed) sans tarder
-        const ok = await saveStateToMysql(seedRef.current);
+        const ok = await saveStateToMysql(prepareLoadedState(seedRef.current));
         if (!cancelled && ok) {
           setWamp((s) => ({ ...s, usingMysql: true, lastSavedAt: Date.now() }));
         }
@@ -204,10 +204,10 @@ function AppInner() {
       const stored = await loadStateFromBrowser();
       if (cancelled) return;
       if (stored) {
-        setState(ensureEtablissements(normalizeFamilyBases(stored)));
+        setState(prepareLoadedState(stored));
       } else {
         // Première ouverture : initialise la base locale avec le jeu de départ.
-        await saveStateToBrowser(seedRef.current);
+        await saveStateToBrowser(prepareLoadedState(seedRef.current));
       }
       if (!cancelled) setBrowserDbLoading(false);
     })();

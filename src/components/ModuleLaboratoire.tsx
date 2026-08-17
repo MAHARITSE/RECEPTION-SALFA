@@ -4,7 +4,7 @@ import type { LabRequest, Patient, ClientType, LabExamCatalog, LabCategory, Arti
 import type { AppState } from '../store';
 import {
   addAuditLog, addNotification, addJourneyEvent, LAB_NORMS,
-  labCategoryLabel, LAB_CATEGORIES, generateDossierNumber, calculateAge, formatAr,
+  labCategoryLabel, LAB_CATEGORIES, generateDossierNumber, calculateAge, formatAr, getLabCatalog,
 } from '../store';
 import { printLabResultTicket } from '../utils/printTicket';
 import {
@@ -57,10 +57,14 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
     priceComptoir: 0, priceSociete: 0, priceExterne: 0, urgentPrice: 0, durationHours: 4, defaultUrgent: false,
   });
 
+  // Catalogue unifié : examens dérivés de la table `articles` (famille LABO),
+  // avec repli sur le catalogue legacy `labCatalog` (même logique que Médecin et Caisse).
+  const currentLabCatalog = getLabCatalog(state.articles, state.labCatalog);
+
   const createExam = () => {
     if (!examForm.name.trim() || !examForm.code.trim()) { alert('Le code et le nom de l\'examen sont obligatoires.'); return; }
     const code = examForm.code.trim().toUpperCase();
-    if (state.labCatalog.some((e) => e.code.toLowerCase() === code.toLowerCase())) { alert('Ce code existe déjà dans le catalogue.'); return; }
+    if (currentLabCatalog.some((e) => e.code.toLowerCase() === code.toLowerCase()) || state.labCatalog.some((e) => e.code.toLowerCase() === code.toLowerCase())) { alert('Ce code existe déjà dans le catalogue.'); return; }
     const params = examForm.parameters.length
       ? examForm.parameters
       : (document.getElementById('lab-params') as HTMLInputElement)?.value.split(/[,\n;]+/).map((s) => s.trim()).filter(Boolean) || [];
@@ -308,7 +312,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
     setSelectedExamIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
-  const priceFor = (exam: typeof state.labCatalog[number], ct: ClientType) => {
+  const priceFor = (exam: LabExamCatalog, ct: ClientType) => {
     if (urgent) return exam.urgentPrice;
     return ct === 'societe' ? exam.priceSociete : ct === 'externe' ? exam.priceExterne : exam.priceComptoir;
   };
@@ -319,7 +323,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
     const patient = state.patients.find((p) => p.id === selectedPatientId);
     if (!patient) return;
     const ct = patient.clientType;
-    const chosen = state.labCatalog.filter((e) => selectedExamIds.includes(e.id));
+    const chosen = currentLabCatalog.filter((e) => selectedExamIds.includes(e.id));
     const invoiceId = uuidv4();
     const items = chosen.map((e) => ({ description: e.name, amount: priceFor(e, ct), category: 'lab' as const }));
     const total = items.reduce((s, i) => s + i.amount, 0);
@@ -719,7 +723,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
                   </div>
                   <div className="space-y-3 pr-1">
                     {LAB_CATEGORIES.map((cat) => {
-                      const exams = state.labCatalog.filter((e) => e.category === cat);
+                      const exams = currentLabCatalog.filter((e) => e.category === cat);
                       if (exams.length === 0) return null;
                       const ct = state.patients.find((p) => p.id === selectedPatientId)?.clientType || 'comptoir';
                       return (
@@ -752,7 +756,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
                     <div className="text-sm">
                       <span className="text-slate-500">{selectedExamIds.length} examen(s) · </span>
                       <span className="font-bold font-mono text-slate-800">
-                        {formatAr(state.labCatalog.filter((e) => selectedExamIds.includes(e.id)).reduce((s, e) => s + priceFor(e, state.patients.find((p) => p.id === selectedPatientId)?.clientType || 'comptoir'), 0))}
+                        {formatAr(currentLabCatalog.filter((e) => selectedExamIds.includes(e.id)).reduce((s, e) => s + priceFor(e, state.patients.find((p) => p.id === selectedPatientId)?.clientType || 'comptoir'), 0))}
                       </span>
                     </div>
                     <button onClick={createRequests} disabled={selectedExamIds.length === 0} className="px-5 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 font-medium text-sm disabled:opacity-40 cursor-pointer flex items-center gap-2">

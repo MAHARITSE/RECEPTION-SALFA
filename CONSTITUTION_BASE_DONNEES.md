@@ -134,6 +134,39 @@ Toutes les entités sont stockées dans des tableaux typés TypeScript.
 | `saleBlockReason` | `string?` | Motif blocage vente |
 | `saleBlockedAt` | `string?` | Date blocage |
 | `saleBlockedBy` | `string?` | Bloqué par (userId) |
+| `code` | `string?` | Code court / référence d'examen (ex: LAB001, ECH001) |
+| `parameters` | `string[]?` | Paramètres biologiques (articles famille LABO) |
+| `category` | `LabCategory?` | Sous-catégorie laboratoire (hématologie, biochimie…) |
+| `sampleType` | `string?` | Nature du prélèvement / échantillon |
+| `urgentPrice` | `number?` | Tarif d'urgence (si applicable) |
+| `durationHours` | `number?` | Délai indicatif de rendu (heures) |
+
+### 🔗 BASE UNIFIÉE DES ARTICLES — familles `LABO` et `ECHO`
+
+> **Principe :** la table `articles` est le **référentiel unique**. Tous les
+> examens de laboratoire, les actes d'échographie et leurs consommables y sont
+> intégrés, et les modules **Magasinier, Laboratoire, Médecin, Caisse et
+> Facturation** l'exploitent via `getLabCatalog(articles, labCatalog)` et
+> `getEchoCatalog(articles)`.
+
+| Famille | Contenu intégré dans `articles` |
+|---------|--------------------------------|
+| `LABO` | Examens : NFS, Glycémie, Créatinine, CRP, Groupe Sanguin & Rhésus, ECBU, Goutte épaisse, TP/INR, bilans lipidique/hépatique/rénal complets, Ionogramme, TDR Paludisme, Sérologie VIH/Syphilis — **Consommables** : Tube EDTA, Réactif Glycémie, Lames porte-objet |
+| `ECHO` | Actes : Abdominale, Pelvienne, Obstétricale, Cardiaque (ETT), Rénale, Thyroïdienne, Mammaire, Parties molles, Doppler, Prostatique — **Consommable** : Gel échographie |
+
+- Les examens/actes portent `unit = 'analyse'` / `'acte'` et sont exclus des
+  alertes de stock (`alertDisabledCentral` / `alertDisabledPharmacie`).
+- `labCatalog` n'est conservé que comme **miroir de compatibilité** (table
+  MySQL `catalogue_laboratoire`), réaligné à chaque démarrage : les articles
+  sont la source de vérité (ajouts et suppressions répercutés).
+- **Auto-synchronisation** : `prepareLoadedState(state)` s'exécute au
+  chargement de toute base locale (IndexedDB ou MySQL). Si aucun examen LABO /
+  acte ECHO n'existe dans `articles`, le référentiel standard y est intégré
+  (y compris les examens personnalisés de l'ancien `labCatalog`), sans jamais
+  modifier ni écraser un article existant.
+- **Base MySQL** : `reception_salfa.sql` intègre le référentiel unifié en
+  insertions idempotentes (`INSERT IGNORE`) ; pour une base déjà installée,
+  importer `WAMP/database/migration_articles_unifies.sql`.
 
 ---
 

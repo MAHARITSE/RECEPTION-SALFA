@@ -108,12 +108,21 @@ Utilisateurs (1) ──< (N) Messages (expéditeur & destinataire)
 
 L'état de démonstration est construit par `src/data/massiveDemoData.ts`. Il ne contient aucune identité réelle : un générateur pseudo-aléatoire à graine fixe (`0x51af1a`) fabrique des identifiants, dossiers, matricules, contacts et adresses synthétiques. Les identifiants, dates et relations sont donc reproductibles à chaque restauration de la démo.
 
-La partie WAMP (100 % MySQL) n'intègre **aucune donnée JSON** :
-`WAMP/database/reception_salfa.sql` crée uniquement le schéma normalisé et la
+La partie WAMP (100 % MySQL) n'intègre **aucune donnée JSON de démonstration** :
+`WAMP/database/reception_salfa.sql` crée le schéma normalisé et la
 configuration minimale du système (comptes de connexion, paramètres
 d'impression, familles d'articles, services du dépôt, compteurs à zéro). Les
-patients, articles, ventes… partent d'une base vide et ne contiennent que ce
-qui est saisi dans l'application.
+patients et ventes partent d'une base vide et ne contiennent que ce qui est
+saisi dans l'application.
+
+**Exception — base unifiée des articles (LABO + ECHO)** : la configuration
+minimale intègre le référentiel standard des articles de laboratoire et
+d'échographie dans la table `articles` (14 examens LABO, 3 consommables LABO,
+10 actes ECHO et le gel d'échographie), avec un miroir de compatibilité dans
+`catalogue_laboratoire`. Les insertions sont idempotentes (`INSERT IGNORE`) et
+ne modifient jamais un article existant. Pour une base déjà installée, importer
+`WAMP/database/migration_articles_unifies.sql` ; l'application réaligne
+également la base automatiquement au démarrage (`prepareLoadedState`).
 
 Le générateur couvre 24 mois (du 21 juillet 2024 au 21 juillet 2026) et produit notamment 3 000 patients aux couples nom/prénom uniques, 4 500 consultations, factures et ventes, plus de 9 000 lignes de ventes, des paiements, demandes/résultats de laboratoire, délivrances, achats/entrées et mouvements. Les listes doivent être filtrées ou paginées par les écrans avant rendu complet.
 

@@ -910,6 +910,160 @@ export function getLabCatalog(articles: Article[] = [], existingCatalog: LabExam
   });
 }
 
+/* ====== BASE UNIFIÉE DES ARTICLES (familles LABO + ECHO) ======
+ * Tous les examens de laboratoire, les actes d'échographie et leurs
+ * consommables (tubes, réactifs, lames, gel) vivent dans la table
+ * `articles`. Les modules Magasinier, Laboratoire, Médecin, Caisse et
+ * Facturation exploitent ce référentiel unique ; `labCatalog` n'est
+ * conservé que comme miroir de compatibilité, synchronisé à chaque
+ * démarrage. */
+
+/** Consommables standards du laboratoire intégrés à la base unifiée des articles. */
+export const DEFAULT_LAB_CONSUMABLE_ARTICLES: Article[] = [
+  { id: 'art-006', name: 'Tube EDTA', family: 'LABO', unit: 'unité', barcode: '619100000006', priceComptoir: 300, priceSociete: 250, priceExterne: 400, purchasePrice: 100, stockCentral: 200, stockPharmacie: 50, minStockCentral: 30, minStockPharmacie: 20 },
+  { id: 'art-007', name: 'Réactif Glycémie', family: 'LABO', unit: 'flacon', barcode: '619100000007', priceComptoir: 5000, priceSociete: 4500, priceExterne: 6000, purchasePrice: 2500, stockCentral: 30, stockPharmacie: 10, minStockCentral: 5, minStockPharmacie: 3, supplier: 'DISPHAR LABO', expiryDate: '2027-03-31' },
+  { id: 'art-lab-015', name: 'Lames porte-objet', family: 'LABO', unit: 'boîte', barcode: '619100000015', priceComptoir: 8000, priceSociete: 7000, priceExterne: 10000, purchasePrice: 4000, stockCentral: 50, stockPharmacie: 15, minStockCentral: 10, minStockPharmacie: 5 },
+];
+
+/** Gel d'échographie intégré à la base unifiée des articles (famille ECHO). */
+export const DEFAULT_ECHO_GEL_ARTICLE: Article = {
+  id: 'art-008', name: 'Gel échographie', family: 'ECHO', unit: 'flacon', barcode: '619100000008',
+  priceComptoir: 5000, priceSociete: 4000, priceExterne: 6000, purchasePrice: 2000,
+  stockCentral: 0, stockPharmacie: 4, minStockCentral: 5, minStockPharmacie: 2,
+};
+
+/** Convertit un examen du catalogue laboratoire en article unifié (famille LABO). */
+export function labExamToArticle(e: LabExamCatalog): Article {
+  return {
+    id: e.id, name: e.name, code: e.code, barcode: e.code, family: 'LABO', unit: 'analyse',
+    priceComptoir: e.priceComptoir, priceSociete: e.priceSociete, priceExterne: e.priceExterne,
+    urgentPrice: e.urgentPrice, purchasePrice: 0, stockCentral: 0, stockPharmacie: 0,
+    minStockCentral: 0, minStockPharmacie: 0,
+    alertDisabledCentral: true, alertDisabledPharmacie: true,
+    category: e.category, parameters: e.parameters, sampleType: e.sampleType, durationHours: e.durationHours,
+  };
+}
+
+/** Convertit un acte d'échographie en article unifié (famille ECHO). */
+export function echoExamToArticle(e: EchoExamCatalog): Article {
+  return {
+    id: e.id, name: e.name, code: e.code, barcode: e.code, family: 'ECHO', unit: 'acte',
+    priceComptoir: e.priceComptoir, priceSociete: e.priceSociete, priceExterne: e.priceExterne,
+    urgentPrice: e.urgentPrice, purchasePrice: 0, stockCentral: 0, stockPharmacie: 0,
+    minStockCentral: 0, minStockPharmacie: 0,
+    alertDisabledCentral: true, alertDisabledPharmacie: true,
+  };
+}
+
+/**
+ * Garantit que la base locale suit la logique des articles unifiés :
+ *  - si aucun examen LABO n'existe dans `articles`, les examens standards,
+ *    les examens personnalisés de l'ancien `labCatalog` et les consommables
+ *    y sont intégrés (migration idempotente des bases existantes) ;
+ *  - si aucun acte ECHO n'existe dans `articles`, les actes standards et le
+ *    gel d'échographie y sont intégrés ;
+ *  - le miroir legacy `labCatalog` est synchronisé avec les articles
+ *    (articles = source de vérité : ajouts et retraits répercutés).
+ *
+ * Aucun article existant n'est modifié ni écrasé.
+ */
+export function ensureUnifiedArticles(state: AppState): {
+  state: AppState;
+  changed: boolean;
+  addedLab: number;
+  addedEcho: number;
+} {
+  const articles: Article[] = state.articles || [];
+  const byId = new Map<string, Article>(articles.map((a) => [a.id, a]));
+  const nameSet = new Set<string>(articles.map((a) => (a.name || '').trim().toLowerCase()));
+  const addedArticles: Article[] = [];
+
+  const addIfMissing = (a: Article): boolean => {
+    if (byId.has(a.id) || nameSet.has((a.name || '').trim().toLowerCase())) return false;
+    byId.set(a.id, a);
+    nameSet.add((a.name || '').trim().toLowerCase());
+    addedArticles.push(a);
+    return true;
+  };
+
+  const hasLabExams = articles.some((a) => isLabFamily(a.family) && a.unit === 'analyse');
+  const hasEchoActs = articles.some((a) => isEchoFamily(a.family) && a.unit === 'acte');
+
+  let addedLab = 0;
+  let addedEcho = 0;
+
+  if (!hasLabExams) {
+    // 1. Examens standards + examens personnalisés de l'ancien catalogue (migration legacy)
+    const legacyCatalog = state.labCatalog && state.labCatalog.length > 0 ? state.labCatalog : DEFAULT_LAB_CATALOG;
+    for (const e of legacyCatalog) if (addIfMissing(labExamToArticle(e))) addedLab++;
+    // 2. Consommables du laboratoire
+    for (const a of DEFAULT_LAB_CONSUMABLE_ARTICLES) if (addIfMissing(a)) addedLab++;
+  }
+
+  if (!hasEchoActs) {
+    for (const e of DEFAULT_ECHO_CATALOG) if (addIfMissing(echoExamToArticle(e))) addedEcho++;
+    if (addIfMissing(DEFAULT_ECHO_GEL_ARTICLE)) addedEcho++;
+  }
+
+  const nextArticles = addedArticles.length > 0 ? [...articles, ...addedArticles] : articles;
+
+  // Miroir legacy `labCatalog` : suit la base unifiée des articles.
+  let labCatalog = state.labCatalog || [];
+  let mirrorChanged = false;
+  const labExamsNow = nextArticles.filter((a) => isLabFamily(a.family) && a.unit === 'analyse');
+  if (labExamsNow.length > 0) {
+    const kept = new Set<string>();
+    const toAppend: LabExamCatalog[] = [];
+    for (const a of labExamsNow) {
+      const existing = labCatalog.find((e) => e.id === a.id)
+        || labCatalog.find((e) => e.name.toLowerCase() === a.name.toLowerCase());
+      if (existing) { kept.add(existing.id); continue; }
+      const def = DEFAULT_LAB_CATALOG.find((d) => d.id === a.id || d.name.toLowerCase() === a.name.toLowerCase());
+      toAppend.push({
+        id: a.id,
+        code: a.code || a.barcode || def?.code || '',
+        name: a.name,
+        category: (a.category as LabCategory) || def?.category || 'biochimie',
+        parameters: a.parameters || def?.parameters || [a.name],
+        sampleType: a.sampleType || def?.sampleType || 'Sang veineux',
+        priceComptoir: a.priceComptoir,
+        priceSociete: a.priceSociete,
+        priceExterne: a.priceExterne,
+        urgentPrice: a.urgentPrice || def?.urgentPrice || Math.round((a.priceComptoir || 0) * 1.5),
+        durationHours: a.durationHours || def?.durationHours || 4,
+        defaultUrgent: false,
+      });
+    }
+    const filtered = labCatalog.filter((e) => kept.has(e.id));
+    if (filtered.length !== labCatalog.length || toAppend.length > 0) {
+      labCatalog = [...filtered, ...toAppend];
+      mirrorChanged = true;
+    }
+  }
+
+  const changed = addedLab + addedEcho > 0 || mirrorChanged;
+  return changed
+    ? { state: { ...state, articles: nextArticles, labCatalog }, changed: true, addedLab, addedEcho }
+    : { state, changed: false, addedLab: 0, addedEcho: 0 };
+}
+
+/**
+ * Prépare un état chargé depuis une base locale (IndexedDB ou MySQL) :
+ * normalisation des familles, garantie de l'établissement principal et
+ * synchronisation de la base unifiée des articles (LABO + ECHO).
+ */
+export function prepareLoadedState(state: AppState): AppState {
+  const normalized = ensureEtablissements(normalizeFamilyBases(state));
+  const { state: unified, changed, addedLab, addedEcho } = ensureUnifiedArticles(normalized);
+  if (changed) {
+    // eslint-disable-next-line no-console
+    console.info(
+      `[articles unifiés] base locale synchronisée : ${addedLab} article(s) LABO et ${addedEcho} article(s) ECHO intégrés à la table articles, catalogue legacy réaligné.`
+    );
+  }
+  return unified;
+}
+
 /**
  * Retire un passage de la file d'attente sans jamais supprimer le dossier patient.
  * Seules les consultations non encaissées et leurs éléments de facturation en attente
