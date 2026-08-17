@@ -116,21 +116,30 @@ function salfa_read_collection(PDO $pdo, array $dataset): ?array
     );
 }
 
-function salfa_write_collection(PDO $pdo, array $dataset, $incoming): void
+/**
+ * Écriture d'une collection.
+ *
+ * ⚠️ MULTI-POSTES : la table n'est PLUS vidée avant écriture. Plusieurs postes
+ * (médecin, caisse, laboratoire, pharmacie) enregistrent en parallèle ; un
+ * DELETE global faisait disparaître les saisies d'un poste dès qu'un autre
+ * sauvegardait (consultations absentes de la file d'attente de la caisse).
+ *
+ * Chaque ligne reçue est insérée ou mise à jour (UPSERT). Les suppressions
+ * volontaires sont transmises explicitement par le client dans `deletions`.
+ */
+function salfa_write_collection(PDO $pdo, array $dataset, $incoming, array $deleteIds = []): void
 {
     if ($dataset['type'] === 'counter') {
+        // Compteur séquentiel : on ne recule jamais (GREATEST), sinon un poste
+        // en retard réinitialiserait la numérotation des factures.
         $value = is_numeric($incoming) ? (int) $incoming : 0;
         $stmt = $pdo->prepare(
             'INSERT INTO `' . $dataset['table'] . '` (`id`, `value`) VALUES (?, ?)
-             ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)'
+             ON DUPLICATE KEY UPDATE `value` = GREATEST(`value`, VALUES(`value`))'
         );
         $stmt->execute([$dataset['counter_id'], $value]);
         return;
     }
-
-    // On remplace intégralement la collection : l'application envoie TOUJOURS
-    // l'état complet de la collection à chaque sauvegarde (source unique de vérité).
-    $pdo->exec('DELETE FROM `' . $dataset['table'] . '`');
 
     if ($dataset['type'] === 'single') {
         if (!is_array($incoming)) {
@@ -140,13 +149,38 @@ function salfa_write_collection(PDO $pdo, array $dataset, $incoming): void
         $rows = salfa_prepare_rows([array_merge($incoming, ['id' => 'default'])], $dataset);
     } else {
         $rows = salfa_prepare_rows(is_array($incoming) ? $incoming : [], $dataset);
+        // Suppressions explicites demandées par le client (retrait d'une file,
+        // annulation d'une ligne...). Elles seules retirent des données.
+        $ids = [];
+        foreach ($deleteIds as $id) {
+            if (is_string($id) && $id !== '') {
+                $ids[] = $id;
+            }
+        }
+        if (count($ids) > 0) {
+            foreach (array_chunk($ids, 200) as $chunk) {
+                $placeholders = implode(', ', array_fill(0, count($chunk), '?'));
+                $stmt = $pdo->prepare('DELETE FROM `' . $dataset['table'] . '` WHERE `id` IN (' . $placeholders . ')');
+                $stmt->execute($chunk);
+            }
+        }
     }
 
     foreach ($rows as $dbRow) {
         $columns = array_keys($dbRow);
         $quoted = array_map(static function (string $c): string { return '`' . $c . '`'; }, $columns);
         $placeholders = implode(', ', array_fill(0, count($columns), '?'));
+        $updates = [];
+        foreach ($columns as $c) {
+            if ($c === 'id') {
+                continue;
+            }
+            $updates[] = '`' . $c . '` = VALUES(`' . $c . '`)';
+        }
         $sql = 'INSERT INTO `' . $dataset['table'] . '` (' . implode(', ', $quoted) . ') VALUES (' . $placeholders . ')';
+        if (count($updates) > 0) {
+            $sql .= ' ON DUPLICATE KEY UPDATE ' . implode(', ', $updates);
+        }
         $stmt = $pdo->prepare($sql);
         $stmt->execute(array_values($dbRow));
     }
@@ -206,13 +240,17 @@ if ($action === 'sync_all') {
         salfa_respond(['success' => false, 'message' => 'Payload JSON invalide (attendu : {"datasets":{...}}).'], 400);
     }
 
+    // Suppressions explicites, par collection : {"deletions":{"patients":["id1",...]}}
+    $deletions = isset($payload['deletions']) && is_array($payload['deletions']) ? $payload['deletions'] : [];
+
     $pdo->beginTransaction();
     try {
         foreach ($payload['datasets'] as $name => $data) {
             if (!isset($datasets[$name])) {
                 continue; // collection inconnue → ignorée silencieusement
             }
-            salfa_write_collection($pdo, $datasets[$name], $data);
+            $toDelete = isset($deletions[$name]) && is_array($deletions[$name]) ? $deletions[$name] : [];
+            salfa_write_collection($pdo, $datasets[$name], $data, $toDelete);
         }
         $pdo->commit();
     } catch (Throwable $e) {
@@ -238,7 +276,8 @@ if ($action === 'sync') {
         salfa_respond(['success' => false, 'message' => 'Payload JSON invalide.'], 400);
     }
     $data = array_key_exists('data', $payload) ? $payload['data'] : $payload;
-    salfa_write_collection($pdo, $datasets[$name], $data);
+    $toDelete = isset($payload['deletions']) && is_array($payload['deletions']) ? $payload['deletions'] : [];
+    salfa_write_collection($pdo, $datasets[$name], $data, $toDelete);
     salfa_respond(['success' => true, 'message' => 'Collection enregistrée.']);
 }
 

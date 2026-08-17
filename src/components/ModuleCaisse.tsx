@@ -1,30 +1,53 @@
 import { useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription, Article } from '../types';
+import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription, Article, Patient } from '../types';
 import type { AppState } from '../store';
 import {
   addAuditLog, addNotification, formatAr, formatNum, roundTo2, getPrice, calculateAge,
   generateDossierNumber, addJourneyEvent, generatePharmaClosingNumber, purgePatientFromQueue,
-  familyManagesStock,
+  familyManagesStock, isLabFamily, isEchoFamily,
 } from '../store';
-import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText } from 'lucide-react';
+import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText, RefreshCw } from 'lucide-react';
 import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket } from '../utils/printTicket';
 import { printSalfaIndividualInvoice } from '../utils/printSalfaInvoice';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
 import ConfirmModal from './ConfirmModal';
+
+/** Patient factice utilisé pour imprimer les bons d'analyse / d'échographie des ventes
+ *  externes (un client externe n'a pas de dossier ouvert en réception). */
+const EXT_CLIENT_PATIENT: Patient = {
+  id: 'ext', dossier: 'CLIENT EXTERNE', matricule: undefined, firstName: '', lastName: 'Client Externe',
+  dateOfBirth: '', age: '—', gender: 'M', address: '', contact: '', ssn: '',
+  insureName: undefined, clientType: 'externe', company: undefined, subCompany: undefined,
+  allergies: [], chronicTreatments: [], antecedents: [],
+  registeredAt: '', registeredBy: '', status: 'completed',
+};
+
 interface Props {
   state: AppState;
   setState: React.Dispatch<React.SetStateAction<AppState>>;
   onOpenMessagingWithRecipient?: (recipientId: string) => void;
+  /** Force la relecture immédiate des saisies des autres postes (médecins, laboratoire...). */
+  onRefreshQueue?: () => void;
 }
 // L'ancien onglet « Comptes sociétés » a été déplacé vers le module dédié
 // du rôle Responsable facturation (ModuleFacturationSocietes).
 type Tab = 'payment' | 'hospit' | 'bloc' | 'closing';
 type HbModal = 'none' | 'add_patient' | 'add_article' | 'edit_client';
 
-export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecipient }: Props) {
+export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecipient, onRefreshQueue }: Props) {
   // Familles « ne pas gérer en stock » : vente sans contrôle ni décompte de stock
-  const managesStock = (a: Article | undefined) => !!a && familyManagesStock(a.family, state.familles);
+  // Prestations (services) issues de la base unifiée des articles : examens de
+  // laboratoire (famille LABO, unité « analyse ») et actes d'échographie
+  // (famille ECHO, unité « acte »). Ce ne sont pas des marchandises : aucun
+  // stock à décompter, mais un bon d'examen à imprimer après encaissement.
+  const isLabExamArticle = (a: Article | undefined) =>
+    !!a && isLabFamily(a.family) && !['unité', 'flacon', 'boîte'].includes(a.unit);
+  const isEchoActArticle = (a: Article | undefined) =>
+    !!a && isEchoFamily(a.family) && !['unité', 'flacon', 'boîte'].includes(a.unit);
+  const isServiceArticle = (a: Article | undefined) => isLabExamArticle(a) || isEchoActArticle(a);
+  const managesStock = (a: Article | undefined) =>
+    !!a && !isServiceArticle(a) && familyManagesStock(a.family, state.familles);
   const [selConsultId, setSelConsultId] = useState<string | null>(null);
   const [selPatientId, setSelPatientId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('payment');
@@ -438,9 +461,13 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       const art = state.articles.find((a) => a.name === l.articleName);
       return art?.family === 'MEDIC';
     });
+    // Prestations laboratoire / échographie vendues au client externe : elles ne
+    // décomptent aucun stock et donnent lieu à l'impression d'un bon d'examen.
+    const labSaleLines = extLines.filter((l) => isLabExamArticle(state.articles.find((a) => a.name === l.articleName)));
+    const echoSaleLines = extLines.filter((l) => isEchoActArticle(state.articles.find((a) => a.name === l.articleName)));
     const nonMedicamentLines = extLines.filter((l) => {
       const art = state.articles.find((a) => a.name === l.articleName);
-      return art?.family !== 'MEDIC';
+      return art?.family !== 'MEDIC' && !isServiceArticle(art);
     });
 
     const invId = uuidv4();
@@ -451,11 +478,49 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       role: 'cashier',
     };
 
+    // ---- Demandes d'analyses du client externe : la vente étant encaissée, elles
+    // sont créées directement au statut 'paid' et arrivent donc dans la file
+    // d'attente du laboratoire. ----
+    const newLabRequests: LabRequest[] = labSaleLines.flatMap((l) => {
+      const art = state.articles.find((a) => a.name === l.articleName);
+      const qty = Math.max(1, Math.round(l.quantity) || 1);
+      return Array.from({ length: qty }, () => ({
+        id: uuidv4(),
+        examType: l.articleName,
+        code: art?.code || art?.barcode,
+        category: art?.category as LabRequest['category'],
+        parameters: art?.parameters && art.parameters.length > 0 ? [...art.parameters] : [l.articleName],
+        urgent: false,
+        status: 'paid' as const,
+        sampleType: art?.sampleType || 'Sang veineux',
+        requestedBy: state.currentUser?.id || 'CASHIER',
+        requestedAt: now,
+        invoiceId: invId,
+        price: roundTo2(l.unitPrice * (1 - l.discount / 100)),
+      }));
+    });
+
+    // ---- Demandes d'échographie du client externe (rattachées à la consultation externe) ----
+    const newEchoRequests: EchoRequest[] = echoSaleLines.flatMap((l) => {
+      const qty = Math.max(1, Math.round(l.quantity) || 1);
+      return Array.from({ length: qty }, () => ({
+        id: uuidv4(),
+        examType: l.articleName,
+        urgent: false,
+        status: 'paid' as const,
+        requestedBy: state.currentUser?.id || 'CASHIER',
+        requestedAt: now,
+        invoiceId: invId,
+        price: roundTo2(l.unitPrice * (1 - l.discount / 100)),
+      }));
+    });
+
     let extConsultId: string | undefined = undefined;
     let newConsultations: Consultation[] = [];
 
-    if (medicamentLines.length > 0) {
+    if (medicamentLines.length > 0 || newEchoRequests.length > 0) {
       extConsultId = uuidv4();
+      newEchoRequests.forEach((e) => { e.consultationId = extConsultId; });
       const prescriptions: Prescription[] = medicamentLines.map((l) => ({
         id: uuidv4(),
         articleId: state.articles.find((a) => a.name === l.articleName)?.id || '',
@@ -474,11 +539,11 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         doctorId: state.currentUser?.id || 'CASHIER',
         doctorName: extDoctor.name,
         date: now,
-        visitReason: 'Vente externe — Pharmacie',
+        visitReason: `Vente externe${medicamentLines.length > 0 ? ' — Pharmacie' : ''}${newEchoRequests.length > 0 ? ' — Échographie' : ''}`,
         diagnosis: 'Client Externe',
         prescriptions,
         labRequests: [],
-        echoRequests: [],
+        echoRequests: newEchoRequests,
         hospitalizeRequested: false,
         surgeryRequested: false,
         isEmergency: false,
@@ -493,7 +558,11 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       consultationId: extConsultId,
       clientName: 'Client Externe',
       clientType: 'externe',
-      items: extLines.map(l => ({ description: `${l.articleName} × ${l.quantity}`, amount: extLineAmt(l), category: 'pharmacy' as const })),
+      items: extLines.map(l => {
+        const art = state.articles.find(a => a.name === l.articleName);
+        const category: InvoiceItem['category'] = isLabExamArticle(art) ? 'lab' : isEchoActArticle(art) ? 'echo' : 'pharmacy';
+        return { description: `${l.articleName} × ${l.quantity}`, amount: extLineAmt(l), category };
+      }),
       totalAmount: extTotal,
       patientCharge: extTotal,
       status: 'paid',
@@ -517,13 +586,31 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         ...prev,
         invoices: [...prev.invoices, inv],
         consultations: [...prev.consultations, ...newConsultations],
+        labRequests: [...prev.labRequests, ...newLabRequests],
         articles
       };
-      const parts = medicamentLines.length > 0 ? 'médicaments' : '';
+      const parts = [
+        medicamentLines.length > 0 ? 'médicaments' : '',
+        newLabRequests.length > 0 ? 'analyses' : '',
+        newEchoRequests.length > 0 ? 'échographies' : '',
+      ].filter(Boolean).join(' + ');
       addAuditLog(next, 'VENTE_EXTERNE', `Client Externe — ${formatAr(extTotal)}${parts ? ` (${parts})` : ''}${medicamentLines.length > 0 ? ' — ordonnance ajoutée à la file d\'attente pharmacie' : ''}`);
       return next;
     });
+    // 1) Reçu de paiement (ticket de caisse)
     openThermalTicket(state.ticketSettings, inv, undefined, state.currentUser || undefined);
+    // 2) Bon d'analyse laboratoire — client externe (imprimé après le reçu)
+    if (newLabRequests.length > 0) {
+      setTimeout(() => {
+        printLabRequestTicket(state.ticketSettings, EXT_CLIENT_PATIENT, extDoctor, new Date(), newLabRequests);
+      }, 900);
+    }
+    // 3) Bon d'échographie — client externe
+    if (newEchoRequests.length > 0) {
+      setTimeout(() => {
+        printEchoRequestTicket(state.ticketSettings, EXT_CLIENT_PATIENT, extDoctor, new Date(), newEchoRequests);
+      }, newLabRequests.length > 0 ? 1800 : 900);
+    }
 
     setExtLines([]); setExtSearch('');
   };
@@ -952,7 +1039,14 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
               <div className="border rounded-lg overflow-hidden bg-white">
                 <div className="bg-amber-50 border-b border-amber-200 px-3 py-2 flex items-center justify-between gap-2">
                   <span className="font-bold text-xs text-amber-800 flex items-center gap-1.5"><CreditCard className="w-4 h-4" /> File d'attente de paiement</span>
-                  <span className="px-2 py-0.5 rounded-full bg-amber-600 text-white text-[10px] font-bold">{pendingPatients.length}</span>
+                  <span className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => onRefreshQueue?.()}
+                      title="Rechercher les nouvelles consultations validées par les médecins"
+                      className="p-1 rounded-lg text-amber-700 hover:bg-amber-200/70 cursor-pointer transition"
+                    ><RefreshCw className="w-3.5 h-3.5" /></button>
+                    <span className="px-2 py-0.5 rounded-full bg-amber-600 text-white text-[10px] font-bold">{pendingPatients.length}</span>
+                  </span>
                 </div>
                 <div className="divide-y max-h-[500px] overflow-y-auto">
                   {pendingPatients.length === 0 ? <div className="p-6 text-center text-slate-400 text-sm">Aucune facture</div>
@@ -1002,7 +1096,11 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                                 ? <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-[9px] font-bold">🚨 RUPTURE — invendable</span>
                                 : manages
                                   ? <span className={`font-mono text-[10px] ${isLow ? 'text-amber-600 font-bold' : 'text-slate-400'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>
-                                  : <span className="font-mono text-[10px] text-slate-400" title="Famille non gérée en stock">stock: —</span>}
+                                  : isLabExamArticle(a)
+                                    ? <span className="px-1.5 py-0.5 bg-teal-100 text-teal-700 rounded text-[9px] font-bold" title="Analyse de laboratoire — un bon d'analyse sera imprimé après encaissement">BON LABO</span>
+                                    : isEchoActArticle(a)
+                                      ? <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[9px] font-bold" title="Échographie — un bon d'échographie sera imprimé après encaissement">BON ÉCHO</span>
+                                      : <span className="font-mono text-[10px] text-slate-400" title="Famille non gérée en stock">stock: —</span>}
                               <span className={`font-mono ${isOut ? 'text-red-400' : 'text-blue-600'}`}>{formatAr(getPrice(a, 'externe'))}</span>
                             </span>
                           </div>);

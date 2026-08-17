@@ -8,6 +8,9 @@ import {
   loadStateFromMysql,
   saveStateToMysql,
   flushStateToMysql,
+  syncStateWithMysql,
+  refreshStateFromMysql,
+  setSyncBaseline,
   type WampSyncState,
 } from './wamp';
 import ModuleReception from './components/ModuleReception';
@@ -62,7 +65,7 @@ function WampSyncBadge({ wamp }: { wamp: WampSyncState }) {
   } else if (wamp.usingMysql) {
     cls = 'border-emerald-300 bg-emerald-50/95 text-emerald-700';
     icon = '✅';
-    label = 'MySQL : toutes les données synchronisées';
+    label = `MySQL : postes synchronisés${time ? ` (${time})` : ''}`;
   }
 
   return (
@@ -163,6 +166,10 @@ function AppInner() {
   // Après le chargement initial, on saute une seule sauvegarde redondante
   const skipFirstSave = useRef(true);
   const skipFirstBrowserSave = useRef(true);
+  // Un seul échange MySQL à la fois : évite que deux synchronisations
+  // concurrentes ne se marchent dessus (et ne ressuscitent des données).
+  const syncInFlight = useRef(false);
+  const pendingSync = useRef(false);
 
   /* ─── WAMP : au démarrage, TOUTES les données sont chargées depuis MySQL.
      Si MySQL ne contient encore rien, l'état local initial y est écrit
@@ -177,7 +184,10 @@ function AppInner() {
       const stored = await loadStateFromMysql();
       if (cancelled) return;
       if (stored) {
-        setState(prepareLoadedState(stored));
+        const loaded = prepareLoadedState(stored);
+        // Point de départ de la fusion multi-postes : ce que ce poste sait déjà en base.
+        setSyncBaseline(loaded);
+        setState(loaded);
         setWamp((s) => ({ ...s, loading: false, usingMysql: true, lastSavedAt: Date.now() }));
       } else {
         setWamp((s) => ({ ...s, loading: false }));
@@ -234,8 +244,11 @@ function AppInner() {
     return () => window.removeEventListener('pagehide', flush);
   }, []);
 
-  /* ─── WAMP : CHAQUE modification de l'état est automatiquement enregistrée
-     dans MySQL (sauvegarde différée de 800 ms pour regrouper les actions). ─── */
+  /* ─── WAMP : CHAQUE modification de l'état est envoyée à MySQL, ET les saisies
+     des autres postes sont récupérées dans le même échange (fusion à trois
+     versions). Sans cela, le dernier poste qui enregistre écrasait le travail
+     des autres : les consultations validées par le médecin n'arrivaient jamais
+     dans la file d'attente de la caisse. ─── */
   useEffect(() => {
     if (!IS_WAMP_BUILD) return;
     if (wamp.loading) return; // pendant le chargement initial on ne réécrit pas la base
@@ -245,20 +258,51 @@ function AppInner() {
       return;
     }
     const t = window.setTimeout(() => {
+      if (syncInFlight.current) { pendingSync.current = true; return; }
+      syncInFlight.current = true;
       setWamp((s) => ({ ...s, syncing: true }));
-      saveStateToMysql(state).then((ok) => {
+      syncStateWithMysql(stateRef.current).then(({ ok, merged }) => {
+        syncInFlight.current = false;
+        if (merged) setState(merged);
         setWamp((s) => ({
           ...s,
           syncing: false,
           usingMysql: s.usingMysql || ok,
           lastSavedAt: ok ? Date.now() : s.lastSavedAt,
-          error: ok ? null : (s.error ?? 'Échec de la sauvegarde MySQL.'),
+          error: ok ? null : (s.error ?? 'Échec de la synchronisation MySQL.'),
         }));
       });
     }, 800);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, wamp.loading]);
+
+  /* ─── WAMP : rafraîchissement périodique ───
+     Un poste peut rester inactif (la caisse attend des patients). Sans lecture
+     régulière, il ne verrait jamais arriver les saisies des autres services.
+     Toutes les 5 secondes, les nouveautés de MySQL sont fusionnées dans l'état
+     local — les saisies en cours sur ce poste ne sont jamais écrasées. */
+  useEffect(() => {
+    if (!IS_WAMP_BUILD) return;
+    if (wamp.loading) return;
+    const timer = window.setInterval(() => {
+      if (syncInFlight.current) return;
+      if (document.hidden) return; // onglet en arrière-plan : inutile de solliciter MySQL
+      syncInFlight.current = true;
+      refreshStateFromMysql(stateRef.current)
+        .then((merged) => {
+          if (merged) setState(merged);
+        })
+        .finally(() => {
+          syncInFlight.current = false;
+          if (pendingSync.current) {
+            pendingSync.current = false;
+            void syncStateWithMysql(stateRef.current).then(({ merged }) => { if (merged) setState(merged); });
+          }
+        });
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [wamp.loading]);
 
   /* ─── WAMP : enregistrement final du dernier état à la fermeture de l'onglet
      (pagehide / beforeunload) pour ne perdre AUCUNE donnée. ─── */
@@ -348,6 +392,16 @@ function AppInner() {
     });
   };
 
+  /** Relecture immédiate des saisies des autres postes (bouton « rafraîchir »). */
+  const handleForceRefresh = () => {
+    if (!IS_WAMP_BUILD) return;
+    if (syncInFlight.current) return;
+    syncInFlight.current = true;
+    refreshStateFromMysql(stateRef.current)
+      .then((merged) => { if (merged) setState(merged); })
+      .finally(() => { syncInFlight.current = false; });
+  };
+
   const myMsgCount = state.messages.filter((m) => m.toUserId === (state.currentUser?.id || 'RECEPTION') && !m.read).length;
 
   const handleOpenMessagingWithRecipient = (id?: string | null) => {
@@ -419,7 +473,7 @@ function AppInner() {
   const renderModule = () => {
     switch (state.currentUser?.role) {
       case 'doctor': return <ModuleMedecin state={state} setState={setState} onOpenMedicalRecord={handleOpenMedicalRecord} />;
-      case 'cashier': return <ModuleCaisse state={state} setState={setState} onOpenMessagingWithRecipient={handleOpenMessagingWithRecipient} />;
+      case 'cashier': return <ModuleCaisse state={state} setState={setState} onOpenMessagingWithRecipient={handleOpenMessagingWithRecipient} onRefreshQueue={handleForceRefresh} />;
       case 'pharmacy': return <ModulePharmacie state={state} setState={setState} onOpenMessagingWithRecipient={handleOpenMessagingWithRecipient} />;
       case 'magasinier': return <ModuleMagasinier state={state} setState={setState} />;
       case 'laboratory': return <ModuleLaboratoire state={state} setState={setState} />;
