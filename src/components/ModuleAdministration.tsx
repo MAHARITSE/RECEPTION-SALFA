@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import type { UserRole, TicketSettings, Company, CompanySettlementMode, User } from '../types';
-import { formatAr, addAuditLog, ensureEtablissements, migrateLegacyToVentes, createInitialState, familyManagesStock } from '../store';
+import { formatAr, addAuditLog, ensureEtablissements, migrateLegacyToVentes, createInitialState, familyManagesStock, prepareLoadedState } from '../store';
 import { IS_WAMP_BUILD } from '../wamp';
 import type { AppState } from '../store';
 import ModuleReception from './ModuleReception';
@@ -483,7 +483,9 @@ export default function ModuleAdministration({ state, setState }: Props) {
       variant: 'danger',
       onConfirm: () => {
         try { localStorage.clear(); } catch { /* ignore */ }
-        const freshState = createInitialState();
+        // prepareLoadedState : normalise les familles et intègre la base unifiée
+        // des articles (familles LABO / ECHO / HOSP) dès la réinitialisation.
+        const freshState = prepareLoadedState(createInitialState());
         setState((prev) => {
           // Mode WAMP (données dans MySQL) : on repart d'un état vide SANS données
           // JSON, en conservant la configuration système indispensable (comptes de

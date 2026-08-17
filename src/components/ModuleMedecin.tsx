@@ -244,8 +244,9 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
   const toggleEchoUrgent = (examId: string) => setEchoDraft(echoDraft.map((d) => (d.examId === examId ? { ...d, urgent: !d.urgent } : d)));
   const updateEchoNotes = (examId: string, val: string) => setEchoDraft(echoDraft.map((d) => (d.examId === examId ? { ...d, notes: val } : d)));
 
-  // Saisie médicament : exclure les familles Laboratoire (LAB/LABO) et Échographie (ECHO).
-  // Les autres familles (MEDIC, DENT, familles ajoutées...) restent disponibles.
+  // Saisie médicament : exclure les familles Laboratoire (LAB/LABO), Échographie (ECHO)
+  // et Hospitalisation (HOSP). Les autres familles (MEDIC, DENT, familles ajoutées...)
+  // restent disponibles.
   const filteredArticles = articleSearch.length >= 1
     ? state.articles.filter((a) => isMedicationEntryFamily(a.family) && a.name.toLowerCase().includes(articleSearch.toLowerCase()))
     : [];

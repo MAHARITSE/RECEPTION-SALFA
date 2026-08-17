@@ -113,7 +113,7 @@ Toutes les entités sont stockées dans des tableaux typés TypeScript.
 |-------|------|-------------|
 | `id` | `string (UUID)` | Identifiant unique |
 | `name` | `string` | Nom de l'article |
-| `family` | `'MEDIC' \| 'LABO' \| 'DENT' \| 'ECHO'` | Famille |
+| `family` | `'MEDIC' \| 'LABO' \| 'DENT' \| 'ECHO' \| 'HOSP'` | Famille |
 | `unit` | `string` | Unité (comprimé, flacon...) |
 | `barcode` | `string?` | Code-barres |
 | `priceComptoir` | `number` | Prix client comptoir |
@@ -141,27 +141,31 @@ Toutes les entités sont stockées dans des tableaux typés TypeScript.
 | `urgentPrice` | `number?` | Tarif d'urgence (si applicable) |
 | `durationHours` | `number?` | Délai indicatif de rendu (heures) |
 
-### 🔗 BASE UNIFIÉE DES ARTICLES — familles `LABO` et `ECHO`
+### 🔗 BASE UNIFIÉE DES ARTICLES — familles `LABO`, `ECHO` et `HOSP`
 
 > **Principe :** la table `articles` est le **référentiel unique**. Tous les
-> examens de laboratoire, les actes d'échographie et leurs consommables y sont
-> intégrés, et les modules **Magasinier, Laboratoire, Médecin, Caisse et
-> Facturation** l'exploitent via `getLabCatalog(articles, labCatalog)` et
-> `getEchoCatalog(articles)`.
+> examens de laboratoire, les actes d'échographie, les actes/forfaits
+> d'hospitalisation et leurs consommables y sont intégrés, et les modules
+> **Magasinier, Laboratoire, Médecin, Caisse et Facturation** l'exploitent via
+> `getLabCatalog(articles, labCatalog)`, `getEchoCatalog(articles)` et
+> `getHospCatalog(articles)`.
 
 | Famille | Contenu intégré dans `articles` |
 |---------|--------------------------------|
 | `LABO` | Examens : NFS, Glycémie, Créatinine, CRP, Groupe Sanguin & Rhésus, ECBU, Goutte épaisse, TP/INR, bilans lipidique/hépatique/rénal complets, Ionogramme, TDR Paludisme, Sérologie VIH/Syphilis — **Consommables** : Tube EDTA, Réactif Glycémie, Lames porte-objet |
 | `ECHO` | Actes : Abdominale, Pelvienne, Obstétricale, Cardiaque (ETT), Rénale, Thyroïdienne, Mammaire, Parties molles, Doppler, Prostatique — **Consommable** : Gel échographie |
+| `HOSP` | Actes/forfaits : Journée d'hospitalisation / Chambre, Lit / nuit, Chambre individuelle, Surveillance & soins infirmiers, Forfait hospitalisation, Salle de surveillance post-opératoire, Forfait maternité, Visite de suivi (unités `jour` / `nuit` / `forfait` / `visite`) — la famille HOSP est configurée **non gérée en stock** (`manageStock = false`) |
 
-- Les examens/actes portent `unit = 'analyse'` / `'acte'` et sont exclus des
-  alertes de stock (`alertDisabledCentral` / `alertDisabledPharmacie`).
+- Les examens/actes portent `unit = 'analyse'` / `'acte'` (LABO/ECHO) et sont
+  exclus des alertes de stock (`alertDisabledCentral` / `alertDisabledPharmacie`) ;
+  les actes HOSP héritent en plus du drapeau famille `manageStock = false`
+  (aucun suivi, alerte ni contrôle de stock — vendables sans condition).
 - `labCatalog` n'est conservé que comme **miroir de compatibilité** (table
   MySQL `catalogue_laboratoire`), réaligné à chaque démarrage : les articles
   sont la source de vérité (ajouts et suppressions répercutés).
 - **Auto-synchronisation** : `prepareLoadedState(state)` s'exécute au
   chargement de toute base locale (IndexedDB ou MySQL). Si aucun examen LABO /
-  acte ECHO n'existe dans `articles`, le référentiel standard y est intégré
+  acte ECHO / acte HOSP n'existe dans `articles`, le référentiel standard y est intégré
   (y compris les examens personnalisés de l'ancien `labCatalog`), sans jamais
   modifier ni écraser un article existant.
 - **Base MySQL** : `reception_salfa.sql` intègre le référentiel unifié en

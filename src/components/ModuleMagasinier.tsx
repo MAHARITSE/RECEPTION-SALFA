@@ -1248,6 +1248,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                       const famCode = normalizeFamilyCode(a.family);
                       const badgeClass = famCode === 'LABO' ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
                         : famCode === 'ECHO' ? 'bg-amber-100 text-amber-800 border-amber-300'
+                        : famCode === 'HOSP' ? 'bg-orange-100 text-orange-800 border-orange-300'
                         : famCode === 'MEDIC' ? 'bg-blue-100 text-blue-800 border-blue-300'
                         : famCode === 'DENT' ? 'bg-purple-100 text-purple-800 border-purple-300'
                         : 'bg-slate-100 text-slate-700 border-slate-300';
