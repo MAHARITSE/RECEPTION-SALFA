@@ -199,27 +199,28 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
       return;
     }
     setState((prev) => {
+      // Un déblocage doit être validé par la caisse : on ne modifie pas l'article
+      // et on n'ouvre aucun menu. La caisse reçoit une notification avec Oui / Non.
+      if (blockModal.currentlyBlocked) {
+        const next = { ...prev };
+        const notification = addNotification(
+          next,
+          'cashier',
+          `Demande de déblocage pharmacie : « ${blockModal.name} ». Autoriser la vente ?`,
+          'warning'
+        );
+        if (notification) notification.action = { type: 'pharmacy-unblock', articleId: blockModal.articleId, articleName: blockModal.name };
+        addAuditLog(next, 'DEMANDE_DEBLOCAGE_VENTE', blockModal.name);
+        return next;
+      }
       const next = {
         ...prev,
-        articles: prev.articles.map((a) => {
-          if (a.id !== blockModal.articleId) return a;
-          if (blockModal.currentlyBlocked) {
-            return { ...a, saleBlocked: false, saleBlockReason: undefined, saleBlockedAt: undefined, saleBlockedBy: undefined };
-          }
-          return {
-            ...a,
-            saleBlocked: true,
-            saleBlockReason: reason,
-            saleBlockedAt: new Date().toISOString(),
-            saleBlockedBy: prev.currentUser?.id,
-          };
-        }),
+        articles: prev.articles.map((a) => a.id === blockModal.articleId ? {
+          ...a, saleBlocked: true, saleBlockReason: reason,
+          saleBlockedAt: new Date().toISOString(), saleBlockedBy: prev.currentUser?.id,
+        } : a),
       };
-      addAuditLog(
-        next,
-        blockModal.currentlyBlocked ? 'DEBLOCAGE_VENTE' : 'BLOCAGE_VENTE',
-        `${blockModal.name}${reason ? ` — ${reason}` : ''}`
-      );
+      addAuditLog(next, 'BLOCAGE_VENTE', `${blockModal.name}${reason ? ` — ${reason}` : ''}`);
       return next;
     });
     setBlockModal(null);

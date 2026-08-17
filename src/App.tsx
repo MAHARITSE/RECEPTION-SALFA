@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Component, type ReactNode, type ErrorInfo } from 'react';
 import type { User } from './types';
-import { createInitialState, ensureEtablissements, migrateLegacyToVentes, normalizeFamilyBases, type AppState } from './store';
+import { createInitialState, ensureEtablissements, migrateLegacyToVentes, normalizeFamilyBases, addAuditLog, type AppState } from './store';
 import { loadStateFromBrowser, saveStateToBrowser } from './browserDb';
 import {
   IS_WAMP_BUILD,
@@ -322,6 +322,21 @@ function AppInner() {
     setState((prev) => ({ ...prev, notifications: prev.notifications.map((n) => n.id === notifId ? { ...n, read: true } : n) }));
   };
 
+  const handleNotificationAction = (notifId: string, accepted: boolean) => {
+    setState((prev) => {
+      const notification = prev.notifications.find((n) => n.id === notifId);
+      if (!notification?.action || notification.action.type !== 'pharmacy-unblock') return prev;
+      const next = {
+        ...prev,
+        articles: accepted ? prev.articles.map((a) => a.id === notification.action!.articleId
+          ? { ...a, saleBlocked: false, saleBlockReason: undefined, saleBlockedAt: undefined, saleBlockedBy: undefined } : a) : prev.articles,
+        notifications: prev.notifications.map((n) => n.id === notifId ? { ...n, read: true, action: undefined } : n),
+      };
+      addAuditLog(next, accepted ? 'DEBLOCAGE_VENTE' : 'REFUS_DEBLOCAGE_VENTE', `${notification.action.articleName} — réponse caisse : ${accepted ? 'Oui' : 'Non'}`);
+      return next;
+    });
+  };
+
   const myMsgCount = state.messages.filter((m) => m.toUserId === (state.currentUser?.id || 'RECEPTION') && !m.read).length;
 
   const handleOpenMessagingWithRecipient = (id?: string | null) => {
@@ -377,6 +392,7 @@ function AppInner() {
           notifications={state.notifications}
           onLogout={handleLogout}
           onMarkRead={handleMarkRead}
+          onNotificationAction={handleNotificationAction}
           onOpenMessaging={() => handleOpenMessagingWithRecipient(null)}
           onOpenMedicalRecord={(patientId) => handleOpenMedicalRecord(patientId)}
           unreadMessages={myMsgCount}
@@ -404,7 +420,7 @@ function AppInner() {
 
   return (
     <>
-      <MiseEnPage user={state.currentUser} patients={state.patients} notifications={state.notifications} onLogout={handleLogout} onMarkRead={handleMarkRead}
+      <MiseEnPage user={state.currentUser} patients={state.patients} notifications={state.notifications} onLogout={handleLogout} onMarkRead={handleMarkRead} onNotificationAction={handleNotificationAction}
         onOpenMessaging={() => handleOpenMessagingWithRecipient(null)} onOpenMedicalRecord={state.currentUser.role === 'doctor' || state.currentUser.role === 'admin' ? handleOpenMedicalRecord : undefined} unreadMessages={myMsgCount}
         fullHeight={state.currentUser.role === 'admin'}>
         {state.currentUser.role !== 'admin' && (
