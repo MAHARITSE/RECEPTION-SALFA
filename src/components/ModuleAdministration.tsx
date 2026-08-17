@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import type { UserRole, TicketSettings, Company, CompanySettlementMode, User } from '../types';
-import { formatAr, addAuditLog, ensureEtablissements, migrateLegacyToVentes, createInitialState } from '../store';
+import { formatAr, addAuditLog, ensureEtablissements, migrateLegacyToVentes, createInitialState, familyManagesStock } from '../store';
 import { IS_WAMP_BUILD } from '../wamp';
 import type { AppState } from '../store';
 import ModuleReception from './ModuleReception';
@@ -540,6 +540,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
   const totalRevenue = todayInvoices.reduce((s, i) => s + i.patientCharge, 0);
 
   const lowStockArticles = state.articles.filter((a) => {
+    if (!familyManagesStock(a.family, state.familles)) return false; // famille non gérée en stock
     const isCentralLow = !a.alertDisabledCentral && a.stockCentral <= a.minStockCentral;
     const isPharmacieLow = !a.alertDisabledPharmacie && a.stockPharmacie <= a.minStockPharmacie;
     return isCentralLow || isPharmacieLow;

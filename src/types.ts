@@ -367,6 +367,14 @@ export interface Famille {
   name: string;
   color: string;
   order?: number;
+  /**
+   * Gestion du stock pour cette famille.
+   * - `true` (ou non renseigné) : les articles sont suivis en stock
+   *   (mouvements, alertes stock bas / rupture, contrôle de vente).
+   * - `false` : la famille n'est pas gérée en stock (ex. actes, services) ;
+   *   aucun contrôle, décompte ni alerte de stock ne s'applique à ses articles.
+   */
+  manageStock?: boolean;
 }
 
 /* ====== IDENTIFICATION DE LA SOCIÉTÉ / DE L'HÔPITAL ====== */

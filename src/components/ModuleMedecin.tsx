@@ -5,7 +5,7 @@ import type { AppState } from '../store';
 import {
   addAuditLog, addNotification, formatAr, formatNum, roundTo2, getPrice, addJourneyEvent,
   labCategoryLabel, purgePatientFromQueue, isPrescriptionPaid, isMedicationEntryFamily,
-  getEchoCatalog, getLabCatalog, DEFAULT_ECHO_CATALOG
+  getEchoCatalog, getLabCatalog, DEFAULT_ECHO_CATALOG, familyManagesStock
 } from '../store';
 import type { EchoExamCatalog } from '../store';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
@@ -1086,8 +1086,9 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
                   {articleSearch.length >= 1 && filteredArticles.length > 0 && (
                     <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 rounded-b shadow-xl z-30 max-h-40 overflow-y-auto">
                       {filteredArticles.map((a, idx) => {
-                        const isOut = a.stockPharmacie <= 0;
-                        const isLow = !isOut && a.stockPharmacie <= a.minStockPharmacie && !a.alertDisabledPharmacie;
+                        const manages = familyManagesStock(a.family, state.familles);
+                        const isOut = manages && a.stockPharmacie <= 0;
+                        const isLow = manages && !isOut && a.stockPharmacie <= a.minStockPharmacie && !a.alertDisabledPharmacie;
                         return (
                         <div key={a.id} onClick={() => handleArticleSelect(a.id)}
                           title={isOut ? 'Rupture de stock pharmacie — non délivrable tant que non réapprovisionné' : undefined}
@@ -1096,7 +1097,9 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
                           <span className="flex items-center gap-2">
                             {isOut
                               ? <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-[9px] font-bold">🚨 RUPTURE</span>
-                              : <span className={`font-mono text-[10px] ${isLow ? 'text-amber-600 font-bold' : 'text-slate-400'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>}
+                              : manages
+                                ? <span className={`font-mono text-[10px] ${isLow ? 'text-amber-600 font-bold' : 'text-slate-400'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>
+                                : <span className="font-mono text-[10px] text-slate-400" title="Famille non gérée en stock">stock: —</span>}
                             <span className={`font-mono ${isOut ? 'text-red-400' : 'text-blue-600'}`}>{formatAr(getPrice(a, clientType))}</span>
                           </span>
                         </div>

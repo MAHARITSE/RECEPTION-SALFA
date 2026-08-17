@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { AppState } from '../store';
 import type { TransferCategory, StockTransfer } from '../types';
-import { addAuditLog, addNotification, formatAr, familyLabel, transferCategoryLabel, transferCategoryColor, addJourneyEvent, isArticleSaleable, createMovementWithLines, generatePharmaClosingNumber, isPrescriptionPaid } from '../store';
+import { addAuditLog, addNotification, formatAr, familyLabel, transferCategoryLabel, transferCategoryColor, addJourneyEvent, isArticleSaleable, createMovementWithLines, generatePharmaClosingNumber, isPrescriptionPaid, familyManagesStock } from '../store';
 import type { MovementType } from '../types';
 import { printDeliveryTicket, printPharmaDeliveryClosingTicket, printPharmaSalesRecapTicket } from '../utils/printTicket';
 import DemandeAchatForm, { type ReqLine } from './DemandeAchatForm';
@@ -260,6 +260,8 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
     const outOfStock = consultation.prescriptions.filter((p) => {
       if (p.delivered) return false;
       const art = state.articles.find((a) => a.name === p.articleName || a.id === p.articleId);
+      // Famille non gérée en stock : aucun contrôle de stock à la délivrance
+      if (art && !familyManagesStock(art.family, state.familles)) return false;
       return !art || art.stockPharmacie < p.quantity;
     });
     if (outOfStock.length > 0) {
@@ -276,6 +278,8 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
         if (p.delivered) return;
         const idx = updatedArticles.findIndex((a) => a.name === p.articleName || a.id === p.articleId);
         if (idx >= 0) {
+          // Famille non gérée en stock : délivrance sans décompte ni mouvement de stock
+          if (!familyManagesStock(updatedArticles[idx].family, prev.familles)) return;
           updatedArticles[idx] = { ...updatedArticles[idx], stockPharmacie: Math.max(0, updatedArticles[idx].stockPharmacie - p.quantity) };
           venteLines.push({
             articleId: updatedArticles[idx].id,
@@ -337,8 +341,8 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
       addAuditLog(next, 'DELIVRANCE', `Médicaments délivrés: ${name}`, consultation.patientId);
       if (consultation.patientId) addJourneyEvent(next, { patientId: consultation.patientId, department: 'pharmacie', action: 'Médicaments délivrés', status: 'medications_delivered', details: consultation.prescriptions.map((p) => `${p.articleName} ×${p.quantity}`).join(', '), actorName: state.currentUser?.name });
       updatedArticles.forEach((a) => {
-        // Alerte désactivée pour cet article (pharmacie) → aucune notification stock
-        if (a.alertDisabledPharmacie) return;
+        // Famille non gérée en stock ou alerte désactivée → aucune notification stock
+        if (!familyManagesStock(a.family, next.familles) || a.alertDisabledPharmacie) return;
         if (a.stockPharmacie <= 0) addNotification(next, 'pharmacy', `🚨 ${a.name} en rupture (pharmacie)`, 'critical');
         else if (a.stockPharmacie <= a.minStockPharmacie) addNotification(next, 'pharmacy', `⚠️ Stock bas pharmacie: ${a.name} (${a.stockPharmacie} / alerte: ${a.minStockPharmacie})`, 'warning');
       });
@@ -516,7 +520,7 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
       {/* BANDEAU D'ALERTE STOCK BAS PHARMACIE */}
       {(() => {
         const lowStockPharmacie = state.articles.filter(
-          (a) => !a.alertDisabledPharmacie && a.stockPharmacie <= a.minStockPharmacie
+          (a) => familyManagesStock(a.family, state.familles) && !a.alertDisabledPharmacie && a.stockPharmacie <= a.minStockPharmacie
         );
         if (lowStockPharmacie.length === 0) return null;
 
@@ -973,9 +977,10 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                       </thead>
                       <tbody>
                         {filtered.map((a) => {
+                          const managesStock = familyManagesStock(a.family, state.familles);
                           const alertMuted = !!a.alertDisabledPharmacie;
-                          const isLow = !alertMuted && a.stockPharmacie <= a.minStockPharmacie && a.stockPharmacie > 0;
-                          const isOut = !alertMuted && a.stockPharmacie === 0;
+                          const isLow = managesStock && !alertMuted && a.stockPharmacie <= a.minStockPharmacie && a.stockPharmacie > 0;
+                          const isOut = managesStock && !alertMuted && a.stockPharmacie === 0;
                           const blocked = !!a.saleBlocked;
                           return (
                             <tr key={a.id} className={`border-b border-slate-100 ${blocked ? 'bg-orange-50/80' : isOut ? 'bg-red-50' : isLow ? 'bg-amber-50' : ''}`}>
@@ -988,30 +993,39 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                                   </div>
                                 )}
                               </td>
-                              <td className="py-3 px-3 text-center font-mono font-bold">{a.stockPharmacie}</td>
-                              <td className="py-3 px-3 text-center font-mono text-slate-500">{a.stockCentral}</td>
+                              <td className="py-3 px-3 text-center font-mono font-bold">{managesStock ? a.stockPharmacie : '—'}</td>
+                              <td className="py-3 px-3 text-center font-mono text-slate-500">{managesStock ? a.stockCentral : '—'}</td>
                               <td className="py-3 px-3 text-center">
-                                <input
-                                  type="number"
-                                  min={0}
-                                  value={a.minStockPharmacie}
-                                  onChange={(e) => updateAlertThreshold(a.id, parseFloat(e.target.value) || 0)}
-                                  className="w-16 px-1.5 py-1 border border-slate-300 rounded text-center font-mono text-xs outline-none focus:border-purple-500 bg-white"
-                                  title="Stock d'alerte : en dessous, l'article est signalé « stock bas »"
-                                />
+                                {managesStock ? (
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    value={a.minStockPharmacie}
+                                    onChange={(e) => updateAlertThreshold(a.id, parseFloat(e.target.value) || 0)}
+                                    className="w-16 px-1.5 py-1 border border-slate-300 rounded text-center font-mono text-xs outline-none focus:border-purple-500 bg-white"
+                                    title="Stock d'alerte : en dessous, l'article est signalé « stock bas »"
+                                  />
+                                ) : (
+                                  <span className="text-slate-400" title="Famille non gérée en stock">—</span>
+                                )}
                               </td>
                               <td className="py-3 px-3 text-center">
-                                <button
-                                  onClick={() => togglePharmaAlert(a.id, a.name)}
-                                  className={`p-1.5 rounded-lg cursor-pointer ${alertMuted ? 'bg-slate-200 text-slate-500 hover:bg-slate-300' : 'bg-purple-100 text-purple-700 hover:bg-purple-200'}`}
-                                  title={alertMuted ? 'Alerte désactivée — cliquez pour réactiver' : 'Alerte activée — cliquez pour désactiver'}
-                                >
-                                  {alertMuted ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
-                                </button>
+                                {managesStock ? (
+                                  <button
+                                    onClick={() => togglePharmaAlert(a.id, a.name)}
+                                    className={`p-1.5 rounded-lg cursor-pointer ${alertMuted ? 'bg-slate-200 text-slate-500 hover:bg-slate-300' : 'bg-purple-100 text-purple-700 hover:bg-purple-200'}`}
+                                    title={alertMuted ? 'Alerte désactivée — cliquez pour réactiver' : 'Alerte activée — cliquez pour désactiver'}
+                                  >
+                                    {alertMuted ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+                                  </button>
+                                ) : (
+                                  <span className="text-slate-400" title="Famille non gérée en stock">—</span>
+                                )}
                               </td>
                               <td className="py-3 px-3 text-right font-mono">{formatAr(a.priceComptoir)}</td>
                               <td className="py-3 px-3 text-center">
-                                {alertMuted ? <span className="px-2 py-1 bg-slate-200 text-slate-600 text-xs rounded-full font-medium" title="Alerte désactivée pour cet article">🔕 Alerte off</span>
+                                {!managesStock ? <span className="px-2 py-1 bg-slate-100 text-slate-500 text-xs rounded-full font-medium" title="Cette famille ne gère pas le stock">Non géré</span>
+                                  : alertMuted ? <span className="px-2 py-1 bg-slate-200 text-slate-600 text-xs rounded-full font-medium" title="Alerte désactivée pour cet article">🔕 Alerte off</span>
                                   : isOut ? <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full font-medium">RUPTURE</span>
                                   : isLow ? <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs rounded-full font-medium">Stock bas</span>
                                   : <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full font-medium">OK</span>}
@@ -1019,9 +1033,11 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                               <td className="py-3 px-3 text-center">
                                 {blocked
                                   ? <span className="px-2 py-1 bg-orange-200 text-orange-900 text-xs rounded-full font-bold" title="Cliquez sur « Débloquer » pour rendre l'article vendable immédiatement">⛔ BLOQUÉ</span>
-                                  : isArticleSaleable(a)
-                                    ? <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs rounded-full font-medium">Vendable</span>
-                                    : <span className="px-2 py-1 bg-slate-200 text-slate-600 text-xs rounded-full font-medium">Non vendable</span>}
+                                  : !managesStock
+                                    ? <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs rounded-full font-medium" title="Famille non gérée en stock : vente sans condition de stock">Vendable</span>
+                                    : isArticleSaleable(a)
+                                      ? <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs rounded-full font-medium">Vendable</span>
+                                      : <span className="px-2 py-1 bg-slate-200 text-slate-600 text-xs rounded-full font-medium">Non vendable</span>}
                               </td>
                               <td className="py-3 px-3 text-right">
                                 <button
@@ -1365,7 +1381,7 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
         <DemandeAchatForm
           open={reapproModalOpen}
           onClose={closeReappro}
-          articles={state.articles}
+          articles={state.articles.filter((a) => familyManagesStock(a.family, state.familles))}
           defaultCategory="approvisionnement"
           initialLine={reapproEditingLine}
           initialNotes={reapproEditingNotes}

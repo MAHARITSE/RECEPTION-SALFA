@@ -740,6 +740,16 @@ export function familyLabel(f: ArticleFamily | string | undefined, familles: Fam
   return fam?.name || code || '—';
 }
 
+/**
+ * La famille gère-t-elle son stock ?
+ * Défaut : `true` (gérée) lorsque le drapeau `manageStock` n'est pas renseigné.
+ */
+export function familyManagesStock(code: string | undefined, familles: Famille[] = []): boolean {
+  const c = normalizeFamilyCode(code);
+  const fam = getArticleFamilyCatalog(familles).find((x) => x.code === c);
+  return fam?.manageStock !== false;
+}
+
 export function isLabFamily(code?: string): boolean {
   const c = normalizeFamilyCode(code);
   return c === 'LABO' || c === 'LAB';

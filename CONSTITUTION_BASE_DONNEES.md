@@ -571,7 +571,7 @@ colonnes interrogeables `code`, `name`, `trade_name`, `type`, `nif`, `stat`,
 ### `familles`
 | Champ | Type |
 |-------|------|
-| `id`, `code`, `name`, `color`, `order?` | |
+| `id`, `code`, `name`, `color`, `order?`, `manageStock?` | `manageStock = false` → la famille n'est pas gérée en stock (aucun mouvement, alerte ni contrôle de vente sur ses articles). Défaut : `true`. |
 
 ### `companies`
 | Champ | Type |

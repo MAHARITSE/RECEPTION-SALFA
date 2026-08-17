@@ -1,11 +1,11 @@
 import { useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription, LabExamCatalog, LabCategory, Patient } from '../types';
+import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription, LabExamCatalog, LabCategory, Patient, Article } from '../types';
 import type { AppState } from '../store';
 import {
   addAuditLog, addNotification, formatAr, formatNum, roundTo2, getPrice, calculateAge,
   generateDossierNumber, addJourneyEvent, generatePharmaClosingNumber, purgePatientFromQueue,
-  labCategoryLabel, getEchoCatalog, getLabCatalog,
+  labCategoryLabel, getEchoCatalog, getLabCatalog, familyManagesStock,
 } from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText, FlaskConical, Scan, X, XCircle } from 'lucide-react';
 import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket } from '../utils/printTicket';
@@ -34,6 +34,8 @@ type Tab = 'payment' | 'hospit' | 'bloc' | 'closing';
 type HbModal = 'none' | 'add_patient' | 'add_article' | 'edit_client';
 
 export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecipient }: Props) {
+  // Familles « ne pas gérer en stock » : vente sans contrôle ni décompte de stock
+  const managesStock = (a: Article | undefined) => !!a && familyManagesStock(a.family, state.familles);
   const [selConsultId, setSelConsultId] = useState<string | null>(null);
   const [selPatientId, setSelPatientId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('payment');
@@ -441,7 +443,8 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       return;
     }
     // Gestion des stocks : un article en rupture pharmacie ne peut pas faire l'objet d'une vente
-    if (a.stockPharmacie <= 0) {
+    // (sauf famille non gérée en stock)
+    if (managesStock(a) && a.stockPharmacie <= 0) {
       alert(`🚨 RUPTURE DE STOCK : « ${a.name} » (stock pharmacie = 0).\n\nCet article ne peut pas être vendu. Demandez un réapprovisionnement à la pharmacie.`);
       return;
     }
@@ -451,10 +454,10 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   };
   const extSaveLine = () => {
     if (!extLineForm.articleName) return;
-    // Contrôle stock pharmacie à la validation de la ligne
+    // Contrôle stock pharmacie à la validation de la ligne (sauf famille non gérée en stock)
     const art = state.articles.find(a => a.name === extLineForm.articleName);
-    if (art && art.stockPharmacie <= 0) { alert(`🚨 RUPTURE DE STOCK : « ${art.name} » (stock pharmacie = 0).\n\nVente impossible.`); return; }
-    if (art && extLineForm.quantity > art.stockPharmacie) {
+    if (art && managesStock(art) && art.stockPharmacie <= 0) { alert(`🚨 RUPTURE DE STOCK : « ${art.name} » (stock pharmacie = 0).\n\nVente impossible.`); return; }
+    if (art && managesStock(art) && extLineForm.quantity > art.stockPharmacie) {
       if (!confirm(`⚠️ Stock pharmacie insuffisant pour « ${art.name} » : ${art.stockPharmacie} disponible(s), ${extLineForm.quantity} demandée(s).\n\nEnregistrer quand même ?`)) return;
     }
     const lineToSave: HbLine = { ...extLineForm, dateSort: extLineForm.dateSort || new Date().toISOString().split('T')[0] };
@@ -492,18 +495,20 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       return;
     }
     // Contrôle rupture : un article en rupture pharmacie ne peut pas faire l'objet d'une vente
+    // (sauf famille non gérée en stock)
     const outLines = extLines.filter((l) => {
       const art = state.articles.find((a) => a.name === l.articleName);
-      return !art || art.stockPharmacie <= 0;
+      return !art || (managesStock(art) && art.stockPharmacie <= 0);
     });
     if (outLines.length > 0) {
       alert(`🚨 RUPTURE DE STOCK — vente impossible pour :\n${outLines.map((l) => `• ${l.articleName} (stock pharmacie = 0)`).join('\n')}\n\nRetirez ces lignes ou demandez un réapprovisionnement.`);
       return;
     }
     // Contrôle quantités : avertissement si la quantité vendue dépasse le stock disponible
+    // (sauf famille non gérée en stock)
     const insuffLines = extLines.filter((l) => {
       const art = state.articles.find((a) => a.name === l.articleName);
-      return art && art.stockPharmacie < l.quantity;
+      return !!art && managesStock(art) && art.stockPharmacie < l.quantity;
     });
     if (insuffLines.length > 0) {
       const detail = insuffLines.map((l) => {
@@ -625,10 +630,13 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
     setState(prev => {
       // Décrémenter stock pharmacie uniquement pour les articles NON-médicaments (les médicaments le seront lors de la délivrance pharmacie)
+      // Les articles des familles non gérées en stock ne sont pas décomptés.
       let articles = [...prev.articles];
       nonMedicamentLines.forEach((l) => {
         const idx = articles.findIndex((a) => a.name === l.articleName);
-        if (idx >= 0) articles[idx] = { ...articles[idx], stockPharmacie: Math.max(0, articles[idx].stockPharmacie - l.quantity) };
+        if (idx >= 0 && familyManagesStock(articles[idx].family, prev.familles)) {
+          articles[idx] = { ...articles[idx], stockPharmacie: Math.max(0, articles[idx].stockPharmacie - l.quantity) };
+        }
       });
       const next = {
         ...prev,
@@ -769,7 +777,8 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       return;
     }
     // Gestion des stocks : un article en rupture pharmacie ne peut pas faire l'objet d'une vente
-    if (a.stockPharmacie <= 0) {
+    // (sauf famille non gérée en stock)
+    if (managesStock(a) && a.stockPharmacie <= 0) {
       alert(`🚨 RUPTURE DE STOCK : « ${a.name} » (stock pharmacie = 0).\n\nCet article ne peut pas être vendu. Demandez un réapprovisionnement à la pharmacie.`);
       return;
     }
@@ -791,10 +800,10 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     const rec = hbRecords.find(r => r.id === hbSelRecordId);
     if (!rec) return;
 
-    // Contrôle stock pharmacie à la validation de la ligne
+    // Contrôle stock pharmacie à la validation de la ligne (sauf famille non gérée en stock)
     const art = state.articles.find(a => a.name === hbArtForm.articleName);
-    if (art && art.stockPharmacie <= 0) { alert(`🚨 RUPTURE DE STOCK : « ${art.name} » (stock pharmacie = 0).\n\nVente impossible.`); return; }
-    if (art && hbArtForm.quantity > art.stockPharmacie) {
+    if (art && managesStock(art) && art.stockPharmacie <= 0) { alert(`🚨 RUPTURE DE STOCK : « ${art.name} » (stock pharmacie = 0).\n\nVente impossible.`); return; }
+    if (art && managesStock(art) && hbArtForm.quantity > art.stockPharmacie) {
       askConfirmation({
         title: 'Stock pharmacie insuffisant',
         message: `Stock pharmacie insuffisant pour « ${art.name} » : ${art.stockPharmacie} disponible(s), ${hbArtForm.quantity} demandée(s).`,
@@ -1130,14 +1139,17 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                         <label className="block text-[9px] text-slate-500">Article (↑↓ Entrée)</label>
                         <input ref={extSearchRef} type="text" value={extLineForm.articleName && !extSearch ? extLineForm.articleName : extSearch} onChange={e => { setExtSearch(e.target.value); setExtSearchIdx(0); }} onKeyDown={extKeyDown} className="w-full bg-white border border-blue-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-blue-600" placeholder="🔍 Tapez..." />
                         {extSearch.length >= 1 && extFiltered.length > 0 && <div className="absolute top-full left-0 right-0 bg-white border rounded-b shadow-xl z-30 max-h-36 overflow-y-auto">{extFiltered.map((a, idx) => {
-                          const isOut = a.stockPharmacie <= 0;
-                          const isLow = !isOut && a.stockPharmacie <= a.minStockPharmacie && !a.alertDisabledPharmacie;
+                          const manages = managesStock(a);
+                          const isOut = manages && a.stockPharmacie <= 0;
+                          const isLow = manages && !isOut && a.stockPharmacie <= a.minStockPharmacie && !a.alertDisabledPharmacie;
                           return (<div key={a.id} onClick={() => extSelectArticle(a.id)} title={isOut ? 'Rupture de stock — vente impossible' : undefined} className={`px-2 py-1 text-xs flex justify-between border-b ${isOut ? 'bg-red-50 text-red-700 cursor-not-allowed' : `cursor-pointer ${idx === extSearchIdx ? 'bg-blue-100' : 'hover:bg-blue-50'}`}`}>
                             <span className={isOut ? 'line-through decoration-red-400/60' : ''}>[{a.family}] {a.name}</span>
                             <span className="flex items-center gap-2">
                               {isOut
                                 ? <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-[9px] font-bold">🚨 RUPTURE — invendable</span>
-                                : <span className={`font-mono text-[10px] ${isLow ? 'text-amber-600 font-bold' : 'text-slate-400'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>}
+                                : manages
+                                  ? <span className={`font-mono text-[10px] ${isLow ? 'text-amber-600 font-bold' : 'text-slate-400'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>
+                                  : <span className="font-mono text-[10px] text-slate-400" title="Famille non gérée en stock">stock: —</span>}
                               <span className={`font-mono ${isOut ? 'text-red-400' : 'text-blue-600'}`}>{formatAr(getPrice(a, 'externe'))}</span>
                             </span>
                           </div>);
@@ -1427,8 +1439,9 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                       {hbArtSearch.length >= 1 && hbArtFiltered.length > 0 && (
                         <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 rounded-b shadow-2xl z-40 max-h-40 overflow-y-auto">
                           {hbArtFiltered.map((a, idx) => {
-                            const isOut = a.stockPharmacie <= 0;
-                            const isLow = !isOut && a.stockPharmacie <= a.minStockPharmacie && !a.alertDisabledPharmacie;
+                            const manages = managesStock(a);
+                            const isOut = manages && a.stockPharmacie <= 0;
+                            const isLow = manages && !isOut && a.stockPharmacie <= a.minStockPharmacie && !a.alertDisabledPharmacie;
                             return (
                             <div
                               key={a.id}
@@ -1440,7 +1453,9 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                               <span className="flex items-center gap-2">
                                 {isOut
                                   ? <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-[9px] font-bold">🚨 RUPTURE — invendable</span>
-                                  : <span className={`font-mono text-[10px] ${idx === hbArtIdx ? 'text-white/90' : isLow ? 'text-amber-600 font-bold' : 'text-slate-400'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>}
+                                  : manages
+                                    ? <span className={`font-mono text-[10px] ${idx === hbArtIdx ? 'text-white/90' : isLow ? 'text-amber-600 font-bold' : 'text-slate-400'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>
+                                    : <span className={`font-mono text-[10px] ${idx === hbArtIdx ? 'text-white/80' : 'text-slate-400'}`} title="Famille non gérée en stock">stock: —</span>}
                                 <span className={`font-mono ${isOut ? 'text-red-400' : idx === hbArtIdx ? 'text-white' : 'text-blue-600 font-medium'}`}>{formatAr(getPrice(a, rec?.clientType || 'comptoir'))}</span>
                               </span>
                             </div>
