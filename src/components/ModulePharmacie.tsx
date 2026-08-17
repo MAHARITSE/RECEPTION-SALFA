@@ -10,7 +10,7 @@ import ModuleCaisse from './ModuleCaisse';
 import {
   Pill, Package, CheckCircle, Clock, Search, Send,
   Plus, Trash2, Filter, Printer, Edit3, CreditCard,
-  Ban, Unlock, AlertTriangle, Bell, BellOff, Lock
+  Ban, Unlock, AlertTriangle, Bell, BellOff, Lock, X
 } from 'lucide-react';
 
 interface Props {
@@ -1280,47 +1280,75 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
         </div>
       </div>
 
-      {/* Blocage vente — Inline (no modal) */}
+      {/* Blocage / déblocage vente — Popup modale centrée */}
       {blockModal && (
-        <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-0 order-first">
-          <div className={`px-5 py-3 text-white font-bold flex items-center gap-2 ${blockModal.currentlyBlocked ? 'bg-emerald-600' : 'bg-orange-600'}`}>
-            {blockModal.currentlyBlocked ? <Unlock className="w-5 h-5" /> : <Ban className="w-5 h-5" />}
-            {blockModal.currentlyBlocked ? 'Débloquer la vente' : 'Bloquer la vente'}
-            <div className="flex-1" />
-            <button onClick={() => setBlockModal(null)} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button>
-          </div>
-          <div className="p-5 space-y-3">
-            <p className="text-sm text-slate-700">
-              Article : <strong>{blockModal.name}</strong>
-            </p>
-            {!blockModal.currentlyBlocked ? (
-              <>
-                <p className="text-xs text-slate-500">
-                  Empêche la délivrance / vente même si le stock est encore disponible (réservation, attente de régularisation, lot douteux…).
-                </p>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Motif du blocage *</label>
-                  <input
-                    type="text"
-                    value={blockReason}
-                    onChange={(e) => setBlockReason(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm"
-                    placeholder="Ex: Réservé patient X / En attente régularisation / Lot à vérifier"
-                    autoFocus
-                  />
-                </div>
-              </>
-            ) : (
-              <p className="text-sm text-slate-600">Confirmez le déblocage de la vente pour cet article.</p>
-            )}
-            <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => setBlockModal(null)} className="px-4 py-2 border border-slate-300 rounded-lg text-sm cursor-pointer hover:bg-slate-50">Annuler</button>
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => setBlockModal(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-200"
+          >
+            <div className={`px-5 py-3.5 text-white font-bold flex items-center gap-2 ${blockModal.currentlyBlocked ? 'bg-gradient-to-r from-emerald-600 to-teal-600' : 'bg-gradient-to-r from-orange-500 to-orange-600'}`}>
+              {blockModal.currentlyBlocked ? <Unlock className="w-5 h-5" /> : <Ban className="w-5 h-5" />}
+              {blockModal.currentlyBlocked ? 'Déblocage de la vente' : 'Bloquer la vente'}
+              <div className="flex-1" />
               <button
-                onClick={toggleSaleBlock}
-                className={`px-4 py-2 text-white rounded-lg text-sm font-bold cursor-pointer ${blockModal.currentlyBlocked ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-orange-600 hover:bg-orange-700'}`}
+                onClick={() => setBlockModal(null)}
+                className="hover:bg-white/20 rounded-lg p-1 cursor-pointer transition"
+                title="Fermer"
               >
-                {blockModal.currentlyBlocked ? 'Confirmer déblocage' : 'Confirmer blocage'}
+                <X className="w-5 h-5" />
               </button>
+            </div>
+            <div className="p-5 space-y-3">
+              {!blockModal.currentlyBlocked ? (
+                <>
+                  <p className="text-sm text-slate-700">
+                    Article : <strong>{blockModal.name}</strong>
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Empêche la délivrance / vente même si le stock est encore disponible (réservation, attente de régularisation, lot douteux…).
+                  </p>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Motif du blocage *</label>
+                    <input
+                      type="text"
+                      value={blockReason}
+                      onChange={(e) => setBlockReason(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm"
+                      placeholder="Ex: Réservé patient X / En attente régularisation / Lot à vérifier"
+                      autoFocus
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-base font-semibold text-slate-800 leading-relaxed">
+                    Débloquer la vente de l'article « {blockModal.name} » ?
+                  </p>
+                  <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-xl p-3">
+                    En répondant <strong>Oui</strong>, une demande de déblocage est envoyée à la caisse pour validation finale.
+                  </p>
+                </>
+              )}
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  onClick={() => setBlockModal(null)}
+                  className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 cursor-pointer hover:bg-slate-50"
+                >
+                  {blockModal.currentlyBlocked ? 'Non' : 'Annuler'}
+                </button>
+                <button
+                  onClick={toggleSaleBlock}
+                  className={`px-5 py-2 text-white rounded-lg text-sm font-bold cursor-pointer shadow ${blockModal.currentlyBlocked ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-orange-600 hover:bg-orange-700'}`}
+                >
+                  {blockModal.currentlyBlocked ? 'Oui, débloquer' : 'Confirmer blocage'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
