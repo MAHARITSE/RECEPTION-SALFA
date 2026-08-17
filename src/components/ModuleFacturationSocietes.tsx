@@ -4,7 +4,7 @@ import type { AppState } from '../store';
 import {
   addAuditLog, billingStatusClasses, billingStatusLabel,
   formatAr, formatNum, getCompanyInvoicesForMonth, addJourneyEvent, safeInvoiceItemDescriptions, familyLabel,
-  isLabFamily, isEchoFamily,
+  isLabFamily, isEchoFamily, isHospFamily,
 } from '../store';
 import type { CompanyBillingAccount, CompanySettlementMode, Invoice, InvoiceItem } from '../types';
 import {
@@ -111,19 +111,19 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
       { code: 'CONS-GEN', description: 'Consultation Médecin Généraliste', category: 'consultation', price: 15000, familyLabel: 'Consultation', badgeColor: 'bg-indigo-100 text-indigo-800' },
       { code: 'CONS-SPE', description: 'Consultation Médecin Spécialiste', category: 'consultation', price: 35000, familyLabel: 'Consultation', badgeColor: 'bg-indigo-100 text-indigo-800' },
       { code: 'CONS-URG', description: 'Consultation Urgences / Garde', category: 'consultation', price: 25000, familyLabel: 'Consultation', badgeColor: 'bg-rose-100 text-rose-800' },
-      { code: 'HOSP-JOUR', description: "Journée d'Hospitalisation / Chambre", category: 'hospitalization', price: 50000, familyLabel: 'Hospitalisation', badgeColor: 'bg-amber-100 text-amber-800' },
-      { code: 'HOSP-SOIN', description: 'Surveillance & Soins Infirmiers', category: 'hospitalization', price: 15000, familyLabel: 'Hospitalisation', badgeColor: 'bg-amber-100 text-amber-800' },
       { code: 'SOIN-INJ', description: 'Injection / Pansement / Petite Chirurgie', category: 'surgery', price: 20000, familyLabel: 'Soins & Chirurgie', badgeColor: 'bg-rose-100 text-rose-800' },
       { code: 'BLOC-OP', description: 'Acte Chirurgical — Bloc Opératoire', category: 'surgery', price: 250000, familyLabel: 'Bloc opératoire', badgeColor: 'bg-rose-100 text-rose-800' },
     ];
 
-    // Ajouter tous les articles de la base unifiée (médicaments, laboratoire, échographies, consommables, etc.)
+    // Ajouter tous les articles de la base unifiée (médicaments, laboratoire, échographies,
+    // hospitalisation — famille HOSP —, consommables, etc.)
     (state.articles || []).forEach(art => {
       const isLab = isLabFamily(art.family);
       const isEcho = isEchoFamily(art.family);
-      const cat: CatalogCategory = isLab ? 'lab' : isEcho ? 'echo' : 'pharmacy';
-      const label = isLab ? 'Laboratoire' : isEcho ? 'Échographie' : familyLabel(art.family, state.familles);
-      const badge = isLab ? 'bg-emerald-100 text-emerald-800' : isEcho ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800';
+      const isHosp = isHospFamily(art.family);
+      const cat: CatalogCategory = isLab ? 'lab' : isEcho ? 'echo' : isHosp ? 'hospitalization' : 'pharmacy';
+      const label = isLab ? 'Laboratoire' : isEcho ? 'Échographie' : isHosp ? 'Hospitalisation' : familyLabel(art.family, state.familles);
+      const badge = isLab ? 'bg-emerald-100 text-emerald-800' : isEcho ? 'bg-amber-100 text-amber-800' : isHosp ? 'bg-orange-100 text-orange-800' : 'bg-blue-100 text-blue-800';
 
       items.push({
         code: art.code || art.barcode || art.id,

@@ -10,7 +10,7 @@ import {
   addAuditLog, addNotification, formatAr, formatNum, ARTICLE_FAMILIES, familyLabel, getArticleFamilyCatalog, normalizeFamilyCode,
   transferCategoryLabel, TRANSFER_CATEGORIES,
   applyStockDelta, getArticleStock, locationLabel,
-  createMovementWithLines,
+  createMovementWithLines, familyManagesStock,
 } from '../store';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
 import {
@@ -72,7 +72,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
   // === FAMILLES ===
   const [showFamModal, setShowFamModal] = useState(false);
   const [editingFamId, setEditingFamId] = useState<string | null>(null);
-  const [famForm, setFamForm] = useState({ code: '', name: '', color: '#0D47A1' });
+  const [famForm, setFamForm] = useState({ code: '', name: '', color: '#0D47A1', manageStock: true });
 
   // === FOURNISSEURS ===
   const [searchSup, setSearchSup] = useState('');
@@ -146,6 +146,8 @@ export default function ModuleMagasinier({ state, setState }: Props) {
   const familles = state.familles || [];
   const articleFamilies = getArticleFamilyCatalog(familles);
   const labelForFamily = (code?: string) => familyLabel(code || '', familles);
+  // La famille gère-t-elle son stock ? (option « gérer / ne pas gérer en stock »)
+  const managesStockForFamily = (code?: string) => familyManagesStock(code, familles);
   const movements = state.stockMovements || [];
   const inventories = state.inventorySessions || [];
 
@@ -266,13 +268,13 @@ export default function ModuleMagasinier({ state, setState }: Props) {
   // ============ FAMILLES ============
   const openNewFamilleModal = () => {
     setEditingFamId(null);
-    setFamForm({ code: '', name: '', color: '#0D47A1' });
+    setFamForm({ code: '', name: '', color: '#0D47A1', manageStock: true });
     setShowFamModal(true);
   };
 
   const openEditFamilleModal = (f: Famille) => {
     setEditingFamId(f.id);
-    setFamForm({ code: f.code, name: f.name, color: f.color });
+    setFamForm({ code: f.code, name: f.name, color: f.color, manageStock: f.manageStock !== false });
     setShowFamModal(true);
   };
 
@@ -286,7 +288,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
       const previousCode = normalizeFamilyCode(previous?.code);
       setState(prev => ({
         ...prev,
-        familles: prev.familles.map(f => f.id === editingFamId ? { ...f, code: codeUpper, name: famForm.name.trim(), color: famForm.color } : f),
+        familles: prev.familles.map(f => f.id === editingFamId ? { ...f, code: codeUpper, name: famForm.name.trim(), color: famForm.color, manageStock: famForm.manageStock } : f),
         // Si le code est modifié (ex. LABO -> LAB), on conserve le rattachement des articles.
         articles: previousCode && previousCode !== codeUpper
           ? prev.articles.map(a => normalizeFamilyCode(a.family) === previousCode ? { ...a, family: codeUpper } : { ...a, family: normalizeFamilyCode(a.family) })
@@ -300,6 +302,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
         name: famForm.name.trim(),
         color: famForm.color,
         order: (articleFamilies.length || 0) + 1,
+        manageStock: famForm.manageStock,
       };
       setState(prev => ({ ...prev, familles: [...(prev.familles || []), newFam] }));
       showToast('Nouvelle famille créée');
@@ -363,7 +366,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
 
   // ============ ACHATS & APPROVISIONNEMENT ============
   const purchaseFiltered = purchaseSearch.length >= 1
-    ? state.articles.filter((a) => a.name.toLowerCase().includes(purchaseSearch.toLowerCase()))
+    ? state.articles.filter((a) => managesStockForFamily(a.family) && a.name.toLowerCase().includes(purchaseSearch.toLowerCase()))
     : [];
 
   const purchaseSelectArticle = (articleId: string) => {
@@ -706,13 +709,16 @@ export default function ModuleMagasinier({ state, setState }: Props) {
 
   // Inventaire
   const startInventory = () => {
-    const lines: InventoryLine[] = state.articles.map((a) => ({
-      articleId: a.id,
-      articleName: a.name,
-      theoreticalQty: getArticleStock(a, invLocation),
-      countedQty: null,
-      difference: 0,
-    }));
+    // Seuls les articles des familles gérées en stock participent à l'inventaire
+    const lines: InventoryLine[] = state.articles
+      .filter((a) => managesStockForFamily(a.family))
+      .map((a) => ({
+        articleId: a.id,
+        articleName: a.name,
+        theoreticalQty: getArticleStock(a, invLocation),
+        countedQty: null,
+        difference: 0,
+      }));
     const session: InventorySession = {
       id: uuidv4(),
       location: invLocation,
@@ -905,10 +911,10 @@ export default function ModuleMagasinier({ state, setState }: Props) {
       {/* BANDEAU D'ALERTE STOCK BAS MAGASINIER */}
       {(() => {
         const lowStockCentral = state.articles.filter(
-          (a) => !a.alertDisabledCentral && a.stockCentral <= a.minStockCentral
+          (a) => managesStockForFamily(a.family) && !a.alertDisabledCentral && a.stockCentral <= a.minStockCentral
         );
         const lowStockPharmacie = state.articles.filter(
-          (a) => !a.alertDisabledPharmacie && a.stockPharmacie <= a.minStockPharmacie
+          (a) => managesStockForFamily(a.family) && !a.alertDisabledPharmacie && a.stockPharmacie <= a.minStockPharmacie
         );
 
         if (lowStockCentral.length === 0 && lowStockPharmacie.length === 0) return null;
@@ -1133,9 +1139,10 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                   </thead>
                   <tbody>
                     {filteredStockArticles.map((a) => {
+                      const managesStock = managesStockForFamily(a.family);
                       const alertMuted = !!a.alertDisabledCentral;
-                      const out = !alertMuted && a.stockCentral <= 0;
-                      const low = !alertMuted && a.stockCentral <= a.minStockCentral && a.stockCentral > 0;
+                      const out = managesStock && !alertMuted && a.stockCentral <= 0;
+                      const low = managesStock && !alertMuted && a.stockCentral <= a.minStockCentral && a.stockCentral > 0;
                       return (
                         <tr key={a.id} className={`border-b hover:bg-slate-50/80 ${out ? 'bg-rose-50/50' : low ? 'bg-amber-50/50' : ''}`}>
                           <td className="p-2.5"><span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-[10px] font-semibold">{labelForFamily(a.family)}</span></td>
@@ -1143,33 +1150,42 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                             {a.name}
                             {a.saleBlocked && <span className="ml-2 px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded text-[9px] font-bold">Vente Bloquée</span>}
                           </td>
-                          <td className="p-2.5 text-center font-mono font-bold text-sm bg-sky-50/30">{a.stockCentral} {a.unit}</td>
-                          <td className="p-2.5 text-center font-mono text-slate-700">{a.stockPharmacie}</td>
+                          <td className="p-2.5 text-center font-mono font-bold text-sm bg-sky-50/30">{managesStock ? `${a.stockCentral} ${a.unit}` : '—'}</td>
+                          <td className="p-2.5 text-center font-mono text-slate-700">{managesStock ? a.stockPharmacie : '—'}</td>
                           {activeServices.filter((s) => s.kind === 'service').map((s) => (
-                            <td key={s.id} className="p-2.5 text-center font-mono text-slate-500">{a.serviceStocks?.[s.id] ?? 0}</td>
+                            <td key={s.id} className="p-2.5 text-center font-mono text-slate-500">{managesStock ? (a.serviceStocks?.[s.id] ?? 0) : '—'}</td>
                           ))}
                           <td className="p-2.5 text-right font-mono text-slate-600">{formatAr(a.purchasePrice)}</td>
                           <td className="p-2.5 text-center">
-                            <input
-                              type="number"
-                              min={0}
-                              value={a.minStockCentral}
-                              onChange={(e) => updateCentralAlertThreshold(a.id, parseFloat(e.target.value) || 0)}
-                              className="w-16 px-1.5 py-1 border border-slate-300 rounded text-center font-mono text-xs outline-none focus:border-blue-500 bg-white"
-                              title="Stock d'alerte : en dessous, l'article est signalé « stock bas »"
-                            />
+                            {managesStock ? (
+                              <input
+                                type="number"
+                                min={0}
+                                value={a.minStockCentral}
+                                onChange={(e) => updateCentralAlertThreshold(a.id, parseFloat(e.target.value) || 0)}
+                                className="w-16 px-1.5 py-1 border border-slate-300 rounded text-center font-mono text-xs outline-none focus:border-blue-500 bg-white"
+                                title="Stock d'alerte : en dessous, l'article est signalé « stock bas »"
+                              />
+                            ) : (
+                              <span className="text-slate-400" title="Famille non gérée en stock">—</span>
+                            )}
                           </td>
                           <td className="p-2.5 text-center">
-                            <button
-                              onClick={() => toggleCentralAlert(a.id, a.name)}
-                              className={`p-1.5 rounded-lg cursor-pointer ${alertMuted ? 'bg-slate-200 text-slate-500 hover:bg-slate-300' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}
-                              title={alertMuted ? 'Alerte désactivée — cliquez pour réactiver' : 'Alerte activée — cliquez pour désactiver'}
-                            >
-                              {alertMuted ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
-                            </button>
+                            {managesStock ? (
+                              <button
+                                onClick={() => toggleCentralAlert(a.id, a.name)}
+                                className={`p-1.5 rounded-lg cursor-pointer ${alertMuted ? 'bg-slate-200 text-slate-500 hover:bg-slate-300' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}
+                                title={alertMuted ? 'Alerte désactivée — cliquez pour réactiver' : 'Alerte activée — cliquez pour désactiver'}
+                              >
+                                {alertMuted ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+                              </button>
+                            ) : (
+                              <span className="text-slate-400" title="Famille non gérée en stock">—</span>
+                            )}
                           </td>
                           <td className="p-2.5 text-center">
-                            {alertMuted ? <span className="px-2 py-0.5 bg-slate-200 text-slate-600 text-[10px] rounded-full font-bold" title="Alerte désactivée pour cet article">🔕 ALERTE OFF</span>
+                            {!managesStock ? <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[10px] rounded-full font-bold" title="Cette famille ne gère pas le stock">NON GÉRÉ</span>
+                              : alertMuted ? <span className="px-2 py-0.5 bg-slate-200 text-slate-600 text-[10px] rounded-full font-bold" title="Alerte désactivée pour cet article">🔕 ALERTE OFF</span>
                               : out ? <span className="px-2 py-0.5 bg-rose-100 text-rose-800 text-[10px] rounded-full font-bold">RUPTURE</span>
                               : low ? <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] rounded-full font-bold">STOCK BAS</span>
                               : <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] rounded-full font-bold">OK</span>}
@@ -1232,6 +1248,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                       const famCode = normalizeFamilyCode(a.family);
                       const badgeClass = famCode === 'LABO' ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
                         : famCode === 'ECHO' ? 'bg-amber-100 text-amber-800 border-amber-300'
+                        : famCode === 'HOSP' ? 'bg-orange-100 text-orange-800 border-orange-300'
                         : famCode === 'MEDIC' ? 'bg-blue-100 text-blue-800 border-blue-300'
                         : famCode === 'DENT' ? 'bg-purple-100 text-purple-800 border-purple-300'
                         : 'bg-slate-100 text-slate-700 border-slate-300';
@@ -1257,7 +1274,9 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                           <td className="p-2.5 text-right font-mono text-indigo-700">{formatAr(a.priceSociete)}</td>
                           <td className="p-2.5 text-right font-mono text-purple-700">{formatAr(a.priceExterne)}</td>
                           <td className="p-2.5 text-center font-mono text-slate-500">
-                            {a.alertDisabledCentral && a.alertDisabledPharmacie ? <span className="text-slate-400 italic">Off</span> : `${a.minStockCentral} / ${a.minStockPharmacie}`}
+                            {!managesStockForFamily(a.family) ? <span className="text-slate-400 italic" title="Famille non gérée en stock">Non géré</span>
+                              : a.alertDisabledCentral && a.alertDisabledPharmacie ? <span className="text-slate-400 italic">Off</span>
+                              : `${a.minStockCentral} / ${a.minStockPharmacie}`}
                           </td>
                           <td className="p-2.5 text-right">
                             <button onClick={() => openEditArticleModal(a)} className="p-1 text-blue-600 hover:bg-blue-50 rounded cursor-pointer mr-1" title="Modifier fiche">
@@ -1329,27 +1348,41 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                         </div>
                       </div>
 
-                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-3">
-                        <h4 className="font-bold text-amber-900 text-xs flex items-center gap-1.5"><Bell className="w-4 h-4 text-amber-600" /> Stocks d'alerte & notifications</h4>
-                        <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="font-bold block text-slate-700 mb-1">Stock d'alerte Dépôt Central</label>
-                          <input type="number" min={0} value={artForm.minStockCentral} onChange={e => setArtForm({ ...artForm, minStockCentral: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg text-sm bg-white" />
-                          <label className="mt-1.5 flex items-center gap-2 text-[11px] text-slate-600 cursor-pointer">
-                            <input type="checkbox" checked={artForm.alertDisabledCentral} onChange={e => setArtForm({ ...artForm, alertDisabledCentral: e.target.checked })} className="w-3.5 h-3.5 rounded text-amber-600" />
-                            🔕 Désactiver l'alerte (central)
-                          </label>
-                        </div>
-                        <div>
-                          <label className="font-bold block text-slate-700 mb-1">Stock d'alerte Pharmacie</label>
-                          <input type="number" min={0} value={artForm.minStockPharmacie} onChange={e => setArtForm({ ...artForm, minStockPharmacie: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg text-sm bg-white" />
-                          <label className="mt-1.5 flex items-center gap-2 text-[11px] text-slate-600 cursor-pointer">
-                            <input type="checkbox" checked={artForm.alertDisabledPharmacie} onChange={e => setArtForm({ ...artForm, alertDisabledPharmacie: e.target.checked })} className="w-3.5 h-3.5 rounded text-amber-600" />
-                            🔕 Désactiver l'alerte (pharmacie)
-                          </label>
-                        </div>
-                        </div>
-                        <p className="text-[10px] text-amber-800">En dessous du stock d'alerte, l'article est signalé « stock bas ». L'alerte peut être désactivée par article et par dépôt — la vente reste bloquée en cas de rupture même si l'alerte est off.</p>
+                      <div className={`p-3 rounded-xl space-y-3 ${managesStockForFamily(artForm.family) ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50 border border-slate-200'}`}>
+                        <h4 className={`font-bold text-xs flex items-center gap-1.5 ${managesStockForFamily(artForm.family) ? 'text-amber-900' : 'text-slate-600'}`}>
+                          {managesStockForFamily(artForm.family)
+                            ? <><Bell className="w-4 h-4 text-amber-600" /> Stocks d'alerte & notifications</>
+                            : <><ShieldAlert className="w-4 h-4 text-slate-500" /> Stock non géré pour cette famille</>}
+                        </h4>
+                        {managesStockForFamily(artForm.family) ? (
+                          <>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="font-bold block text-slate-700 mb-1">Stock d'alerte Dépôt Central</label>
+                                <input type="number" min={0} value={artForm.minStockCentral} onChange={e => setArtForm({ ...artForm, minStockCentral: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg text-sm bg-white" />
+                                <label className="mt-1.5 flex items-center gap-2 text-[11px] text-slate-600 cursor-pointer">
+                                  <input type="checkbox" checked={artForm.alertDisabledCentral} onChange={e => setArtForm({ ...artForm, alertDisabledCentral: e.target.checked })} className="w-3.5 h-3.5 rounded text-amber-600" />
+                                  🔕 Désactiver l'alerte (central)
+                                </label>
+                              </div>
+                              <div>
+                                <label className="font-bold block text-slate-700 mb-1">Stock d'alerte Pharmacie</label>
+                                <input type="number" min={0} value={artForm.minStockPharmacie} onChange={e => setArtForm({ ...artForm, minStockPharmacie: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg text-sm bg-white" />
+                                <label className="mt-1.5 flex items-center gap-2 text-[11px] text-slate-600 cursor-pointer">
+                                  <input type="checkbox" checked={artForm.alertDisabledPharmacie} onChange={e => setArtForm({ ...artForm, alertDisabledPharmacie: e.target.checked })} className="w-3.5 h-3.5 rounded text-amber-600" />
+                                  🔕 Désactiver l'alerte (pharmacie)
+                                </label>
+                              </div>
+                            </div>
+                            <p className="text-[10px] text-amber-800">En dessous du stock d'alerte, l'article est signalé « stock bas ». L'alerte peut être désactivée par article et par dépôt — la vente reste bloquée en cas de rupture même si l'alerte est off.</p>
+                          </>
+                        ) : (
+                          <p className="text-[11px] text-slate-500 leading-snug">
+                            La famille <strong>{labelForFamily(artForm.family)}</strong> est configurée « ne pas gérer en stock ».
+                            Cet article ne sera ni suivi ni alerté en stock, et restera vendable sans condition de stock.
+                            L'option se modifie dans l'onglet <strong>Familles</strong>.
+                          </p>
+                        )}
                       </div>
 
                       <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl space-y-2">
@@ -1390,6 +1423,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {familles.map(f => {
                   const count = state.articles.filter(a => normalizeFamilyCode(a.family) === normalizeFamilyCode(f.code)).length;
+                  const managesStock = f.manageStock !== false;
                   return (
                     <div key={f.id} className="bg-white border rounded-xl shadow-sm overflow-hidden p-4 space-y-3">
                       <div className="flex items-center justify-between">
@@ -1402,6 +1436,17 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                       <div>
                         <div className="font-bold text-base text-slate-800">{f.name}</div>
                         <div className="text-xs text-slate-500 mt-1">{count} article(s) relié(s)</div>
+                      </div>
+                      <div>
+                        {managesStock ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-full text-[10px] font-bold">
+                            <Package className="w-3 h-3" /> GÉRÉE EN STOCK
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 border border-slate-200 text-slate-600 rounded-full text-[10px] font-bold">
+                            <ShieldAlert className="w-3 h-3" /> NON GÉRÉE EN STOCK
+                          </span>
+                        )}
                       </div>
                     </div>
                   );
@@ -1430,6 +1475,27 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                           {FAMILLE_COLORS.map(c => (
                             <button key={c} onClick={() => setFamForm({ ...famForm, color: c })} className={`w-7 h-7 rounded-full cursor-pointer ${famForm.color === c ? 'ring-2 ring-offset-2 ring-purple-600' : ''}`} style={{ backgroundColor: c }} />
                           ))}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="font-bold block mb-1.5">Gestion du stock</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setFamForm({ ...famForm, manageStock: true })}
+                            className={`p-2.5 rounded-lg border-2 text-left cursor-pointer transition ${famForm.manageStock ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 hover:border-slate-300'}`}
+                          >
+                            <div className="flex items-center gap-1.5 font-bold text-emerald-700"><Package className="w-3.5 h-3.5" /> Gérer en stock</div>
+                            <div className="text-[10px] text-slate-500 mt-1 leading-snug">Mouvements, alertes stock bas / rupture et contrôles de vente appliqués aux articles.</div>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFamForm({ ...famForm, manageStock: false })}
+                            className={`p-2.5 rounded-lg border-2 text-left cursor-pointer transition ${!famForm.manageStock ? 'border-slate-500 bg-slate-100' : 'border-slate-200 hover:border-slate-300'}`}
+                          >
+                            <div className="flex items-center gap-1.5 font-bold text-slate-700"><ShieldAlert className="w-3.5 h-3.5" /> Ne pas gérer en stock</div>
+                            <div className="text-[10px] text-slate-500 mt-1 leading-snug">Aucun suivi de stock : les articles restent vendables sans stock ni alerte (ex. actes, services).</div>
+                          </button>
                         </div>
                       </div>
                       <button onClick={saveFamille} className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg cursor-pointer text-xs shadow">
@@ -1809,7 +1875,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                       <label className="font-bold block mb-1">Article à transférer</label>
                       <select value={dispArticleId} onChange={(e) => setDispArticleId(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-white">
                         <option value="">— Sélectionner article —</option>
-                        {state.articles.map((a) => <option key={a.id} value={a.id}>{a.name} (central: {a.stockCentral})</option>)}
+                        {state.articles.filter((a) => managesStockForFamily(a.family)).map((a) => <option key={a.id} value={a.id}>{a.name} (central: {a.stockCentral})</option>)}
                       </select>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
@@ -1841,7 +1907,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                       <label className="font-bold block mb-1">Article concerné</label>
                       <select value={exitArticleId} onChange={(e) => setExitArticleId(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-white">
                         <option value="">— Sélectionner article —</option>
-                        {state.articles.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                        {state.articles.filter((a) => managesStockForFamily(a.family)).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                       </select>
                     </div>
                     <div className="grid grid-cols-2 gap-2">

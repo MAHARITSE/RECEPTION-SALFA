@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import type { UserRole, TicketSettings, Company, CompanySettlementMode, User } from '../types';
-import { formatAr, addAuditLog, ensureEtablissements, migrateLegacyToVentes, createInitialState } from '../store';
+import { formatAr, addAuditLog, ensureEtablissements, migrateLegacyToVentes, createInitialState, familyManagesStock, prepareLoadedState } from '../store';
 import { IS_WAMP_BUILD } from '../wamp';
 import type { AppState } from '../store';
 import ModuleReception from './ModuleReception';
@@ -483,7 +483,9 @@ export default function ModuleAdministration({ state, setState }: Props) {
       variant: 'danger',
       onConfirm: () => {
         try { localStorage.clear(); } catch { /* ignore */ }
-        const freshState = createInitialState();
+        // prepareLoadedState : normalise les familles et intègre la base unifiée
+        // des articles (familles LABO / ECHO / HOSP) dès la réinitialisation.
+        const freshState = prepareLoadedState(createInitialState());
         setState((prev) => {
           // Mode WAMP (données dans MySQL) : on repart d'un état vide SANS données
           // JSON, en conservant la configuration système indispensable (comptes de
@@ -540,6 +542,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
   const totalRevenue = todayInvoices.reduce((s, i) => s + i.patientCharge, 0);
 
   const lowStockArticles = state.articles.filter((a) => {
+    if (!familyManagesStock(a.family, state.familles)) return false; // famille non gérée en stock
     const isCentralLow = !a.alertDisabledCentral && a.stockCentral <= a.minStockCentral;
     const isPharmacieLow = !a.alertDisabledPharmacie && a.stockPharmacie <= a.minStockPharmacie;
     return isCentralLow || isPharmacieLow;

@@ -711,8 +711,9 @@ export const DEFAULT_FAMILLES: Famille[] = [
   { id: 'fam-medic', code: 'MEDIC', name: 'Médicaments', color: '#0D47A1', order: 1 },
   { id: 'fam-labo', code: 'LABO', name: 'Laboratoire', color: '#10B981', order: 2 },
   { id: 'fam-echo', code: 'ECHO', name: 'Échographie', color: '#F59E0B', order: 3 },
+  { id: 'fam-hosp', code: 'HOSP', name: 'Hospitalisation', color: '#F97316', order: 4, manageStock: false },
   // Conservé pour les données déjà présentes et les consommables dentaires.
-  { id: 'fam-dent', code: 'DENT', name: 'Dentaire', color: '#8B5CF6', order: 4 },
+  { id: 'fam-dent', code: 'DENT', name: 'Dentaire', color: '#8B5CF6', order: 5 },
 ];
 
 // Base familles standard : normalise vers majuscules et convertit l'ancien code LAB vers LABO
@@ -740,6 +741,16 @@ export function familyLabel(f: ArticleFamily | string | undefined, familles: Fam
   return fam?.name || code || '—';
 }
 
+/**
+ * La famille gère-t-elle son stock ?
+ * Défaut : `true` (gérée) lorsque le drapeau `manageStock` n'est pas renseigné.
+ */
+export function familyManagesStock(code: string | undefined, familles: Famille[] = []): boolean {
+  const c = normalizeFamilyCode(code);
+  const fam = getArticleFamilyCatalog(familles).find((x) => x.code === c);
+  return fam?.manageStock !== false;
+}
+
 export function isLabFamily(code?: string): boolean {
   const c = normalizeFamilyCode(code);
   return c === 'LABO' || c === 'LAB';
@@ -749,8 +760,13 @@ export function isEchoFamily(code?: string): boolean {
   return normalizeFamilyCode(code) === 'ECHO';
 }
 
+/** Famille Hospitalisation (actes et forfaits d'hospitalisation, non gérés en stock). */
+export function isHospFamily(code?: string): boolean {
+  return normalizeFamilyCode(code) === 'HOSP';
+}
+
 export function isMedicationEntryFamily(code?: string): boolean {
-  return !isLabFamily(code) && !isEchoFamily(code);
+  return !isLabFamily(code) && !isEchoFamily(code) && !isHospFamily(code);
 }
 
 /**
@@ -859,6 +875,48 @@ export const DEFAULT_ECHO_CATALOG: EchoExamCatalog[] = [
   { id: 'echo-pro', code: 'ECH010', name: 'Échographie prostatique', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 35000 },
 ];
 
+/* ====== CATALOGUE HOSPITALISATION (famille HOSP) ====== */
+export interface HospCatalog {
+  id: string;
+  code: string;
+  name: string;
+  /** Unité de facturation : 'jour', 'nuit', 'forfait', 'visite'… */
+  unit: string;
+  priceComptoir: number;
+  priceSociete: number;
+  priceExterne: number;
+  urgentPrice: number;
+}
+
+export const DEFAULT_HOSP_CATALOG: HospCatalog[] = [
+  { id: 'hosp-jour', code: 'HOSP001', name: "Journée d'hospitalisation / Chambre", unit: 'jour', priceComptoir: 50000, priceSociete: 45000, priceExterne: 60000, urgentPrice: 65000 },
+  { id: 'hosp-lit', code: 'HOSP002', name: "Lit d'hospitalisation / nuit", unit: 'nuit', priceComptoir: 30000, priceSociete: 25000, priceExterne: 35000, urgentPrice: 40000 },
+  { id: 'hosp-ch-ind', code: 'HOSP003', name: 'Chambre individuelle / nuit', unit: 'nuit', priceComptoir: 50000, priceSociete: 45000, priceExterne: 60000, urgentPrice: 65000 },
+  { id: 'hosp-soins', code: 'HOSP004', name: 'Surveillance & soins infirmiers / jour', unit: 'jour', priceComptoir: 15000, priceSociete: 12000, priceExterne: 18000, urgentPrice: 20000 },
+  { id: 'hosp-forfait', code: 'HOSP005', name: 'Forfait hospitalisation (chambre + repas) / jour', unit: 'jour', priceComptoir: 60000, priceSociete: 55000, priceExterne: 70000, urgentPrice: 75000 },
+  { id: 'hosp-postop', code: 'HOSP006', name: 'Salle de surveillance post-opératoire / jour', unit: 'jour', priceComptoir: 45000, priceSociete: 40000, priceExterne: 55000, urgentPrice: 60000 },
+  { id: 'hosp-mater', code: 'HOSP007', name: 'Forfait maternité (accouchement simple)', unit: 'forfait', priceComptoir: 250000, priceSociete: 220000, priceExterne: 300000, urgentPrice: 350000 },
+  { id: 'hosp-visite', code: 'HOSP008', name: 'Suivi / visite du patient hospitalisé', unit: 'visite', priceComptoir: 10000, priceSociete: 8000, priceExterne: 12000, urgentPrice: 15000 },
+];
+
+/**
+ * Extrait ou dérive le catalogue d'hospitalisation depuis la base unifiée des articles (famille HOSP).
+ */
+export function getHospCatalog(articles: Article[] = []): HospCatalog[] {
+  const hospArts = articles.filter(a => isHospFamily(a.family) && a.unit !== 'unité' && a.unit !== 'flacon' && a.unit !== 'boîte');
+  if (hospArts.length === 0) return DEFAULT_HOSP_CATALOG;
+  return hospArts.map((a, idx) => ({
+    id: a.id,
+    code: a.code || a.barcode || `HOSP${String(idx + 1).padStart(3, '0')}`,
+    name: a.name,
+    unit: a.unit || 'jour',
+    priceComptoir: a.priceComptoir,
+    priceSociete: a.priceSociete,
+    priceExterne: a.priceExterne,
+    urgentPrice: a.urgentPrice || (a.priceComptoir ? Math.round(a.priceComptoir * 1.3) : 50000),
+  }));
+}
+
 /**
  * Extrait ou dérive le catalogue des échographies depuis la base unifiée des articles (famille ECHO).
  */
@@ -955,6 +1013,17 @@ export function echoExamToArticle(e: EchoExamCatalog): Article {
   };
 }
 
+/** Convertit un acte/forfait d'hospitalisation en article unifié (famille HOSP). */
+export function hospExamToArticle(e: HospCatalog): Article {
+  return {
+    id: e.id, name: e.name, code: e.code, barcode: e.code, family: 'HOSP', unit: e.unit || 'jour',
+    priceComptoir: e.priceComptoir, priceSociete: e.priceSociete, priceExterne: e.priceExterne,
+    urgentPrice: e.urgentPrice, purchasePrice: 0, stockCentral: 0, stockPharmacie: 0,
+    minStockCentral: 0, minStockPharmacie: 0,
+    alertDisabledCentral: true, alertDisabledPharmacie: true,
+  };
+}
+
 /**
  * Garantit que la base locale suit la logique des articles unifiés :
  *  - si aucun examen LABO n'existe dans `articles`, les examens standards,
@@ -972,6 +1041,7 @@ export function ensureUnifiedArticles(state: AppState): {
   changed: boolean;
   addedLab: number;
   addedEcho: number;
+  addedHosp: number;
 } {
   const articles: Article[] = state.articles || [];
   const byId = new Map<string, Article>(articles.map((a) => [a.id, a]));
@@ -988,9 +1058,11 @@ export function ensureUnifiedArticles(state: AppState): {
 
   const hasLabExams = articles.some((a) => isLabFamily(a.family) && a.unit === 'analyse');
   const hasEchoActs = articles.some((a) => isEchoFamily(a.family) && a.unit === 'acte');
+  const hasHospActs = articles.some((a) => isHospFamily(a.family));
 
   let addedLab = 0;
   let addedEcho = 0;
+  let addedHosp = 0;
 
   if (!hasLabExams) {
     // 1. Examens standards + examens personnalisés de l'ancien catalogue (migration legacy)
@@ -1003,6 +1075,11 @@ export function ensureUnifiedArticles(state: AppState): {
   if (!hasEchoActs) {
     for (const e of DEFAULT_ECHO_CATALOG) if (addIfMissing(echoExamToArticle(e))) addedEcho++;
     if (addIfMissing(DEFAULT_ECHO_GEL_ARTICLE)) addedEcho++;
+  }
+
+  if (!hasHospActs) {
+    // Actes et forfaits d'hospitalisation (famille HOSP — non gérés en stock)
+    for (const e of DEFAULT_HOSP_CATALOG) if (addIfMissing(hospExamToArticle(e))) addedHosp++;
   }
 
   const nextArticles = addedArticles.length > 0 ? [...articles, ...addedArticles] : articles;
@@ -1041,10 +1118,10 @@ export function ensureUnifiedArticles(state: AppState): {
     }
   }
 
-  const changed = addedLab + addedEcho > 0 || mirrorChanged;
+  const changed = addedLab + addedEcho + addedHosp > 0 || mirrorChanged;
   return changed
-    ? { state: { ...state, articles: nextArticles, labCatalog }, changed: true, addedLab, addedEcho }
-    : { state, changed: false, addedLab: 0, addedEcho: 0 };
+    ? { state: { ...state, articles: nextArticles, labCatalog }, changed: true, addedLab, addedEcho, addedHosp }
+    : { state, changed: false, addedLab: 0, addedEcho: 0, addedHosp: 0 };
 }
 
 /**
@@ -1054,11 +1131,11 @@ export function ensureUnifiedArticles(state: AppState): {
  */
 export function prepareLoadedState(state: AppState): AppState {
   const normalized = ensureEtablissements(normalizeFamilyBases(state));
-  const { state: unified, changed, addedLab, addedEcho } = ensureUnifiedArticles(normalized);
+  const { state: unified, changed, addedLab, addedEcho, addedHosp } = ensureUnifiedArticles(normalized);
   if (changed) {
     // eslint-disable-next-line no-console
     console.info(
-      `[articles unifiés] base locale synchronisée : ${addedLab} article(s) LABO et ${addedEcho} article(s) ECHO intégrés à la table articles, catalogue legacy réaligné.`
+      `[articles unifiés] base locale synchronisée : ${addedLab} article(s) LABO, ${addedEcho} article(s) ECHO et ${addedHosp} article(s) HOSP intégrés à la table articles, catalogue legacy réaligné.`
     );
   }
   return unified;

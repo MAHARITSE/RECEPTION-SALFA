@@ -1,7 +1,8 @@
 export type UserRole = 'receptionist' | 'doctor' | 'cashier' | 'pharmacy' | 'magasinier' | 'laboratory' | 'admin' | 'billing';
 export type ClientType = 'comptoir' | 'societe' | 'externe';
 // Code de famille d'article. La base des familles est dynamique (state.familles),
-// avec des codes standard : MEDIC (Médicaments), LABO (Laboratoire), ECHO (Échographie), DENT (Dentaire).
+// avec des codes standard : MEDIC (Médicaments), LABO (Laboratoire), ECHO (Échographie),
+// HOSP (Hospitalisation), DENT (Dentaire).
 export type ArticleFamily = string;
 export type PatientStatus = 'registered' | 'waiting_consultation' | 'in_consultation' | 'consulted_awaiting_payment' | 'invoice_paid' | 'medications_delivered' | 'analyses_pending' | 'analyses_complete' | 'completed';
 
@@ -367,6 +368,14 @@ export interface Famille {
   name: string;
   color: string;
   order?: number;
+  /**
+   * Gestion du stock pour cette famille.
+   * - `true` (ou non renseigné) : les articles sont suivis en stock
+   *   (mouvements, alertes stock bas / rupture, contrôle de vente).
+   * - `false` : la famille n'est pas gérée en stock (ex. actes, services) ;
+   *   aucun contrôle, décompte ni alerte de stock ne s'applique à ses articles.
+   */
+  manageStock?: boolean;
 }
 
 /* ====== IDENTIFICATION DE LA SOCIÉTÉ / DE L'HÔPITAL ====== */
