@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Component, type ReactNode, type ErrorInfo } from 'react';
 import type { User } from './types';
-import { createInitialState, ensureEtablissements, migrateLegacyToVentes, normalizeFamilyBases, addAuditLog, type AppState } from './store';
+import { createInitialState, ensureEtablissements, migrateLegacyToVentes, normalizeFamilyBases, addAuditLog, addNotification, type AppState } from './store';
 import { loadStateFromBrowser, saveStateToBrowser } from './browserDb';
 import {
   IS_WAMP_BUILD,
@@ -332,7 +332,18 @@ function AppInner() {
           ? { ...a, saleBlocked: false, saleBlockReason: undefined, saleBlockedAt: undefined, saleBlockedBy: undefined } : a) : prev.articles,
         notifications: prev.notifications.map((n) => n.id === notifId ? { ...n, read: true, action: undefined } : n),
       };
-      addAuditLog(next, accepted ? 'DEBLOCAGE_VENTE' : 'REFUS_DEBLOCAGE_VENTE', `${notification.action.articleName} — réponse caisse : ${accepted ? 'Oui' : 'Non'}`);
+      const decider = prev.currentUser?.name || 'la caisse';
+      addAuditLog(next, accepted ? 'DEBLOCAGE_VENTE' : 'REFUS_DEBLOCAGE_VENTE', `${notification.action.articleName} — déblocage ${accepted ? 'accordé' : 'refusé'} par ${decider}`);
+      // Accusé de réception vers la pharmacie : sans ce retour, le pharmacien
+      // ne savait pas si son déblocage avait été validé (article « toujours bloqué »).
+      addNotification(
+        next,
+        'pharmacy',
+        accepted
+          ? `✅ Déblocage vente accordé : « ${notification.action.articleName} » est de nouveau vendable en pharmacie.`
+          : `❌ Déblocage vente refusé : « ${notification.action.articleName} » reste bloqué à la vente en pharmacie.`,
+        accepted ? 'info' : 'warning'
+      );
       return next;
     });
   };

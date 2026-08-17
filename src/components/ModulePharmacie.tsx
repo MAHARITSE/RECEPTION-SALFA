@@ -198,6 +198,18 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
       alert('Indiquez le motif du blocage (réservé, en attente de régularisation, etc.).');
       return;
     }
+    // Anti-doublon : une seule demande de déblocage en attente par article.
+    if (blockModal.currentlyBlocked) {
+      const alreadyPending = state.notifications.some(
+        (n) => n.action?.type === 'pharmacy-unblock' && n.action.articleId === blockModal.articleId
+      );
+      if (alreadyPending) {
+        alert(`⏳ Une demande de déblocage est déjà en attente pour « ${blockModal.name} ».\n\nLa caisse (ou la caisse de garde) la valide depuis la cloche 🔔 en haut à droite : boutons « Oui, débloquer » / « Non ».`);
+        setBlockModal(null);
+        setBlockReason('');
+        return;
+      }
+    }
     setState((prev) => {
       // Un déblocage doit être validé par la caisse : on ne modifie pas l'article
       // et on n'ouvre aucun menu. La caisse reçoit une notification avec Oui / Non.
@@ -249,7 +261,7 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
         `⛔ Vente bloquée pour :\n${blocked.map((p) => {
           const art = state.articles.find((a) => a.name === p.articleName);
           return `• ${p.articleName}${art?.saleBlockReason ? ` (${art.saleBlockReason})` : ''}`;
-        }).join('\n')}\n\nDébloquez l'article dans Stock pharmacie ou retirez-le de l'ordonnance.`
+        }).join('\n')}\n\nDemandez le déblocage dans Stock pharmacie (validation par la caisse via la cloche 🔔) ou retirez l'article de l'ordonnance.`
       );
       return;
     }
@@ -388,6 +400,14 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
   };
 
   const blockedCount = state.articles.filter((a) => a.saleBlocked).length;
+
+  // Articles bloqués dont une demande de déblocage est EN ATTENTE de validation caisse.
+  // Permet au pharmacien de voir que la demande est partie (et d'éviter les doublons).
+  const pendingUnblockIds = new Set(
+    state.notifications
+      .filter((n) => n.action?.type === 'pharmacy-unblock')
+      .map((n) => n.action!.articleId)
+  );
 
   // Calcul des livraisons en cours (avant clôture de caisse / garde du responsable pharmacie)
   const unclosedDeliveryItems = (state.pharmaDeliveryItems || []).filter((item) => !item.closingId);
@@ -1014,7 +1034,16 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                               </td>
                               <td className="py-3 px-3 text-center">
                                 {blocked
-                                  ? <span className="px-2 py-1 bg-orange-200 text-orange-900 text-xs rounded-full font-bold">⛔ BLOQUÉ</span>
+                                  ? (
+                                    <div className="flex flex-col items-center gap-1">
+                                      <span className="px-2 py-1 bg-orange-200 text-orange-900 text-xs rounded-full font-bold">⛔ BLOQUÉ</span>
+                                      {pendingUnblockIds.has(a.id) && (
+                                        <span className="px-2 py-0.5 bg-sky-100 text-sky-800 text-[10px] rounded-full font-bold" title="La caisse (ou la caisse de garde) doit valider depuis la cloche 🔔">
+                                          ⏳ Déblocage demandé
+                                        </span>
+                                      )}
+                                    </div>
+                                  )
                                   : isArticleSaleable(a)
                                     ? <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs rounded-full font-medium">Vendable</span>
                                     : <span className="px-2 py-1 bg-slate-200 text-slate-600 text-xs rounded-full font-medium">Non vendable</span>}
@@ -1331,7 +1360,10 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                     Débloquer la vente de l'article « {blockModal.name} » ?
                   </p>
                   <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-xl p-3">
-                    En répondant <strong>Oui</strong>, une demande de déblocage est envoyée à la caisse pour validation finale.
+                    En répondant <strong>Oui</strong>, une demande de déblocage est envoyée à la <strong>caisse</strong> pour validation finale.
+                    Elle se valide depuis la <strong>cloche 🔔</strong> (boutons « Oui, débloquer » / « Non ») — le message reste visible tant qu'il n'a pas reçu de réponse.
+                    Pendant la <strong>caisse de garde</strong>, le pharmacien peut la valider lui-même depuis cette même cloche.
+                    L'article reste bloqué jusqu'à la validation.
                   </p>
                 </>
               )}
