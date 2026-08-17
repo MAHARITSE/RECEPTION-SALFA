@@ -120,7 +120,13 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
   // Le laboratoire ne liste que les examens déjà réglés / prêts à traiter.
   // Les demandes encore au statut `pending` restent visibles uniquement à la caisse,
   // afin de ne plus afficher de partie « À facturer » dans la liste laboratoire.
-  const visibleLabs = allLabs.filter((d) => d.lr.status !== 'pending');
+  // ⚠️ Tolérance : une demande restée `pending` mais dont la facture est payée est
+  // quand même affichée (les demandes payées doivent TOUJOURS arriver au laboratoire).
+  const visibleLabs = allLabs.filter((d) => !(d.lr.status === 'pending' && !d.paid));
+
+  const isAwaitingStatus = (d: DispLab) =>
+    d.lr.status === 'paid' || d.lr.status === 'sample_received' ||
+    (d.lr.status === 'pending' && d.paid);
 
   const filtered = visibleLabs.filter((d) => {
     if (search) {
@@ -128,14 +134,14 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
       if (!d.patientName.toLowerCase().includes(q) && !(d.lr.examType.toLowerCase().includes(q))) return false;
     }
     if (filterCat !== 'all' && (d.lr.category || 'autre') !== filterCat) return false;
-    if (tab === 'awaiting') return d.lr.status === 'paid' || d.lr.status === 'sample_received';
+    if (tab === 'awaiting') return isAwaitingStatus(d);
     if (tab === 'in_progress') return d.lr.status === 'in_progress';
     if (tab === 'completed') return d.lr.status === 'completed';
     return true;
   });
 
   const counts = {
-    awaiting: visibleLabs.filter((d) => d.lr.status === 'paid' || d.lr.status === 'sample_received').length,
+    awaiting: visibleLabs.filter((d) => isAwaitingStatus(d)).length,
     in_progress: visibleLabs.filter((d) => d.lr.status === 'in_progress').length,
     completed: visibleLabs.filter((d) => d.lr.status === 'completed').length,
   };
@@ -430,10 +436,10 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
                         </div>
                       </div>
                       <div className="flex items-center gap-2 flex-wrap justify-end">
-                        {st === 'pending' && (
+                        {st === 'pending' && !d.paid && (
                           <span className="px-3 py-1.5 bg-amber-100 text-amber-800 rounded-lg text-xs font-semibold">En attente de paiement (caisse)</span>
                         )}
-                        {st === 'paid' && (
+                        {(st === 'paid' || (st === 'pending' && d.paid)) && (
                           <button onClick={() => startAnalysis(d)} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-xs flex items-center gap-1 cursor-pointer">
                             <Microscope className="w-3.5 h-3.5" /> Démarrer l'analyse
                           </button>
