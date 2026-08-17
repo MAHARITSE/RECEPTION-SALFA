@@ -1,5 +1,6 @@
 import { DEFAULT_TICKET_SETTINGS, type AppState } from './store';
 import type { TicketSettings } from './types';
+import { collectDeletions, mergeStates, sameBusinessData } from './syncMerge';
 
 /**
  * ─────────────────────────────────────────────────────────────────────────────
@@ -65,6 +66,14 @@ export const initialWampSync: WampSyncState = {
   lastSavedAt: null,
   error: null,
 };
+
+/** Dernier état confirmé côté MySQL pour CE poste (base de la fusion à 3 versions). */
+let lastConfirmedState: AppState | null = null;
+
+/** Mémorise l'état considéré comme « déjà en base » pour ce poste. */
+export function setSyncBaseline(state: AppState | null): void {
+  lastConfirmedState = state ? (JSON.parse(JSON.stringify({ ...state, currentUser: null })) as AppState) : null;
+}
 
 /** Construit le payload `datasets` (état complet SANS la session courante). */
 function buildDatasets(state: AppState): Record<string, unknown> {
@@ -146,11 +155,97 @@ export async function saveStateToMysql(state: AppState): Promise<boolean> {
     });
     if (!res.ok) return false;
     const data = await res.json();
-    return !!(data && data.success === true);
+    const ok = !!(data && data.success === true);
+    if (ok) setSyncBaseline(state);
+    return ok;
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn('[WAMP/MySQL] Échec de la sauvegarde MySQL :', e);
     return false;
+  }
+}
+
+export interface SyncResult {
+  /** L'échange avec MySQL a abouti. */
+  ok: boolean;
+  /**
+   * État à appliquer au poste : fusion des saisies locales et de celles des
+   * autres postes. `null` si rien n'a changé pour ce poste.
+   */
+  merged: AppState | null;
+}
+
+/**
+ * ─── SYNCHRONISATION MULTI-POSTES ───
+ * Enregistre les saisies de CE poste ET récupère celles des autres postes,
+ * en une seule opération :
+ *
+ *   1. lecture de l'état courant en base (saisies des collègues) ;
+ *   2. fusion à trois versions (base confirmée / local / distant) : aucune
+ *      saisie n'est écrasée, les suppressions locales sont respectées ;
+ *   3. écriture de l'état fusionné, avec la liste explicite des suppressions.
+ *
+ * C'est ce mécanisme qui fait remonter les consultations validées par le
+ * médecin dans la file d'attente de la caisse, sans que la caisse n'écrase
+ * en retour le travail du médecin.
+ */
+export async function syncStateWithMysql(state: AppState): Promise<SyncResult> {
+  if (!IS_WAMP_BUILD) return { ok: false, merged: null };
+  try {
+    const res = await fetch(`${API_URL}?action=read_all`, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) return { ok: false, merged: null };
+    const data = await res.json();
+    if (!data || data.success !== true || !data.datasets) return { ok: false, merged: null };
+
+    const remote = reconstructState(data.datasets as Record<string, unknown>);
+    const merged = mergeStates(lastConfirmedState, state, remote);
+    const deletions = collectDeletions(lastConfirmedState, state);
+
+    const saveRes = await fetch(`${API_URL}?action=sync_all`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ datasets: buildDatasets(merged), deletions }),
+    });
+    if (!saveRes.ok) return { ok: false, merged: null };
+    const saveData = await saveRes.json();
+    if (!saveData || saveData.success !== true) return { ok: false, merged: null };
+
+    setSyncBaseline(merged);
+    // Rien de neuf pour ce poste : on évite un re-rendu inutile de l'interface.
+    return { ok: true, merged: sameBusinessData(state, merged) ? null : merged };
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[WAMP/MySQL] Échec de la synchronisation :', e);
+    return { ok: false, merged: null };
+  }
+}
+
+/**
+ * Rafraîchissement seul (lecture) : récupère les saisies des autres postes sans
+ * rien écrire. Utilisé par le rafraîchissement périodique quand ce poste n'a
+ * aucune modification en attente.
+ */
+export async function refreshStateFromMysql(state: AppState): Promise<AppState | null> {
+  if (!IS_WAMP_BUILD) return null;
+  try {
+    const res = await fetch(`${API_URL}?action=read_all`, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data || data.success !== true || !data.datasets) return null;
+    const remote = reconstructState(data.datasets as Record<string, unknown>);
+    const merged = mergeStates(lastConfirmedState, state, remote);
+    if (sameBusinessData(state, merged)) return null;
+    return merged;
+  } catch {
+    return null;
   }
 }
 
