@@ -61,22 +61,33 @@ export default function MiseEnPage({ user, patients = [], notifications, onLogou
   const [activeToast, setActiveToast] = useState<NotifType | null>(null);
 
   const myNotifs = notifications.filter(
-    (n) => (user.role === 'pharmacy' || user.role === 'magasinier' || user.role === 'cashier') &&
-           (n.targetRole === user.role || n.targetUserId === user.id)
+    (n) =>
+      (user.role === 'pharmacy' || user.role === 'magasinier' || user.role === 'cashier') &&
+      (n.targetRole === user.role ||
+        n.targetUserId === user.id ||
+        // La pharmacie tient la CAISSE DE GARDE (nuit / jours fériés) : elle doit
+        // voir — et pouvoir traiter — les demandes de déblocage adressées à la caisse,
+        // sinon l'article resterait bloqué sans qu'aucun caissier ne soit connecté.
+        (user.role === 'pharmacy' && n.targetRole === 'cashier' && n.action?.type === 'pharmacy-unblock'))
   );
   const unreadCount = myNotifs.filter((n) => !n.read).length;
 
   const prevCountRef = useRef(myNotifs.length);
   useEffect(() => {
-    if (myNotifs.length > prevCountRef.current) {
-      const newest = myNotifs[0];
-      if (newest && !newest.read) {
-        setActiveToast(newest);
-        const t = setTimeout(() => setActiveToast(null), 6000);
-        return () => clearTimeout(t);
-      }
-    }
+    // NB : mettre à jour le compteur AVANT tout return, sinon un toast affiché
+    // laisserait l'ancienne valeur et le toast réapparaîtrait en boucle.
+    const hasNew = myNotifs.length > prevCountRef.current;
     prevCountRef.current = myNotifs.length;
+    if (!hasNew) return;
+    const newest = myNotifs[0];
+    if (!newest || newest.read) return;
+    setActiveToast(newest);
+    // Une notification ACTIONNABLE (ex. demande de déblocage de vente) ne doit
+    // JAMAIS disparaître toute seule : sans réponse possible, l'article resterait
+    // bloqué. Elle reste affichée jusqu'à réponse (Oui/Non) ou fermeture (X).
+    if (newest.action) return;
+    const t = setTimeout(() => setActiveToast(null), 6000);
+    return () => clearTimeout(t);
   }, [myNotifs]);
 
   return (
@@ -191,8 +202,27 @@ export default function MiseEnPage({ user, patients = [], notifications, onLogou
                                 n.type === 'critical' ? 'bg-red-500' : n.type === 'warning' ? 'bg-amber-500' : 'bg-blue-500'
                               }`}
                             />
-                            <div>
+                            <div className="flex-1 min-w-0">
                               <p className="text-sm text-slate-700">{n.message}</p>
+                              {/* Demande de déblocage EN ATTENTE : la décision reste possible
+                                  ici même si le toast a été fermé — sinon l'article resterait
+                                  bloqué sans aucun moyen de le débloquer. */}
+                              {n.action?.type === 'pharmacy-unblock' && (
+                                <div className="flex gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
+                                  <button
+                                    onClick={() => onNotificationAction?.(n.id, true)}
+                                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer shadow-sm"
+                                  >
+                                    ✅ Oui, débloquer
+                                  </button>
+                                  <button
+                                    onClick={() => onNotificationAction?.(n.id, false)}
+                                    className="px-3 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold cursor-pointer"
+                                  >
+                                    ❌ Non
+                                  </button>
+                                </div>
+                              )}
                               <p className="text-xs text-slate-400 mt-1">
                                 {new Date(n.timestamp).toLocaleString('fr-FR')}
                               </p>
