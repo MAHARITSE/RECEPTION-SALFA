@@ -1,7 +1,7 @@
 export type UserRole = 'receptionist' | 'doctor' | 'cashier' | 'pharmacy' | 'magasinier' | 'laboratory' | 'admin' | 'billing';
 export type ClientType = 'comptoir' | 'societe' | 'externe';
 // Code de famille d'article. La base des familles est dynamique (state.familles),
-// avec des codes par défaut : MEDIC, LAB, ECHO (et DENT conservé pour l'existant).
+// avec des codes standard : MEDIC (Médicaments), LABO (Laboratoire), ECHO (Échographie), DENT (Dentaire).
 export type ArticleFamily = string;
 export type PatientStatus = 'registered' | 'waiting_consultation' | 'in_consultation' | 'consulted_awaiting_payment' | 'invoice_paid' | 'medications_delivered' | 'analyses_pending' | 'analyses_complete' | 'completed';
 
@@ -66,6 +66,18 @@ export interface Article {
   saleBlockReason?: string;
   saleBlockedAt?: string;
   saleBlockedBy?: string;
+  /** Code court / référence d'examen (ex: LAB001, ECH001) */
+  code?: string;
+  /** Paramètres biologiques de l'analyse (pour les articles de famille LABO) */
+  parameters?: string[];
+  /** Sous-catégorie laboratoire (hématologie, biochimie, sérologie, etc.) */
+  category?: LabCategory | string;
+  /** Nature du prélèvement / échantillon (ex: Sang veineux, Urines, Selles) */
+  sampleType?: string;
+  /** Tarif d'urgence (si applicable) */
+  urgentPrice?: number;
+  /** Délai indicatif de rendu en heures */
+  durationHours?: number;
 }
 
 export interface Prescription {

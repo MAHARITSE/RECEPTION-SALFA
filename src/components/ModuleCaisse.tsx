@@ -2,7 +2,11 @@ import { useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription, LabExamCatalog, LabCategory, Patient } from '../types';
 import type { AppState } from '../store';
-import { addAuditLog, addNotification, formatAr, formatNum, roundTo2, getPrice, calculateAge, generateDossierNumber, addJourneyEvent, generatePharmaClosingNumber, purgePatientFromQueue, labCategoryLabel } from '../store';
+import {
+  addAuditLog, addNotification, formatAr, formatNum, roundTo2, getPrice, calculateAge,
+  generateDossierNumber, addJourneyEvent, generatePharmaClosingNumber, purgePatientFromQueue,
+  labCategoryLabel, getEchoCatalog, getLabCatalog,
+} from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText, FlaskConical, Scan, X, XCircle } from 'lucide-react';
 import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket } from '../utils/printTicket';
 import { printSalfaIndividualInvoice } from '../utils/printSalfaInvoice';
@@ -374,15 +378,18 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const extTotal = roundTo2(extArticlesTotal + extServicesTotal);
 
   // === ANALYSES & ÉCHOS (services externes) ===
+  const currentLabCatalog = getLabCatalog(state.articles, state.labCatalog);
+  const currentEchoCatalog = getEchoCatalog(state.articles);
+
   const extLabFiltered = extServiceSearch.length >= 1
-    ? state.labCatalog.filter((e) => e.name.toLowerCase().includes(extServiceSearch.toLowerCase()) || e.code.toLowerCase().includes(extServiceSearch.toLowerCase()))
-    : state.labCatalog;
+    ? currentLabCatalog.filter((e) => e.name.toLowerCase().includes(extServiceSearch.toLowerCase()) || e.code.toLowerCase().includes(extServiceSearch.toLowerCase()))
+    : currentLabCatalog;
   const extEchoFiltered = extServiceSearch.length >= 1
-    ? ECHO_CATALOG.filter((e) => e.name.toLowerCase().includes(extServiceSearch.toLowerCase()) || e.code.toLowerCase().includes(extServiceSearch.toLowerCase()))
-    : ECHO_CATALOG;
+    ? currentEchoCatalog.filter((e) => e.name.toLowerCase().includes(extServiceSearch.toLowerCase()) || e.code.toLowerCase().includes(extServiceSearch.toLowerCase()))
+    : currentEchoCatalog;
 
   const addExtLabExam = (examId: string, urgent: boolean) => {
-    const e = state.labCatalog.find((x) => x.id === examId);
+    const e = currentLabCatalog.find((x) => x.id === examId) || state.labCatalog.find((x) => x.id === examId);
     if (!e) return;
     const price = urgent ? (e.urgentPrice || e.priceExterne) : e.priceExterne;
     const nl: ExtServiceLine = {
@@ -392,7 +399,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     setExtServices([...extServices, nl]);
   };
   const addExtEchoExam = (examId: string, urgent: boolean) => {
-    const e = ECHO_CATALOG.find((x) => x.id === examId);
+    const e = currentEchoCatalog.find((x) => x.id === examId) || ECHO_CATALOG.find((x) => x.id === examId);
     if (!e) return;
     const nl: ExtServiceLine = {
       id: uuidv4(), kind: 'echo', name: e.name, code: e.code,
@@ -406,10 +413,10 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     const urgent = !s.urgent;
     let price = s.price;
     if (s.kind === 'lab') {
-      const e = state.labCatalog.find((x) => x.code === s.code);
+      const e = currentLabCatalog.find((x) => x.code === s.code) || state.labCatalog.find((x) => x.code === s.code);
       if (e) price = urgent ? (e.urgentPrice || e.priceExterne) : e.priceExterne;
     } else {
-      const e = ECHO_CATALOG.find((x) => x.code === s.code);
+      const e = currentEchoCatalog.find((x) => x.code === s.code) || ECHO_CATALOG.find((x) => x.code === s.code);
       if (e) price = urgent ? e.urgentPrice : e.priceExterne;
     }
     return { ...s, urgent, price };

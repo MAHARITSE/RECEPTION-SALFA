@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { LabRequest, Patient, ClientType, LabExamCatalog, LabCategory } from '../types';
+import type { LabRequest, Patient, ClientType, LabExamCatalog, LabCategory, Article } from '../types';
 import type { AppState } from '../store';
 import {
   addAuditLog, addNotification, addJourneyEvent, LAB_NORMS,
@@ -64,8 +64,9 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
     const params = examForm.parameters.length
       ? examForm.parameters
       : (document.getElementById('lab-params') as HTMLInputElement)?.value.split(/[,\n;]+/).map((s) => s.trim()).filter(Boolean) || [];
+    const newExamId = uuidv4();
     const newExam: LabExamCatalog = {
-      id: uuidv4(), code, name: examForm.name.trim(),
+      id: newExamId, code, name: examForm.name.trim(),
       category: examForm.category,
       parameters: params,
       sampleType: examForm.sampleType.trim() || 'Sang veineux',
@@ -73,10 +74,37 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
       priceExterne: examForm.priceExterne || 0, urgentPrice: examForm.urgentPrice || examForm.priceComptoir || 0,
       durationHours: examForm.durationHours || 4, defaultUrgent: examForm.defaultUrgent,
     };
-    setState((prev) => ({ ...prev, labCatalog: [...prev.labCatalog, newExam] }));
+    const newArticle: Article = {
+      id: newExamId,
+      name: newExam.name,
+      code: newExam.code,
+      barcode: newExam.code,
+      family: 'LABO',
+      unit: 'analyse',
+      priceComptoir: newExam.priceComptoir,
+      priceSociete: newExam.priceSociete,
+      priceExterne: newExam.priceExterne,
+      urgentPrice: newExam.urgentPrice,
+      purchasePrice: 0,
+      stockCentral: 0,
+      stockPharmacie: 0,
+      minStockCentral: 0,
+      minStockPharmacie: 0,
+      alertDisabledCentral: true,
+      alertDisabledPharmacie: true,
+      category: newExam.category,
+      parameters: newExam.parameters,
+      sampleType: newExam.sampleType,
+      durationHours: newExam.durationHours,
+    };
+    setState((prev) => ({
+      ...prev,
+      labCatalog: [...prev.labCatalog, newExam],
+      articles: [...(prev.articles || []).filter(a => a.id !== newExamId && a.name.toLowerCase() !== newExam.name.toLowerCase()), newArticle],
+    }));
     setShowAddExam(false);
     setExamForm({ id: '', code: '', name: '', category: 'biochimie', parameters: [], sampleType: 'Sang veineux', priceComptoir: 0, priceSociete: 0, priceExterne: 0, urgentPrice: 0, durationHours: 4, defaultUrgent: false });
-    alert(`Examen « ${newExam.name} » (${newExam.code}) ajouté au catalogue.`);
+    alert(`Examen « ${newExam.name} » (${newExam.code}) ajouté au catalogue et intégré à la base des articles (famille LABO).`);
   };
 
   // ---- Agrégation des demandes (consultations + autonomes) ----

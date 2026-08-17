@@ -545,12 +545,12 @@ FROM (
 ) AS `config_minimale`
 WHERE NOT EXISTS (SELECT 1 FROM `utilisateurs`);
 
--- Configuration : familles d'articles (4 familles par défaut)
+-- Configuration : familles d'articles (4 familles par défaut : MEDIC, LABO, ECHO, DENT)
 INSERT INTO `familles` (`id`, `data_json`, `code`, `name`, `color`)
 SELECT `id`, `data_json`, `code`, `name`, `color`
 FROM (
     SELECT 'fam-medic' AS `id`, '{"id":"fam-medic","code":"MEDIC","name":"Médicaments","color":"#0D47A1","order":1}' AS `data_json`, 'MEDIC' AS `code`, 'Médicaments' AS `name`, '#0D47A1' AS `color`
-    UNION ALL SELECT 'fam-lab', '{"id":"fam-lab","code":"LAB","name":"Laboratoire","color":"#10B981","order":2}', 'LAB', 'Laboratoire', '#10B981'
+    UNION ALL SELECT 'fam-labo', '{"id":"fam-labo","code":"LABO","name":"Laboratoire","color":"#10B981","order":2}', 'LABO', 'Laboratoire', '#10B981'
     UNION ALL SELECT 'fam-echo', '{"id":"fam-echo","code":"ECHO","name":"Échographie","color":"#F59E0B","order":3}', 'ECHO', 'Échographie', '#F59E0B'
     UNION ALL SELECT 'fam-dent', '{"id":"fam-dent","code":"DENT","name":"Dentaire","color":"#8B5CF6","order":4}', 'DENT', 'Dentaire', '#8B5CF6'
 ) AS `config_minimale`

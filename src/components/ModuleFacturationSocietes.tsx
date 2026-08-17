@@ -4,6 +4,7 @@ import type { AppState } from '../store';
 import {
   addAuditLog, billingStatusClasses, billingStatusLabel,
   formatAr, formatNum, getCompanyInvoicesForMonth, addJourneyEvent, safeInvoiceItemDescriptions, familyLabel,
+  isLabFamily, isEchoFamily,
 } from '../store';
 import type { CompanyBillingAccount, CompanySettlementMode, Invoice, InvoiceItem } from '../types';
 import {
@@ -110,42 +111,32 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
       { code: 'CONS-GEN', description: 'Consultation Médecin Généraliste', category: 'consultation', price: 15000, familyLabel: 'Consultation', badgeColor: 'bg-indigo-100 text-indigo-800' },
       { code: 'CONS-SPE', description: 'Consultation Médecin Spécialiste', category: 'consultation', price: 35000, familyLabel: 'Consultation', badgeColor: 'bg-indigo-100 text-indigo-800' },
       { code: 'CONS-URG', description: 'Consultation Urgences / Garde', category: 'consultation', price: 25000, familyLabel: 'Consultation', badgeColor: 'bg-rose-100 text-rose-800' },
-      { code: 'ECHO-ABD', description: 'Échographie Abdominale', category: 'echo', price: 50000, familyLabel: 'Échographie', badgeColor: 'bg-purple-100 text-purple-800' },
-      { code: 'ECHO-PEL', description: 'Échographie Pelvienne', category: 'echo', price: 50000, familyLabel: 'Échographie', badgeColor: 'bg-purple-100 text-purple-800' },
-      { code: 'ECHO-OBS', description: 'Échographie Obstétricale', category: 'echo', price: 60000, familyLabel: 'Échographie', badgeColor: 'bg-purple-100 text-purple-800' },
-      { code: 'ECHO-GEN', description: 'Échographie Générale', category: 'echo', price: 45000, familyLabel: 'Échographie', badgeColor: 'bg-purple-100 text-purple-800' },
       { code: 'HOSP-JOUR', description: "Journée d'Hospitalisation / Chambre", category: 'hospitalization', price: 50000, familyLabel: 'Hospitalisation', badgeColor: 'bg-amber-100 text-amber-800' },
       { code: 'HOSP-SOIN', description: 'Surveillance & Soins Infirmiers', category: 'hospitalization', price: 15000, familyLabel: 'Hospitalisation', badgeColor: 'bg-amber-100 text-amber-800' },
       { code: 'SOIN-INJ', description: 'Injection / Pansement / Petite Chirurgie', category: 'surgery', price: 20000, familyLabel: 'Soins & Chirurgie', badgeColor: 'bg-rose-100 text-rose-800' },
       { code: 'BLOC-OP', description: 'Acte Chirurgical — Bloc Opératoire', category: 'surgery', price: 250000, familyLabel: 'Bloc opératoire', badgeColor: 'bg-rose-100 text-rose-800' },
     ];
 
-    // Ajouter tous les examens de laboratoire
-    (state.labCatalog || []).forEach(exam => {
-      items.push({
-        code: exam.code || exam.id,
-        description: exam.name,
-        category: 'lab',
-        price: exam.price,
-        familyLabel: 'Laboratoire',
-        badgeColor: 'bg-blue-100 text-blue-800',
-      });
-    });
-
-    // Ajouter tous les articles / médicaments / consommables
+    // Ajouter tous les articles de la base unifiée (médicaments, laboratoire, échographies, consommables, etc.)
     (state.articles || []).forEach(art => {
+      const isLab = isLabFamily(art.family);
+      const isEcho = isEchoFamily(art.family);
+      const cat: CatalogCategory = isLab ? 'lab' : isEcho ? 'echo' : 'pharmacy';
+      const label = isLab ? 'Laboratoire' : isEcho ? 'Échographie' : familyLabel(art.family, state.familles);
+      const badge = isLab ? 'bg-emerald-100 text-emerald-800' : isEcho ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800';
+
       items.push({
-        code: art.id || art.code || 'PHA',
+        code: art.code || art.barcode || art.id,
         description: art.name,
-        category: 'pharmacy',
+        category: cat,
         price: art.priceSociete || art.priceComptoir || 0,
-        familyLabel: familyLabel(art.family),
-        badgeColor: 'bg-emerald-100 text-emerald-800',
+        familyLabel: label,
+        badgeColor: badge,
       });
     });
 
     return items;
-  }, [state.articles, state.labCatalog]);
+  }, [state.articles, state.familles]);
 
   const filteredSageCatalog = useMemo(() => {
     return unifiedCatalog.filter(item => {
@@ -205,7 +196,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
           company: acc.company,
           month: acc.month,
           amount: p.amount,
-          method: p.method,
+          method: p.method || 'Versement / Virement',
           reference: p.reference,
           observation: p.observation,
           beneficiaryLabel: beneficiary,
@@ -229,12 +220,12 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
       if ((inv.status === 'paid' || inv.paidAt) && !existingPayInvIds.has(inv.id)) {
         const pat = state.patients.find(pt => pt.id === inv.patientId);
         const patName = pat ? `${pat.lastName} ${pat.firstName}` : (inv.clientName || 'Salarié');
-        const isCompanyInv = Boolean(inv.clientType === 'societe' || inv.companyName);
+        const comp = pat?.company || (inv.clientType === 'societe' ? 'Société conventionnée' : 'Patient individuel');
         list.push({
           id: `invpay-${inv.id}`,
           date: inv.paidAt || inv.createdAt,
           type: 'individuel',
-          company: inv.companyName || (isCompanyInv ? 'Société conventionnée' : 'Patient individuel'),
+          company: comp,
           month: inv.createdAt.slice(0, 7),
           amount: inv.totalAmount,
           method: 'Versement / Caisse',
@@ -278,7 +269,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
             ...acc,
             payments: filteredPayments,
             paidAmount: newPaid,
-            status: newPaid >= acc.totalAmount ? ('paid' as const) : ('pending' as const),
+            status: (newPaid >= acc.totalAmount ? 'paid' : newPaid > 0 ? 'partial' : 'open') as CompanyBillingAccount['status'],
           };
         });
       }
@@ -287,7 +278,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
           if (!p.invoiceIds!.includes(inv.id)) return inv;
           return {
             ...inv,
-            status: 'unpaid' as const,
+            status: 'pending' as const,
             paidAt: undefined,
             paidBy: undefined,
           };
@@ -302,11 +293,12 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
     const setComp = new Set<string>();
     state.companyBillingAccounts.forEach(a => setComp.add(a.company));
     state.invoices.forEach(i => {
-      if (i.companyName) setComp.add(i.companyName);
+      const pat = state.patients.find(p => p.id === i.patientId);
+      if (pat?.company) setComp.add(pat.company);
       else if (i.clientType === 'societe') setComp.add('Société conventionnée');
     });
     return Array.from(setComp).sort();
-  }, [state.companyBillingAccounts, state.invoices]);
+  }, [state.companyBillingAccounts, state.invoices, state.patients]);
 
   const histAvailableMonths = useMemo(() => {
     const setM = new Set<string>();
