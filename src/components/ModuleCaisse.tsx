@@ -16,13 +16,15 @@ interface Props {
 }
 // L'ancien onglet « Comptes sociétés » a été déplacé vers le module dédié
 // du rôle Responsable facturation (ModuleFacturationSocietes).
-type Tab = 'payment' | 'external' | 'hospit' | 'bloc' | 'closing';
+type Tab = 'payment' | 'hospit' | 'bloc' | 'closing';
 type HbModal = 'none' | 'add_patient' | 'add_article' | 'edit_client';
 
 export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecipient }: Props) {
   const [selConsultId, setSelConsultId] = useState<string | null>(null);
   const [selPatientId, setSelPatientId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('payment');
+  // Facturation : le détail de la facture s'ouvre en fenêtre modale (clic sur la file d'attente)
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const payingRef = useRef(false);
 
   // Rectification modal state
@@ -185,10 +187,22 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
           addJourneyEvent(next, { patientId: pid, department: 'caisse', action: 'Consultations retirées de la file caisse', status: 'registered', details: `Facturation en attente annulée — dossier conservé par ${prev.currentUser?.name || 'la caisse'}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name });
           return next;
         });
-        if (selPatientId === pid) { setSelPatientId(null); setSelConsultId(null); }
+        if (selPatientId === pid) { setSelPatientId(null); setSelConsultId(null); setPaymentModalOpen(false); }
         setConfirmModalState((prev) => ({ ...prev, isOpen: false }));
       },
     });
+  };
+
+  // Ouverture / fermeture de la facture patient en fenêtre modale
+  const openPaymentModal = (pid: string) => {
+    setSelPatientId(pid);
+    setSelConsultId(getConsults(pid)[0]?.id || null);
+    setPaymentModalOpen(true);
+  };
+  const closePaymentModal = () => {
+    setPaymentModalOpen(false);
+    setSelPatientId(null);
+    setSelConsultId(null);
   };
 
   const handlePayment = () => {
@@ -310,7 +324,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       }, labToPrint.length > 0 ? 1800 : 900);
     }
 
-    setSelConsultId(null); setSelPatientId(null);
+    setSelConsultId(null); setSelPatientId(null); setPaymentModalOpen(false);
     payingRef.current = false;
   };
 
@@ -893,200 +907,96 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
       {/* Tabs */}
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
         <div className="flex border-b overflow-x-auto">
-          {([['payment','📋 Facturation',pendingPatients.length],['external','🛒 Vte Externe',0],['hospit','🏨 Hospit.',hbRecords.filter(h=>h.type==='hospit').length],['bloc','🏥 Bloc',hbRecords.filter(h=>h.type==='bloc').length],['closing','🔒 Clôture',0]] as [Tab,string,number][]).map(([k,l,c]) => (
+          {([['payment','📋 Facturation',pendingPatients.length],['hospit','🏨 Hospit.',hbRecords.filter(h=>h.type==='hospit').length],['bloc','🏥 Bloc',hbRecords.filter(h=>h.type==='bloc').length],['closing','🔒 Clôture',0]] as [Tab,string,number][]).map(([k,l,c]) => (
             <button key={k} onClick={() => switchTab(k)} className={`flex items-center gap-1 px-4 py-3 text-xs font-medium border-b-2 cursor-pointer whitespace-nowrap ${tab===k?'border-amber-500 text-amber-600 bg-amber-50/50':'border-transparent text-slate-500'}`}>{l}{c > 0 ? ` (${c})` : ''}</button>
           ))}
         </div>
 
         <div className="p-4">
 
-          {/* PAYMENT */}
+          {/* FACTURATION — file d'attente de paiement (popup) + Vente directe client externe */}
           {tab === 'payment' && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <div className="divide-y border rounded-lg max-h-[500px] overflow-y-auto">
-                {pendingPatients.length === 0 ? <div className="p-6 text-center text-slate-400">Aucune facture</div>
-                  : pendingPatients.map(p => {
-                    const unpaid = getConsults(p.id);
-                    const amount = getPendingAmount(p);
-                    return <div key={p.id} className={`p-3 cursor-pointer hover:bg-slate-50 ${selPatientId === p.id ? 'bg-amber-50 border-l-4 border-amber-500' : ''}`} onClick={() => { setSelPatientId(p.id); setSelConsultId(unpaid[0]?.id || null); }}>
-                      <div className="flex justify-between items-start gap-2">
-                        <div className="min-w-0"><div className="font-medium text-sm">{p.lastName} {p.firstName}</div><div className="text-xs text-slate-500">{unpaid[0]?.doctorName || 'Analyses laboratoire'}</div></div>
-                        <div className="flex items-start gap-1 shrink-0">
-                          <div className="font-mono font-bold text-sm text-amber-700">{formatAr(amount)}</div>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); removePendingPatient(p.id); }}
-                            className="p-1 rounded-lg text-rose-500 hover:bg-rose-100 hover:text-rose-700 cursor-pointer transition"
-                            title="Retirer de la file caisse — dossier patient conservé"
-                          ><Trash2 className="w-4 h-4" /></button>
-                        </div>
-                      </div>
-                      <div className="flex gap-1 mt-1 flex-wrap">
-                        <span className="px-1 py-0.5 bg-cyan-100 text-cyan-700 text-[10px] rounded">Médicaments</span>
-                        <span className="px-1 py-0.5 bg-teal-100 text-teal-700 text-[10px] rounded">Analyses</span>
-                        <span className="px-1 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] rounded">Écho</span>
-                      </div>
-                    </div>;
-                  })}
-              </div>
-              <div className="lg:col-span-2">
-                {!selPatient ? <div className="p-12 text-center text-slate-400"><CreditCard className="w-16 h-16 mx-auto mb-4 opacity-30" /><p>Sélectionnez une consultation</p></div>
-                  : <div>
-                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl mb-3 space-y-3">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h3 className="font-bold text-base text-slate-800">{selPatient.lastName} {selPatient.firstName} ({selPatient.dossier})</h3>
-                          <p className="text-xs text-slate-600 mt-0.5">{selConsult ? `Consultation du ${new Date(selConsult.date).toLocaleDateString('fr-FR')} | Diagnostic: ${selConsult.diagnosis}` : 'Analyses / Services en attente'}</p>
-                        </div>
-                      </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
 
-                      {/* AFFICHAGE NOM DU MÉDECIN PRESCRIPTEUR & BOUTON MESSAGE RECTIFICATION */}
-                      <div className="pt-2.5 border-t border-amber-200/80 flex flex-wrap items-center justify-between gap-3 bg-white/80 p-3 rounded-lg border border-amber-100">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">🩺</div>
-                          <div>
-                            <div className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Médecin Prescripteur</div>
-                            <div className="text-sm font-bold text-indigo-900">{selConsult?.doctorName || getConsults(selPatient.id)[0]?.doctorName || 'Médecin non spécifié'}</div>
+              {/* FILE D'ATTENTE DE PAIEMENT — le clic ouvre la facture en popup modale */}
+              <div className="border rounded-lg overflow-hidden bg-white">
+                <div className="bg-amber-50 border-b border-amber-200 px-3 py-2 flex items-center justify-between gap-2">
+                  <span className="font-bold text-xs text-amber-800 flex items-center gap-1.5"><CreditCard className="w-4 h-4" /> File d'attente de paiement</span>
+                  <span className="px-2 py-0.5 rounded-full bg-amber-600 text-white text-[10px] font-bold">{pendingPatients.length}</span>
+                </div>
+                <div className="divide-y max-h-[500px] overflow-y-auto">
+                  {pendingPatients.length === 0 ? <div className="p-6 text-center text-slate-400 text-sm">Aucune facture</div>
+                    : pendingPatients.map(p => {
+                      const unpaid = getConsults(p.id);
+                      const amount = getPendingAmount(p);
+                      return <div key={p.id} className={`p-3 cursor-pointer hover:bg-amber-50/60 transition ${selPatientId === p.id && paymentModalOpen ? 'bg-amber-50 border-l-4 border-amber-500' : ''}`} onClick={() => openPaymentModal(p.id)} title="Ouvrir la facture en fenêtre modale">
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="min-w-0"><div className="font-medium text-sm">{p.lastName} {p.firstName}</div><div className="text-xs text-slate-500">{unpaid[0]?.doctorName || 'Analyses laboratoire'}</div></div>
+                          <div className="flex items-start gap-1 shrink-0">
+                            <div className="font-mono font-bold text-sm text-amber-700">{formatAr(amount)}</div>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); removePendingPatient(p.id); }}
+                              className="p-1 rounded-lg text-rose-500 hover:bg-rose-100 hover:text-rose-700 cursor-pointer transition"
+                              title="Retirer de la file caisse — dossier patient conservé"
+                            ><Trash2 className="w-4 h-4" /></button>
                           </div>
                         </div>
-                        <button
-                          onClick={() => {
-                            const refConsult = selConsult || getConsults(selPatient.id)[0];
-                            const docId = refConsult?.doctorId || 'DOC001';
-                            const docName = refConsult?.doctorName || 'Dr. Jean Martin';
-                            setRectificationModal({
-                              open: true,
-                              doctorId: docId,
-                              doctorName: docName,
-                              patientName: `${selPatient.lastName} ${selPatient.firstName}`,
-                              dossier: selPatient.dossier,
-                            });
-                            setRectificationText(`Bonjour ${docName}, une rectification ou précision est nécessaire concernant la prescription déjà faite pour le patient ${selPatient.lastName} ${selPatient.firstName} (${selPatient.dossier}). `);
-                          }}
-                          className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
-                          title="Envoyer un message de rectification au médecin prescripteur"
-                        >
-                          <MessageCircle className="w-3.5 h-3.5" /> Message pour rectification
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* === LISTE DES PRESCRIPTIONS === */}
-                    <div className="border rounded-lg overflow-hidden mb-3">
-                      <div className="bg-slate-100 px-3 py-2 border-b font-bold text-sm text-slate-700 flex items-center gap-2">📋 Liste des prescriptions</div>
-                      <div className="overflow-x-auto max-h-[260px] overflow-y-auto">
-                        <table className="w-full text-xs">
-                          <thead className="bg-slate-50 border-b text-slate-600 sticky top-0">
-                            <tr>
-                              <th className="p-2 text-left min-w-[120px]">Article</th>
-                              <th className="p-2 text-center w-8">Qté</th>
-                              <th className="p-2 text-center w-8">Rem%</th>
-                              <th className="p-2 text-right w-16">P.U.</th>
-                              <th className="p-2 text-right w-20">Montant</th>
-                              <th className="p-2 text-center w-16">Catégorie</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y">
-                            {(() => {
-                              const unpaidConsults = getConsults(selPatient.id);
-                              // Medications
-                              const medicationItems = unpaidConsults.flatMap(c => c.prescriptions.map(p => ({
-                                description: p.articleName,
-                                quantity: p.quantity,
-                                discount: p.discount,
-                                unitPrice: p.unitPrice,
-                                amount: roundTo2(p.unitPrice * p.quantity * (1 - p.discount / 100)),
-                                category: 'Médicament',
-                                categoryColor: 'bg-cyan-100 text-cyan-700',
-                                consultId: c.id,
-                              })));
-                              // Lab + Echo from pending invoices
-                              const svcInvs = pendingServiceInvoices.filter(i => i.patientId === selPatient.id);
-                              const serviceItems = svcInvs.flatMap(i => i.items.map(it => ({
-                                description: it.description,
-                                quantity: '',
-                                discount: '',
-                                unitPrice: '',
-                                amount: it.amount,
-                                category: it.category === 'lab' ? 'Analyse' : it.category === 'echo' ? 'Échographie' : 'Service',
-                                categoryColor: it.category === 'lab' ? 'bg-teal-100 text-teal-700' : it.category === 'echo' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-700',
-                                consultId: i.id,
-                              })));
-                              const allItems = [...medicationItems, ...serviceItems];
-                              if (allItems.length === 0) return <tr><td colSpan={6} className="p-4 text-center text-slate-400">Aucune prescription</td></tr>;
-                              return allItems.map((item, idx) => (
-                                <tr key={idx} className="hover:bg-slate-50">
-                                  <td className="p-2 font-sans">{item.description}</td>
-                                  <td className="p-2 text-center font-mono">{item.quantity || '—'}</td>
-                                  <td className="p-2 text-center font-mono">{item.discount ? `${item.discount}%` : '—'}</td>
-                                  <td className="p-2 text-right font-mono">{item.unitPrice ? formatNum(Number(item.unitPrice)) : '—'}</td>
-                                  <td className="p-2 text-right font-mono font-bold">{formatNum(item.amount)}</td>
-                                  <td className="p-2 text-center"><span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${item.categoryColor}`}>{item.category}</span></td>
-                                </tr>
-                              ));
-                            })()}
-                          </tbody>
-                          <tfoot className="bg-amber-50 border-t-2 border-amber-300">
-                            <tr>
-                              <td colSpan={4} className="p-2 text-right font-bold font-sans">TOTAL :</td>
-                              <td colSpan={2} className="p-2 text-right font-mono font-bold text-amber-700 text-sm">{formatAr(getPendingAmount(selPatient))}</td>
-                            </tr>
-                          </tfoot>
-                        </table>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-between text-xl font-bold border-t-2 pt-2 mb-4"><span>À PAYER</span><span className="font-mono text-amber-600">{formatAr(getPendingAmount(selPatient))}</span></div>
-                    <button onClick={handlePayment} className="w-full py-3 bg-amber-600 text-white rounded-xl font-semibold hover:bg-amber-700 cursor-pointer shadow-lg flex items-center justify-center gap-2"><CreditCard className="w-5 h-5" /> Encaisser {formatAr(getPendingAmount(selPatient))}</button>
-                  </div>}
+                        <div className="flex gap-1 mt-1 flex-wrap">
+                          <span className="px-1 py-0.5 bg-cyan-100 text-cyan-700 text-[10px] rounded">Médicaments</span>
+                          <span className="px-1 py-0.5 bg-teal-100 text-teal-700 text-[10px] rounded">Analyses</span>
+                          <span className="px-1 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] rounded">Écho</span>
+                        </div>
+                      </div>;
+                    })}
+                </div>
+                {pendingPatients.length > 0 && <div className="px-3 py-1.5 bg-slate-50 border-t text-[10px] text-slate-500 text-center">👆 Cliquez sur un patient pour ouvrir sa facture</div>}
               </div>
-            </div>
-          )}
 
-          {/* EXTERNAL - Sage */}
-          {tab === 'external' && (
-            <div className="max-w-2xl mx-auto space-y-3">
-              <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg"><h3 className="font-bold text-purple-800"><ShoppingCart className="w-5 h-5 inline" /> Vente Directe — Client Externe</h3></div>
-              <div className="bg-[#f4f4f4] border border-slate-300 rounded">
-                <div className="bg-slate-100 border-b border-slate-300 p-1.5 m-2 mb-0 rounded shadow-inner">
-                  <div className="flex flex-wrap items-end gap-1">
-                    <div className="flex-1 min-w-[140px] relative">
-                      <label className="block text-[9px] text-slate-500">Article (↑↓ Entrée)</label>
-                      <input ref={extSearchRef} type="text" value={extLineForm.articleName && !extSearch ? extLineForm.articleName : extSearch} onChange={e => { setExtSearch(e.target.value); setExtSearchIdx(0); }} onKeyDown={extKeyDown} className="w-full bg-white border border-blue-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-blue-600" placeholder="🔍 Tapez..." />
-                      {extSearch.length >= 1 && extFiltered.length > 0 && <div className="absolute top-full left-0 right-0 bg-white border rounded-b shadow-xl z-30 max-h-36 overflow-y-auto">{extFiltered.map((a, idx) => {
-                        const isOut = a.stockPharmacie <= 0;
-                        const isLow = !isOut && a.stockPharmacie <= a.minStockPharmacie && !a.alertDisabledPharmacie;
-                        return (<div key={a.id} onClick={() => extSelectArticle(a.id)} title={isOut ? 'Rupture de stock — vente impossible' : undefined} className={`px-2 py-1 text-xs flex justify-between border-b ${isOut ? 'bg-red-50 text-red-700 cursor-not-allowed' : `cursor-pointer ${idx === extSearchIdx ? 'bg-blue-100' : 'hover:bg-blue-50'}`}`}>
-                          <span className={isOut ? 'line-through decoration-red-400/60' : ''}>[{a.family}] {a.name}</span>
-                          <span className="flex items-center gap-2">
-                            {isOut
-                              ? <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-[9px] font-bold">🚨 RUPTURE — invendable</span>
-                              : <span className={`font-mono text-[10px] ${isLow ? 'text-amber-600 font-bold' : 'text-slate-400'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>}
-                            <span className={`font-mono ${isOut ? 'text-red-400' : 'text-blue-600'}`}>{formatAr(getPrice(a, 'externe'))}</span>
-                          </span>
-                        </div>);
-                      })}</div>}
+              {/* VENTE DIRECTE — CLIENT EXTERNE (affichée à la place du détail de facturation) */}
+              <div className="lg:col-span-2 space-y-3">
+                <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg"><h3 className="font-bold text-purple-800"><ShoppingCart className="w-5 h-5 inline" /> Vente Directe — Client Externe</h3></div>
+                <div className="bg-[#f4f4f4] border border-slate-300 rounded">
+                  <div className="bg-slate-100 border-b border-slate-300 p-1.5 m-2 mb-0 rounded shadow-inner">
+                    <div className="flex flex-wrap items-end gap-1">
+                      <div className="flex-1 min-w-[140px] relative">
+                        <label className="block text-[9px] text-slate-500">Article (↑↓ Entrée)</label>
+                        <input ref={extSearchRef} type="text" value={extLineForm.articleName && !extSearch ? extLineForm.articleName : extSearch} onChange={e => { setExtSearch(e.target.value); setExtSearchIdx(0); }} onKeyDown={extKeyDown} className="w-full bg-white border border-blue-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-blue-600" placeholder="🔍 Tapez..." />
+                        {extSearch.length >= 1 && extFiltered.length > 0 && <div className="absolute top-full left-0 right-0 bg-white border rounded-b shadow-xl z-30 max-h-36 overflow-y-auto">{extFiltered.map((a, idx) => {
+                          const isOut = a.stockPharmacie <= 0;
+                          const isLow = !isOut && a.stockPharmacie <= a.minStockPharmacie && !a.alertDisabledPharmacie;
+                          return (<div key={a.id} onClick={() => extSelectArticle(a.id)} title={isOut ? 'Rupture de stock — vente impossible' : undefined} className={`px-2 py-1 text-xs flex justify-between border-b ${isOut ? 'bg-red-50 text-red-700 cursor-not-allowed' : `cursor-pointer ${idx === extSearchIdx ? 'bg-blue-100' : 'hover:bg-blue-50'}`}`}>
+                            <span className={isOut ? 'line-through decoration-red-400/60' : ''}>[{a.family}] {a.name}</span>
+                            <span className="flex items-center gap-2">
+                              {isOut
+                                ? <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-[9px] font-bold">🚨 RUPTURE — invendable</span>
+                                : <span className={`font-mono text-[10px] ${isLow ? 'text-amber-600 font-bold' : 'text-slate-400'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>}
+                              <span className={`font-mono ${isOut ? 'text-red-400' : 'text-blue-600'}`}>{formatAr(getPrice(a, 'externe'))}</span>
+                            </span>
+                          </div>);
+                        })}</div>}
+                      </div>
+                      <div className="w-14"><label className="block text-[9px] text-slate-500">Qté</label><input type="number" min={1} value={extLineForm.quantity} onChange={e => setExtLineForm({...extLineForm, quantity: parseFloat(e.target.value)||1})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono outline-none" /></div>
+                      <div className="w-14"><label className="block text-[9px] text-slate-500">Rem%</label><input type="number" min={0} max={100} value={extLineForm.discount} onChange={e => setExtLineForm({...extLineForm, discount: parseFloat(e.target.value)||0})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono outline-none" /></div>
+                      <div className="w-20"><label className="block text-[9px] text-slate-500">P.U.</label><input readOnly value={formatAr(extLineForm.unitPrice)} className="w-full bg-slate-200 border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono" /></div>
+                      <div className="w-24"><label className="block text-[9px] text-slate-500">Montant</label><input readOnly value={formatAr(extLineAmt(extLineForm))} className="w-full bg-slate-200 border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono font-bold" /></div>
+                      <div className="w-32"><label className="block text-[9px] text-slate-500" title="La date est conservée après chaque validation : plusieurs sorties possibles le même jour">Date sortie 📌</label><input type="date" value={extLineForm.dateSort || ''} onChange={e => setExtLineForm({...extLineForm, dateSort: e.target.value})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs font-mono outline-none focus:border-blue-500" title="Date de sortie — conservée après validation de la ligne" /></div>
                     </div>
-                    <div className="w-14"><label className="block text-[9px] text-slate-500">Qté</label><input type="number" min={1} value={extLineForm.quantity} onChange={e => setExtLineForm({...extLineForm, quantity: parseFloat(e.target.value)||1})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono outline-none" /></div>
-                    <div className="w-14"><label className="block text-[9px] text-slate-500">Rem%</label><input type="number" min={0} max={100} value={extLineForm.discount} onChange={e => setExtLineForm({...extLineForm, discount: parseFloat(e.target.value)||0})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono outline-none" /></div>
-                    <div className="w-20"><label className="block text-[9px] text-slate-500">P.U.</label><input readOnly value={formatAr(extLineForm.unitPrice)} className="w-full bg-slate-200 border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono" /></div>
-                    <div className="w-24"><label className="block text-[9px] text-slate-500">Montant</label><input readOnly value={formatAr(extLineAmt(extLineForm))} className="w-full bg-slate-200 border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono font-bold" /></div>
-                    <div className="w-32"><label className="block text-[9px] text-slate-500" title="La date est conservée après chaque validation : plusieurs sorties possibles le même jour">Date sortie 📌</label><input type="date" value={extLineForm.dateSort || ''} onChange={e => setExtLineForm({...extLineForm, dateSort: e.target.value})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs font-mono outline-none focus:border-blue-500" title="Date de sortie — conservée après validation de la ligne" /></div>
+                    <div className="flex justify-end gap-1 mt-1">
+                      <button onClick={() => { if (extSelLineId) { setExtLines(extLines.filter(l => l.id !== extSelLineId)); setExtSelLineId(null); }}} disabled={!extSelLineId} className="px-2 py-0.5 bg-white border border-slate-300 rounded text-[10px] disabled:opacity-40 cursor-pointer"><Trash2 className="h-3 w-3 text-rose-600 inline" /></button>
+                      <button onClick={extSaveLine} disabled={!extLineForm.articleName} className="px-2 py-0.5 bg-sky-500 text-white border border-sky-600 rounded text-[10px] disabled:opacity-40 cursor-pointer"><Save className="h-3 w-3 inline" /> Enreg.</button>
+                    </div>
                   </div>
-                  <div className="flex justify-end gap-1 mt-1">
-                    <button onClick={() => { if (extSelLineId) { setExtLines(extLines.filter(l => l.id !== extSelLineId)); setExtSelLineId(null); }}} disabled={!extSelLineId} className="px-2 py-0.5 bg-white border border-slate-300 rounded text-[10px] disabled:opacity-40 cursor-pointer"><Trash2 className="h-3 w-3 text-rose-600 inline" /></button>
-                    <button onClick={extSaveLine} disabled={!extLineForm.articleName} className="px-2 py-0.5 bg-sky-500 text-white border border-sky-600 rounded text-[10px] disabled:opacity-40 cursor-pointer"><Save className="h-3 w-3 inline" /> Enreg.</button>
+                  <div className="bg-white mx-2 mb-2 border-t border-slate-300 overflow-x-auto rounded-b">
+                    <table className="w-full text-[11px]"><thead className="bg-slate-50 border-b text-slate-600"><tr className="divide-x divide-slate-200"><th className="p-1 min-w-[130px]">Article</th><th className="p-1 text-right w-12">Qté</th><th className="p-1 text-center w-12">Rem%</th><th className="p-1 text-right w-20">P.U.</th><th className="p-1 text-right w-24">Montant</th><th className="p-1 w-28">Date sortie</th></tr></thead>
+                      <tbody className="divide-y font-mono">{extLines.map(l => (<tr key={l.id} onClick={() => { setExtSelLineId(l.id); setExtLineForm({...l}); setExtIsNew(false); }} className={`cursor-pointer divide-x divide-slate-200 ${l.id === extSelLineId ? 'bg-blue-500 text-white' : 'hover:bg-slate-50'}`}><td className="p-1 font-sans">{l.articleName}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 text-center">{l.discount > 0 ? `${l.discount}%` : '—'}</td><td className="p-1 text-right">{formatNum(l.unitPrice)}</td><td className="p-1 text-right font-bold">{formatNum(extLineAmt(l))}</td><td className="p-1 font-sans text-slate-500">{l.dateSort || '—'}</td></tr>))}
+                        {extLines.length === 0 && <tr><td colSpan={6} className="p-3 text-center text-slate-400 font-sans">Tapez un article</td></tr>}
+                      </tbody>
+                      {extLines.length > 0 && <tfoot className="bg-emerald-50 border-t-2 border-emerald-300"><tr><td colSpan={4} className="p-1 text-right font-bold font-sans">TOTAL:</td><td colSpan={2} className="p-1 text-right font-mono font-bold text-lg">{formatAr(extTotal)}</td></tr></tfoot>}
+                    </table>
                   </div>
                 </div>
-                <div className="bg-white mx-2 mb-2 border-t border-slate-300 overflow-x-auto rounded-b">
-                  <table className="w-full text-[11px]"><thead className="bg-slate-50 border-b text-slate-600"><tr className="divide-x divide-slate-200"><th className="p-1 min-w-[130px]">Article</th><th className="p-1 text-right w-12">Qté</th><th className="p-1 text-center w-12">Rem%</th><th className="p-1 text-right w-20">P.U.</th><th className="p-1 text-right w-24">Montant</th><th className="p-1 w-28">Date sortie</th></tr></thead>
-                    <tbody className="divide-y font-mono">{extLines.map(l => (<tr key={l.id} onClick={() => { setExtSelLineId(l.id); setExtLineForm({...l}); setExtIsNew(false); }} className={`cursor-pointer divide-x divide-slate-200 ${l.id === extSelLineId ? 'bg-blue-500 text-white' : 'hover:bg-slate-50'}`}><td className="p-1 font-sans">{l.articleName}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 text-center">{l.discount > 0 ? `${l.discount}%` : '—'}</td><td className="p-1 text-right">{formatNum(l.unitPrice)}</td><td className="p-1 text-right font-bold">{formatNum(extLineAmt(l))}</td><td className="p-1 font-sans text-slate-500">{l.dateSort || '—'}</td></tr>))}
-                      {extLines.length === 0 && <tr><td colSpan={6} className="p-3 text-center text-slate-400 font-sans">Tapez un article</td></tr>}
-                    </tbody>
-                    {extLines.length > 0 && <tfoot className="bg-emerald-50 border-t-2 border-emerald-300"><tr><td colSpan={4} className="p-1 text-right font-bold font-sans">TOTAL:</td><td colSpan={2} className="p-1 text-right font-mono font-bold text-lg">{formatAr(extTotal)}</td></tr></tfoot>}
-                  </table>
-                </div>
+                <button onClick={extPay} disabled={extLines.length === 0} className="w-full py-3 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 disabled:opacity-40 cursor-pointer flex items-center justify-center gap-2"><CreditCard className="w-5 h-5" /> Encaisser {formatAr(extTotal)}</button>
               </div>
-              <button onClick={extPay} disabled={extLines.length === 0} className="w-full py-3 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 disabled:opacity-40 cursor-pointer flex items-center justify-center gap-2"><CreditCard className="w-5 h-5" /> Encaisser {formatAr(extTotal)}</button>
             </div>
           )}
 
@@ -1469,7 +1379,7 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
 
       {/* Modal Message Rectification Prescription */}
       {rectificationModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-lg bg-white rounded-xl shadow-2xl border border-slate-300 overflow-hidden flex flex-col">
             <div className="bg-indigo-600 px-4 py-3 flex justify-between items-center text-white">
               <span className="font-bold text-sm flex items-center gap-2">
@@ -1589,6 +1499,128 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
           </div>
         );
       })()}
+
+      {/* MODALE — Facture du patient sélectionné dans la file d'attente de paiement */}
+      {paymentModalOpen && selPatient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={closePaymentModal}>
+          <div className="w-full max-w-3xl bg-white rounded-xl shadow-2xl border border-slate-300 overflow-hidden flex flex-col max-h-[92vh]" onClick={e => e.stopPropagation()}>
+            <div className="bg-amber-600 px-4 py-3 flex justify-between items-center text-white shrink-0">
+              <span className="font-bold text-sm flex items-center gap-2">
+                <CreditCard className="w-4 h-4" /> Facturation — {selPatient.lastName} {selPatient.firstName}
+              </span>
+              <button onClick={closePaymentModal} className="hover:bg-white/20 rounded p-1 cursor-pointer text-sm" title="Fermer">✕</button>
+            </div>
+            <div className="p-4 overflow-y-auto">
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl mb-3 space-y-3">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h3 className="font-bold text-base text-slate-800">{selPatient.lastName} {selPatient.firstName} ({selPatient.dossier})</h3>
+                    <p className="text-xs text-slate-600 mt-0.5">{selConsult ? `Consultation du ${new Date(selConsult.date).toLocaleDateString('fr-FR')} | Diagnostic: ${selConsult.diagnosis}` : 'Analyses / Services en attente'}</p>
+                  </div>
+                </div>
+
+                {/* AFFICHAGE NOM DU MÉDECIN PRESCRIPTEUR & BOUTON MESSAGE RECTIFICATION */}
+                <div className="pt-2.5 border-t border-amber-200/80 flex flex-wrap items-center justify-between gap-3 bg-white/80 p-3 rounded-lg border border-amber-100">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">🩺</div>
+                    <div>
+                      <div className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Médecin Prescripteur</div>
+                      <div className="text-sm font-bold text-indigo-900">{selConsult?.doctorName || getConsults(selPatient.id)[0]?.doctorName || 'Médecin non spécifié'}</div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const refConsult = selConsult || getConsults(selPatient.id)[0];
+                      const docId = refConsult?.doctorId || 'DOC001';
+                      const docName = refConsult?.doctorName || 'Dr. Jean Martin';
+                      setRectificationModal({
+                        open: true,
+                        doctorId: docId,
+                        doctorName: docName,
+                        patientName: `${selPatient.lastName} ${selPatient.firstName}`,
+                        dossier: selPatient.dossier,
+                      });
+                      setRectificationText(`Bonjour ${docName}, une rectification ou précision est nécessaire concernant la prescription déjà faite pour le patient ${selPatient.lastName} ${selPatient.firstName} (${selPatient.dossier}). `);
+                    }}
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                    title="Envoyer un message de rectification au médecin prescripteur"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" /> Message pour rectification
+                  </button>
+                </div>
+              </div>
+
+              {/* === LISTE DES PRESCRIPTIONS === */}
+              <div className="border rounded-lg overflow-hidden mb-3">
+                <div className="bg-slate-100 px-3 py-2 border-b font-bold text-sm text-slate-700 flex items-center gap-2">📋 Liste des prescriptions</div>
+                <div className="overflow-x-auto max-h-[260px] overflow-y-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-50 border-b text-slate-600 sticky top-0">
+                      <tr>
+                        <th className="p-2 text-left min-w-[120px]">Article</th>
+                        <th className="p-2 text-center w-8">Qté</th>
+                        <th className="p-2 text-center w-8">Rem%</th>
+                        <th className="p-2 text-right w-16">P.U.</th>
+                        <th className="p-2 text-right w-20">Montant</th>
+                        <th className="p-2 text-center w-16">Catégorie</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {(() => {
+                        const unpaidConsults = getConsults(selPatient.id);
+                        // Medications
+                        const medicationItems = unpaidConsults.flatMap(c => c.prescriptions.map(p => ({
+                          description: p.articleName,
+                          quantity: p.quantity,
+                          discount: p.discount,
+                          unitPrice: p.unitPrice,
+                          amount: roundTo2(p.unitPrice * p.quantity * (1 - p.discount / 100)),
+                          category: 'Médicament',
+                          categoryColor: 'bg-cyan-100 text-cyan-700',
+                          consultId: c.id,
+                        })));
+                        // Lab + Echo from pending invoices
+                        const svcInvs = pendingServiceInvoices.filter(i => i.patientId === selPatient.id);
+                        const serviceItems = svcInvs.flatMap(i => i.items.map(it => ({
+                          description: it.description,
+                          quantity: '',
+                          discount: '',
+                          unitPrice: '',
+                          amount: it.amount,
+                          category: it.category === 'lab' ? 'Analyse' : it.category === 'echo' ? 'Échographie' : 'Service',
+                          categoryColor: it.category === 'lab' ? 'bg-teal-100 text-teal-700' : it.category === 'echo' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-700',
+                          consultId: i.id,
+                        })));
+                        const allItems = [...medicationItems, ...serviceItems];
+                        if (allItems.length === 0) return <tr><td colSpan={6} className="p-4 text-center text-slate-400">Aucune prescription</td></tr>;
+                        return allItems.map((item, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50">
+                            <td className="p-2 font-sans">{item.description}</td>
+                            <td className="p-2 text-center font-mono">{item.quantity || '—'}</td>
+                            <td className="p-2 text-center font-mono">{item.discount ? `${item.discount}%` : '—'}</td>
+                            <td className="p-2 text-right font-mono">{item.unitPrice ? formatNum(Number(item.unitPrice)) : '—'}</td>
+                            <td className="p-2 text-right font-mono font-bold">{formatNum(item.amount)}</td>
+                            <td className="p-2 text-center"><span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${item.categoryColor}`}>{item.category}</span></td>
+                          </tr>
+                        ));
+                      })()}
+                    </tbody>
+                    <tfoot className="bg-amber-50 border-t-2 border-amber-300">
+                      <tr>
+                        <td colSpan={4} className="p-2 text-right font-bold font-sans">TOTAL :</td>
+                        <td colSpan={2} className="p-2 text-right font-mono font-bold text-amber-700 text-sm">{formatAr(getPendingAmount(selPatient))}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+
+              <div className="flex justify-between text-xl font-bold border-t-2 pt-2 mb-4"><span>À PAYER</span><span className="font-mono text-amber-600">{formatAr(getPendingAmount(selPatient))}</span></div>
+              <button onClick={handlePayment} className="w-full py-3 bg-amber-600 text-white rounded-xl font-semibold hover:bg-amber-700 cursor-pointer shadow-lg flex items-center justify-center gap-2"><CreditCard className="w-5 h-5" /> Encaisser {formatAr(getPendingAmount(selPatient))}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ConfirmModal
         isOpen={confirmModalState.isOpen}
