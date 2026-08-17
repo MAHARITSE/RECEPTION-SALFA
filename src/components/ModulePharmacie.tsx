@@ -1279,9 +1279,23 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
         </div>
       </div>
 
-      {/* Blocage vente — Inline (no modal) */}
+      {/* Blocage / déblocage vente — fenêtre modale centrée à l'écran.
+          IMPORTANT : ce panneau doit rester un overlay `fixed`. Auparavant il
+          était rendu en flux avec `order-first`, ce qui le replaçait tout en
+          haut de la page : le bouton « Débloquer » se trouvant en bas du
+          tableau des articles, la confirmation s'affichait hors écran et le
+          déblocage paraissait ne pas fonctionner. */}
       {blockModal && (
-        <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-0 order-first">
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm"
+          onClick={() => setBlockModal(null)}
+        >
+        <div
+          className="w-full max-w-lg bg-white rounded-xl shadow-2xl border overflow-hidden"
+          role="dialog"
+          aria-modal="true"
+          onClick={(e) => e.stopPropagation()}
+        >
           <div className={`px-5 py-3 text-white font-bold flex items-center gap-2 ${blockModal.currentlyBlocked ? 'bg-emerald-600' : 'bg-orange-600'}`}>
             {blockModal.currentlyBlocked ? <Unlock className="w-5 h-5" /> : <Ban className="w-5 h-5" />}
             {blockModal.currentlyBlocked ? 'Débloquer la vente' : 'Bloquer la vente'}
@@ -1322,6 +1336,7 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
               </button>
             </div>
           </div>
+        </div>
         </div>
       )}
 
