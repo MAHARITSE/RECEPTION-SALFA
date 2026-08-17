@@ -66,6 +66,45 @@ export const initialWampSync: WampSyncState = {
   error: null,
 };
 
+/** Empreinte JSON des datasets : sert à détecter (sans re-render inutile) si l'état
+ *  distant a changé depuis notre dernière sauvegarde réussie. */
+export function serializeDatasets(state: AppState): string {
+  return JSON.stringify(buildDatasets(state));
+}
+
+/**
+ * Fusionne l'état distant (MySQL / autre onglet) dans l'état local sans écraser
+ * les saisies locales non encore sauvegardées, et sans ressusciter des éléments
+ * supprimés localement :
+ *   - la version distante fait foi pour les éléments qu'elle contient ;
+ *   - les éléments créés localement DEPUIS la dernière sauvegarde réussie
+ *     (`lastPushed`) et absents du distant sont conservés ;
+ *   - les suppressions locales (présentes dans `lastPushed`, absentes du local)
+ *     se propagent : l'élément ne revient pas.
+ * La session courante (`currentUser`) n'est jamais écrasée par le distant.
+ */
+export function mergeRemoteState(local: AppState, remote: AppState, lastPushed: AppState | null): AppState {
+  const merged: AppState = { ...remote, currentUser: local.currentUser };
+  const pushed = lastPushed ?? local;
+  for (const key of LIST_DATASETS) {
+    const remoteList = (remote as unknown as Record<string, unknown>)[key];
+    const localList = (local as unknown as Record<string, unknown>)[key];
+    const pushedList = (pushed as unknown as Record<string, unknown>)[key];
+    if (!Array.isArray(remoteList) || !Array.isArray(localList) || !Array.isArray(pushedList)) continue;
+    const idsOf = (list: unknown[]): string[] => list
+      .map((x) => (x as { id?: string })?.id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0);
+    const pushedIds = new Set<string>(idsOf(pushedList));
+    const remoteIds = new Set<string>(idsOf(remoteList));
+    const localOnly = localList.filter((x) => {
+      const id = (x as { id?: string })?.id;
+      return !id || (!pushedIds.has(id) && !remoteIds.has(id));
+    });
+    (merged as unknown as Record<string, unknown>)[key] = [...remoteList, ...localOnly];
+  }
+  return merged;
+}
+
 /** Construit le payload `datasets` (état complet SANS la session courante). */
 function buildDatasets(state: AppState): Record<string, unknown> {
   const datasets: Record<string, unknown> = {};

@@ -756,6 +756,18 @@ export function isLabFamily(code?: string): boolean {
   return c === 'LABO' || c === 'LAB';
 }
 
+/**
+ * Article « examen » des familles LABO/ECHO (prestation de service facturable,
+ * non gérée en stock : NFS, échographie abdominale…), par opposition aux
+ * consommables (Tube EDTA, gel…) qui, eux, suivent le stock.
+ */
+export function isLabEchoExamArticle(a?: { family?: string; unit?: string } | null): boolean {
+  if (!a) return false;
+  if (!isLabFamily(a.family) && !isEchoFamily(a.family)) return false;
+  const unit = (a.unit || '').trim().toLowerCase();
+  return unit === 'analyse' || unit === 'acte' || unit === 'examen';
+}
+
 export function isEchoFamily(code?: string): boolean {
   return normalizeFamilyCode(code) === 'ECHO';
 }
