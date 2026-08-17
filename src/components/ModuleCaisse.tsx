@@ -1,28 +1,17 @@
 import { useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription, LabExamCatalog, LabCategory, Patient, Article } from '../types';
+import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription, Article } from '../types';
 import type { AppState } from '../store';
 import {
   addAuditLog, addNotification, formatAr, formatNum, roundTo2, getPrice, calculateAge,
   generateDossierNumber, addJourneyEvent, generatePharmaClosingNumber, purgePatientFromQueue,
-  labCategoryLabel, getEchoCatalog, getLabCatalog, familyManagesStock,
+  familyManagesStock,
 } from '../store';
-import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText, FlaskConical, Scan, X, XCircle } from 'lucide-react';
+import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText } from 'lucide-react';
 import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket } from '../utils/printTicket';
 import { printSalfaIndividualInvoice } from '../utils/printSalfaInvoice';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
 import ConfirmModal from './ConfirmModal';
-import { ECHO_CATALOG } from './ModuleMedecin';
-
-/** Patient factice utilisé pour imprimer les bons d'analyse / d'échographie des ventes externes. */
-const EXT_CLIENT_PATIENT: Patient = {
-  id: 'ext', dossier: 'EXT', matricule: undefined, firstName: '', lastName: 'Client Externe',
-  dateOfBirth: '', age: '—', gender: 'M', address: '', contact: '', ssn: '',
-  insureName: undefined, clientType: 'externe', company: undefined, subCompany: undefined,
-  allergies: [], chronicTreatments: [], antecedents: [],
-  registeredAt: '', registeredBy: '', status: 'completed',
-};
-
 interface Props {
   state: AppState;
   setState: React.Dispatch<React.SetStateAction<AppState>>;
@@ -61,23 +50,6 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const [extLineForm, setExtLineForm] = useState<HbLine>({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: new Date().toISOString().split('T')[0] });
   const [extIsNew, setExtIsNew] = useState(false);
   const extSearchRef = useRef<HTMLInputElement>(null);
-
-  // === VENTE EXTERNE — ANALYSES LABO & ÉCHOGRAPHIES (services pour clients externes) ===
-  interface ExtServiceLine {
-    id: string;
-    kind: 'lab' | 'echo';
-    name: string;
-    code: string;
-    price: number;
-    urgent: boolean;
-    category?: LabCategory;   // analyses uniquement
-    parameters?: string[];    // analyses uniquement
-    sampleType?: string;      // analyses uniquement
-  }
-  const [extServices, setExtServices] = useState<ExtServiceLine[]>([]);
-  const [extServiceModal, setExtServiceModal] = useState<'none' | 'lab' | 'echo'>('none');
-  const [extServiceSearch, setExtServiceSearch] = useState('');
-  const [extServiceSearchIdx, setExtServiceSearchIdx] = useState(0);
 
   // Hospit/Bloc — la liste est PARTAGÉE entre Caisse et Pharmacie (state global),
   // car peu importe qui saisit (caisse ou pharmacie de garde), c'est le paiement qui fait foi.
@@ -376,64 +348,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     : [];
   const extLineAmt = (l: HbLine) => roundTo2(l.unitPrice * l.quantity * (1 - l.discount / 100));
   const extArticlesTotal = extLines.reduce((s, l) => s + extLineAmt(l), 0);
-  const extServicesTotal = extServices.reduce((s, l) => s + l.price, 0);
-  const extTotal = roundTo2(extArticlesTotal + extServicesTotal);
-
-  // === ANALYSES & ÉCHOS (services externes) ===
-  const currentLabCatalog = getLabCatalog(state.articles, state.labCatalog);
-  const currentEchoCatalog = getEchoCatalog(state.articles);
-
-  const extLabFiltered = extServiceSearch.length >= 1
-    ? currentLabCatalog.filter((e) => e.name.toLowerCase().includes(extServiceSearch.toLowerCase()) || e.code.toLowerCase().includes(extServiceSearch.toLowerCase()))
-    : currentLabCatalog;
-  const extEchoFiltered = extServiceSearch.length >= 1
-    ? currentEchoCatalog.filter((e) => e.name.toLowerCase().includes(extServiceSearch.toLowerCase()) || e.code.toLowerCase().includes(extServiceSearch.toLowerCase()))
-    : currentEchoCatalog;
-
-  const addExtLabExam = (examId: string, urgent: boolean) => {
-    const e = currentLabCatalog.find((x) => x.id === examId) || state.labCatalog.find((x) => x.id === examId);
-    if (!e) return;
-    const price = urgent ? (e.urgentPrice || e.priceExterne) : e.priceExterne;
-    const nl: ExtServiceLine = {
-      id: uuidv4(), kind: 'lab', name: e.name, code: e.code, price, urgent,
-      category: e.category, parameters: [...e.parameters], sampleType: e.sampleType,
-    };
-    setExtServices([...extServices, nl]);
-  };
-  const addExtEchoExam = (examId: string, urgent: boolean) => {
-    const e = currentEchoCatalog.find((x) => x.id === examId) || ECHO_CATALOG.find((x) => x.id === examId);
-    if (!e) return;
-    const nl: ExtServiceLine = {
-      id: uuidv4(), kind: 'echo', name: e.name, code: e.code,
-      price: urgent ? e.urgentPrice : e.priceExterne, urgent,
-    };
-    setExtServices([...extServices, nl]);
-  };
-  const removeExtService = (id: string) => setExtServices(extServices.filter((s) => s.id !== id));
-  const toggleExtServiceUrgent = (id: string) => setExtServices(extServices.map((s) => {
-    if (s.id !== id) return s;
-    const urgent = !s.urgent;
-    let price = s.price;
-    if (s.kind === 'lab') {
-      const e = currentLabCatalog.find((x) => x.code === s.code) || state.labCatalog.find((x) => x.code === s.code);
-      if (e) price = urgent ? (e.urgentPrice || e.priceExterne) : e.priceExterne;
-    } else {
-      const e = currentEchoCatalog.find((x) => x.code === s.code) || ECHO_CATALOG.find((x) => x.code === s.code);
-      if (e) price = urgent ? e.urgentPrice : e.priceExterne;
-    }
-    return { ...s, urgent, price };
-  }));
-  const openExtServiceModal = (kind: 'lab' | 'echo') => {
-    setExtServiceModal(kind);
-    setExtServiceSearch('');
-    setExtServiceSearchIdx(0);
-  };
-  const extServiceKeyDown = (e: React.KeyboardEvent, kind: 'lab' | 'echo') => {
-    const list = kind === 'lab' ? extLabFiltered : extEchoFiltered;
-    if (e.key === 'ArrowDown') { e.preventDefault(); setExtServiceSearchIdx(i => Math.min(i + 1, list.length - 1)); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setExtServiceSearchIdx(i => Math.max(i - 1, 0)); }
-    else if (e.key === 'Escape') { e.preventDefault(); setExtServiceModal('none'); }
-  };
+  const extTotal = roundTo2(extArticlesTotal);
 
   const extSelectArticle = (articleId: string) => {
     const a = state.articles.find(x => x.id === articleId);
@@ -479,7 +394,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     else if (e.key === 'Escape') setExtSearch('');
   };
   const extPay = () => {
-    if (extLines.length === 0 && extServices.length === 0) return;
+    if (extLines.length === 0) return;
     // Ne pas valider l'encaissement si une ligne de vente est en cours de saisie mais non enregistrée
     if (blockIfUnsavedDraftLine(extLineForm, extLines, { entityLabel: 'l\'article' })) return;
     // Contrôle blocage vente au moment de l'encaissement
@@ -528,10 +443,6 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       return art?.family !== 'MEDIC';
     });
 
-    // === SERVICES : ANALYSES LABORATOIRE + ÉCHOGRAPHIES ===
-    const labServiceLines = extServices.filter((s) => s.kind === 'lab');
-    const echoServiceLines = extServices.filter((s) => s.kind === 'echo');
-
     const invId = uuidv4();
     const now = new Date().toISOString();
     const extDoctor: User = {
@@ -540,30 +451,10 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       role: 'cashier',
     };
 
-    // Demandes d'analyses autonomes (state.labRequests) — elles arrivent DIRECTEMENT
-    // dans la file d'attente du laboratoire avec le statut 'paid' (la vente est encaissée).
-    const newLabRequests: LabRequest[] = labServiceLines.map((s) => ({
-      id: uuidv4(),
-      examType: s.name,
-      code: s.code,
-      category: s.category,
-      parameters: s.parameters || [],
-      urgent: s.urgent,
-      status: 'paid' as const,
-      sampleType: s.sampleType,
-      requestedBy: state.currentUser?.id || 'CASHIER',
-      requestedAt: now,
-      invoiceId: invId,
-      price: s.price,
-    }));
-
-    // Demandes d'échographies — rattachées à la consultation externe ci-dessous
-    // (sans dossier patient), affichées dans la file « Échographies externes » de la vente externe.
-
     let extConsultId: string | undefined = undefined;
     let newConsultations: Consultation[] = [];
 
-    if (medicamentLines.length > 0 || echoServiceLines.length > 0) {
+    if (medicamentLines.length > 0) {
       extConsultId = uuidv4();
       const prescriptions: Prescription[] = medicamentLines.map((l) => ({
         id: uuidv4(),
@@ -583,23 +474,11 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         doctorId: state.currentUser?.id || 'CASHIER',
         doctorName: extDoctor.name,
         date: now,
-        visitReason: 'Vente externe' + (echoServiceLines.length > 0 ? ' — Échographie' : medicamentLines.length > 0 ? ' — Pharmacie' : ''),
+        visitReason: 'Vente externe — Pharmacie',
         diagnosis: 'Client Externe',
         prescriptions,
         labRequests: [],
-        echoRequests: echoServiceLines.length > 0
-          ? echoServiceLines.map((s) => ({
-              id: uuidv4(),
-              consultationId: extConsultId,
-              examType: s.name,
-              urgent: s.urgent,
-              status: 'paid' as const,
-              requestedBy: state.currentUser?.id || 'CASHIER',
-              requestedAt: now,
-              invoiceId: invId,
-              price: s.price,
-            }))
-          : [],
+        echoRequests: [],
         hospitalizeRequested: false,
         surgeryRequested: false,
         isEmergency: false,
@@ -614,11 +493,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       consultationId: extConsultId,
       clientName: 'Client Externe',
       clientType: 'externe',
-      items: [
-        ...extLines.map(l => ({ description: `${l.articleName} × ${l.quantity}`, amount: extLineAmt(l), category: 'pharmacy' as const })),
-        ...labServiceLines.map(s => ({ description: `${s.name}${s.urgent ? ' (Urgent)' : ''}`, amount: s.price, category: 'lab' as const })),
-        ...echoServiceLines.map(s => ({ description: `${s.name}${s.urgent ? ' (Urgent)' : ''}`, amount: s.price, category: 'echo' as const })),
-      ],
+      items: extLines.map(l => ({ description: `${l.articleName} × ${l.quantity}`, amount: extLineAmt(l), category: 'pharmacy' as const })),
       totalAmount: extTotal,
       patientCharge: extTotal,
       status: 'paid',
@@ -642,37 +517,15 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         ...prev,
         invoices: [...prev.invoices, inv],
         consultations: [...prev.consultations, ...newConsultations],
-        // 🔬 Les demandes d'analyse sont ajoutées à la file d'attente du laboratoire
-        labRequests: [...(prev.labRequests || []), ...newLabRequests],
         articles
       };
-      const parts = [
-        medicamentLines.length > 0 ? 'médicaments' : '',
-        labServiceLines.length > 0 ? `${labServiceLines.length} analyse(s) labo` : '',
-        echoServiceLines.length > 0 ? `${echoServiceLines.length} échographie(s)` : '',
-      ].filter(Boolean).join(' + ');
+      const parts = medicamentLines.length > 0 ? 'médicaments' : '';
       addAuditLog(next, 'VENTE_EXTERNE', `Client Externe — ${formatAr(extTotal)}${parts ? ` (${parts})` : ''}${medicamentLines.length > 0 ? ' — ordonnance ajoutée à la file d\'attente pharmacie' : ''}`);
       return next;
     });
     openThermalTicket(state.ticketSettings, inv, undefined, state.currentUser || undefined);
 
-    // Bon d'analyse — imprimé après le ticket caisse (demande visible au laboratoire)
-    if (labServiceLines.length > 0) {
-      setTimeout(() => {
-        printLabRequestTicket(state.ticketSettings, EXT_CLIENT_PATIENT, extDoctor, new Date(), newLabRequests);
-      }, 900);
-    }
-    // Bon d'échographie
-    if (echoServiceLines.length > 0) {
-      const printableEchos: EchoRequest[] = echoServiceLines.map((s) => ({
-        id: uuidv4(), examType: s.name, urgent: s.urgent, status: 'paid' as const, price: s.price,
-      }));
-      setTimeout(() => {
-        printEchoRequestTicket(state.ticketSettings, EXT_CLIENT_PATIENT, extDoctor, new Date(), printableEchos);
-      }, labServiceLines.length > 0 ? 1800 : 900);
-    }
     setExtLines([]); setExtSearch('');
-    setExtServices([]);
   };
 
   // === HOSPIT/BLOC ===
@@ -1175,65 +1028,7 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                     </table>
                   </div>
                 </div>
-                {/* SERVICES — ANALYSES & ÉCHOGRAPHIES POUR CLIENT EXTERNE */}
-                <div className="bg-white border border-purple-200 rounded-lg overflow-hidden">
-                  <div className="flex items-center justify-between gap-2 px-3 py-2 bg-purple-50 border-b border-purple-200">
-                    <span className="font-bold text-xs text-purple-800 flex items-center gap-1.5"><FlaskConical className="w-4 h-4" /> Analyses & Échographies — Client Externe</span>
-                    <div className="flex gap-1.5">
-                      <button onClick={() => openExtServiceModal('lab')} className="px-2.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-medium cursor-pointer flex items-center gap-1.5"><FlaskConical className="w-3.5 h-3.5" /> Analyse</button>
-                      <button onClick={() => openExtServiceModal('echo')} className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium cursor-pointer flex items-center gap-1.5"><Scan className="w-3.5 h-3.5" /> Échographie</button>
-                    </div>
-                  </div>
-                  {extServices.length > 0 ? (
-                    <table className="w-full text-[11px]">
-                      <thead className="bg-slate-50 border-b text-slate-600">
-                        <tr className="divide-x divide-slate-200">
-                          <th className="p-1.5 text-left">Type</th>
-                          <th className="p-1.5 text-left min-w-[180px]">Examen</th>
-                          <th className="p-1.5 text-center w-16">Urgent</th>
-                          <th className="p-1.5 text-right w-24">Tarif</th>
-                          <th className="p-1.5 text-center w-10"></th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {extServices.map((s) => (
-                          <tr key={s.id} className="hover:bg-slate-50">
-                            <td className="p-1.5">
-                              {s.kind === 'lab'
-                                ? <span className="px-1.5 py-0.5 rounded bg-teal-100 text-teal-700 text-[10px] font-bold">LAB</span>
-                                : <span className="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 text-[10px] font-bold">ECHO</span>}
-                            </td>
-                            <td className="p-1.5 font-sans">
-                              <span className="font-medium">{s.name}</span>
-                              {s.code && <span className="text-slate-400 font-mono ml-1">[{s.code}]</span>}
-                              {s.kind === 'lab' && s.category && <span className="block text-[10px] text-slate-400">{labCategoryLabel(s.category)}</span>}
-                            </td>
-                            <td className="p-1.5 text-center">
-                              <button
-                                onClick={() => toggleExtServiceUrgent(s.id)}
-                                title="Basculer urgent / normal (tarif mis à jour)"
-                                className={`px-1.5 py-0.5 rounded text-[10px] font-bold cursor-pointer ${s.urgent ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'}`}
-                              >{s.urgent ? '🚨 URGENT' : 'Normal'}</button>
-                            </td>
-                            <td className="p-1.5 text-right font-mono font-bold">{formatAr(s.price)}</td>
-                            <td className="p-1.5 text-center">
-                              <button onClick={() => removeExtService(s.id)} className="text-rose-500 hover:text-rose-700 cursor-pointer" title="Retirer"><XCircle className="w-3.5 h-3.5" /></button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      {extServices.length > 0 && (
-                        <tfoot className="bg-purple-50 border-t border-purple-200">
-                          <tr><td colSpan={3} className="p-1.5 text-right font-bold font-sans">Sous-total services :</td><td colSpan={2} className="p-1.5 text-right font-mono font-bold">{formatAr(extServicesTotal)}</td></tr>
-                        </tfoot>
-                      )}
-                    </table>
-                  ) : (
-                    <p className="px-3 py-4 text-center text-slate-400 text-xs">Aucun examen — ajoutez une analyse (labo) ou une échographie pour le client externe.</p>
-                  )}
-                </div>
-
-                <button onClick={extPay} disabled={extLines.length === 0 && extServices.length === 0} className="w-full py-3 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 disabled:opacity-40 cursor-pointer flex items-center justify-center gap-2"><CreditCard className="w-5 h-5" /> Encaisser {formatAr(extTotal)}</button>
+                <button onClick={extPay} disabled={extLines.length === 0} className="w-full py-3 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 disabled:opacity-40 cursor-pointer flex items-center justify-center gap-2"><CreditCard className="w-5 h-5" /> Encaisser {formatAr(extTotal)}</button>
 
               </div>
             </div>
@@ -1877,68 +1672,6 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
         onCancel={() => setConfirmModalState((prev) => ({ ...prev, isOpen: false }))}
       />
 
-      {/* MODALE — AJOUT D'ANALYSE OU D'ÉCHOGRAPHIE (VENTE EXTERNE) */}
-      {extServiceModal !== 'none' && (() => {
-        const isLab = extServiceModal === 'lab';
-        const list = isLab ? extLabFiltered : extEchoFiltered;
-        return (
-          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4" onClick={() => setExtServiceModal('none')}>
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-              <div className={`px-4 py-3 rounded-t-xl flex justify-between items-center text-white ${isLab ? 'bg-teal-600' : 'bg-indigo-600'}`}>
-                <span className="font-bold flex items-center gap-2">
-                  {isLab ? <FlaskConical className="w-5 h-5" /> : <Scan className="w-5 h-5" />}
-                  {isLab ? 'Ajouter une analyse — Laboratoire' : 'Ajouter une échographie'} <span className="text-xs font-normal opacity-80">(Client Externe — tarif externe)</span>
-                </span>
-                <button onClick={() => setExtServiceModal('none')} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm"><X className="w-4 h-4" /></button>
-              </div>
-              <div className="p-3 border-b border-slate-200">
-                <input
-                  type="text"
-                  autoFocus
-                  value={extServiceSearch}
-                  onChange={(e) => { setExtServiceSearch(e.target.value); setExtServiceSearchIdx(0); }}
-                  onKeyDown={(e) => extServiceKeyDown(e, isLab ? 'lab' : 'echo')}
-                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-500"
-                  placeholder={isLab ? '🔍 Rechercher une analyse (NFS, Glycémie…)' : '🔍 Rechercher une échographie (abdominale, pelvienne…)'}
-                />
-              </div>
-              <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
-                {list.length === 0 && <p className="p-8 text-center text-slate-400 text-sm">Aucun examen trouvé.</p>}
-                {list.map((e, idx) => {
-                  const isCat = !isLab && (e as typeof ECHO_CATALOG[number]);
-                  const labE = isLab ? (e as LabExamCatalog) : null;
-                  const normalPrice = labE ? labE.priceExterne : (isCat as typeof ECHO_CATALOG[number]).priceExterne;
-                  const urgentPrice = labE ? (labE.urgentPrice || labE.priceExterne) : (isCat as typeof ECHO_CATALOG[number]).urgentPrice;
-                  return (
-                    <div key={e.id} className={`px-4 py-2.5 flex items-center justify-between gap-3 ${idx === extServiceSearchIdx ? 'bg-purple-50' : 'hover:bg-slate-50'}`}>
-                      <div className="min-w-0">
-                        <div className="text-sm font-semibold text-slate-800">{e.name} <span className="text-xs text-slate-400 font-mono">[{e.code}]</span></div>
-                        {labE && <div className="text-[11px] text-slate-400">{labCategoryLabel(labE.category)} · {labE.sampleType}</div>}
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <button
-                          onClick={() => { isLab ? addExtLabExam(e.id, false) : addExtEchoExam(e.id, false); setExtServiceSearch(''); }}
-                          className="px-2.5 py-1.5 bg-slate-700 hover:bg-slate-800 text-white rounded-lg text-[11px] font-medium cursor-pointer whitespace-nowrap"
-                          title="Ajouter au tarif normal externe"
-                        >Normal · {formatAr(normalPrice)}</button>
-                        <button
-                          onClick={() => { isLab ? addExtLabExam(e.id, true) : addExtEchoExam(e.id, true); setExtServiceSearch(''); }}
-                          className="px-2.5 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-[11px] font-medium cursor-pointer whitespace-nowrap"
-                          title="Ajouter en urgent (tarif urgent externe)"
-                        >🚨 Urgent · {formatAr(urgentPrice)}</button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
-                <span className="text-[11px] text-slate-500">{extServices.length} examen(s) ajouté(s) à la vente externe.</span>
-                <button onClick={() => setExtServiceModal('none')} className="px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white rounded-lg text-sm font-medium cursor-pointer">Fermer</button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
     </div>
   );
 }
