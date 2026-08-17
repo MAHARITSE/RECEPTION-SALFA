@@ -1065,42 +1065,6 @@ export default function ModuleMagasinier({ state, setState }: Props) {
         );
       })()}
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <div className="bg-white rounded-xl p-3.5 shadow-sm border">
-          <div className="text-xs text-slate-500 font-medium">Catalogue</div>
-          <div className="text-xl font-bold text-slate-800 mt-0.5">{state.articles.length} <span className="text-xs font-normal text-slate-400">articles</span></div>
-        </div>
-        <div className="bg-white rounded-xl p-3.5 shadow-sm border">
-          <div className="text-xs text-amber-600 font-medium">Alertes Stock Bas</div>
-          <div className="text-xl font-bold text-amber-700 mt-0.5">
-            {state.articles.filter(a => !a.alertDisabledCentral && a.stockCentral <= a.minStockCentral).length} <span className="text-xs font-normal text-slate-400">central</span>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl p-3.5 shadow-sm border">
-          <div className="text-xs text-rose-600 font-medium">Ruptures Central</div>
-          <div className="text-xl font-bold text-rose-700 mt-0.5">
-            {state.articles.filter(a => a.stockCentral <= 0).length} <span className="text-xs font-normal text-slate-400">articles</span>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl p-3.5 shadow-sm border">
-          <div className="text-xs text-indigo-600 font-medium">Fournisseurs</div>
-          <div className="text-xl font-bold text-indigo-800 mt-0.5">{fournisseurs.length} <span className="text-xs font-normal text-slate-400">actifs</span></div>
-        </div>
-        <div className="bg-white rounded-xl p-3.5 shadow-sm border">
-          <div className="text-xs text-purple-600 font-medium">Demandes Appro</div>
-
-
-
-
-          <div className="text-xl font-bold text-purple-800 mt-0.5">{state.stockTransfers.filter(t => t.status === 'requested').length} <span className="text-xs font-normal text-slate-400">en attente</span></div>
-        </div>
-        <div className="bg-white rounded-xl p-3.5 shadow-sm border">
-          <div className="text-xs text-emerald-600 font-medium">Services Entrepôt</div>
-          <div className="text-xl font-bold text-emerald-800 mt-0.5">{activeServices.length} <span className="text-xs font-normal text-slate-400">destinataires</span></div>
-        </div>
-      </div>
-
       {/* Main Module Wrapper */}
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
         <div className="flex border-b overflow-x-auto bg-slate-50">
