@@ -17,7 +17,7 @@ export interface EchoExamCatalog {
   urgentPrice: number;
 }
 
-const ECHO_CATALOG: EchoExamCatalog[] = [
+export const ECHO_CATALOG: EchoExamCatalog[] = [
   { id: 'echo-abd', code: 'ECH001', name: 'Échographie abdominale', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 35000 },
   { id: 'echo-pel', code: 'ECH002', name: 'Échographie pelvienne', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 35000 },
   { id: 'echo-obs', code: 'ECH003', name: 'Échographie obstétricale', priceComptoir: 25000, priceSociete: 22000, priceExterne: 30000, urgentPrice: 35000 },
