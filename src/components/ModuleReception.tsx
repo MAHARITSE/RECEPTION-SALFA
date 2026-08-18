@@ -10,6 +10,7 @@ import {
   Stethoscope, MessageCircle, Info, FileWarning, Sun, Moon, AlertCircle
 } from 'lucide-react';
 import { useDarkMode } from './ThemeToggle';
+import { PhoneInput } from './PhoneInput';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; onStaffLogin: () => void; onOpenMessaging: () => void; }
 type ModalType = 'none' | 'add' | 'edit' | 'vitals' | 'blacklistConfirm' | 'blacklistReason' | 'blacklistList' | 'unblacklistConfirm' | 'deleteConfirm' | 'patientInfo';
@@ -659,13 +660,12 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
 
                   <div>
                     <label className="block font-bold text-slate-700 mb-1">Téléphone</label>
-                    <input
-                      type="text"
+                    <PhoneInput
                       value={patientForm.contact}
                       onBlur={() => setPatientTouched((t) => ({ ...t, contact: true }))}
-                      onChange={(e) => setPatientForm({ ...patientForm, contact: e.target.value })}
+                      onChange={(v) => setPatientForm({ ...patientForm, contact: v })}
                       className={`w-full bg-white border rounded px-2 py-1.5 font-mono focus:outline-none ${ (patientTouched.contact || patientSubmitted) && patientErrors.contact ? 'border-rose-500 bg-rose-50/50' : 'border-slate-400 focus:border-blue-500'}`}
-                      placeholder="Ex: 0102030405"
+                      placeholder="Ex: 038 34 092 61"
                     />
                     {(patientTouched.contact || patientSubmitted) && patientErrors.contact && (
                       <span className="text-[11px] text-rose-600 font-medium mt-0.5 block">{patientErrors.contact}</span>

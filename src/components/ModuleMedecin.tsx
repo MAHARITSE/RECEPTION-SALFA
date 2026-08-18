@@ -12,6 +12,7 @@ import { blockIfUnsavedDraftLine } from '../utils/validation';
 import AlerteArticleIndisponible from './AlerteArticleIndisponible';
 import type { ArticleAlertInfo } from './AlerteArticleIndisponible';
 import { printLabResultTicket } from '../utils/printTicket';
+import { PhoneInput } from './PhoneInput';
 import {
   Stethoscope, History, Trash2, AlertTriangle, Heart, FileText, Clock, CheckCircle,
   Send, Search, Edit2, RotateCcw, Save, FlaskConical, Scan, Plus, X, Droplets,
@@ -1508,11 +1509,10 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">Téléphone / Contact</label>
-                    <input
-                      type="text"
+                    <PhoneInput
                       value={patientEditForm.contact}
-                      onChange={(e) => setPatientEditForm({ ...patientEditForm, contact: e.target.value })}
-                      placeholder="034 XX XXX XX"
+                      onChange={(v) => setPatientEditForm({ ...patientEditForm, contact: v })}
+                      placeholder="038 34 092 61"
                       className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
                     />
                   </div>

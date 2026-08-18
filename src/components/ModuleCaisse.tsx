@@ -13,6 +13,7 @@ import { printSalfaIndividualInvoice } from '../utils/printSalfaInvoice';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
 import ConfirmModal from './ConfirmModal';
 import AlerteArticleIndisponible from './AlerteArticleIndisponible';
+import { PhoneInput } from './PhoneInput';
 import type { ArticleAlertInfo } from './AlerteArticleIndisponible';
 
 /** Patient factice utilisé pour imprimer les bons d'analyse / d'échographie des ventes
@@ -1413,7 +1414,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                 <div><label className="block font-bold text-slate-700 mb-0.5">Date Naissance</label><input type="date" value={hbNewPat.dateOfBirth} onChange={e => setHbNewPat({...hbNewPat, dateOfBirth: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none bg-white" /></div>
                 <div><label className="block font-bold text-slate-700 mb-0.5">Age</label><input type="text" readOnly value={hbNewPat.dateOfBirth ? calculateAge(hbNewPat.dateOfBirth) : '—'} className="w-full px-2 py-1.5 border rounded bg-slate-100" /></div>
                 <div><label className="block font-bold text-slate-700 mb-0.5">Matricule</label><input type="text" value={hbNewPat.matricule} onChange={e => setHbNewPat({...hbNewPat, matricule: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none font-mono bg-white" placeholder="M-0000" /></div>
-                <div><label className="block font-bold text-slate-700 mb-0.5">Téléphone</label><input type="text" value={hbNewPat.contact} onChange={e => setHbNewPat({...hbNewPat, contact: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none font-mono bg-white" placeholder="034 00 000 00" /></div>
+                <div><label className="block font-bold text-slate-700 mb-0.5">Téléphone</label><PhoneInput value={hbNewPat.contact} onChange={v => setHbNewPat({...hbNewPat, contact: v})} className="w-full px-2 py-1.5 border rounded outline-none font-mono bg-white" placeholder="038 34 092 61" /></div>
                 <div className="col-span-2"><label className="block font-bold text-slate-700 mb-0.5">Adresse</label><input type="text" value={hbNewPat.address} onChange={e => setHbNewPat({...hbNewPat, address: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-white" /></div>
                 <div><label className="block font-bold text-slate-700 mb-0.5">N° Sécurité Sociale</label><input type="text" value={hbNewPat.ssn} onChange={e => setHbNewPat({...hbNewPat, ssn: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none bg-white" /></div>
                 <div><label className="block font-bold text-slate-700 mb-0.5">Société</label><input type="text" value={hbNewPat.insureName} onChange={e => setHbNewPat({...hbNewPat, insureName: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-white" /></div>

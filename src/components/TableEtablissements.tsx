@@ -11,6 +11,7 @@ import {
   ticketSettingsFromEtablissement,
 } from '../store';
 import ConfirmModal from './ConfirmModal';
+import { PhoneInput } from './PhoneInput';
 import {
   Building2, Plus, Search, Edit2, Trash2, Check, X, Star, Landmark,
   BadgeCheck, Upload, Image as ImageIcon, Printer, MapPin, Phone, Mail, User as UserIcon,
@@ -349,11 +350,11 @@ export default function TableEtablissements({ state, setState, showToast }: Prop
               </div>
               <div>
                 <label className={labelCls}>Téléphone principal</label>
-                <input value={form.phone || ''} onChange={(e) => set({ phone: e.target.value })} className={inputCls} />
+                <PhoneInput value={form.phone || ''} onChange={(v) => set({ phone: v })} className={inputCls} />
               </div>
               <div>
                 <label className={labelCls}>Téléphone secondaire</label>
-                <input value={form.phone2 || ''} onChange={(e) => set({ phone2: e.target.value })} className={inputCls} />
+                <PhoneInput value={form.phone2 || ''} onChange={(v) => set({ phone2: v })} className={inputCls} />
               </div>
               <div>
                 <label className={labelCls}>Fax</label>
@@ -387,7 +388,7 @@ export default function TableEtablissements({ state, setState, showToast }: Prop
                 </div>
                 <div className="sm:col-span-2">
                   <label className={labelCls}>Téléphone</label>
-                  <input value={form.directorPhone || ''} onChange={(e) => set({ directorPhone: e.target.value })} className={inputCls} />
+                  <PhoneInput value={form.directorPhone || ''} onChange={(v) => set({ directorPhone: v })} className={inputCls} />
                 </div>
               </div>
             </div>

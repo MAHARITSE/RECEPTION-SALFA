@@ -13,6 +13,7 @@ import {
   createMovementWithLines, familyManagesStock,
 } from '../store';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
+import { PhoneInput } from './PhoneInput';
 import {
   Package, PackageCheck, PackagePlus, Search, Truck, Plus, Trash2, Save, Check,
   Filter, X, ArrowUpFromLine, ArrowLeftRight, ClipboardList,
@@ -1570,7 +1571,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                       <div className="grid grid-cols-2 gap-3">
                         <div>
                           <label className="font-bold block mb-1">Téléphone</label>
-                          <input type="text" value={supForm.phone} onChange={e => setSupForm({ ...supForm, phone: e.target.value })} className="w-full px-3 py-2 border rounded-lg" placeholder="034 00 111 22" />
+                          <PhoneInput value={supForm.phone} onChange={v => setSupForm({ ...supForm, phone: v })} className="w-full px-3 py-2 border rounded-lg" placeholder="038 34 092 61" />
                         </div>
                         <div>
                           <label className="font-bold block mb-1">E-mail</label>
