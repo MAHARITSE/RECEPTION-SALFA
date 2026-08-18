@@ -12,6 +12,18 @@ import localSeedData from './data/localData.json';
 
 let dossierCounter = 100;
 export function generateDossierNumber(ln: string): string { dossierCounter++; return `${ln.substring(0,3).toUpperCase().padEnd(3,'X')}${dossierCounter}`; }
+
+/** Numéro de dossier saisi manuellement : toujours en majuscules, sans espaces superflus. */
+export function normalizeDossierNumber(raw: string): string {
+  return (raw || '').trim().toUpperCase().replace(/\s+/g, '');
+}
+
+/** Clé unique : le numéro de dossier ne peut pas exister deux fois. */
+export function isDossierTaken(patients: { id: string; dossier: string }[], dossier: string, excludePatientId?: string): boolean {
+  const key = normalizeDossierNumber(dossier);
+  if (!key) return false;
+  return patients.some((p) => normalizeDossierNumber(p.dossier) === key && p.id !== excludePatientId);
+}
 export function calculateAge(bd: string): string {
   if (!bd || bd === 'N/A') return 'N/A';
   const t = new Date(), b = new Date(bd); let a = t.getFullYear() - b.getFullYear();

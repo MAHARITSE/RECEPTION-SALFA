@@ -4,7 +4,7 @@ import type { LabRequest, Patient, ClientType, LabExamCatalog, LabCategory, Arti
 import type { AppState } from '../store';
 import {
   addAuditLog, addNotification, addJourneyEvent, LAB_NORMS,
-  labCategoryLabel, LAB_CATEGORIES, generateDossierNumber, calculateAge, formatAr, getLabCatalog,
+  labCategoryLabel, LAB_CATEGORIES, normalizeDossierNumber, isDossierTaken, calculateAge, formatAr, getLabCatalog,
 } from '../store';
 import { printLabResultTicket } from '../utils/printTicket';
 import {
@@ -45,7 +45,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
   const [showNew, setShowNew] = useState(false);
   const [patSearch, setPatSearch] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
-  const [newPat, setNewPat] = useState({ lastName: '', firstName: '', gender: 'F' as 'M' | 'F', dateOfBirth: '', contact: '', clientType: 'comptoir' as ClientType, company: '' });
+  const [newPat, setNewPat] = useState({ dossier: '', lastName: '', firstName: '', gender: 'F' as 'M' | 'F', dateOfBirth: '', contact: '', clientType: 'comptoir' as ClientType, company: '' });
   const [selectedExamIds, setSelectedExamIds] = useState<string[]>([]);
   const [urgent, setUrgent] = useState(false);
   const [sampleType, setSampleType] = useState('Sang veineux');
@@ -289,8 +289,11 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
 
   const createNewPatient = () => {
     if (!newPat.lastName || !newPat.firstName) { alert('Nom et prénom requis'); return; }
+    const dossier = normalizeDossierNumber(newPat.dossier);
+    if (!dossier) { alert('Le numéro de dossier est obligatoire (saisie manuelle, majuscules).'); return; }
+    if (isDossierTaken(state.patients, dossier)) { alert('Ce numéro de dossier existe déjà.'); return; }
     const np: Patient = {
-      id: uuidv4(), dossier: generateDossierNumber(newPat.lastName),
+      id: uuidv4(), dossier,
       firstName: newPat.firstName.toUpperCase(), lastName: newPat.lastName.toUpperCase(),
       dateOfBirth: newPat.dateOfBirth || 'N/A', age: newPat.dateOfBirth ? calculateAge(newPat.dateOfBirth) : 'N/A',
       gender: newPat.gender, address: '', contact: newPat.contact, ssn: '',
@@ -305,7 +308,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
     });
     setSelectedPatientId(np.id);
     setPatSearch('');
-    setNewPat({ lastName: '', firstName: '', gender: 'F', dateOfBirth: '', contact: '', clientType: 'comptoir', company: '' });
+    setNewPat({ dossier: '', lastName: '', firstName: '', gender: 'F', dateOfBirth: '', contact: '', clientType: 'comptoir', company: '' });
   };
 
   const toggleExam = (id: string) => {

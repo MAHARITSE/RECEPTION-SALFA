@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Patient, VitalSigns, ClientType, PatientStatus } from '../types';
 import type { AppState } from '../store';
-import { generateDossierNumber, calculateAge, addAuditLog, addNotification, addJourneyEvent } from '../store';
+import { normalizeDossierNumber, isDossierTaken, calculateAge, addAuditLog, addNotification, addJourneyEvent } from '../store';
 import { printQueueTicket } from '../utils/printTicket';
 import {
   Search, Plus, Edit, Trash2, UserX, Activity,
@@ -31,7 +31,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
   const [vitalsSubmitted, setVitalsSubmitted] = useState(false);
 
   const [patientForm, setPatientForm] = useState({
-    lastName: '', firstName: '', dateOfBirth: '', gender: 'F' as 'M' | 'F',
+    dossier: '', lastName: '', firstName: '', dateOfBirth: '', gender: 'F' as 'M' | 'F',
     address: '', contact: '', ssn: '', matricule: '', insureName: '',
     clientType: 'comptoir' as ClientType, company: '', subCompany: '',
     famille: '', lienFamilial: '',
@@ -39,6 +39,13 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
 
   const getPatientFormErrors = (pf: typeof patientForm) => {
     const errors: Record<string, string> = {};
+
+    const dossier = normalizeDossierNumber(pf.dossier);
+    if (!dossier) {
+      errors.dossier = 'Le numéro de dossier est obligatoire';
+    } else if (isDossierTaken(state.patients, dossier, modal === 'edit' ? selectedPatient?.id : undefined)) {
+      errors.dossier = 'Ce numéro de dossier existe déjà';
+    }
 
     if (!pf.lastName.trim()) {
       errors.lastName = 'Le nom est obligatoire';
@@ -238,7 +245,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
     if (Object.keys(errs).length > 0) return;
 
     const np: Patient = {
-      id: uuidv4(), dossier: generateDossierNumber(patientForm.lastName),
+      id: uuidv4(), dossier: normalizeDossierNumber(patientForm.dossier),
       matricule: patientForm.matricule || undefined,
       firstName: patientForm.firstName.toUpperCase(), lastName: patientForm.lastName.toUpperCase(),
       dateOfBirth: patientForm.dateOfBirth || 'N/A', age: patientForm.dateOfBirth ? calculateAge(patientForm.dateOfBirth) : 'N/A',
@@ -267,7 +274,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
     setState((prev) => ({
       ...prev,
       patients: prev.patients.map((p) => p.id === selectedPatient.id ? {
-        ...p, firstName: patientForm.firstName.toUpperCase(), lastName: patientForm.lastName.toUpperCase(),
+        ...p, dossier: normalizeDossierNumber(patientForm.dossier), firstName: patientForm.firstName.toUpperCase(), lastName: patientForm.lastName.toUpperCase(),
         dateOfBirth: patientForm.dateOfBirth || 'N/A', age: patientForm.dateOfBirth ? calculateAge(patientForm.dateOfBirth) : 'N/A',
         gender: patientForm.gender, address: patientForm.address.toUpperCase(), contact: patientForm.contact, ssn: patientForm.ssn,
         matricule: patientForm.matricule || undefined,
@@ -482,8 +489,8 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
 
           </div>
           <div className="flex items-center gap-1">
-            <button onClick={() => { setModal('add'); setPatientTouched({}); setPatientSubmitted(false); setPatientForm({ lastName: '', firstName: '', dateOfBirth: '', gender: 'F', address: '', contact: '', ssn: '', matricule: '', insureName: '', clientType: 'comptoir', company: '', subCompany: '', famille: '', lienFamilial: '' }); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold shadow transition cursor-pointer"><Plus className="h-4 w-4" /> Nouveau</button>
-            <button onClick={() => { if (!selectedPatient) return; setPatientTouched({}); setPatientSubmitted(false); setPatientForm({ lastName: selectedPatient.lastName, firstName: selectedPatient.firstName, dateOfBirth: selectedPatient.dateOfBirth === 'N/A' ? '' : selectedPatient.dateOfBirth, gender: selectedPatient.gender, address: selectedPatient.address, contact: selectedPatient.contact, ssn: selectedPatient.ssn, matricule: selectedPatient.matricule || '', insureName: selectedPatient.company || selectedPatient.insureName || '', clientType: selectedPatient.clientType === 'externe' ? 'comptoir' : selectedPatient.clientType, company: selectedPatient.company || '', subCompany: selectedPatient.subCompany || '', famille: selectedPatient.famille || '', lienFamilial: selectedPatient.lienFamilial || '' }); setModal('edit'); }} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Edit className="h-4 w-4" /> Modifier</button>
+            <button onClick={() => { setModal('add'); setPatientTouched({}); setPatientSubmitted(false); setPatientForm({ dossier: '', lastName: '', firstName: '', dateOfBirth: '', gender: 'F', address: '', contact: '', ssn: '', matricule: '', insureName: '', clientType: 'comptoir', company: '', subCompany: '', famille: '', lienFamilial: '' }); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold shadow transition cursor-pointer"><Plus className="h-4 w-4" /> Nouveau</button>
+            <button onClick={() => { if (!selectedPatient) return; setPatientTouched({}); setPatientSubmitted(false); setPatientForm({ dossier: selectedPatient.dossier, lastName: selectedPatient.lastName, firstName: selectedPatient.firstName, dateOfBirth: selectedPatient.dateOfBirth === 'N/A' ? '' : selectedPatient.dateOfBirth, gender: selectedPatient.gender, address: selectedPatient.address, contact: selectedPatient.contact, ssn: selectedPatient.ssn, matricule: selectedPatient.matricule || '', insureName: selectedPatient.company || selectedPatient.insureName || '', clientType: selectedPatient.clientType === 'externe' ? 'comptoir' : selectedPatient.clientType, company: selectedPatient.company || '', subCompany: selectedPatient.subCompany || '', famille: selectedPatient.famille || '', lienFamilial: selectedPatient.lienFamilial || '' }); setModal('edit'); }} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Edit className="h-4 w-4" /> Modifier</button>
             <button onClick={handleDeletePatient} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Trash2 className="h-4 w-4" /> Supprimer</button>
             <div className="w-px h-6 bg-slate-300 mx-1" />
             <button onClick={() => selectedPatient && setModal('patientInfo')} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Info className="h-4 w-4" /> Info</button>
@@ -586,6 +593,22 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                 <div className="space-y-3">
                   <div className="flex items-center gap-3"><label className="font-bold text-slate-700 w-16">Sexe</label><div className="flex border border-slate-400 rounded overflow-hidden"><button type="button" onClick={() => setPatientForm({ ...patientForm, gender: 'M' })} className={`px-4 py-1.5 font-bold transition cursor-pointer ${patientForm.gender === 'M' ? 'bg-blue-500 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'}`}>M</button><button type="button" onClick={() => setPatientForm({ ...patientForm, gender: 'F' })} className={`px-4 py-1.5 font-bold border-l border-slate-400 transition cursor-pointer ${patientForm.gender === 'F' ? 'bg-pink-500 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'}`}>F</button></div></div>
                   
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">N° Dossier *</label>
+                    <input
+                      type="text"
+                      value={patientForm.dossier}
+                      onBlur={() => setPatientTouched((t) => ({ ...t, dossier: true }))}
+                      onChange={(e) => setPatientForm({ ...patientForm, dossier: e.target.value.toUpperCase() })}
+                      className={`w-full bg-white border rounded px-2 py-1.5 uppercase font-mono font-bold tracking-wide focus:outline-none ${ (patientTouched.dossier || patientSubmitted) && patientErrors.dossier ? 'border-rose-500 bg-rose-50/50 focus:border-rose-600' : 'border-slate-400 focus:border-blue-500'}`}
+                      placeholder="SAISIE MANUELLE — MAJUSCULES"
+                      autoComplete="off"
+                    />
+                    {(patientTouched.dossier || patientSubmitted) && patientErrors.dossier && (
+                      <span className="text-[11px] text-rose-600 font-medium mt-0.5 block">{patientErrors.dossier}</span>
+                    )}
+                    <span className="text-[10px] text-slate-500 mt-0.5 block">Clé unique, saisie manuelle, uniquement en majuscules.</span>
+                  </div>
                   <div>
                     <label className="block font-bold text-slate-700 mb-1">Nom *</label>
                     <input
