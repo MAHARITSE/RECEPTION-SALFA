@@ -570,6 +570,7 @@ export interface HbRecord {
   patientName: string;
   clientType: ClientType;
   company?: string;
+  subCompany?: string;
   type: 'hospit' | 'bloc';
   lines: HbLine[];
   payments: { amount: number; paidBy: string; date: string; paidByUserId?: string; receivedBy?: 'caisse' | 'pharmacie' }[];

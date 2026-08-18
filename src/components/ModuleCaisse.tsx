@@ -4,7 +4,7 @@ import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, C
 import type { AppState } from '../store';
 import {
   addAuditLog, addNotification, formatAr, formatNum, roundTo2, getPrice, calculateAge,
-  generateDossierNumber, addJourneyEvent, generatePharmaClosingNumber, purgePatientFromQueue,
+  normalizeDossierNumber, isDossierTaken, addJourneyEvent, generatePharmaClosingNumber, purgePatientFromQueue,
   familyManagesStock, isLabFamily, isEchoFamily,
 } from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText, RefreshCw } from 'lucide-react';
@@ -97,7 +97,8 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
   // HB Modal: patient search/add (ALL fields like reception)
   const [hbPatSearch, setHbPatSearch] = useState('');
-  const [hbNewPat, setHbNewPat] = useState({ lastName: '', firstName: '', dateOfBirth: '', gender: 'M' as 'M'|'F', contact: '', address: '', matricule: '', ssn: '', insureName: '', clientType: 'comptoir' as ClientType, company: '', subCompany: '' });
+  const [hbNewPat, setHbNewPat] = useState({ dossier: '', lastName: '', firstName: '', dateOfBirth: '', gender: 'M' as 'M'|'F', contact: '', address: '', matricule: '', ssn: '', insureName: '', clientType: 'comptoir' as ClientType, company: '', subCompany: '' });
+  const [hbNewCompanyName, setHbNewCompanyName] = useState('');
 
   // HB Modal: article add
   const [hbArtSearch, setHbArtSearch] = useState('');
@@ -110,6 +111,8 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   // HB Modal: edit client type
   const [hbEditClientType, setHbEditClientType] = useState<ClientType>('comptoir');
   const [hbEditCompany, setHbEditCompany] = useState('');
+  const [hbEditSubCompany, setHbEditSubCompany] = useState('');
+  const [hbEditNewCompany, setHbEditNewCompany] = useState('');
 
   // Data
   // RÈGLE : TOUS les patients validés par un médecin arrivent à la caisse pour
@@ -713,17 +716,32 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     const now = new Date().toISOString();
     updateHbRecords([...hbRecords, {
       id: uuidv4(), patientId: p.id, patientName: `${p.lastName} ${p.firstName}`,
-      clientType: p.clientType, company: p.company,
+      clientType: p.clientType, company: p.company, subCompany: p.subCompany,
       type: tab as 'hospit' | 'bloc', lines: [], payments: [],
       openedAt: now, openedBy: state.currentUser?.name, openedByUserId: state.currentUser?.id,
     }]);
     setHbPatSearch(''); setHbModal('none');
   };
 
+  const addPartnerCompany = (rawName: string): string | null => {
+    const name = rawName.trim().toUpperCase();
+    if (!name) return null;
+    const existing = state.companies.find(c => c.name.toUpperCase() === name);
+    if (existing) return existing.name;
+    setState(prev => ({
+      ...prev,
+      companies: [...prev.companies, { id: `comp-${Date.now()}`, name, paymentMode: 'Crédit', settlementMode: 'monthly_global', createdAt: new Date().toISOString() }],
+    }));
+    return name;
+  };
+
   const hbAddNewPatient = () => {
     if (!hbNewPat.lastName || !hbNewPat.firstName) { alert('Nom et prénom requis'); return; }
+    const dossier = normalizeDossierNumber(hbNewPat.dossier);
+    if (!dossier) { alert('Le numéro de dossier est obligatoire (saisie manuelle, majuscules).'); return; }
+    if (isDossierTaken(state.patients, dossier)) { alert('Ce numéro de dossier existe déjà.'); return; }
     const np = {
-      id: uuidv4(), dossier: generateDossierNumber(hbNewPat.lastName),
+      id: uuidv4(), dossier,
       firstName: hbNewPat.firstName.toUpperCase(), lastName: hbNewPat.lastName.toUpperCase(),
       dateOfBirth: hbNewPat.dateOfBirth || 'N/A', age: hbNewPat.dateOfBirth ? calculateAge(hbNewPat.dateOfBirth) : 'N/A',
       gender: hbNewPat.gender, address: hbNewPat.address.toUpperCase(), contact: hbNewPat.contact,
@@ -739,11 +757,11 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     setState(prev => ({ ...prev, patients: [...prev.patients, np] }));
     updateHbRecords([...hbRecords, {
       id: uuidv4(), patientId: np.id, patientName: `${np.lastName} ${np.firstName}`,
-      clientType: np.clientType, company: np.company,
+      clientType: np.clientType, company: np.company, subCompany: np.subCompany,
       type: tab as 'hospit' | 'bloc', lines: [], payments: [],
       openedAt: now, openedBy: state.currentUser?.name, openedByUserId: state.currentUser?.id,
     }]);
-    setHbNewPat({ lastName: '', firstName: '', dateOfBirth: '', gender: 'M', contact: '', address: '', matricule: '', ssn: '', insureName: '', clientType: 'comptoir', company: '', subCompany: '' });
+    setHbNewPat({ dossier: '', lastName: '', firstName: '', dateOfBirth: '', gender: 'M', contact: '', address: '', matricule: '', ssn: '', insureName: '', clientType: 'comptoir', company: '', subCompany: '' });
     setHbModal('none');
   };
 
@@ -922,10 +940,9 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const hbSaveClientType = () => {
     if (!hbSelRecordId) return;
     const rec = hbRecords.find(r => r.id === hbSelRecordId);
-    updateHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, clientType: hbEditClientType, company: hbEditClientType === 'societe' ? hbEditCompany : undefined } : r));
-    // Also update patient in state if linked
+    updateHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, clientType: hbEditClientType, company: hbEditClientType === 'societe' ? hbEditCompany : undefined, subCompany: hbEditClientType === 'societe' ? hbEditSubCompany : undefined } : r));
     if (rec?.patientId) {
-      setState(prev => ({ ...prev, patients: prev.patients.map(p => p.id === rec.patientId ? { ...p, clientType: hbEditClientType === 'externe' ? 'comptoir' : hbEditClientType as 'comptoir'|'societe', company: hbEditClientType === 'societe' ? hbEditCompany : undefined } : p) }));
+      setState(prev => ({ ...prev, patients: prev.patients.map(p => p.id === rec.patientId ? { ...p, clientType: hbEditClientType === 'externe' ? 'comptoir' : hbEditClientType as 'comptoir'|'societe', company: hbEditClientType === 'societe' ? hbEditCompany : undefined, subCompany: hbEditClientType === 'societe' ? hbEditSubCompany : undefined } : p) }));
     }
     setHbModal('none');
   };
@@ -941,9 +958,9 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       if (!pat) return;
       const name = `${pat.lastName} ${pat.firstName}`;
       if (c.hospitalizeRequested && !hbRecords.some(h => h.patientId === pat.id && h.type === 'hospit'))
-        additions.push({ id: uuidv4(), patientId: pat.id, patientName: name, clientType: pat.clientType, company: pat.company, type: 'hospit', lines: [], payments: [], openedAt: now, openedBy: openerName, openedByUserId: openerId });
+        additions.push({ id: uuidv4(), patientId: pat.id, patientName: name, clientType: pat.clientType, company: pat.company, subCompany: pat.subCompany, type: 'hospit', lines: [], payments: [], openedAt: now, openedBy: openerName, openedByUserId: openerId });
       if (c.surgeryRequested && !hbRecords.some(h => h.patientId === pat.id && h.type === 'bloc'))
-        additions.push({ id: uuidv4(), patientId: pat.id, patientName: name, clientType: pat.clientType, company: pat.company, type: 'bloc', lines: [], payments: [], openedAt: now, openedBy: openerName, openedByUserId: openerId });
+        additions.push({ id: uuidv4(), patientId: pat.id, patientName: name, clientType: pat.clientType, company: pat.company, subCompany: pat.subCompany, type: 'bloc', lines: [], payments: [], openedAt: now, openedBy: openerName, openedByUserId: openerId });
     });
     if (additions.length > 0) updateHbRecords(prev => [...prev, ...additions]);
   };
@@ -1245,14 +1262,13 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                   const totalFact = record.lines.reduce((s, l) => s + hbLineAmt(l), 0);
                   const totalPaid = record.payments.reduce((s, p) => s + p.amount, 0);
                   const reste = totalFact - totalPaid;
-                  const isOpen = hbSelRecordId === record.id;
                   return (
-                    <div key={record.id} className={`border rounded-lg overflow-hidden ${isOpen ? 'border-blue-400' : 'border-slate-200'}`}>
-                      <div className={`p-3 flex justify-between items-center cursor-pointer ${isOpen ? 'bg-blue-50' : 'bg-slate-50'}`} onClick={() => setHbSelRecordId(isOpen ? null : record.id)}>
+                    <div key={record.id} className="border rounded-lg overflow-hidden border-slate-200">
+                      <div className="p-3 flex justify-between items-center bg-slate-50">
                         <div>
                           <div className="font-bold text-sm flex items-center gap-2">{record.patientName}
-                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${record.clientType === 'societe' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>{record.clientType === 'societe' ? `🏢 ${record.company}` : '🏪 Comptoir'}</span>
-                            <button onClick={(e) => { e.stopPropagation(); setHbSelRecordId(record.id); setHbEditClientType(record.clientType); setHbEditCompany(record.company || ''); setHbModal('edit_client'); }} className="text-blue-500 cursor-pointer" title="Modifier type"><Edit2 className="w-3 h-3" /></button>
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${record.clientType === 'societe' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>{record.clientType === 'societe' ? `🏢 ${record.company}${record.subCompany ? ` / ${record.subCompany}` : ''}` : '🏪 Comptoir'}</span>
+                            <button onClick={() => { setHbSelRecordId(record.id); setHbEditClientType(record.clientType); setHbEditCompany(record.company || ''); setHbEditSubCompany(record.subCompany || ''); setHbEditNewCompany(''); setHbModal('edit_client'); }} className="text-blue-500 cursor-pointer" title="Modifier société"><Edit2 className="w-3 h-3" /></button>
                           </div>
                           <div className="text-xs text-slate-500 mt-0.5">Facture: <strong>{formatAr(totalFact)}</strong> | Payé: <span className="text-green-600">{formatAr(totalPaid)}</span> | Reste: <span className="text-red-600 font-bold">{formatAr(reste)}</span></div>
                         </div>
@@ -1268,13 +1284,6 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                           </>}
                         </div>
                       </div>
-                      {isOpen && (
-                        <div className="p-3 border-t bg-white">
-                          {record.lines.length > 0 && <table className="w-full text-[11px] mb-2"><thead className="bg-slate-100"><tr><th className="p-1 text-left w-16">Date</th><th className="p-1 text-left">Article</th><th className="p-1 text-right">Qté</th><th className="p-1 text-right">P.U.</th><th className="p-1 text-right">Montant</th><th className="p-1 text-center w-8">Action</th></tr></thead><tbody>{record.lines.map(l => (<tr key={l.id} className="border-b border-slate-100"><td className="p-1 text-slate-500">{l.dateSort || '—'}</td><td className="p-1">{l.articleName}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 text-right font-mono">{formatNum(l.unitPrice)}</td><td className="p-1 text-right font-mono font-bold">{formatNum(hbLineAmt(l))}</td><td className="p-1 text-center"><button onClick={() => { askConfirmation({ title: 'Suppression de ligne', message: `Supprimer la ligne "${l.articleName}" ?`, confirmText: 'Supprimer', type: 'danger', onConfirm: () => { updateHbRecords(hbRecords.map(r => r.id === record.id ? { ...r, lines: r.lines.filter(x => x.id !== l.id) } : r)); setConfirmModalState(prev => ({ ...prev, isOpen: false })); } }); }} className="text-rose-600 hover:text-rose-800 p-0.5 cursor-pointer" title="Supprimer la ligne"><Trash2 className="w-3.5 h-3.5 text-rose-600" /></button></td></tr>))}</tbody></table>}
-                          {record.lines.length === 0 && <p className="text-slate-400 text-xs text-center py-2">Aucun article — cliquez "+ Article"</p>}
-                          {record.payments.length > 0 && <div className="mt-2 text-[10px] text-slate-500 border-t pt-1"><div className="font-bold mb-1">Historique paiements :</div>{record.payments.map((p, i) => (<div key={i}>{new Date(p.date).toLocaleString('fr-FR',{hour:'2-digit',minute:'2-digit'})} — {formatAr(p.amount)} — {p.receivedBy === 'pharmacie' ? '🏥 Pharmacie' : '💵 Caisse'} : {p.paidBy}</div>))}</div>}
-                        </div>
-                      )}
                     </div>
                   );
                 })}
@@ -1387,6 +1396,11 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
             <div className="border-t pt-3">
               <h4 className="font-bold text-sm mb-2">Ou créer un nouveau patient :</h4>
               <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="col-span-2">
+                  <label className="block font-bold text-slate-700 mb-0.5">N° Dossier *</label>
+                  <input type="text" value={hbNewPat.dossier} onChange={e => setHbNewPat({...hbNewPat, dossier: e.target.value.toUpperCase()})} className="w-full px-2 py-1.5 border rounded outline-none uppercase font-mono font-bold bg-white" placeholder="SAISIE MANUELLE — MAJUSCULES" />
+                  <span className="text-[10px] text-slate-500">Clé unique, jamais incrémentée automatiquement.</span>
+                </div>
                 <div className="col-span-2 flex items-center gap-3 mb-1">
                   <span className="font-bold text-slate-700">Sexe</span>
                   <div className="flex border border-slate-400 rounded overflow-hidden">
@@ -1405,7 +1419,18 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                 <div><label className="block font-bold text-slate-700 mb-0.5">Société</label><input type="text" value={hbNewPat.insureName} onChange={e => setHbNewPat({...hbNewPat, insureName: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-white" /></div>
                 <div><label className="block font-bold text-slate-700 mb-0.5">Type Client</label><select value={hbNewPat.clientType} onChange={e => setHbNewPat({...hbNewPat, clientType: e.target.value as ClientType})} className="w-full px-2 py-1.5 border rounded outline-none cursor-pointer bg-white"><option value="comptoir">Client Comptoir</option><option value="societe">Client Société</option></select></div>
                 {hbNewPat.clientType === 'societe' && <div><label className="block font-bold text-slate-700 mb-0.5">Société</label><select value={hbNewPat.company} onChange={e => setHbNewPat({...hbNewPat, company: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none cursor-pointer bg-white"><option value="">— Sélectionner —</option>{state.companies.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}</select></div>}
-                {hbNewPat.clientType === 'societe' && <div className="col-span-2"><label className="block font-bold text-slate-700 mb-0.5">Sous-société (libre)</label><input type="text" value={hbNewPat.subCompany} onChange={e => setHbNewPat({...hbNewPat, subCompany: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-white" placeholder="Direction, Service..." /></div>}
+                {hbNewPat.clientType === 'societe' && (
+                  <div className="col-span-2 space-y-2">
+                    <div className="flex gap-2">
+                      <input type="text" value={hbNewCompanyName} onChange={e => setHbNewCompanyName(e.target.value.toUpperCase())} className="flex-1 px-2 py-1.5 border rounded outline-none uppercase bg-white" placeholder="Nouvelle société partenaire…" />
+                      <button type="button" onClick={() => { const name = addPartnerCompany(hbNewCompanyName); if (name) { setHbNewPat({...hbNewPat, company: name}); setHbNewCompanyName(''); } }} className="px-2 py-1.5 bg-indigo-600 text-white rounded text-xs font-bold cursor-pointer">+ Société</button>
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-0.5">Sous-société</label>
+                      <input type="text" value={hbNewPat.subCompany} onChange={e => setHbNewPat({...hbNewPat, subCompany: e.target.value.toUpperCase()})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-white" placeholder="Direction, Service..." />
+                    </div>
+                  </div>
+                )}
               </div>
               <button onClick={hbAddNewPatient} className="mt-3 w-full py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 cursor-pointer flex items-center justify-center gap-2"><UserPlus className="w-4 h-4" /> Créer et ajouter</button>
             </div>
@@ -1426,6 +1451,40 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
               <button onClick={() => { if (rec && blockIfUnsavedDraftLine(hbArtForm, rec.lines, { entityLabel: 'l\'article' })) return; setHbModal('none'); }} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button>
             </div>
             <div className="p-4 space-y-3">
+              <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2">
+                <div className="text-xs font-bold text-indigo-900">🏢 Changement de société</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-0.5">Type</label>
+                    <select value={hbEditClientType} onChange={e => setHbEditClientType(e.target.value as ClientType)} className="w-full px-2 py-1.5 border rounded bg-white cursor-pointer">
+                      <option value="comptoir">Client Comptoir</option>
+                      <option value="societe">Client Société</option>
+                    </select>
+                  </div>
+                  {hbEditClientType === 'societe' && (
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-0.5">Société</label>
+                      <select value={hbEditCompany} onChange={e => setHbEditCompany(e.target.value)} className="w-full px-2 py-1.5 border rounded bg-white cursor-pointer">
+                        <option value="">—</option>
+                        {state.companies.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+                {hbEditClientType === 'societe' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div className="flex gap-1">
+                      <input type="text" value={hbEditNewCompany} onChange={e => setHbEditNewCompany(e.target.value.toUpperCase())} className="flex-1 px-2 py-1.5 border rounded uppercase bg-white" placeholder="Ajouter une société…" />
+                      <button type="button" onClick={() => { const name = addPartnerCompany(hbEditNewCompany); if (name) { setHbEditCompany(name); setHbEditNewCompany(''); } }} className="px-2 py-1.5 bg-indigo-600 text-white rounded font-bold">+</button>
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-0.5">Sous-société</label>
+                      <input type="text" value={hbEditSubCompany} onChange={e => setHbEditSubCompany(e.target.value.toUpperCase())} className="w-full px-2 py-1.5 border rounded uppercase bg-white" placeholder="Direction, service…" />
+                    </div>
+                  </div>
+                )}
+                <button type="button" onClick={hbSaveClientType} className="px-3 py-1.5 bg-indigo-700 text-white rounded text-xs font-bold">Enregistrer le type / société</button>
+              </div>
               {/* Sage-style input bar */}
               <div className="bg-[#f4f4f4] border border-slate-300 rounded text-xs select-none">
                 <div className="bg-slate-100 border-b border-slate-300 p-2 m-2 mb-0 rounded shadow-inner">
@@ -1884,6 +1943,46 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                 </div>
               )}
               <div className={`flex justify-between text-xl font-bold border-t-2 pt-2 mb-4 ${selPatient.clientType === 'societe' ? 'text-blue-800' : ''}`}>
+                <span>{selPatient.clientType === 'societe' ? 'MONTANT À PORTER EN CRÉDIT SOCIÉTÉ' : 'À PAYER'}</span>
+                <span className={`font-mono ${selPatient.clientType === 'societe' ? 'text-blue-600' : 'text-amber-600'}`}>{formatAr(getPendingAmount(selPatient))}</span>
+              </div>
+              {selPatient.clientType === 'societe' ? (
+                <button onClick={handlePayment} className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 cursor-pointer shadow-lg flex items-center justify-center gap-2">
+                  <Building2 className="w-5 h-5" /> Valider en Crédit Société {formatAr(getPendingAmount(selPatient))}
+                </button>
+              ) : (
+                <button onClick={handlePayment} className="w-full py-3 bg-amber-600 text-white rounded-xl font-semibold hover:bg-amber-700 cursor-pointer shadow-lg flex items-center justify-center gap-2">
+                  <CreditCard className="w-5 h-5" /> {getPendingAmount(selPatient) > 0 ? `Encaisser ${formatAr(getPendingAmount(selPatient))}` : 'Valider le passage (0 Ar)'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <ConfirmModal
+        isOpen={confirmModalState.isOpen}
+        title={confirmModalState.title}
+        message={confirmModalState.message}
+        subText={confirmModalState.subText}
+        confirmText={confirmModalState.confirmText}
+        cancelText={confirmModalState.cancelText}
+        type={confirmModalState.type}
+        showCancel={confirmModalState.showCancel}
+        onConfirm={confirmModalState.onConfirm}
+        onCancel={() => setConfirmModalState((prev) => ({ ...prev, isOpen: false }))}
+      />
+
+      {/* Notification rouge centrée : article bloqué en vente par la pharmacie ou en rupture de stock */}
+      <AlerteArticleIndisponible
+        alert={articleAlert}
+        onClose={() => { setArticleAlert(null); setTimeout(() => extSearchRef.current?.focus(), 50); }}
+      />
+
+    </div>
+  );
+}
+     <div className={`flex justify-between text-xl font-bold border-t-2 pt-2 mb-4 ${selPatient.clientType === 'societe' ? 'text-blue-800' : ''}`}>
                 <span>{selPatient.clientType === 'societe' ? 'MONTANT À PORTER EN CRÉDIT SOCIÉTÉ' : 'À PAYER'}</span>
                 <span className={`font-mono ${selPatient.clientType === 'societe' ? 'text-blue-600' : 'text-amber-600'}`}>{formatAr(getPendingAmount(selPatient))}</span>
               </div>
