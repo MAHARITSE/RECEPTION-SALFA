@@ -1373,10 +1373,11 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         </div>
       </div>
 
-      {/* === INLINE ADD PATIENT (no modal) === */}
+      {/* === AJOUTER PATIENT — fenêtre modale centrée === */}
       {hbModal === 'add_patient' && (
-        <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-0 order-first">
-          <div className={`px-4 py-3 flex justify-between items-center text-white ${tab === 'hospit' ? 'bg-rose-600' : 'bg-blue-600'}`}><span className="font-bold"><UserPlus className="w-5 h-5 inline" /> Ajouter Patient — {tab === 'hospit' ? 'Hospitalisation' : 'Bloc'}</span><button onClick={() => setHbModal('none')} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button></div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" onClick={() => setHbModal('none')}>
+          <div className="w-full max-w-2xl max-h-[calc(100vh-2rem)] overflow-y-auto bg-white rounded-xl shadow-2xl border border-slate-300" onClick={(e) => e.stopPropagation()}>
+          <div className={`px-4 py-3 flex justify-between items-center text-white sticky top-0 z-10 ${tab === 'hospit' ? 'bg-rose-600' : 'bg-blue-600'}`}><span className="font-bold"><UserPlus className="w-5 h-5 inline" /> Ajouter Patient — {tab === 'hospit' ? 'Hospitalisation' : 'Bloc'}</span><button onClick={() => setHbModal('none')} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button></div>
           <div className="p-4 space-y-3">
             {/* Search existing */}
             <div><label className="block text-sm font-medium mb-1">Rechercher patient existant</label>
@@ -1409,18 +1410,20 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
               <button onClick={hbAddNewPatient} className="mt-3 w-full py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 cursor-pointer flex items-center justify-center gap-2"><UserPlus className="w-4 h-4" /> Créer et ajouter</button>
             </div>
           </div>
+          </div>
         </div>
       )}
 
-      {/* Prescription — Inline Sage-style (no modal) */}
+      {/* Prescription — fenêtre modale centrée (saisie Sage) */}
       {hbModal === 'add_article' && hbSelRecordId && (() => {
         const rec = hbRecords.find(r => r.id === hbSelRecordId);
         const recTotal = rec ? rec.lines.reduce((s, l) => s + hbLineAmt(l), 0) : 0;
         return (
-        <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-0 order-first">
-            <div className="bg-emerald-600 px-4 py-3 flex justify-between items-center text-white">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" onClick={() => { if (rec && blockIfUnsavedDraftLine(hbArtForm, rec.lines, { entityLabel: 'l\'article' })) return; setHbModal('none'); }}>
+          <div className="w-full max-w-5xl max-h-[calc(100vh-2rem)] overflow-y-auto bg-white rounded-xl shadow-2xl border border-slate-300" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-emerald-600 px-4 py-3 flex justify-between items-center text-white sticky top-0 z-10">
               <span className="font-bold flex items-center gap-1">💊 Prescription (Saisie Sage) — {rec?.patientName} ({rec?.type === 'hospit' ? 'Hospitalisation' : 'Bloc'})</span>
-              <button onClick={() => setHbModal('none')} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button>
+              <button onClick={() => { if (rec && blockIfUnsavedDraftLine(hbArtForm, rec.lines, { entityLabel: 'l\'article' })) return; setHbModal('none'); }} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button>
             </div>
             <div className="p-4 space-y-3">
               {/* Sage-style input bar */}
@@ -1612,19 +1615,22 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
               <button onClick={() => { if (rec && blockIfUnsavedDraftLine(hbArtForm, rec.lines, { entityLabel: 'l\'article' })) return; setHbModal('none'); }} className="w-full py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 cursor-pointer font-medium transition text-sm">✅ Terminer et fermer</button>
             </div>
+          </div>
         </div>
         );
       })()}
 
-      {/* Edit Client Type — Inline (no modal) */}
+      {/* Edit Client Type — fenêtre modale centrée */}
       {hbModal === 'edit_client' && hbSelRecordId && (
-        <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-0 order-first">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" onClick={() => setHbModal('none')}>
+          <div className="w-full max-w-md bg-white rounded-xl shadow-2xl border border-slate-300 overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="bg-blue-600 px-4 py-3 flex justify-between items-center text-white"><span className="font-bold"><Edit2 className="w-5 h-5 inline" /> Modifier Type Client</span><button onClick={() => setHbModal('none')} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button></div>
             <div className="p-4 space-y-3">
               <div><label className="block text-sm font-medium mb-1">Type</label><select value={hbEditClientType} onChange={e => setHbEditClientType(e.target.value as ClientType)} className="w-full px-3 py-2 border rounded-lg outline-none cursor-pointer"><option value="comptoir">Client Comptoir</option><option value="societe">Client Société</option></select></div>
               {hbEditClientType === 'societe' && <div><label className="block text-sm font-medium mb-1">Société</label><select value={hbEditCompany} onChange={e => setHbEditCompany(e.target.value)} className="w-full px-3 py-2 border rounded-lg outline-none cursor-pointer"><option value="">—</option>{state.companies.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}</select></div>}
               <button onClick={hbSaveClientType} className="w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer">Enregistrer</button>
             </div>
+          </div>
         </div>
       )}
 
