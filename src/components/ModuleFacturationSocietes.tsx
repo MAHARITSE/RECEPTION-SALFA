@@ -29,8 +29,11 @@ const invoiceStatusLabel = (inv: Invoice, state: AppState) => {
   const totalPaid = state.companyBillingAccounts
     .flatMap(a => a.payments.filter(p => p.invoiceIds?.includes(inv.id)).map(p => p.amount))
     .reduce((s, v) => s + v, 0);
+  if (totalPaid >= inv.totalAmount && inv.totalAmount > 0) return { label: 'Payée', color: 'bg-emerald-100 text-emerald-700', paid: inv.totalAmount, balance: 0 };
+  // Facture validée en caisse en CRÉDIT SOCIÉTÉ : aucune espèce n'a été encaissée.
+  // La société reste débitrice tant qu'aucun règlement n'est enregistré ici.
+  if (inv.creditSociete) return { label: 'Crédit Société', color: 'bg-blue-100 text-blue-800', paid: totalPaid, balance: inv.totalAmount - totalPaid };
   if (inv.status === 'paid') return { label: 'Payée', color: 'bg-emerald-100 text-emerald-700', paid: inv.totalAmount, balance: 0 };
-  if (totalPaid >= inv.totalAmount) return { label: 'Payée', color: 'bg-emerald-100 text-emerald-700', paid: inv.totalAmount, balance: 0 };
   if (totalPaid > 0) return { label: 'Partiellement payée', color: 'bg-amber-100 text-amber-700', paid: totalPaid, balance: inv.totalAmount - totalPaid };
   return { label: 'Impayée', color: 'bg-rose-100 text-rose-700', paid: 0, balance: inv.totalAmount };
 };
@@ -217,7 +220,10 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
     });
 
     state.invoices.forEach(inv => {
-      if ((inv.status === 'paid' || inv.paidAt) && !existingPayInvIds.has(inv.id)) {
+      // Les factures validées en CRÉDIT SOCIÉTÉ ne sont pas des encaissements :
+      // elles n'apparaissent dans l'historique qu'une fois réellement réglées
+      // par la société (via les comptes de facturation ci-dessus).
+      if ((inv.status === 'paid' || inv.paidAt) && !inv.creditSociete && !existingPayInvIds.has(inv.id)) {
         const pat = state.patients.find(pt => pt.id === inv.patientId);
         const patName = pat ? `${pat.lastName} ${pat.firstName}` : (inv.clientName || 'Salarié');
         const comp = pat?.company || (inv.clientType === 'societe' ? 'Société conventionnée' : 'Patient individuel');
@@ -359,7 +365,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
       if (filterCompany !== 'all' && company.name !== filterCompany) return false;
       if (!inv.createdAt.startsWith(filterMonth)) return false;
       const st = invoiceStatusLabel(inv, state);
-      if (filterStatus === 'impaye' && st.label !== 'Impayée') return false;
+      if (filterStatus === 'impaye' && st.label !== 'Impayée' && st.label !== 'Crédit Société') return false;
       if (filterStatus === 'partiel' && st.label !== 'Partiellement payée') return false;
       if (filterStatus === 'payee' && st.label !== 'Payée') return false;
       if (!q) return true;
@@ -462,9 +468,9 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
       if (filterCompany !== 'all' && companyName !== filterCompany) return false;
       if (!inv.createdAt.startsWith(filterMonth)) return false;
       const st = invoiceStatusLabel(inv, state);
-      // Afficher uniquement les factures avec solde restant dû (partiellement payée ou impayée)
+      // Afficher uniquement les factures avec solde restant dû (partiellement payée, impayée ou crédit société)
       if (st.balance <= 0) return false;
-      if (filterStatus === 'impaye' && st.label !== 'Impayée') return false;
+      if (filterStatus === 'impaye' && st.label !== 'Impayée' && st.label !== 'Crédit Société') return false;
       if (filterStatus === 'partiel' && st.label !== 'Partiellement payée') return false;
 
       if (!q) return true;

@@ -108,23 +108,21 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const [hbEditCompany, setHbEditCompany] = useState('');
 
   // Data
-  // Unified: patients with pharmacy awaiting payment OR pending lab/echo invoices.
-  // ⚠️ Règle : les patients rattachés à une société sont systématiquement EN CRÉDIT et
-  // ne sont pas réglables en caisse (espèces) — leur règlement relève du module
-  // « Facturation sociétés » (rôle Responsable facturation).
+  // RÈGLE : TOUS les patients validés par un médecin arrivent à la caisse pour
+  // validation du paiement, y compris les clients société. Les clients société
+  // ne paient PAS en espèces : la caisse valide un CRÉDIT SOCIÉTÉ (la somme est
+  // portée au compte de la société, réglée ultérieurement par le responsable
+  // facturation). Les factures crédit société sont exclues des encaissements et
+  // des clôtures de caisse.
   const pendingPatients = state.patients.filter(p =>
-    p.clientType !== 'societe' && (
-      p.status === 'consulted_awaiting_payment' ||
-      state.invoices.some(i => i.patientId === p.id && i.status === 'pending' && i.items.some(it => it.category === 'lab' || it.category === 'echo'))
-    )
+    p.status === 'consulted_awaiting_payment' ||
+    state.invoices.some(i => i.patientId === p.id && i.status === 'pending' && i.items.some(it => it.category === 'lab' || it.category === 'echo' || it.category === 'consultation'))
   );
 
-  // Pending lab + echo invoices (merge with pharmacy) — exclus également les factures société.
+  // Factures en attente (consultation, labo, écho) — sociétés incluses.
   const pendingServiceInvoices = state.invoices.filter((i) => {
     if (i.status !== 'pending') return false;
-    if (!i.items.some((it) => it.category === 'lab' || it.category === 'echo')) return false;
-    const patient = i.patientId ? state.patients.find(p => p.id === i.patientId) : undefined;
-    return patient?.clientType !== 'societe';
+    return i.items.some((it) => it.category === 'lab' || it.category === 'echo' || it.category === 'consultation');
   });
 
   // Helper: get all pending items for a patient (pharmacy + lab + echo)
@@ -238,6 +236,8 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     // Garde anti double-paiement
     if (payingRef.current) return;
     payingRef.current = true;
+    // Client société → pas d'encaissement en espèces : validation en CRÉDIT SOCIÉTÉ.
+    const isSocieteCredit = selPatient.clientType === 'societe';
     const unpaidConsults = getConsults(selPatient.id);
     const medicationItems: InvoiceItem[] = unpaidConsults.flatMap(c => c.prescriptions.map(p => ({
       description: `${p.articleName} × ${p.quantity}${p.discount > 0 ? ` (-${p.discount}%)` : ''}`,
@@ -255,9 +255,46 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     });
     const unifiedItems = [...medicationItems, ...dedupedServiceItems];
     const total = unifiedItems.reduce((sum, item) => sum + item.amount, 0);
-    if (!unifiedItems.length) { payingRef.current = false; return; }
     const paidAt = new Date().toISOString();
-    const inv: Invoice = { id: uuidv4(), patientId: selPatient.id, consultationId: unpaidConsults[0]?.id, clientType: selPatient.clientType, items: unifiedItems, totalAmount: total, patientCharge: total, status: 'paid', paidAt, paidBy: state.currentUser?.id || '', createdAt: paidAt, isExternal: false };
+
+    // Passage sans facturation (consultation sans ordonnance ni examen) :
+    // la caisse valide simplement le passage — aucun montant à encaisser.
+    if (!unifiedItems.length) {
+      setState(prev => {
+        const next: AppState = {
+          ...prev,
+          patients: prev.patients.map(p => p.id === selPatient.id
+            ? { ...p, status: 'invoice_paid' as const, lastVisitAt: paidAt }
+            : p),
+        };
+        addAuditLog(next, 'VALIDATION_PASSAGE_CAISSE', `${selPatient.lastName} ${selPatient.firstName} (${selPatient.dossier}) — passage validé en caisse (0 Ar)${isSocieteCredit ? ' — crédit société' : ''}`, selPatient.id);
+        addJourneyEvent(next, { patientId: selPatient.id, department: 'caisse', action: 'Passage validé en caisse', status: 'invoice_paid', details: `Aucune facture — passage validé (0 Ar)${isSocieteCredit ? ' — crédit société' : ''}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name });
+        return next;
+      });
+      setSelConsultId(null); setSelPatientId(null); setPaymentModalOpen(false);
+      payingRef.current = false;
+      return;
+    }
+
+    // Nouvelle facture unifiée : uniquement les MÉDICAMENTS (jamais facturés avant).
+    // Les services (consultation / labo / écho) possèdent DÉJÀ leurs factures en
+    // attente : celles-ci sont soldées directement ci-dessous. Cela évite le double
+    // comptage dans la facturation sociétés (crédit société).
+    const medsTotal = medicationItems.reduce((sum, item) => sum + item.amount, 0);
+    const inv: Invoice | null = medicationItems.length > 0 ? {
+      id: uuidv4(), patientId: selPatient.id, consultationId: unpaidConsults[0]?.id, clientType: selPatient.clientType,
+      items: medicationItems, totalAmount: medsTotal, patientCharge: medsTotal,
+      status: 'paid', paidAt, paidBy: state.currentUser?.id || '', createdAt: paidAt, isExternal: false, creditSociete: isSocieteCredit,
+    } : null;
+    // Facture combinée (médicaments + services) utilisée UNIQUEMENT pour le ticket.
+    const printInvoice: Invoice = inv
+      ? { ...inv, items: unifiedItems, totalAmount: total, patientCharge: total }
+      : {
+          id: serviceInvoices[0]?.id || `caisse-${uuidv4()}`, patientId: selPatient.id,
+          consultationId: serviceInvoices[0]?.consultationId || unpaidConsults[0]?.id,
+          clientType: selPatient.clientType, items: unifiedItems, totalAmount: total, patientCharge: total,
+          status: 'paid', paidAt, paidBy: state.currentUser?.id || '', createdAt: paidAt, isExternal: false, creditSociete: isSocieteCredit,
+        };
 
     // Collecter les examens labo / écho à imprimer sur le bon (seulement ceux demandés)
     const paidLabInvoiceIds = new Set(serviceInvoices.filter(i => i.items.some(it => it.category === 'lab')).map(i => i.id));
@@ -303,9 +340,9 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       const next = { ...prev,
         invoices: [
           ...prev.invoices.map(i => toMarkPaid.has(i.id)
-            ? { ...i, status: 'paid' as const, paidAt, paidBy: prev.currentUser?.id || '' }
+            ? { ...i, status: 'paid' as const, paidAt, paidBy: prev.currentUser?.id || '', creditSociete: i.creditSociete || isSocieteCredit }
             : i),
-          inv,
+          ...(inv ? [inv] : []),
         ],
         // Marquer les lab requests comme payés
         labRequests: prev.labRequests.map(r =>
@@ -337,13 +374,13 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         serviceItems.some(i => i.category === 'lab') ? 'analyses' : '',
         serviceItems.some(i => i.category === 'echo') ? 'échographies' : '',
       ].filter(Boolean).join(' + ');
-      addAuditLog(next, 'PAIEMENT_UNIFIE', `${formatAr(total)} — ${parts || 'facture'} — ${selPatient.lastName}`, selPatient.id);
-      addJourneyEvent(next, { patientId: selPatient.id, department: 'caisse', action: 'Paiement unifié enregistré', status: 'invoice_paid', details: `${formatAr(total)} (${parts || 'facture'})`, actorName: prev.currentUser?.name });
+      addAuditLog(next, isSocieteCredit ? 'VALIDATION_CREDIT_SOCIETE' : 'PAIEMENT_UNIFIE', `${formatAr(total)}${isSocieteCredit ? ' en crédit société' : ''} — ${parts || 'facture'} — ${selPatient.lastName}${selPatient.company ? ` (${selPatient.company})` : ''}`, selPatient.id);
+      addJourneyEvent(next, { patientId: selPatient.id, department: 'caisse', action: isSocieteCredit ? 'Paiement validé en crédit société' : 'Paiement unifié enregistré', status: 'invoice_paid', details: `${formatAr(total)} (${parts || 'facture'})${isSocieteCredit ? ` — crédit société ${selPatient.company || ''}` : ''}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name });
       return next;
     });
 
-    // 1) Ticket caisse (reçu de paiement)
-    openThermalTicket(state.ticketSettings, inv, selPatient, state.currentUser || undefined);
+    // 1) Ticket caisse — reçu de paiement (espèces) OU bon de prise en charge crédit société
+    openThermalTicket(state.ticketSettings, printInvoice, selPatient, state.currentUser || undefined, undefined, { creditSociete: isSocieteCredit });
 
     // 2) Bon d'analyse — uniquement les examens demandés — après le ticket
     if (labToPrint.length > 0 && doctorUser) {
@@ -869,7 +906,9 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const currentCashierId = state.currentUser?.id || 'SYS';
 
   const paidInvoices = state.invoices.filter(inv => inv.status === 'paid');
-  const todayInvoices = paidInvoices.filter(inv => new Date(inv.paidAt || '').toDateString() === new Date().toDateString());
+  // ⚠️ Les factures validées en CRÉDIT SOCIÉTÉ ne représentent AUCUN encaissement
+  // en espèces : elles sont exclues des totaux et des clôtures Z de la caisse.
+  const todayInvoices = paidInvoices.filter(inv => !inv.creditSociete && new Date(inv.paidAt || '').toDateString() === new Date().toDateString());
   // Factures du caissier connecté uniquement
   const myTodayInvoices = todayInvoices.filter(inv => inv.paidBy === currentCashierId);
   const myTodayTotal = myTodayInvoices.reduce((s, inv) => s + inv.patientCharge, 0);
@@ -1053,11 +1092,16 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                     : pendingPatients.map(p => {
                       const unpaid = getConsults(p.id);
                       const amount = getPendingAmount(p);
+                      const svcInvs = pendingServiceInvoices.filter(i => i.patientId === p.id);
+                      const hasMeds = unpaid.length > 0;
+                      const hasLab = svcInvs.some(i => i.items.some(it => it.category === 'lab'));
+                      const hasEcho = svcInvs.some(i => i.items.some(it => it.category === 'echo'));
+                      const hasConsult = svcInvs.some(i => i.items.some(it => it.category === 'consultation'));
                       return <div key={p.id} className={`p-3 cursor-pointer hover:bg-amber-50/60 transition ${selPatientId === p.id && paymentModalOpen ? 'bg-amber-50 border-l-4 border-amber-500' : ''}`} onClick={() => openPaymentModal(p.id)} title="Ouvrir la facture en fenêtre modale">
                         <div className="flex justify-between items-start gap-2">
-                          <div className="min-w-0"><div className="font-medium text-sm">{p.lastName} {p.firstName}</div><div className="text-xs text-slate-500">{unpaid[0]?.doctorName || 'Analyses laboratoire'}</div></div>
+                          <div className="min-w-0"><div className="font-medium text-sm">{p.lastName} {p.firstName}</div><div className="text-xs text-slate-500">{unpaid[0]?.doctorName || 'Analyses laboratoire'}{p.company ? ` — ${p.company}` : ''}</div></div>
                           <div className="flex items-start gap-1 shrink-0">
-                            <div className="font-mono font-bold text-sm text-amber-700">{formatAr(amount)}</div>
+                            <div className={`font-mono font-bold text-sm ${p.clientType === 'societe' ? 'text-blue-700' : 'text-amber-700'}`}>{formatAr(amount)}</div>
                             <button
                               onClick={(e) => { e.stopPropagation(); removePendingPatient(p.id); }}
                               className="p-1 rounded-lg text-rose-500 hover:bg-rose-100 hover:text-rose-700 cursor-pointer transition"
@@ -1066,9 +1110,12 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                           </div>
                         </div>
                         <div className="flex gap-1 mt-1 flex-wrap">
-                          <span className="px-1 py-0.5 bg-cyan-100 text-cyan-700 text-[10px] rounded">Médicaments</span>
-                          <span className="px-1 py-0.5 bg-teal-100 text-teal-700 text-[10px] rounded">Analyses</span>
-                          <span className="px-1 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] rounded">Écho</span>
+                          {p.clientType === 'societe' && <span className="px-1 py-0.5 bg-blue-100 text-blue-700 text-[10px] rounded font-semibold" title="Pas d'espèces : la facture est portée au crédit de la société">🏢 Crédit Société</span>}
+                          {hasMeds && <span className="px-1 py-0.5 bg-cyan-100 text-cyan-700 text-[10px] rounded">Médicaments</span>}
+                          {hasLab && <span className="px-1 py-0.5 bg-teal-100 text-teal-700 text-[10px] rounded">Analyses</span>}
+                          {hasEcho && <span className="px-1 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] rounded">Écho</span>}
+                          {hasConsult && <span className="px-1 py-0.5 bg-sky-100 text-sky-700 text-[10px] rounded">Consultation</span>}
+                          {!hasMeds && !hasLab && !hasEcho && !hasConsult && <span className="px-1 py-0.5 bg-slate-100 text-slate-600 text-[10px] rounded">Passage (0 Ar)</span>}
                         </div>
                       </div>;
                     })}
@@ -1722,7 +1769,7 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                           discount: '',
                           unitPrice: '',
                           amount: it.amount,
-                          category: it.category === 'lab' ? 'Analyse' : it.category === 'echo' ? 'Échographie' : 'Service',
+                          category: it.category === 'lab' ? 'Analyse' : it.category === 'echo' ? 'Échographie' : it.category === 'consultation' ? 'Consultation' : 'Service',
                           categoryColor: it.category === 'lab' ? 'bg-teal-100 text-teal-700' : it.category === 'echo' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-700',
                           consultId: i.id,
                         })));
@@ -1750,8 +1797,30 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
                 </div>
               </div>
 
-              <div className="flex justify-between text-xl font-bold border-t-2 pt-2 mb-4"><span>À PAYER</span><span className="font-mono text-amber-600">{formatAr(getPendingAmount(selPatient))}</span></div>
-              <button onClick={handlePayment} className="w-full py-3 bg-amber-600 text-white rounded-xl font-semibold hover:bg-amber-700 cursor-pointer shadow-lg flex items-center justify-center gap-2"><CreditCard className="w-5 h-5" /> Encaisser {formatAr(getPendingAmount(selPatient))}</button>
+              {selPatient.clientType === 'societe' && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl mb-3 flex items-start gap-2.5">
+                  <Building2 className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+                  <div className="text-xs text-blue-900 leading-relaxed">
+                    <strong>Client société{selPatient.company ? ` — ${selPatient.company}` : ''}.</strong>{' '}
+                    Pas de règlement en espèces : la caisse valide le paiement en{' '}
+                    <strong>CRÉDIT SOCIÉTÉ</strong> — le montant est porté au compte de la société et sera
+                    réglé ultérieurement via le module « Facturation sociétés ».
+                  </div>
+                </div>
+              )}
+              <div className={`flex justify-between text-xl font-bold border-t-2 pt-2 mb-4 ${selPatient.clientType === 'societe' ? 'text-blue-800' : ''}`}>
+                <span>{selPatient.clientType === 'societe' ? 'MONTANT À PORTER EN CRÉDIT SOCIÉTÉ' : 'À PAYER'}</span>
+                <span className={`font-mono ${selPatient.clientType === 'societe' ? 'text-blue-600' : 'text-amber-600'}`}>{formatAr(getPendingAmount(selPatient))}</span>
+              </div>
+              {selPatient.clientType === 'societe' ? (
+                <button onClick={handlePayment} className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 cursor-pointer shadow-lg flex items-center justify-center gap-2">
+                  <Building2 className="w-5 h-5" /> Valider en Crédit Société {formatAr(getPendingAmount(selPatient))}
+                </button>
+              ) : (
+                <button onClick={handlePayment} className="w-full py-3 bg-amber-600 text-white rounded-xl font-semibold hover:bg-amber-700 cursor-pointer shadow-lg flex items-center justify-center gap-2">
+                  <CreditCard className="w-5 h-5" /> {getPendingAmount(selPatient) > 0 ? `Encaisser ${formatAr(getPendingAmount(selPatient))}` : 'Valider le passage (0 Ar)'}
+                </button>
+              )}
             </div>
           </div>
         </div>

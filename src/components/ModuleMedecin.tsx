@@ -167,8 +167,13 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
   };
 
   const isAdminUser = state.currentUser?.role === 'admin';
+  // File d'attente du médecin : seuls les passages qui attendent encore le
+  // médecin restent affichés. Dès qu'une consultation est VALIDÉE, le patient
+  // quitte la file (il passe à la caisse / laboratoire / pharmacie) afin que
+  // la file d'attente ne soit pas encombrée.
+  const DOCTOR_QUEUE_STATUSES: PatientStatus[] = ['waiting_consultation', 'in_consultation', 'analyses_pending', 'analyses_complete'];
   const myWaiting = state.patients
-    .filter((p) => (isAdminUser || !p.assignedDoctor || p.assignedDoctor === state.currentUser?.id) && p.status !== 'registered')
+    .filter((p) => (isAdminUser || !p.assignedDoctor || p.assignedDoctor === state.currentUser?.id) && DOCTOR_QUEUE_STATUSES.includes(p.status))
     .sort((a, b) => {
       const score = (s: PatientStatus) => {
         if (s === 'waiting_consultation') return 1;
@@ -521,6 +526,12 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     return paidInvoice || paidVente || isPrescriptionPaid(s, c.id);
   };
 
+  /** La facture a-t-elle été réglée en CRÉDIT SOCIÉTÉ (aucune espèce encaissée) ? */
+  const isPaidViaCompanyCredit = (s: AppState, c: Consultation) => {
+    const invoiceIds = consultationInvoiceIds(s, c.id);
+    return s.invoices.some((inv) => invoiceIds.has(inv.id) && inv.status === 'paid' && inv.creditSociete);
+  };
+
   const getConsultStatus = (c: Consultation) => {
     const delivered = hasDeliveredPrescription(c);
     const paid = hasPaidConsultationBilling(state, c);
@@ -535,6 +546,16 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
       };
     }
     if (paid) {
+      if (isPaidViaCompanyCredit(state, c)) {
+        return {
+          label: '🏢 Crédit Société',
+          color: 'bg-blue-100 text-blue-800',
+          canReturn: true,
+          canEdit: true,
+          editCancelsPayment: true,
+          editTitle: 'Modifier : la validation crédit société sera annulée et le patient repassera en caisse après validation',
+        };
+      }
       return {
         label: '✅ Payé',
         color: 'bg-green-100 text-green-800',
@@ -699,8 +720,11 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
       hospitalizeRequested: consultForm.hospitalizeRequested, surgeryRequested: consultForm.surgeryRequested, isEmergency: consultForm.isEmergency,
     };
 
-    const hasBillable = lines.length > 0 || newLabRequests.length > 0 || newEchoRequests.length > 0;
-    const nextStatus = hasBillable ? 'consulted_awaiting_payment' as const : 'completed' as const;
+    // RÈGLE MÉTIER : TOUT patient vu par le médecin (client comptoir OU société)
+    // est envoyé à la caisse pour validation du paiement. Les clients société ne
+    // paient pas en espèces : la caisse valide un CRÉDIT SOCIÉTÉ (prise en charge).
+    // Le patient sort en même temps de la file d'attente du médecin.
+    const nextStatus = 'consulted_awaiting_payment' as const;
     const grandTotal = totalPres + labTotal + echoTotal;
 
     setState((prev) => {
@@ -740,14 +764,14 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
         addJourneyEvent(next, { patientId: selectedPatientId, department: 'imagerie', action: "Demande d'échographie", status: nextStatus, details: `${newEchoRequests.map((r) => r.examType).join(', ')} — à facturer (caisse)`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId: consultation.id });
       }
 
-      addAuditLog(next, 'CONSULTATION', `${selectedPatient.lastName} — ${formatAr(grandTotal)}${lines.length === 0 ? ' (sans ordonnance)' : ''}`, selectedPatientId);
-      addJourneyEvent(next, { patientId: selectedPatientId, department: 'consultation', action: 'Consultation terminée', status: nextStatus, details: `${formatAr(grandTotal)} — ${consultForm.diagnosis}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId: consultation.id });
+      addAuditLog(next, 'CONSULTATION', `${selectedPatient.lastName} — ${formatAr(grandTotal)}${lines.length === 0 ? ' (sans ordonnance)' : ''} — envoyé à la caisse${ct === 'societe' ? ' (crédit société)' : ''}`, selectedPatientId);
+      addJourneyEvent(next, { patientId: selectedPatientId, department: 'consultation', action: 'Consultation terminée', status: nextStatus, details: `${formatAr(grandTotal)} — ${consultForm.diagnosis} — envoyé à la caisse pour validation du paiement${ct === 'societe' ? ' (crédit société)' : ''}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId: consultation.id });
       return next;
     });
 
     const savedPatientName = `${selectedPatient.lastName} ${selectedPatient.firstName}`;
     const savedDiagnosis = consultForm.diagnosis;
-    setToastFeedback(`✅ Diagnostic & consultation validés pour ${savedPatientName} (${savedDiagnosis}) !`);
+    setToastFeedback(`✅ Diagnostic & consultation validés pour ${savedPatientName} (${savedDiagnosis}) ! Patient envoyé à la caisse${clientType === 'societe' ? ' — crédit société' : ''}.`);
     setTimeout(() => setToastFeedback(null), 6000);
 
     setSelectedPatientId(null); setConsultForm({ visitReason: '', diagnosis: '', notes: '', isEmergency: false, hospitalizeRequested: false, surgeryRequested: false });

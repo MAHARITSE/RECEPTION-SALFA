@@ -191,6 +191,7 @@ Toutes les entités sont stockées dans des tableaux typés TypeScript.
 | `paidBy` | `string?` | Payé par (userId) |
 | `createdAt` | `string (ISO)` | Date création |
 | `isExternal` | `boolean` | Vente externe ? |
+| `creditSociete` | `boolean?` | Paiement validé par la caisse en CRÉDIT SOCIÉTÉ (aucune espèce encaissée — la somme est portée au compte de la société). Ces factures sont exclues des encaissements et clôtures de caisse. |
 | `closingId` | `string?` | FK → cashClosings.id |
 
 ---
@@ -794,5 +795,7 @@ ventes ──N:1──> users (createdBy, paidBy)
 | `companyBillingAccounts` | Relevé mensuel : `company`, `month`, `invoiceIds`, totaux, solde et statut. |
 | `CompanyBillingPayment` | Règlement d'un relevé global mensuel, avec mode, référence, date et factures concernées. |
 | `ventePayments` | Règlements individuels/partiels des ventes ou factures. |
+
+**Règle de parcours** : tout patient vu par le médecin (comptoir **ou** société) est envoyé à la caisse pour validation du paiement. À la caisse, un client société n'est **jamais encaissé en espèces** : la validation porte la facture en `creditSociete = true` (le montant devient une dette de la société, soldée ensuite dans le module « Facturation sociétés »). Une fois validée par le médecin, la personne quitte la file d'attente du médecin.
 
 Les tableaux de l'interface doivent appliquer recherche, filtres de date et pagination/limitation avant d'afficher ce volume de démonstration.
