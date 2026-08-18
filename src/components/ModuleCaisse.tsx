@@ -8,7 +8,7 @@ import {
   familyManagesStock, isLabFamily, isEchoFamily,
 } from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText, RefreshCw } from 'lucide-react';
-import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket } from '../utils/printTicket';
+import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket, printPharmaDeliveryClosingTicket, printPharmaSalesRecapTicket } from '../utils/printTicket';
 import { printSalfaIndividualInvoice } from '../utils/printSalfaInvoice';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
 import ConfirmModal from './ConfirmModal';
@@ -949,111 +949,101 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
   const finalizeClosing = () => {
     if (existingClosing) { alert('La caisse de ce caissier est déjà clôturée pour aujourd’hui. Vous pouvez réimprimer le ticket Z ci-dessous.'); return; }
-    if (closeableInvoices.length === 0 && myTodayPartialTotal === 0) { alert('Aucun encaissement à clôturer aujourd’hui.'); return; }
-    if (!confirm(`Clôturer ${closeableInvoices.length} facture(s) pour ${formatAr(closeableInvoices.reduce((sum, i) => sum + i.patientCharge, 0) + myTodayPartialTotal)} ? Cette opération verrouille les factures dans le Z.`)) return;
+    if (closeableInvoices.length === 0 && myTodayPartialTotal === 0) {
+      const hasUnclosedPharma = (state.pharmaDeliveryItems || []).some((item) => !item.closingId);
+      if (!hasUnclosedPharma) { alert('Aucun encaissement à clôturer aujourd’hui.'); return; }
+    }
+    const totalForConfirm = closeableInvoices.reduce((sum, i) => sum + i.patientCharge, 0) + myTodayPartialTotal;
+    const unclosedPharmaPreview = (state.pharmaDeliveryItems || []).filter((item) => !item.closingId);
+    const confirmMsg = unclosedPharmaPreview.length > 0
+      ? "Cl\u00f4turer " + closeableInvoices.length + " facture(s) pour " + formatAr(totalForConfirm) + " et compiler " + unclosedPharmaPreview.length + " livraison(s) pharmacie en attente ?\n\nCette op\u00e9ration verrouille les factures dans le Z et cr\u00e9e la compilation d\u00e9finitive des livraisons de garde (\u00ab Compilation des livraisons & Cl\u00f4ture de garde \u00bb) qui sera imprim\u00e9e automatiquement."
+      : "Cl\u00f4turer " + closeableInvoices.length + " facture(s) pour " + formatAr(totalForConfirm) + " ? Cette op\u00e9ration verrouille les factures dans le Z.";
+    if (!confirm(confirmMsg)) return;
     const now = new Date();
     const consultationTotal = closeableInvoices.filter(i => !i.isExternal).reduce((sum, i) => sum + i.patientCharge, 0);
     const externalTotal = closeableInvoices.filter(i => i.isExternal).reduce((sum, i) => sum + i.patientCharge, 0);
 
-    // === Clôture directe des ordonnances (livraisons de garde) ===
-    const unclosedPharmaItems = (state.pharmaDeliveryItems || []).filter((item: any) => !item.closingId);
-    let pharmaClosingId: string | undefined = undefined;
-    if (unclosedPharmaItems.length > 0) {
-      const pharmaTotalAmount = unclosedPharmaItems.reduce((s: number, d: any) => s + d.quantity * d.unitPrice, 0);
-      const pharmaTotalItems = unclosedPharmaItems.reduce((s: number, d: any) => s + d.quantity, 0);
-      const pharmaResponsibleName = state.currentUser?.name || 'Responsable Pharmacie';
-      const pharmaResponsibleId = state.currentUser?.id || 'PHA001';
-      const pharmaCounter = (state.pharmaClosingCounter || 0) + 1;
-      const pharmaClosingNumber = generatePharmaClosingNumber(pharmaCounter);
-      pharmaClosingId = uuidv4();
-      const pharmaNow = new Date().toISOString();
-      const pharmaClosing: import('../types').PharmaDeliveryClosing = {
-
-
-
-
-        id: pharmaClosingId,
-        closingNumber: pharmaClosingNumber,
-        date: pharmaNow,
-        responsibleId: pharmaResponsibleId,
-        responsibleName: pharmaResponsibleName,
-        deliveryIds: unclosedPharmaItems.map((d: any) => d.id),
-        totalItems: pharmaTotalItems,
-        totalAmount: pharmaTotalAmount,
-        deliveries: unclosedPharmaItems.map((d: any) => ({ ...d, closingId: pharmaClosingId })),
-        createdAt: pharmaNow,
-      };
-      setState((prev) => {
-        const updatedItems = (prev.pharmaDeliveryItems || []).map((item: any) => item.closingId ? item : { ...item, closingId: pharmaClosingId });
-        const next = {
-          ...prev,
-          pharmaDeliveryItems: updatedItems,
-          pharmaDeliveryClosings: [pharmaClosing, ...(prev.pharmaDeliveryClosings || [])],
-          pharmaClosingCounter: pharmaCounter,
+    let pharmaClosing: import('../types').PharmaDeliveryClosing | null = null;
+    {
+      const unclosed = (state.pharmaDeliveryItems || []).filter((item) => !item.closingId);
+      if (unclosed.length > 0) {
+        const pharmaTotalAmount = unclosed.reduce((s, d) => s + d.quantity * d.unitPrice, 0);
+        const pharmaTotalItems = unclosed.reduce((s, d) => s + d.quantity, 0);
+        const responsibleName = state.currentUser?.name || 'Responsable Pharmacie';
+        const responsibleId = state.currentUser?.id || 'PHA001';
+        const pharmaCounter = (state.pharmaClosingCounter || 0) + 1;
+        const pharmaClosingNumber = generatePharmaClosingNumber(pharmaCounter);
+        const pharmaNow = new Date().toISOString();
+        const closingId = uuidv4();
+        pharmaClosing = {
+          id: closingId,
+          closingNumber: pharmaClosingNumber,
+          date: pharmaNow,
+          responsibleId,
+          responsibleName,
+          deliveryIds: unclosed.map((d) => d.id),
+          totalItems: pharmaTotalItems,
+          totalAmount: pharmaTotalAmount,
+          deliveries: unclosed.map((d) => ({ ...d, closingId })),
+          createdAt: pharmaNow,
         };
-        return next;
-      });
-      // Impression automatique du récap par article par jour après clôture
-      setTimeout(() => {
-        try {
-          const recapData = unclosedPharmaItems.map((d: any) => ({
-            date: new Date(d.deliveredAt).toLocaleDateString('fr-FR'),
-            patientName: d.patientName,
-            articleName: d.articleName,
-            quantity: d.quantity,
-            deliveredByName: d.deliveredByName,
-          }));
-          const htmlContent = `<!doctype html>
-<html lang="fr">
-<head><meta charset="utf-8"><title>Recap livraisons par article/jour</title>
-<style>
-body{font-family:Arial,sans-serif;font-size:12px;color:#111;padding:20px;max-width:820px;margin:0 auto}
-h1{font-size:18px;color:#0369a1;border-bottom:2px solid #0369a1;padding-bottom:6px;margin-bottom:16px}
-.table{width:100%;border-collapse:collapse;margin-top:8px}
-.table th{background:#f0f9ff;color:#0369a1;text-align:left;padding:8px 6px;border-bottom:2px solid #0369a1;font-size:11px}
-.table td{padding:6px;border-bottom:1px solid #e2e8f0;font-size:11px}
-.table .bold{font-weight:bold}
-.total{font-weight:bold;background:#f0fdf4;border-top:2px solid #10b981}
-</style>
-</head><body>
-<h1>Recapitulatif des livraisons par article par jour</h1>
-<div style="font-size:11px;color:#555;margin-bottom:12px">Clôture : ${pharmaClosingNumber} — Responsable : ${pharmaResponsibleName} — ${new Date(pharmaNow).toLocaleString('fr-FR')}</div>
-<table class="table">
-<thead><tr><th>Date</th><th>Patient / Client</th><th>Article délivré</th><th>Qté</th><th>Responsable</th></tr></thead>
-<tbody>
-${recapData.map(d => `<tr><td>${d.date}</td><td>${d.patientName}</td><td class="bold">${d.articleName}</td><td class="bold">${d.quantity}</td><td>${d.deliveredByName}</td></tr>`).join('')}
-</tbody>
-</table>
-<div class="total" style="padding:8px">Total articles livrés : ${pharmaTotalItems} — Valeur totale : ${formatNum(pharmaTotalAmount)} Ar</div>
-${(window as any).printScript ? (window as any).printScript(false) : '<script>window.onload=function(){window.print();}</script>'}
-</body></html>`;
-          const iframe = document.createElement('iframe');
-          iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
-          document.body.appendChild(iframe);
-          const win = iframe.contentWindow;
-          const doc = win?.document || iframe.contentDocument;
-          if (!doc || !win) return;
-          doc.open();
-          doc.write(htmlContent);
-          doc.close();
-          const cleanup = () => { try { if (iframe.parentNode) iframe.parentNode.removeChild(iframe); } catch { } };
-          win.addEventListener?.('afterprint', cleanup);
-          setTimeout(cleanup, 45000);
-        } catch (e) { console.error('Erreur impression récap', e); }
-      }, 800);
+        (pharmaClosing as any)._counter = pharmaCounter;
+      }
     }
+
     const closing: CashClosing = {
       id: uuidv4(), date: now.toISOString(), cashierId: currentCashierId, cashierName: state.currentUser?.name || 'Caissier',
       invoiceIds: closeableInvoices.map(i => i.id), invoiceCount: closeableInvoices.length,
       consultationTotal, externalTotal, hospitalizationTotal: myTodayPartialTotal,
       grandTotal: consultationTotal + externalTotal + myTodayPartialTotal, createdAt: now.toISOString(),
     };
+
     setState(prev => {
-      const next = { ...prev, cashClosings: [...prev.cashClosings, closing], invoices: prev.invoices.map(i => closing.invoiceIds.includes(i.id) ? { ...i, closingId: closing.id } : i) };
-      addAuditLog(next, 'CLOTURE_CAISSE', `Z ${closing.id.slice(0, 8).toUpperCase()} — ${closing.invoiceCount} facture(s), ${formatAr(closing.grandTotal)}`);
+      let next: any = { ...prev };
+      if (pharmaClosing) {
+        const pc = pharmaClosing as any;
+        const counter = pc._counter;
+        delete pc._counter;
+        next.pharmaDeliveryItems = (prev.pharmaDeliveryItems || []).map((item) => item.closingId ? item : { ...item, closingId: pharmaClosing.id });
+        next.pharmaDeliveryClosings = [pharmaClosing, ...(prev.pharmaDeliveryClosings || [])];
+        next.pharmaClosingCounter = counter;
+        addAuditLog(next, 'CLOTURE_LIVRAISONS_PHARMA', "Cl\u00f4ture garde " + pharmaClosing.closingNumber + " \u2014 " + pharmaClosing.totalItems + " articles (" + formatAr(pharmaClosing.totalAmount) + ") par " + pharmaClosing.responsibleName + " \u2014 via cl\u00f4ture caisse de garde");
+      }
+      next.cashClosings = [...prev.cashClosings, closing];
+      next.invoices = prev.invoices.map(i => closing.invoiceIds.includes(i.id) ? { ...i, closingId: closing.id } : i);
+      addAuditLog(next, 'CLOTURE_CAISSE', "Z " + closing.id.slice(0, 8).toUpperCase() + " \u2014 " + closing.invoiceCount + " facture(s), " + formatAr(closing.grandTotal) + (pharmaClosing ? " + compilation pharma " + pharmaClosing.closingNumber : ""));
       return next;
     });
+
     printClosingTicket(state.ticketSettings, state.currentUser || { id: 'SYS', name: 'Caissier', role: 'cashier' }, now, closingSections(closeableInvoices), formatAr(closing.grandTotal));
+
+    if (pharmaClosing) {
+      setTimeout(() => {
+        try {
+          printPharmaDeliveryClosingTicket(state.ticketSettings, pharmaClosing);
+        } catch (e) { console.error('Erreur impression compilation pharma', e); }
+      }, 900);
+      const byArticle: Record<string, number> = {};
+      pharmaClosing.deliveries.forEach(item => {
+        byArticle[item.articleName] = (byArticle[item.articleName] || 0) + item.quantity;
+      });
+      const recap = Object.entries(byArticle)
+        .map(([articleName, totalQuantity]) => ({ articleName, totalQuantity }))
+        .sort((a, b) => b.totalQuantity - a.totalQuantity);
+      const totalQty = recap.reduce((s, r) => s + r.totalQuantity, 0);
+      setTimeout(() => {
+        try {
+          printPharmaSalesRecapTicket(
+            state.ticketSettings,
+            recap,
+            totalQty,
+            pharmaClosing.responsibleName,
+            pharmaClosing.closingNumber,
+            new Date(pharmaClosing.createdAt || pharmaClosing.date)
+          );
+        } catch (e) { console.error('Erreur impression recap pharma', e); }
+      }, 1800);
+    }
   };
 
   return (
@@ -1249,6 +1239,31 @@ ${(window as any).printScript ? (window as any).printScript(false) : '<script>wi
               </div>
               {existingClosing && <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm text-emerald-800 flex justify-between items-center"><span>✓ Caisse clôturée à {new Date(existingClosing.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} — {existingClosing.invoiceCount} facture(s)</span><button onClick={() => printSavedClosing(existingClosing)} className="underline font-semibold cursor-pointer">Réimprimer</button></div>}
               {!existingClosing && <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">{closeableInvoices.length} facture(s) non clôturée(s) à intégrer au ticket Z.</div>}
+
+              {(() => {
+                const pendingPharma = (state.pharmaDeliveryItems || []).filter((i: any) => !i.closingId);
+                const totalQty = pendingPharma.reduce((s: number, d: any) => s + d.quantity, 0);
+                const totalAmt = pendingPharma.reduce((s: number, d: any) => s + d.quantity * d.unitPrice, 0);
+                if (pendingPharma.length === 0) {
+                  return (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm text-emerald-800 flex items-center gap-2">
+                      <span>✓ Aucune livraison pharmacie en attente — compilation à jour</span>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="bg-purple-50 border-2 border-purple-200 rounded-xl p-4 text-sm">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div>
+                        <div className="font-bold text-purple-900 flex items-center gap-2">📦 Compilation des livraisons & Clôture de garde — {pendingPharma.length} livraison(s) en attente</div>
+                        <div className="text-xs text-purple-700 mt-1">Ce qui reste dans les livraisons constitue les livraisons effectuées avant la clôture de caisse / garde de la personne responsable de la pharmacie. La clôture de garde va créer ici la compilation définitive et l&apos;imprimer automatiquement.</div>
+                        <div className="text-xs font-mono text-purple-800 mt-1.5">{totalQty} articles · {formatAr(totalAmt)}</div>
+                      </div>
+                      <div className="px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs font-bold">{pendingPharma.length} à compiler</div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Section 1: Versements par famille */}
               <div className="bg-white border rounded-lg p-4"><h4 className="font-bold text-sm mb-2">1. Versements par famille (ma caisse)</h4><div className="grid grid-cols-3 gap-2"><div className="p-3 bg-green-50 rounded flex justify-between"><span>Consultations</span><span className="font-mono font-bold">{formatAr(myTodayTotal - myTodayExtTotal)}</span></div><div className="p-3 bg-purple-50 rounded flex justify-between"><span>Ventes Ext.</span><span className="font-mono font-bold">{formatAr(myTodayExtTotal)}</span></div><div className="p-3 bg-rose-50 rounded flex justify-between"><span>Hospit/Bloc</span><span className="font-mono font-bold">{formatAr(myTodayPartialTotal)}</span></div></div></div>
