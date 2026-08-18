@@ -167,10 +167,13 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
     setStockSub('demandes');
   };
 
-  const paidConsultations = state.consultations.filter((c) => {
-    const hasUndelivered = c.prescriptions.some((p) => !p.delivered);
-    return hasUndelivered && isPrescriptionPaid(state, c.id);
-  });
+  // Ordre décroissant : dernier arrivé / dernière saisie en haut
+  const paidConsultations = state.consultations
+    .filter((c) => {
+      const hasUndelivered = c.prescriptions.some((p) => !p.delivered);
+      return hasUndelivered && isPrescriptionPaid(state, c.id);
+    })
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   const externalInvoices = state.invoices.filter((i) => i.isExternal && i.status === 'paid');
   // Règle stricte : la pharmacie ne voit aucune ordonnance tant que le paiement
   // pharmacie lié à la consultation n'est pas effectif (même en urgence).
