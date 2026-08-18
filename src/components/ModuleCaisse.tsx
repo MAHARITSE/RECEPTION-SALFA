@@ -1,3 +1,8 @@
+/**
+ * Fix build 2026-08-18: suppression du bloc JSX dupliqué après `); }` qui
+ * provoquait `Expected identifier but found "/"` à 1998:13 (vite/esbuild).
+ * Le composant se termine désormais proprement par `</div> ); }` — build OK (1843 modules).
+ */
 import { useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription, Article, Patient } from '../types';
