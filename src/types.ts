@@ -205,6 +205,13 @@ export interface Invoice {
   clientType: ClientType; items: InvoiceItem[]; totalAmount: number;
   patientCharge: number; status: 'pending' | 'paid';
   paidAt?: string; paidBy?: string; createdAt: string; isExternal: boolean;
+  /**
+   * Paiement validé par la caisse en CRÉDIT SOCIÉTÉ : aucun encaissement en
+   * espèces n'a eu lieu, la somme est portée au crédit (compte) de la société
+   * et sera réglée ultérieurement via le module « Facturation sociétés ».
+   * Ces factures sont exclues des encaissements / clôtures de caisse.
+   */
+  creditSociete?: boolean;
   /** Identifiant de la clôture Z ayant intégré cette facture. */
   closingId?: string;
 }

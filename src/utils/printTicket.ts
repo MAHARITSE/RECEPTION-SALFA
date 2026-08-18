@@ -168,8 +168,11 @@ export function printPaymentTicket(
   patient?: Patient,
   cashier?: User,
   company?: Company,
+  opts?: { creditSociete?: boolean },
 ) {
   const date = new Date(invoice.paidAt || invoice.createdAt);
+  // Facture validée en CRÉDIT SOCIÉTÉ : aucun encaissement en espèces.
+  const credit = opts?.creditSociete || invoice.creditSociete || false;
   const customer = patient
     ? `${patient.lastName} ${patient.firstName}`
     : invoice.clientName || 'Client comptoir';
@@ -177,7 +180,8 @@ export function printPaymentTicket(
     patient?.dossier ? `<div>Dossier : ${escapeHtml(patient.dossier)}</div>` : '',
     patient?.company ? `<div>Société : ${escapeHtml(patient.company)}</div>` : '',
     company ? `<div>Société : ${escapeHtml(company.name)}</div>` : '',
-    cashier ? `<div>Caissier : ${escapeHtml(cashier.name)}</div>` : '',
+    cashier ? `<div>${credit ? 'Validé par' : 'Caissier'} : ${escapeHtml(cashier.name)}</div>` : '',
+    credit ? '<div class="bold">Règlement : CRÉDIT SOCIÉTÉ (sans espèces)</div>' : '',
     invoice.isExternal ? '<div><i>Vente directe comptoir</i></div>' : '',
   ].filter(Boolean).join('');
   const itemRows = invoice.items
@@ -194,19 +198,21 @@ export function printPaymentTicket(
     <div class="rule"></div>
     <table>
       <tr><td>Total articles</td><td class="amount">${money(invoice.totalAmount)}</td></tr>
-      <tr class="total"><td>TOTAL PAYÉ</td><td class="amount">${money(invoice.patientCharge)}</td></tr>
+      <tr class="total"><td>${credit ? 'TOTAL CRÉDIT SOCIÉTÉ' : 'TOTAL PAYÉ'}</td><td class="amount">${money(invoice.patientCharge)}</td></tr>
     </table>
   `;
   const html = buildTicketHtml({
     settings,
-    title: settings.receiptTitle || 'REÇU DE PAIEMENT',
+    title: credit ? 'PRISE EN CHARGE — CRÉDIT SOCIÉTÉ' : (settings.receiptTitle || 'REÇU DE PAIEMENT'),
     reference: invoice.id.slice(0, 8).toUpperCase(),
     date,
     bodyHtml,
-    footerNote: settings.footerMessage,
+    footerNote: credit
+      ? 'Montant porté au crédit de la société — règlement ultérieur par la société.'
+      : settings.footerMessage,
     silent: settings.autoPrint !== false,
   });
-  openTicketWindow(html, 'Reçu de paiement', ticketCopies(settings));
+  openTicketWindow(html, credit ? 'Prise en charge crédit société' : 'Reçu de paiement', ticketCopies(settings));
 }
 
 /* ============================================================
