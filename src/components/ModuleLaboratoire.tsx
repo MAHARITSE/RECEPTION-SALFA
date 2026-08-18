@@ -10,7 +10,7 @@ import { printLabResultTicket } from '../utils/printTicket';
 import { PhoneInput } from './PhoneInput';
 import {
   FlaskConical, CheckCircle, AlertTriangle, Send, Microscope, FileSearch,
-  Plus, Search, Printer, Check,
+  Plus, Search, Printer, Check, Edit2,
 } from 'lucide-react';
 
 interface Props {
@@ -52,6 +52,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
   const [labEditCompany, setLabEditCompany] = useState('');
   const [labEditSubCompany, setLabEditSubCompany] = useState('');
   const [labEditNewCompany, setLabEditNewCompany] = useState('');
+  const [showLabClientTypeEdit, setShowLabClientTypeEdit] = useState(false);
   const [selectedExamIds, setSelectedExamIds] = useState<string[]>([]);
   const [urgent, setUrgent] = useState(false);
   const [sampleType, setSampleType] = useState('Sang veineux');
@@ -125,6 +126,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
         setLabEditCompany(p.company || '');
         setLabEditSubCompany(p.subCompany || '');
         setLabEditNewCompany('');
+        setShowLabClientTypeEdit(false);
       }
     }
   }, [selectedPatientId, state.patients]);
@@ -143,6 +145,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
       ...prev,
       patients: prev.patients.map(p => p.id === selectedPatientId ? { ...p, clientType: labEditClientType === 'externe' ? 'comptoir' : labEditClientType as 'comptoir'|'societe', company: labEditClientType === 'societe' ? labEditCompany : undefined, subCompany: labEditClientType === 'societe' ? labEditSubCompany : undefined } : p)
     }));
+    setShowLabClientTypeEdit(false);
   };
 
   // ---- Agrégation des demandes (consultations + autonomes) ----
@@ -741,18 +744,31 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
                   </div>
                 </div>
               ) : (
-                <div className="flex items-center justify-between bg-cyan-50 border border-cyan-200 rounded-lg p-3">
-                  <div>
+                <div className="flex items-center justify-between bg-cyan-50 border border-cyan-200 rounded-lg p-3 gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5 flex-wrap text-sm">
                     <span className="text-xs text-cyan-700 font-bold">Patient :</span>{' '}
                     <span className="font-semibold">{state.patients.find((p) => p.id === selectedPatientId)?.lastName} {state.patients.find((p) => p.id === selectedPatientId)?.firstName}</span>
-                    <span className="text-xs text-slate-500"> ({state.patients.find((p) => p.id === selectedPatientId)?.dossier})</span>
+                    <span className="text-xs text-slate-500 font-mono">({state.patients.find((p) => p.id === selectedPatientId)?.dossier})</span>
+                    {state.patients.find(p=>p.id===selectedPatientId)?.clientType === 'societe'
+                      ? <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">🏢 {state.patients.find(p=>p.id===selectedPatientId)?.company || 'Société'}</span>
+                      : <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">🏪 Comptoir</span>}
+                    <button
+                      type="button"
+                      onClick={() => setShowLabClientTypeEdit(v => !v)}
+                      className="p-1 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-100 rounded transition cursor-pointer"
+                      title="Modifier le type de client / société"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                   <button onClick={() => setSelectedPatientId(null)} className="text-xs text-cyan-700 underline cursor-pointer">Changer</button>
                 </div>
               )}
-              {selectedPatientId && (
+              {selectedPatientId && showLabClientTypeEdit && (
                 <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2">
-                  <div className="text-xs font-bold text-indigo-900 flex items-center gap-2">🏢 Société / Type client — modifiable <span className={`ml-auto px-1.5 py-0.5 rounded text-[10px] font-bold ${state.patients.find(p=>p.id===selectedPatientId)?.clientType === 'societe' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'}`}>{state.patients.find(p=>p.id===selectedPatientId)?.clientType === 'societe' ? `🏢 ${state.patients.find(p=>p.id===selectedPatientId)?.company || 'Société'}` : '🏪 Comptoir'}</span></div>
+                  <div className="text-xs font-bold text-indigo-900 flex items-center gap-2">🏢 Société / Type client
+                    <button type="button" onClick={() => setShowLabClientTypeEdit(false)} className="ml-auto text-indigo-500 hover:text-indigo-800 cursor-pointer" title="Fermer">✕</button>
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                     <div>
                       <label className="block font-bold text-slate-700 mb-0.5">Type</label>
@@ -783,7 +799,10 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
                       </div>
                     </div>
                   )}
-                  <button type="button" onClick={saveLabSociete} className="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-800 text-white rounded text-xs font-bold cursor-pointer">Enregistrer type / société</button>
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={saveLabSociete} className="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-800 text-white rounded text-xs font-bold cursor-pointer">Enregistrer type / société</button>
+                    <button type="button" onClick={() => setShowLabClientTypeEdit(false)} className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded text-xs font-bold cursor-pointer">Annuler</button>
+                  </div>
                 </div>
               )}
 

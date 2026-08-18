@@ -125,6 +125,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const [payEditCompany, setPayEditCompany] = useState('');
   const [payEditSubCompany, setPayEditSubCompany] = useState('');
   const [payEditNewCompany, setPayEditNewCompany] = useState('');
+  const [showPayClientTypeEdit, setShowPayClientTypeEdit] = useState(false);
 
   // Data
   // RÈGLE : TOUS les patients validés par un médecin arrivent à la caisse pour
@@ -253,6 +254,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       setPayEditCompany(p.company || '');
       setPayEditSubCompany(p.subCompany || '');
       setPayEditNewCompany('');
+      setShowPayClientTypeEdit(false);
     }
     setSelPatientId(pid);
     setSelConsultId(getConsults(pid)[0]?.id || null);
@@ -989,6 +991,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     updateHbRecords(prev => prev.map(r => r.patientId === selPatient.id ? {
       ...r, clientType: payEditClientType, company: payEditClientType === 'societe' ? payEditCompany : undefined, subCompany: payEditClientType === 'societe' ? payEditSubCompany : undefined,
     } : r));
+    setShowPayClientTypeEdit(false);
   };
 
   // Auto-add from doctor requests
@@ -1877,7 +1880,21 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
               <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl mb-3 space-y-3">
                 <div className="flex justify-between items-start">
                   <div>
-                    <h3 className="font-bold text-base text-slate-800">{selPatient.lastName} {selPatient.firstName} ({selPatient.dossier})</h3>
+                    <h3 className="font-bold text-base text-slate-800 flex items-center gap-1.5 flex-wrap">
+                      <span>{selPatient.lastName} {selPatient.firstName}</span>
+                      <span className="font-mono">({selPatient.dossier})</span>
+                      {selPatient.clientType === 'societe'
+                        ? <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">🏢 {selPatient.company || 'Société'}{selPatient.subCompany ? ` / ${selPatient.subCompany}` : ''}</span>
+                        : <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">🏪 Comptoir</span>}
+                      <button
+                        type="button"
+                        onClick={() => setShowPayClientTypeEdit(v => !v)}
+                        className="ml-0.5 p-1 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-100 rounded transition cursor-pointer"
+                        title="Modifier le type de client / société"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                    </h3>
                     <p className="text-xs text-slate-600 mt-0.5">{selConsult ? `Consultation du ${new Date(selConsult.date).toLocaleDateString('fr-FR')} | Diagnostic: ${selConsult.diagnosis}` : 'Analyses / Services en attente'}</p>
                   </div>
                 </div>
@@ -1913,10 +1930,11 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                 </div>
               </div>
 
-              {/* 🏢 Société à modifier — toujours visible quand patient choisi (comme hospit/bloc) */}
+              {/* 🏢 Société / Type client — panneau repliable, ouvert via l'icône stylo du titre */}
+              {showPayClientTypeEdit && (
               <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2">
-                <div className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">🏢 Société / Type client — modifiable
-                  <span className={`ml-auto px-1.5 py-0.5 rounded text-[10px] font-bold ${selPatient.clientType === 'societe' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'}`}>{selPatient.clientType === 'societe' ? `🏢 ${selPatient.company || 'Société non renseignée'}` : '🏪 Comptoir'}</span>
+                <div className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">🏢 Société / Type client
+                  <button type="button" onClick={() => setShowPayClientTypeEdit(false)} className="ml-auto text-indigo-500 hover:text-indigo-800 cursor-pointer" title="Fermer">✕</button>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                   <div>
@@ -1948,8 +1966,12 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                     </div>
                   </div>
                 )}
-                <button type="button" onClick={paySaveClientType} className="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-800 text-white rounded text-xs font-bold cursor-pointer">Enregistrer type / société</button>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={paySaveClientType} className="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-800 text-white rounded text-xs font-bold cursor-pointer">Enregistrer type / société</button>
+                  <button type="button" onClick={() => setShowPayClientTypeEdit(false)} className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded text-xs font-bold cursor-pointer">Annuler</button>
+                </div>
               </div>
+              )}
 
               {/* === LISTE DES PRESCRIPTIONS === */}
               <div className="border rounded-lg overflow-hidden mb-3">
