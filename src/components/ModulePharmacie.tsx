@@ -2,15 +2,15 @@ import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { AppState } from '../store';
 import type { TransferCategory, StockTransfer } from '../types';
-import { addAuditLog, addNotification, formatAr, familyLabel, transferCategoryLabel, transferCategoryColor, addJourneyEvent, isArticleSaleable, createMovementWithLines, generatePharmaClosingNumber, isPrescriptionPaid, familyManagesStock } from '../store';
+import { addAuditLog, addNotification, formatAr, familyLabel, transferCategoryLabel, transferCategoryColor, addJourneyEvent, isArticleSaleable, createMovementWithLines, isPrescriptionPaid, familyManagesStock } from '../store';
 import type { MovementType } from '../types';
-import { printDeliveryTicket, printPharmaDeliveryClosingTicket, printPharmaSalesRecapTicket } from '../utils/printTicket';
+import { printDeliveryTicket } from '../utils/printTicket';
 import DemandeAchatForm, { type ReqLine } from './DemandeAchatForm';
 import ModuleCaisse from './ModuleCaisse';
 import {
   Pill, Package, CheckCircle, Clock, Search, Send,
   Plus, Trash2, Filter, Printer, Edit3, CreditCard,
-  Ban, Unlock, AlertTriangle, Bell, BellOff, Lock, X
+  Ban, Unlock, AlertTriangle, Bell, BellOff, X
 } from 'lucide-react';
 
 interface Props {
@@ -18,7 +18,7 @@ interface Props {
   setState: React.Dispatch<React.SetStateAction<AppState>>;
   onOpenMessagingWithRecipient?: (recipientId: string) => void;
 }
-type Tab = 'caisse' | 'pending' | 'stock' | 'delivered' | 'request';
+type Tab = 'caisse' | 'pending' | 'stock' | 'request';
 
 const CATEGORIES: TransferCategory[] = ['approvisionnement', 'hospitalisation', 'bloc', 'central'];
 const PHARMA_SERVICE_ID = 'svc-pharmacie';
@@ -32,11 +32,10 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
   const [blockModal, setBlockModal] = useState<{ articleId: string; name: string; currentlyBlocked: boolean } | null>(null);
   const [blockReason, setBlockReason] = useState('');
 
-  // Nouveaux états pour affichage gauche/droite et clôtures de garde
+  // Nouveaux états pour affichage gauche/droite
   const [selConsultId, setSelConsultId] = useState<string | null>(null);
   // Sous-onglets de la "Liste après validation" : récap par article (défaut) / livraisons détaillées
   const [deliverySub, setDeliverySub] = useState<'recap' | 'detail'>('recap');
-  const [closingDetailsModal, setClosingDetailsModal] = useState<import('../types').PharmaDeliveryClosing | null>(null);
 
   // Reappro Modal State
   const [reapproModalOpen, setReapproModalOpen] = useState(false);
@@ -412,73 +411,6 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
       .sort((a, b) => b.totalQuantity - a.totalQuantity);
   })();
 
-  const handleClosePharmaDeliveries = () => {
-    if (unclosedDeliveryItems.length === 0) {
-      alert("Aucune livraison en attente de clôture de garde.");
-      return;
-    }
-    const totalAmount = unclosedTotalAmt;
-    const totalItems = unclosedDeliveryItems.reduce((s, d) => s + d.quantity, 0);
-    const responsibleName = state.currentUser?.name || 'Responsable Pharmacie';
-    const responsibleId = state.currentUser?.id || 'PHA001';
-
-    if (!confirm(`🔒 Clôturer et compiler les ${unclosedDeliveryItems.length} ligne(s) de livraison de la garde (${totalItems} articles, valeur totale ${formatAr(totalAmount)}) pour ${responsibleName} ?\n\nCette opération enregistre définitivement la compilation des livraisons de garde.`)) {
-      return;
-    }
-
-    const counter = (state.pharmaClosingCounter || 0) + 1;
-    const closingNumber = generatePharmaClosingNumber(counter);
-    const closingId = uuidv4();
-    const now = new Date().toISOString();
-
-    const closing: import('../types').PharmaDeliveryClosing = {
-      id: closingId,
-      closingNumber,
-      date: now,
-      responsibleId,
-      responsibleName,
-      deliveryIds: unclosedDeliveryItems.map((d) => d.id),
-      totalItems,
-      totalAmount,
-      deliveries: unclosedDeliveryItems.map((d) => ({ ...d, closingId })),
-      createdAt: now,
-    };
-
-    setState((prev) => {
-      const updatedItems = (prev.pharmaDeliveryItems || []).map((item) =>
-        item.closingId ? item : { ...item, closingId }
-      );
-      const next = {
-        ...prev,
-        pharmaDeliveryItems: updatedItems,
-        pharmaDeliveryClosings: [closing, ...(prev.pharmaDeliveryClosings || [])],
-        pharmaClosingCounter: counter,
-      };
-      addAuditLog(next, 'CLOTURE_LIVRAISONS_PHARMA', `Clôture garde ${closingNumber} — ${totalItems} articles (${formatAr(totalAmount)}) par ${responsibleName}`);
-      return next;
-    });
-
-    alert(`✅ Compilation ${closingNumber} créée et clôturée avec succès !\n\nLe récapitulatif des ventes par article va être imprimé.`);
-
-    // Imprimer automatiquement le récapitulatif des ventes par article (ticket)
-    const byArticle: Record<string, number> = {};
-    unclosedDeliveryItems.forEach(item => {
-      byArticle[item.articleName] = (byArticle[item.articleName] || 0) + item.quantity;
-    });
-    const recap = Object.entries(byArticle)
-      .map(([articleName, totalQuantity]) => ({ articleName, totalQuantity }))
-      .sort((a, b) => b.totalQuantity - a.totalQuantity);
-    const totalQty = recap.reduce((s, r) => s + r.totalQuantity, 0);
-
-    printPharmaSalesRecapTicket(
-      state.ticketSettings,
-      recap,
-      totalQty,
-      responsibleName,
-      closingNumber,
-      new Date()
-    );
-  };
 
   return (
     <div className="space-y-6 flex flex-col">
@@ -636,7 +568,6 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
             { key: 'caisse' as Tab, icon: <CreditCard className="w-4 h-4 text-blue-600" />, label: '💳 Caisse de garde' },
             { key: 'pending' as Tab, icon: <Clock className="w-4 h-4" />, label: `Ordonnances (${allPending.length})` },
             { key: 'stock' as Tab, icon: <Package className="w-4 h-4" />, label: `Stock pharmacie${blockedCount > 0 ? ` ⛔${blockedCount}` : ''}${pendingCount > 0 ? ` · ${pendingCount} dem.` : ''}` },
-            { key: 'delivered' as Tab, icon: <CheckCircle className="w-4 h-4" />, label: 'Délivrées' },
             { key: 'request' as Tab, icon: <Send className="w-4 h-4" />, label: 'Nouvelle demande appro' },
           ].map((t) => (
             <button
@@ -1163,117 +1094,6 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                   </div>
                 </div>
               )}
-            </div>
-          )}
-
-          {tab === 'delivered' && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-              {/* À GAUCHE DE L'ÉCRAN : LA FILE D'ATTENTE DES LIVRAISONS EN COURS (Avant clôture de garde) */}
-              <div className="divide-y border border-slate-200 rounded-xl max-h-[640px] overflow-y-auto bg-white shadow-sm">
-                <div className="p-3.5 border-b bg-emerald-50 font-semibold text-xs flex justify-between items-center text-emerald-900 sticky top-0 z-10">
-                  <span className="flex items-center gap-1.5"><Clock className="w-4 h-4 text-emerald-600" /> Livraisons avant clôture garde</span>
-                  <span className="bg-emerald-600 text-white font-mono font-bold px-2 py-0.5 rounded-full text-[10px]">{unclosedDeliveryItems.length} art.</span>
-                </div>
-                {unclosedDeliveryItems.length === 0 ? (
-                  <div className="p-12 text-center text-slate-400">
-                    <CheckCircle className="w-12 h-12 mx-auto mb-3 opacity-30 text-emerald-500" />
-                    <p className="text-sm font-medium">Aucune livraison non clôturée</p>
-                    <p className="text-xs text-slate-400 mt-1">Toutes les livraisons du tour de garde ont été compilées</p>
-                  </div>
-                ) : (
-                  unclosedDeliveryItems.map((item) => (
-                    <div key={item.id} className="p-3 hover:bg-emerald-50/60 transition text-xs">
-                      <div className="flex justify-between items-start font-bold text-slate-800">
-                        <span>{item.patientName}</span>
-                        <span className="font-mono text-emerald-700 font-bold">{formatAr(item.quantity * item.unitPrice)}</span>
-                      </div>
-                      <div className="flex justify-between items-center mt-1 text-[11px] text-slate-600">
-                        <span className="font-semibold text-emerald-900">💊 {item.articleName} × {item.quantity}</span>
-                        <span className="font-mono text-[10px] text-slate-400">{new Date(item.deliveredAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
-                      </div>
-                      <div className="text-[10px] text-slate-400 mt-0.5">Responsable: {item.deliveredByName}</div>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {/* À DROITE DE L'ÉCRAN : BASE POUR COMPILER LES LIVRAISONS DE GARDE & ARCHIVES */}
-              <div className="lg:col-span-2 space-y-5">
-                {/* En-tête de Clôture & Compilation */}
-                <div className="bg-gradient-to-r from-emerald-800 via-teal-800 to-slate-900 rounded-xl p-5 text-white shadow-sm flex items-center justify-between flex-wrap gap-4">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Lock className="w-5 h-5 text-emerald-400" />
-                      <h3 className="font-bold text-base">Compilation des livraisons & Clôture de garde</h3>
-                    </div>
-                    <p className="text-xs text-emerald-100 mt-1 max-w-lg leading-relaxed">
-                      Ce qui reste dans l'onglet délivrées constitue les livraisons effectuées avant la clôture de caisse / garde de la personne responsable de la pharmacie. Créez ici la compilation définitive.
-                    </p>
-                  </div>
-                  <div>
-                    {unclosedDeliveryItems.length > 0 ? (
-                      <button
-                        onClick={handleClosePharmaDeliveries}
-                        className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg cursor-pointer transition whitespace-nowrap"
-                      >
-                        <Lock className="w-4 h-4" /> Clôturer et Compiler ({unclosedDeliveryItems.length} art. — {formatAr(unclosedTotalAmt)})
-                      </button>
-                    ) : (
-                      <div className="px-3.5 py-2 bg-white/10 rounded-lg text-xs font-medium text-emerald-200 border border-white/10">
-                        ✓ Aucune livraison à clôturer
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Liste Délivrées : Heure / Patient / Article / Qté uniquement */}
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                  <div className="p-4 bg-blue-50 border-b border-blue-200 flex justify-between items-center flex-wrap gap-2">
-                    <div>
-                      <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                        <CheckCircle className="w-4 h-4 text-blue-600" /> Liste des Livraisons (Heure / Patient / Article / Qté)
-                      </h4>
-                      <p className="text-xs text-slate-500 mt-0.5">Liste détaillée des livraisons avec heure, patient, article et quantité</p>
-                    </div>
-                  </div>
-                  <div className="p-3 bg-white overflow-x-auto max-h-64">
-                    <table className="w-full text-xs">
-                      <thead className="bg-blue-50 border-b border-blue-200 text-blue-800">
-                        <tr>
-                          <th className="p-2 text-left font-semibold">Heure</th>
-                          <th className="p-2 text-left font-semibold">Patient / Client</th>
-                          <th className="p-2 text-left font-semibold">Article</th>
-                          <th className="p-2 text-right font-semibold">Qté</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {unclosedDeliveryItems.length === 0 ? (
-                          <tr>
-                            <td colSpan={4} className="p-4 text-center text-slate-400">Aucune livraison à afficher</td>
-                          </tr>
-                        ) : (
-                          unclosedDeliveryItems.map((item) => (
-                            <tr key={item.id} className="hover:bg-blue-50/30">
-                              <td className="p-2 font-mono text-slate-500">
-                                {new Date(item.deliveredAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-                              </td>
-                              <td className="p-2 font-medium text-slate-800">{item.patientName}</td>
-                              <td className="p-2 font-semibold text-blue-900">{item.articleName}</td>
-                              <td className="p-2 text-right font-mono font-bold text-blue-700">{item.quantity}</td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                      <tfoot className="bg-blue-50 font-bold border-t border-blue-200">
-                        <tr>
-                          <td colSpan={3} className="p-2 text-right text-blue-900">TOTAL :</td>
-                          <td className="p-2 text-right font-mono text-blue-900">{unclosedDeliveryItems.reduce((s, d) => s + d.quantity, 0)}</td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                </div>
-              </div>
             </div>
           )}
 
