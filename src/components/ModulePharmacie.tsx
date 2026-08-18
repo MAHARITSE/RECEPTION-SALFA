@@ -400,16 +400,27 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
   const unclosedDeliveryItems = (state.pharmaDeliveryItems || []).filter((item) => !item.closingId);
   const unclosedTotalAmt = unclosedDeliveryItems.reduce((s, d) => s + d.quantity * d.unitPrice, 0);
 
-  // Récapitulatif des livraisons regroupées par article (pour le 1er sous-onglet)
+  // Récapitulatif des livraisons regroupées par article (pour le 1er sous-onglet).
+  // C'est exactement ce qui sera imprimé à la clôture : sortie du jour + stock final,
+  // pour les MÉDICAMENTS GÉRÉS EN STOCK uniquement (pas de détail des livraisons).
   const deliveryRecapByArticle = (() => {
-    const byArticle: Record<string, number> = {};
+    const acc = new Map<string, { articleName: string; totalQuantity: number; finalStock: number | null }>();
     unclosedDeliveryItems.forEach((item) => {
-      byArticle[item.articleName] = (byArticle[item.articleName] || 0) + item.quantity;
+      const art = state.articles.find((a) => (item.articleId && a.id === item.articleId) || a.name === item.articleName);
+      const managed = !!art && familyManagesStock(art.family, state.familles);
+      const key = art?.id || item.articleName;
+      const prev = acc.get(key);
+      if (prev) prev.totalQuantity += item.quantity;
+      else acc.set(key, {
+        articleName: art?.name || item.articleName,
+        totalQuantity: item.quantity,
+        finalStock: managed && art ? art.stockPharmacie : null,
+      });
     });
-    return Object.entries(byArticle)
-      .map(([articleName, totalQuantity]) => ({ articleName, totalQuantity }))
-      .sort((a, b) => b.totalQuantity - a.totalQuantity);
+    return Array.from(acc.values()).sort((a, b) => b.totalQuantity - a.totalQuantity);
   })();
+  // Lignes réellement imprimées sur le ticket de clôture (stock géré + sortie > 0)
+  const deliveryRecapStockOnly = deliveryRecapByArticle.filter((r) => r.finalStock !== null && r.totalQuantity > 0);
 
 
   return (
@@ -787,29 +798,43 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                           Aucune livraison non clôturée. Les ordonnances validées apparaîtront ici avant la clôture du tour de garde.
                         </div>
                       ) : deliverySub === 'recap' ? (
-                        /* 📊 1er onglet (défaut) : récapitulatif des ventes par article */
+                        /* 📊 1er onglet (défaut) : ce qui sera imprimé à la clôture —
+                           sortie du jour + stock final, médicaments gérés en stock */
+                        <>
+                        <div className="mb-2 text-[10px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5">
+                          🧾 Ticket de clôture : uniquement les <strong>médicaments gérés en stock</strong> — quantité <strong>sortie du jour</strong> et <strong>stock final</strong>. Le détail des livraisons n'est pas imprimé.
+                        </div>
                         <table className="w-full text-xs">
                           <thead className="bg-slate-50 text-slate-600 border-b">
                             <tr>
                               <th className="p-2 text-left">Article délivré</th>
-                              <th className="p-2 text-right">Qté totale</th>
+                              <th className="p-2 text-right">Qté sortie</th>
+                              <th className="p-2 text-right">Stock final</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
                             {deliveryRecapByArticle.map((r) => (
                               <tr key={r.articleName} className="hover:bg-emerald-50/50">
-                                <td className="p-2 font-semibold text-emerald-900">{r.articleName}</td>
+                                <td className="p-2 font-semibold text-emerald-900">
+                                  {r.articleName}
+                                  {r.finalStock === null && <span className="ml-1.5 text-[9px] text-slate-400 font-normal">(non géré en stock)</span>}
+                                </td>
                                 <td className="p-2 text-right font-mono font-bold text-emerald-700">{r.totalQuantity}</td>
+                                <td className={`p-2 text-right font-mono ${r.finalStock === null ? 'text-slate-300' : r.finalStock <= 0 ? 'text-red-600 font-bold' : 'text-slate-700'}`}>
+                                  {r.finalStock === null ? '—' : r.finalStock}
+                                </td>
                               </tr>
                             ))}
                           </tbody>
                           <tfoot className="bg-emerald-50 font-bold border-t border-emerald-200">
                             <tr>
-                              <td className="p-2 text-right text-emerald-900">TOTAL ARTICLES :</td>
-                              <td className="p-2 text-right font-mono text-sm text-emerald-800">{unclosedDeliveryItems.reduce((s, d) => s + d.quantity, 0)}</td>
+                              <td className="p-2 text-right text-emerald-900">TOTAL SORTIES (stock géré) :</td>
+                              <td className="p-2 text-right font-mono text-sm text-emerald-800">{deliveryRecapStockOnly.reduce((s, r) => s + r.totalQuantity, 0)}</td>
+                              <td></td>
                             </tr>
                           </tfoot>
                         </table>
+                        </>
                       ) : (
                         /* 📋 2e onglet : liste détaillée Heure / Patient / Article / Qté */
                         <table className="w-full text-xs">

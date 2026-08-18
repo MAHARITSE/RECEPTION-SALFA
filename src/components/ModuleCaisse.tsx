@@ -8,10 +8,12 @@ import {
   familyManagesStock, isLabFamily, isEchoFamily,
 } from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText, RefreshCw } from 'lucide-react';
-import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket, printPharmaDeliveryClosingTicket, printPharmaSalesRecapTicket } from '../utils/printTicket';
+import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket, printPharmaDeliveryClosingTicket } from '../utils/printTicket';
 import { printSalfaIndividualInvoice } from '../utils/printSalfaInvoice';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
 import ConfirmModal from './ConfirmModal';
+import AlerteArticleIndisponible from './AlerteArticleIndisponible';
+import type { ArticleAlertInfo } from './AlerteArticleIndisponible';
 
 /** Patient factice utilisé pour imprimer les bons d'analyse / d'échographie des ventes
  *  externes (un client externe n'a pas de dossier ouvert en réception). */
@@ -68,6 +70,8 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   // External sale (session-local: n'a pas besoin d'être partagé)
   const [extSearch, setExtSearch] = useState('');
   const [extSearchIdx, setExtSearchIdx] = useState(0);
+  // Notification rouge centrée (ventes externes) : article bloqué en vente par la pharmacie ou en rupture de stock
+  const [articleAlert, setArticleAlert] = useState<ArticleAlertInfo | null>(null);
   const [extLines, setExtLines] = useState<HbLine[]>([]);
   const [extSelLineId, setExtSelLineId] = useState<string | null>(null);
   const [extLineForm, setExtLineForm] = useState<HbLine>({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: new Date().toISOString().split('T')[0] });
@@ -403,8 +407,10 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
   // === EXTERNAL ===
   // Exclure les articles bloqués à la vente (réservé / régularisation)
+  // Les articles bloqués à la vente restent visibles (marqués en rouge « BLOQUÉ ») :
+  // le caissier reçoit une notification rouge centrée s'il tente de les sélectionner.
   const extFiltered = extSearch.length >= 1
-    ? state.articles.filter(a => a.name.toLowerCase().includes(extSearch.toLowerCase()) && !a.saleBlocked)
+    ? state.articles.filter(a => a.name.toLowerCase().includes(extSearch.toLowerCase()))
     : [];
   const extLineAmt = (l: HbLine) => roundTo2(l.unitPrice * l.quantity * (1 - l.discount / 100));
   const extArticlesTotal = extLines.reduce((s, l) => s + extLineAmt(l), 0);
@@ -414,13 +420,26 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     const a = state.articles.find(x => x.id === articleId);
     if (!a) return;
     if (a.saleBlocked) {
-      alert(`⛔ Vente bloquée pour « ${a.name} »${a.saleBlockReason ? ` — ${a.saleBlockReason}` : ''}. Débloquez l'article en pharmacie.`);
+      setArticleAlert({
+        kind: 'blocked',
+        title: '⛔ Article bloqué à la vente par la pharmacie',
+        message: `« ${a.name} »`,
+        reason: a.saleBlockReason || undefined,
+        hint: "Vente externe impossible : demandez le déblocage de l'article à la pharmacie.",
+      });
+      setExtSearch('');
       return;
     }
     // Gestion des stocks : un article en rupture pharmacie ne peut pas faire l'objet d'une vente
     // (sauf famille non gérée en stock)
     if (managesStock(a) && a.stockPharmacie <= 0) {
-      alert(`🚨 RUPTURE DE STOCK : « ${a.name} » (stock pharmacie = 0).\n\nCet article ne peut pas être vendu. Demandez un réapprovisionnement à la pharmacie.`);
+      setArticleAlert({
+        kind: 'out_of_stock',
+        title: '🚨 Rupture de stock pharmacie',
+        message: `« ${a.name} » — stock pharmacie = 0`,
+        hint: 'Cet article ne peut pas être vendu. Demandez un réapprovisionnement à la pharmacie.',
+      });
+      setExtSearch('');
       return;
     }
     // La date saisie est conservée : elle ne s'efface pas entre les lignes (plusieurs sorties le même jour)
@@ -431,7 +450,25 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     if (!extLineForm.articleName) return;
     // Contrôle stock pharmacie à la validation de la ligne (sauf famille non gérée en stock)
     const art = state.articles.find(a => a.name === extLineForm.articleName);
-    if (art && managesStock(art) && art.stockPharmacie <= 0) { alert(`🚨 RUPTURE DE STOCK : « ${art.name} » (stock pharmacie = 0).\n\nVente impossible.`); return; }
+    if (art?.saleBlocked) {
+      setArticleAlert({
+        kind: 'blocked',
+        title: '⛔ Article bloqué à la vente par la pharmacie',
+        message: `« ${art.name} »`,
+        reason: art.saleBlockReason || undefined,
+        hint: "Vente externe impossible : demandez le déblocage de l'article à la pharmacie.",
+      });
+      return;
+    }
+    if (art && managesStock(art) && art.stockPharmacie <= 0) {
+      setArticleAlert({
+        kind: 'out_of_stock',
+        title: '🚨 Rupture de stock pharmacie',
+        message: `« ${art.name} » — stock pharmacie = 0`,
+        hint: 'Vente impossible : demandez un réapprovisionnement à la pharmacie.',
+      });
+      return;
+    }
     if (art && managesStock(art) && extLineForm.quantity > art.stockPharmacie) {
       if (!confirm(`⚠️ Stock pharmacie insuffisant pour « ${art.name} » : ${art.stockPharmacie} disponible(s), ${extLineForm.quantity} demandée(s).\n\nEnregistrer quand même ?`)) return;
     }
@@ -463,10 +500,16 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       return art?.saleBlocked;
     });
     if (blockedLines.length > 0) {
-      alert(`⛔ Vente bloquée pour :\n${blockedLines.map((l) => {
-        const art = state.articles.find((a) => a.name === l.articleName);
-        return `• ${l.articleName}${art?.saleBlockReason ? ` (${art.saleBlockReason})` : ''}`;
-      }).join('\n')}`);
+      setArticleAlert({
+        kind: 'blocked',
+        title: '⛔ Vente bloquée par la pharmacie',
+        message: `${blockedLines.length} article(s) bloqué(s) à la vente — encaissement impossible.`,
+        items: blockedLines.map((l) => {
+          const art = state.articles.find((a) => a.name === l.articleName);
+          return `${l.articleName}${art?.saleBlockReason ? ` (${art.saleBlockReason})` : ''}`;
+        }),
+        hint: "Retirez ces lignes ou demandez le déblocage des articles à la pharmacie.",
+      });
       return;
     }
     // Contrôle rupture : un article en rupture pharmacie ne peut pas faire l'objet d'une vente
@@ -476,7 +519,13 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       return !art || (managesStock(art) && art.stockPharmacie <= 0);
     });
     if (outLines.length > 0) {
-      alert(`🚨 RUPTURE DE STOCK — vente impossible pour :\n${outLines.map((l) => `• ${l.articleName} (stock pharmacie = 0)`).join('\n')}\n\nRetirez ces lignes ou demandez un réapprovisionnement.`);
+      setArticleAlert({
+        kind: 'out_of_stock',
+        title: '🚨 Rupture de stock — vente impossible',
+        message: `${outLines.length} article(s) en rupture de stock pharmacie.`,
+        items: outLines.map((l) => `${l.articleName} (stock pharmacie = 0)`),
+        hint: 'Retirez ces lignes ou demandez un réapprovisionnement à la pharmacie.',
+      });
       return;
     }
     // Contrôle quantités : avertissement si la quantité vendue dépasse le stock disponible
@@ -975,6 +1024,24 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         const pharmaClosingNumber = generatePharmaClosingNumber(pharmaCounter);
         const pharmaNow = new Date().toISOString();
         const closingId = uuidv4();
+        // Synthèse imprimée : UNIQUEMENT les médicaments gérés en stock, avec la
+        // quantité sortie du jour (si sortie) et le stock pharmacie final.
+        // Le détail ligne à ligne des livraisons n'est plus imprimé.
+        const stockSummary = (() => {
+          const acc = new Map<string, { articleId?: string; articleName: string; qtyOut: number; finalStock: number }>();
+          unclosed.forEach((d) => {
+            const art = state.articles.find((a) => (d.articleId && a.id === d.articleId) || a.name === d.articleName);
+            // Seuls les articles gérés en stock (familles « gérées en stock ») sont retenus
+            if (!art || !familyManagesStock(art.family, state.familles)) return;
+            const key = art.id;
+            const prev = acc.get(key);
+            if (prev) prev.qtyOut += d.quantity;
+            else acc.set(key, { articleId: art.id, articleName: art.name, qtyOut: d.quantity, finalStock: art.stockPharmacie });
+          });
+          return Array.from(acc.values())
+            .filter((r) => r.qtyOut > 0)
+            .sort((a, b) => b.qtyOut - a.qtyOut);
+        })();
         pharmaClosing = {
           id: closingId,
           closingNumber: pharmaClosingNumber,
@@ -985,6 +1052,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
           totalItems: pharmaTotalItems,
           totalAmount: pharmaTotalAmount,
           deliveries: unclosed.map((d) => ({ ...d, closingId })),
+          stockSummary,
           createdAt: pharmaNow,
         };
         (pharmaClosing as any)._counter = pharmaCounter;
@@ -1018,31 +1086,13 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     printClosingTicket(state.ticketSettings, state.currentUser || { id: 'SYS', name: 'Caissier', role: 'cashier' }, now, closingSections(closeableInvoices), formatAr(closing.grandTotal));
 
     if (pharmaClosing) {
+      const pc = pharmaClosing;
       setTimeout(() => {
         try {
-          printPharmaDeliveryClosingTicket(state.ticketSettings, pharmaClosing);
+          // Ticket de clôture : sorties du jour + stock final (sans détail des livraisons)
+          printPharmaDeliveryClosingTicket(state.ticketSettings, pc, pc.stockSummary);
         } catch (e) { console.error('Erreur impression compilation pharma', e); }
       }, 900);
-      const byArticle: Record<string, number> = {};
-      pharmaClosing.deliveries.forEach(item => {
-        byArticle[item.articleName] = (byArticle[item.articleName] || 0) + item.quantity;
-      });
-      const recap = Object.entries(byArticle)
-        .map(([articleName, totalQuantity]) => ({ articleName, totalQuantity }))
-        .sort((a, b) => b.totalQuantity - a.totalQuantity);
-      const totalQty = recap.reduce((s, r) => s + r.totalQuantity, 0);
-      setTimeout(() => {
-        try {
-          printPharmaSalesRecapTicket(
-            state.ticketSettings,
-            recap,
-            totalQty,
-            pharmaClosing.responsibleName,
-            pharmaClosing.closingNumber,
-            new Date(pharmaClosing.createdAt || pharmaClosing.date)
-          );
-        } catch (e) { console.error('Erreur impression recap pharma', e); }
-      }, 1800);
     }
   };
 
@@ -1124,12 +1174,16 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                         <input ref={extSearchRef} type="text" value={extLineForm.articleName && !extSearch ? extLineForm.articleName : extSearch} onChange={e => { setExtSearch(e.target.value); setExtSearchIdx(0); }} onKeyDown={extKeyDown} className="w-full bg-white border border-blue-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-blue-600" placeholder="🔍 Tapez..." />
                         {extSearch.length >= 1 && extFiltered.length > 0 && <div className="absolute top-full left-0 right-0 bg-white border rounded-b shadow-xl z-30 max-h-36 overflow-y-auto">{extFiltered.map((a, idx) => {
                           const manages = managesStock(a);
+                          const isBlocked = !!a.saleBlocked;
                           const isOut = manages && a.stockPharmacie <= 0;
                           const isLow = manages && !isOut && a.stockPharmacie <= a.minStockPharmacie && !a.alertDisabledPharmacie;
-                          return (<div key={a.id} onClick={() => extSelectArticle(a.id)} title={isOut ? 'Rupture de stock — vente impossible' : undefined} className={`px-2 py-1 text-xs flex justify-between border-b ${isOut ? 'bg-red-50 text-red-700 cursor-not-allowed' : `cursor-pointer ${idx === extSearchIdx ? 'bg-blue-100' : 'hover:bg-blue-50'}`}`}>
-                            <span className={isOut ? 'line-through decoration-red-400/60' : ''}>[{a.family}] {a.name}</span>
+                          const isKo = isBlocked || isOut;
+                          return (<div key={a.id} onClick={() => extSelectArticle(a.id)} title={isBlocked ? `Bloqué à la vente par la pharmacie${a.saleBlockReason ? ` — ${a.saleBlockReason}` : ''}` : isOut ? 'Rupture de stock — vente impossible' : undefined} className={`px-2 py-1 text-xs flex justify-between border-b ${isKo ? 'bg-red-50 text-red-700 cursor-not-allowed' : `cursor-pointer ${idx === extSearchIdx ? 'bg-blue-100' : 'hover:bg-blue-50'}`}`}>
+                            <span className={isKo ? 'line-through decoration-red-400/60' : ''}>[{a.family}] {a.name}</span>
                             <span className="flex items-center gap-2">
-                              {isOut
+                              {isBlocked
+                                ? <span className="px-1.5 py-0.5 bg-red-700 text-white rounded text-[9px] font-bold">⛔ BLOQUÉ — invendable</span>
+                                : isOut
                                 ? <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-[9px] font-bold">🚨 RUPTURE — invendable</span>
                                 : manages
                                   ? <span className={`font-mono text-[10px] ${isLow ? 'text-amber-600 font-bold' : 'text-slate-400'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>
@@ -1138,7 +1192,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                                     : isEchoActArticle(a)
                                       ? <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[9px] font-bold" title="Échographie — un bon d'échographie sera imprimé après encaissement">BON ÉCHO</span>
                                       : <span className="font-mono text-[10px] text-slate-400" title="Famille non gérée en stock">stock: —</span>}
-                              <span className={`font-mono ${isOut ? 'text-red-400' : 'text-blue-600'}`}>{formatAr(getPrice(a, 'externe'))}</span>
+                              <span className={`font-mono ${isKo ? 'text-red-400' : 'text-blue-600'}`}>{formatAr(getPrice(a, 'externe'))}</span>
                             </span>
                           </div>);
                         })}</div>}
@@ -1852,6 +1906,12 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         showCancel={confirmModalState.showCancel}
         onConfirm={confirmModalState.onConfirm}
         onCancel={() => setConfirmModalState((prev) => ({ ...prev, isOpen: false }))}
+      />
+
+      {/* Notification rouge centrée : article bloqué en vente par la pharmacie ou en rupture de stock */}
+      <AlerteArticleIndisponible
+        alert={articleAlert}
+        onClose={() => { setArticleAlert(null); setTimeout(() => extSearchRef.current?.focus(), 50); }}
       />
 
     </div>

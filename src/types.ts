@@ -243,6 +243,17 @@ export interface PharmaDeliveryItem {
   isExternal?: boolean;
 }
 
+/** Ligne de synthèse de clôture pharmacie : uniquement les médicaments gérés en stock,
+ *  avec la quantité sortie du jour et le stock final après sortie. */
+export interface PharmaClosingStockRow {
+  articleId?: string;
+  articleName: string;
+  /** Quantité sortie (livrée / vendue) sur la période clôturée */
+  qtyOut: number;
+  /** Stock pharmacie restant après les sorties */
+  finalStock: number;
+}
+
 /** Base compilée des livraisons de pharmacie lors de la clôture de caisse / garde du responsable. */
 export interface PharmaDeliveryClosing {
   id: string;
@@ -254,6 +265,9 @@ export interface PharmaDeliveryClosing {
   totalItems: number;
   totalAmount: number;
   deliveries: PharmaDeliveryItem[];
+  /** Synthèse imprimée sur le ticket de clôture : médicaments gérés en stock,
+   *  quantité sortie du jour et stock final (le détail des livraisons n'est plus imprimé). */
+  stockSummary?: PharmaClosingStockRow[];
   createdAt: string;
   notes?: string;
 }

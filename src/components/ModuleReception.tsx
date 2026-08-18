@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { Patient, VitalSigns, ClientType } from '../types';
+import type { Patient, VitalSigns, ClientType, PatientStatus } from '../types';
 import type { AppState } from '../store';
 import { generateDossierNumber, calculateAge, addAuditLog, addNotification, addJourneyEvent } from '../store';
 import { printQueueTicket } from '../utils/printTicket';
@@ -201,7 +201,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
     setVitalsSubmitted(true);
     const errs = getVitalsFormErrors(vitalsForm, vitalsClientType, vitalsCompany);
     if (Object.keys(errs).length > 0) return;
-    if (selectedPatient.vitalSigns && !canEditVitals(selectedPatient)) { alert('Les paramètres sont verrouillés : modification autorisée pendant 24 heures seulement.'); return; }
+    if (selectedPatient.vitalSigns && !canEditVitals(selectedPatient)) { alert('Les paramètres de ce passage en cours sont verrouillés : modification autorisée pendant 24 heures seulement.'); return; }
     setState((prev) => {
       const next = {
         ...prev,
@@ -210,6 +210,11 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
             ...p,
             vitalSigns: { ...vitalsForm },
             status: 'waiting_consultation' as const,
+            // Nouvelle venue : le patient retourne dans la file COMMUNE des médecins.
+            // Sans cette remise à zéro, il restait rattaché au médecin de la visite
+            // précédente et n'apparaissait dans aucune autre file d'attente.
+            assignedDoctor: undefined,
+            assignedSpecialty: undefined,
             lastVisitAt: new Date().toISOString(),
             clientType: vitalsClientType,
             company: vitalsClientType === 'societe' ? vitalsCompany : undefined,
@@ -373,13 +378,28 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
     }
   };
 
-  // Check if vitals editable within 24h
+  /**
+   * Saisie des paramètres vitaux autorisée ?
+   *
+   * Le verrou de 24 h protège les paramètres d'un passage EN COURS (le patient est
+   * déjà dans le circuit : médecin, caisse, pharmacie, labo). Il ne doit JAMAIS
+   * empêcher l'ouverture d'une NOUVELLE venue : auparavant, un patient revenu plus
+   * de 24 h après sa dernière visite restait en lecture seule — le bouton
+   * « VALIDER & ENVOYER AU MÉDECIN » était désactivé et la réception ne pouvait plus
+   * l'adresser au médecin (les saisies n'arrivaient donc jamais chez le médecin).
+   */
   const canEditVitals = (patient: Patient): boolean => {
     if (!patient.vitalSigns) return true;
-    if (!patient.lastVisitAt) return false;
+    // Passage terminé / dossier au repos → nouvelle venue : saisie de nouveau ouverte.
+    const ACTIVE_VISIT_STATUSES: PatientStatus[] = [
+      'waiting_consultation', 'in_consultation', 'consulted_awaiting_payment',
+      'invoice_paid', 'analyses_pending', 'analyses_complete',
+    ];
+    if (!ACTIVE_VISIT_STATUSES.includes(patient.status)) return true;
+    if (!patient.lastVisitAt) return true;
     const last = new Date(patient.lastVisitAt).getTime();
     const now = Date.now();
-    return (now - last) < 24 * 60 * 60 * 1000; // 24h
+    return (now - last) < 24 * 60 * 60 * 1000; // 24h sur le passage en cours
   };
 
   const openVitalsForPatient = (patient: Patient) => {
