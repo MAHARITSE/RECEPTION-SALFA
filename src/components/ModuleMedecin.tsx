@@ -15,7 +15,7 @@ import { printLabResultTicket } from '../utils/printTicket';
 import {
   Stethoscope, History, Trash2, AlertTriangle, Heart, FileText, Clock, CheckCircle,
   Send, Search, Edit2, RotateCcw, Save, FlaskConical, Scan, Plus, X, Droplets,
-  Users, Printer, Eye, CheckCircle2,
+  Users, Printer, Eye, CheckCircle2, RefreshCw,
 } from 'lucide-react';
 
 export type { EchoExamCatalog };
@@ -25,10 +25,12 @@ interface Props {
   state: AppState;
   setState: React.Dispatch<React.SetStateAction<AppState>>;
   onOpenMedicalRecord?: (patientId: string) => void;
+  /** Relecture immédiate des saisies des autres postes (réception, caisse…). */
+  onRefreshQueue?: () => void;
 }
 type ViewMode = 'queue' | 'consultation' | 'my_consults';
 
-export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: Props) {
+export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, onRefreshQueue }: Props) {
   const [view, setView] = useState<ViewMode>('queue');
   const [toastFeedback, setToastFeedback] = useState<string | null>(null);
   // Notification rouge centrée : article bloqué en vente par la pharmacie ou en rupture de stock
@@ -177,7 +179,15 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
   // la file d'attente ne soit pas encombrée.
   const DOCTOR_QUEUE_STATUSES: PatientStatus[] = ['waiting_consultation', 'in_consultation', 'analyses_pending', 'analyses_complete'];
   const myWaiting = state.patients
-    .filter((p) => (isAdminUser || !p.assignedDoctor || p.assignedDoctor === state.currentUser?.id) && DOCTOR_QUEUE_STATUSES.includes(p.status))
+    .filter((p) => {
+      if (!DOCTOR_QUEUE_STATUSES.includes(p.status)) return false;
+      if (isAdminUser) return true;
+      // File d'attente COMMUNE : un patient adressé par la réception est visible par
+      // TOUS les médecins, même s'il a déjà été vu par un confrère lors d'une visite
+      // précédente (l'ancien `assignedDoctor` ne doit plus le masquer).
+      if (p.status === 'waiting_consultation') return true;
+      return !p.assignedDoctor || p.assignedDoctor === state.currentUser?.id;
+    })
     .sort((a, b) => {
       const score = (s: PatientStatus) => {
         if (s === 'waiting_consultation') return 1;
@@ -887,7 +897,16 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
               {searchQuery.length >= 2 && searchResults.length > 0 && <div className="mt-2 max-h-40 overflow-y-auto border rounded divide-y">{searchResults.map((p) => (<div key={p.id} onClick={() => selectPatient(p.id)} className="p-2 hover:bg-emerald-50 cursor-pointer text-sm">{p.lastName} {p.firstName} ({p.dossier})</div>))}</div>}
             </div>
             <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-              <div className="p-3 border-b bg-amber-50"><h3 className="font-semibold text-sm"><Clock className="w-4 h-4 inline text-amber-500" /> File ({myWaiting.length})</h3></div>
+              <div className="p-3 border-b bg-amber-50 flex items-center justify-between gap-2">
+                <h3 className="font-semibold text-sm"><Clock className="w-4 h-4 inline text-amber-500" /> File ({myWaiting.length})</h3>
+                {onRefreshQueue && (
+                  <button
+                    onClick={onRefreshQueue}
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white border border-amber-300 text-amber-700 text-[11px] font-semibold hover:bg-amber-100 cursor-pointer transition"
+                    title="Relire immédiatement les saisies de la réception et des autres postes"
+                  ><RefreshCw className="w-3.5 h-3.5" /> Actualiser</button>
+                )}
+              </div>
               <div className="divide-y max-h-[500px] overflow-y-auto">{myWaiting.length === 0 ? <div className="p-6 text-center text-slate-400 text-sm">Aucun</div>
                 : myWaiting.map((p) => {
                   return (

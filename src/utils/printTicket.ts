@@ -1,4 +1,4 @@
-import type { Invoice, Patient, TicketSettings, User, Prescription, LabRequest, Company, Consultation, PatientJourneyEvent, EchoRequest, HbRecord, PharmaDeliveryClosing } from '../types';
+import type { Invoice, Patient, TicketSettings, User, Prescription, LabRequest, Company, Consultation, PatientJourneyEvent, EchoRequest, HbRecord, PharmaDeliveryClosing, PharmaClosingStockRow } from '../types';
 
 /** Échappe les caractères HTML réservés dans une chaîne.
  *  Décode d'abord les entités HTML déjà présentes pour éviter le
@@ -697,48 +697,60 @@ export function printHbPaymentTicket(
   openTicketWindow(html, `Reçu paiement ${typeLabel.toLowerCase()}`, ticketCopies(settings));
 }
 
+/**
+ * TICKET DE CLÔTURE DES LIVRAISONS PHARMACIE
+ * ------------------------------------------
+ * Volontairement SANS le détail des livraisons (heure / patient / ligne à ligne).
+ * Seuls les MÉDICAMENTS GÉRÉS EN STOCK sont imprimés, avec :
+ *   • la quantité SORTIE du jour (uniquement si sortie > 0) ;
+ *   • le STOCK FINAL après ces sorties.
+ */
 export function printPharmaDeliveryClosingTicket(
   settings: TicketSettings,
   closing: PharmaDeliveryClosing,
+  stockRows?: PharmaClosingStockRow[],
 ) {
   const date = new Date(closing.createdAt || closing.date);
+  const rows = (stockRows && stockRows.length > 0 ? stockRows : closing.stockSummary || [])
+    .filter((r) => r.qtyOut > 0);
+  const totalQtyOut = rows.reduce((s, r) => s + r.qtyOut, 0);
+
   const bodyHtml = `
-    <div className="meta" style="margin-bottom: 8px; border-bottom: 1px dashed #ccc; padding-bottom: 6px;">
+    <div style="font-size:9px;margin-bottom:2mm">
       <div><strong>Responsable garde :</strong> ${escapeHtml(closing.responsibleName)}</div>
-      <div><strong>Nombre d'articles livrés :</strong> ${closing.totalItems}</div>
+      <div><strong>Clôture N° :</strong> ${escapeHtml(closing.closingNumber)}</div>
       ${closing.notes ? `<div><strong>Notes :</strong> ${escapeHtml(closing.notes)}</div>` : ''}
     </div>
-    <div style="font-weight: bold; margin-bottom: 4px; font-size: 11px;">DÉTAIL DES LIVRAISONS :</div>
-    <table style="width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 8px;">
+    <div class="rule"></div>
+    <div class="bold heading" style="margin-bottom:1.5mm">MÉDICAMENTS GÉRÉS EN STOCK</div>
+    <table>
       <thead>
-        <tr style="border-bottom: 1px solid #aaa;">
-          <th style="text-align: left; padding: 2px;">Heure</th>
-          <th style="text-align: left; padding: 2px;">Patient / Client</th>
-          <th style="text-align: left; padding: 2px;">Article</th>
-          <th style="text-align: right; padding: 2px;">Qté</th>
+        <tr style="border-bottom:1px solid #000">
+          <th style="text-align:left;padding:1mm 0;font-size:9px">Article</th>
+          <th style="text-align:right;padding:1mm 0;font-size:9px">Sortie</th>
+          <th style="text-align:right;padding:1mm 0;font-size:9px">Stock final</th>
         </tr>
       </thead>
       <tbody>
-        ${closing.deliveries.map(d => `
-          <tr style="border-bottom: 1px dotted #eee;">
-            <td style="padding: 2px;">${new Date(d.deliveredAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</td>
-            <td style="padding: 2px;">${escapeHtml(d.patientName)}</td>
-            <td style="padding: 2px;">${escapeHtml(d.articleName)}</td>
-            <td style="padding: 2px; text-align: right; font-weight: bold;">${d.quantity}</td>
+        ${rows.length > 0
+          ? rows.map((r) => `
+          <tr>
+            <td style="padding:1mm 0;vertical-align:top">${escapeHtml(r.articleName)}</td>
+            <td style="padding:1mm 0;text-align:right;font-weight:bold;white-space:nowrap">${r.qtyOut}</td>
+            <td style="padding:1mm 0;text-align:right;white-space:nowrap">${r.finalStock}</td>
           </tr>
-        `).join('')}
+        `).join('')
+          : '<tr><td colspan="3" style="padding:2mm 0"><i>Aucune sortie de médicament géré en stock</i></td></tr>'}
       </tbody>
+      <tfoot>
+        <tr class="total" style="border-top:2px double #000">
+          <td style="padding:1.5mm 0;font-weight:bold">TOTAL SORTIES</td>
+          <td style="padding:1.5mm 0;text-align:right;font-weight:bold">${totalQtyOut}</td>
+          <td></td>
+        </tr>
+      </tfoot>
     </table>
-    <table>
-      <tr class="total">
-        <td>TOTAL ARTICLES LIVRÉS</td>
-        <td class="amount">${closing.totalItems}</td>
-      </tr>
-      <tr>
-        <td>TOTAL VALEUR LIVRÉE</td>
-        <td class="amount">${money(closing.totalAmount)}</td>
-      </tr>
-    </table>
+    <div class="rule"></div>
     <div class="signature">
       <span>${escapeHtml(closing.responsibleName)}</span>
       <span>Contrôle / Caisse</span>
@@ -750,7 +762,7 @@ export function printPharmaDeliveryClosingTicket(
     reference: closing.closingNumber,
     date,
     bodyHtml,
-    footerNote: settings.footerMessage || 'Compilation des livraisons de garde',
+    footerNote: settings.footerMessage || 'Sorties du jour & stock final',
     silent: settings.autoPrint !== false,
   });
   openTicketWindow(html, `Cloture livraisons pharmacie ${closing.closingNumber}`, ticketCopies(settings));

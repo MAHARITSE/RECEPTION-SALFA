@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, Component, type ReactNode, type ErrorInfo } from 'react';
 import type { User } from './types';
 import { createInitialState, prepareLoadedState, migrateLegacyToVentes, normalizeFamilyBases, addAuditLog, addNotification, type AppState } from './store';
-import { loadStateFromBrowser, saveStateToBrowser } from './browserDb';
+import { loadStateFromBrowser, saveStateToBrowser, subscribeBrowserState } from './browserDb';
+import { mergeStates, sameBusinessData } from './syncMerge';
 import {
   IS_WAMP_BUILD,
   initialWampSync,
@@ -170,6 +171,9 @@ function AppInner() {
   // concurrentes ne se marchent dessus (et ne ressuscitent des données).
   const syncInFlight = useRef(false);
   const pendingSync = useRef(false);
+  // Mode navigateur : dernière version connue de la base locale (référence de fusion)
+  const browserBaseline = useRef<AppState | null>(null);
+  const browserSyncInFlight = useRef(false);
 
   /* ─── WAMP : au démarrage, TOUTES les données sont chargées depuis MySQL.
      Si MySQL ne contient encore rien, l'état local initial y est écrit
@@ -214,10 +218,15 @@ function AppInner() {
       const stored = await loadStateFromBrowser();
       if (cancelled) return;
       if (stored) {
-        setState(prepareLoadedState(stored));
+        const loaded = prepareLoadedState(stored);
+        // Point de départ de la fusion entre onglets : ce que la base contient déjà.
+        browserBaseline.current = loaded;
+        setState(loaded);
       } else {
         // Première ouverture : initialise la base locale avec le jeu de départ.
-        await saveStateToBrowser(prepareLoadedState(seedRef.current));
+        const seed = prepareLoadedState(seedRef.current);
+        browserBaseline.current = seed;
+        await saveStateToBrowser(seed);
       }
       if (!cancelled) setBrowserDbLoading(false);
     })();
@@ -232,9 +241,58 @@ function AppInner() {
       skipFirstBrowserSave.current = false;
       return;
     }
-    const timer = window.setTimeout(() => { void saveStateToBrowser(state); }, 500);
+    const timer = window.setTimeout(() => {
+      const snapshot = state;
+      void saveStateToBrowser(snapshot).then((ok) => {
+        // La base contient désormais cet état : il devient la référence de fusion.
+        if (ok) browserBaseline.current = snapshot;
+      });
+    }, 500);
     return () => window.clearTimeout(timer);
   }, [state, browserDbLoading]);
+
+  /* ─── MODE NAVIGATEUR : synchronisation entre onglets / fenêtres ───
+     Réception, médecin, caisse… tournent souvent dans des onglets différents du
+     même navigateur. Sans relecture de la base locale, chaque onglet restait sur
+     son propre état en mémoire : les patients envoyés par la réception
+     n'arrivaient jamais dans la file d'attente du médecin. On relit donc la base
+     (à chaque écriture d'un autre onglet, au retour sur l'onglet et toutes les
+     3 secondes) et on FUSIONNE — aucune saisie en cours n'est écrasée. */
+  useEffect(() => {
+    if (IS_WAMP_BUILD || browserDbLoading) return;
+
+    const refreshFromBrowserDb = async () => {
+      if (browserSyncInFlight.current) return;
+      browserSyncInFlight.current = true;
+      try {
+        const stored = await loadStateFromBrowser();
+        if (!stored) return;
+        const remote = prepareLoadedState(stored);
+        const merged = mergeStates(browserBaseline.current, stateRef.current, remote);
+        if (!sameBusinessData(stateRef.current, merged)) setState(merged);
+      } catch {
+        /* base momentanément indisponible : nouvelle tentative au prochain cycle */
+      } finally {
+        browserSyncInFlight.current = false;
+      }
+    };
+
+    const unsubscribe = subscribeBrowserState(() => { void refreshFromBrowserDb(); });
+    const onVisible = () => { if (!document.hidden) void refreshFromBrowserDb(); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    const timer = window.setInterval(() => {
+      if (document.hidden) return;
+      void refreshFromBrowserDb();
+    }, 3000);
+
+    return () => {
+      unsubscribe();
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+      window.clearInterval(timer);
+    };
+  }, [browserDbLoading]);
 
   /* Une dernière écriture est demandée à la fermeture de l'onglet. */
   useEffect(() => {
@@ -394,7 +452,19 @@ function AppInner() {
 
   /** Relecture immédiate des saisies des autres postes (bouton « rafraîchir »). */
   const handleForceRefresh = () => {
-    if (!IS_WAMP_BUILD) return;
+    if (!IS_WAMP_BUILD) {
+      // Mode navigateur : relecture immédiate de la base locale (autres onglets)
+      if (browserSyncInFlight.current) return;
+      browserSyncInFlight.current = true;
+      void loadStateFromBrowser()
+        .then((stored) => {
+          if (!stored) return;
+          const merged = mergeStates(browserBaseline.current, stateRef.current, prepareLoadedState(stored));
+          if (!sameBusinessData(stateRef.current, merged)) setState(merged);
+        })
+        .finally(() => { browserSyncInFlight.current = false; });
+      return;
+    }
     if (syncInFlight.current) return;
     syncInFlight.current = true;
     refreshStateFromMysql(stateRef.current)
@@ -472,7 +542,7 @@ function AppInner() {
 
   const renderModule = () => {
     switch (state.currentUser?.role) {
-      case 'doctor': return <ModuleMedecin state={state} setState={setState} onOpenMedicalRecord={handleOpenMedicalRecord} />;
+      case 'doctor': return <ModuleMedecin state={state} setState={setState} onOpenMedicalRecord={handleOpenMedicalRecord} onRefreshQueue={handleForceRefresh} />;
       case 'cashier': return <ModuleCaisse state={state} setState={setState} onOpenMessagingWithRecipient={handleOpenMessagingWithRecipient} onRefreshQueue={handleForceRefresh} />;
       case 'pharmacy': return <ModulePharmacie state={state} setState={setState} onOpenMessagingWithRecipient={handleOpenMessagingWithRecipient} />;
       case 'magasinier': return <ModuleMagasinier state={state} setState={setState} />;

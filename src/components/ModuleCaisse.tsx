@@ -8,7 +8,7 @@ import {
   familyManagesStock, isLabFamily, isEchoFamily,
 } from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText, RefreshCw } from 'lucide-react';
-import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket, printPharmaDeliveryClosingTicket, printPharmaSalesRecapTicket } from '../utils/printTicket';
+import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket, printPharmaDeliveryClosingTicket } from '../utils/printTicket';
 import { printSalfaIndividualInvoice } from '../utils/printSalfaInvoice';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
 import ConfirmModal from './ConfirmModal';
@@ -1024,6 +1024,24 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         const pharmaClosingNumber = generatePharmaClosingNumber(pharmaCounter);
         const pharmaNow = new Date().toISOString();
         const closingId = uuidv4();
+        // Synthèse imprimée : UNIQUEMENT les médicaments gérés en stock, avec la
+        // quantité sortie du jour (si sortie) et le stock pharmacie final.
+        // Le détail ligne à ligne des livraisons n'est plus imprimé.
+        const stockSummary = (() => {
+          const acc = new Map<string, { articleId?: string; articleName: string; qtyOut: number; finalStock: number }>();
+          unclosed.forEach((d) => {
+            const art = state.articles.find((a) => (d.articleId && a.id === d.articleId) || a.name === d.articleName);
+            // Seuls les articles gérés en stock (familles « gérées en stock ») sont retenus
+            if (!art || !familyManagesStock(art.family, state.familles)) return;
+            const key = art.id;
+            const prev = acc.get(key);
+            if (prev) prev.qtyOut += d.quantity;
+            else acc.set(key, { articleId: art.id, articleName: art.name, qtyOut: d.quantity, finalStock: art.stockPharmacie });
+          });
+          return Array.from(acc.values())
+            .filter((r) => r.qtyOut > 0)
+            .sort((a, b) => b.qtyOut - a.qtyOut);
+        })();
         pharmaClosing = {
           id: closingId,
           closingNumber: pharmaClosingNumber,
@@ -1034,6 +1052,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
           totalItems: pharmaTotalItems,
           totalAmount: pharmaTotalAmount,
           deliveries: unclosed.map((d) => ({ ...d, closingId })),
+          stockSummary,
           createdAt: pharmaNow,
         };
         (pharmaClosing as any)._counter = pharmaCounter;
@@ -1067,31 +1086,13 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     printClosingTicket(state.ticketSettings, state.currentUser || { id: 'SYS', name: 'Caissier', role: 'cashier' }, now, closingSections(closeableInvoices), formatAr(closing.grandTotal));
 
     if (pharmaClosing) {
+      const pc = pharmaClosing;
       setTimeout(() => {
         try {
-          printPharmaDeliveryClosingTicket(state.ticketSettings, pharmaClosing);
+          // Ticket de clôture : sorties du jour + stock final (sans détail des livraisons)
+          printPharmaDeliveryClosingTicket(state.ticketSettings, pc, pc.stockSummary);
         } catch (e) { console.error('Erreur impression compilation pharma', e); }
       }, 900);
-      const byArticle: Record<string, number> = {};
-      pharmaClosing.deliveries.forEach(item => {
-        byArticle[item.articleName] = (byArticle[item.articleName] || 0) + item.quantity;
-      });
-      const recap = Object.entries(byArticle)
-        .map(([articleName, totalQuantity]) => ({ articleName, totalQuantity }))
-        .sort((a, b) => b.totalQuantity - a.totalQuantity);
-      const totalQty = recap.reduce((s, r) => s + r.totalQuantity, 0);
-      setTimeout(() => {
-        try {
-          printPharmaSalesRecapTicket(
-            state.ticketSettings,
-            recap,
-            totalQty,
-            pharmaClosing.responsibleName,
-            pharmaClosing.closingNumber,
-            new Date(pharmaClosing.createdAt || pharmaClosing.date)
-          );
-        } catch (e) { console.error('Erreur impression recap pharma', e); }
-      }, 1800);
     }
   };
 
