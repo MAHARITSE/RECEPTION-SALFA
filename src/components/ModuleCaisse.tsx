@@ -1,3 +1,8 @@
+/**
+ * Fix build 2026-08-18: suppression du bloc JSX dupliqué après `); }` qui
+ * provoquait `Expected identifier but found "/"` à 1998:13 (vite/esbuild).
+ * Le composant se termine désormais proprement par `</div> ); }` — build OK (1843 modules).
+ */
 import { useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription, Article, Patient } from '../types';
@@ -115,6 +120,12 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const [hbEditSubCompany, setHbEditSubCompany] = useState('');
   const [hbEditNewCompany, setHbEditNewCompany] = useState('');
 
+  // Edition société pour la facture sélectionnée (file d'attente de paiement) — toujours visible
+  const [payEditClientType, setPayEditClientType] = useState<ClientType>('comptoir');
+  const [payEditCompany, setPayEditCompany] = useState('');
+  const [payEditSubCompany, setPayEditSubCompany] = useState('');
+  const [payEditNewCompany, setPayEditNewCompany] = useState('');
+
   // Data
   // RÈGLE : TOUS les patients validés par un médecin arrivent à la caisse pour
   // validation du paiement, y compris les clients société. Les clients société
@@ -122,10 +133,17 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   // portée au compte de la société, réglée ultérieurement par le responsable
   // facturation). Les factures crédit société sont exclues des encaissements et
   // des clôtures de caisse.
-  const pendingPatients = state.patients.filter(p =>
-    p.status === 'consulted_awaiting_payment' ||
-    state.invoices.some(i => i.patientId === p.id && i.status === 'pending' && i.items.some(it => it.category === 'lab' || it.category === 'echo' || it.category === 'consultation'))
-  );
+  // Ordre décroissant : le dernier arrivé / dernière saisie en haut de la file (exigence utilisateur).
+  const pendingPatients = state.patients
+    .filter(p =>
+      p.status === 'consulted_awaiting_payment' ||
+      state.invoices.some(i => i.patientId === p.id && i.status === 'pending' && i.items.some(it => it.category === 'lab' || it.category === 'echo' || it.category === 'consultation'))
+    )
+    .sort((a, b) => {
+      const da = new Date((a.lastVisitAt || a.registeredAt || 0) as string | number).getTime() || 0;
+      const db = new Date((b.lastVisitAt || b.registeredAt || 0) as string | number).getTime() || 0;
+      return db - da;
+    });
 
   // Factures en attente (consultation, labo, écho) — sociétés incluses.
   const pendingServiceInvoices = state.invoices.filter((i) => {
@@ -229,6 +247,13 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
   // Ouverture / fermeture de la facture patient en fenêtre modale
   const openPaymentModal = (pid: string) => {
+    const p = state.patients.find(x => x.id === pid);
+    if (p) {
+      setPayEditClientType(p.clientType === 'externe' ? 'comptoir' : (p.clientType as ClientType));
+      setPayEditCompany(p.company || '');
+      setPayEditSubCompany(p.subCompany || '');
+      setPayEditNewCompany('');
+    }
     setSelPatientId(pid);
     setSelConsultId(getConsults(pid)[0]?.id || null);
     setPaymentModalOpen(true);
@@ -948,6 +973,24 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     setHbModal('none');
   };
 
+  // Edition société pour la facture en attente (toujours visible quand patient choisi)
+  const paySaveClientType = () => {
+    if (!selPatient) return;
+    setState(prev => ({
+      ...prev,
+      patients: prev.patients.map(p => p.id === selPatient.id ? {
+        ...p,
+        clientType: payEditClientType === 'externe' ? 'comptoir' : payEditClientType as 'comptoir'|'societe',
+        company: payEditClientType === 'societe' ? payEditCompany : undefined,
+        subCompany: payEditClientType === 'societe' ? payEditSubCompany : undefined,
+      } : p),
+    }));
+    // Mettre à jour aussi hbRecords si patient déjà présent en hospit/bloc
+    updateHbRecords(prev => prev.map(r => r.patientId === selPatient.id ? {
+      ...r, clientType: payEditClientType, company: payEditClientType === 'societe' ? payEditCompany : undefined, subCompany: payEditClientType === 'societe' ? payEditSubCompany : undefined,
+    } : r));
+  };
+
   // Auto-add from doctor requests
   const autoAddRequests = () => {
     const now = new Date().toISOString();
@@ -985,7 +1028,10 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
   const myGrandTotal = myTodayTotal + myTodayPartialTotal;
 
-  const curHbRecords = hbRecords.filter(h => h.type === tab);
+  // Ordre décroissant : dernier saisi / dernier arrivé en haut (hospitalisation & bloc)
+  const curHbRecords = hbRecords
+    .filter(h => h.type === tab)
+    .sort((a, b) => new Date((b.openedAt || 0) as string | number).getTime() - new Date((a.openedAt || 0) as string | number).getTime());
   const closingDateKey = new Date().toDateString();
   const existingClosing = state.cashClosings.find(c => new Date(c.date).toDateString() === closingDateKey && c.cashierId === currentCashierId);
   // Une facture déjà intégrée dans un Z ne peut jamais être comptée une seconde fois.
@@ -1865,6 +1911,44 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                     <MessageCircle className="w-3.5 h-3.5" /> Message pour rectification
                   </button>
                 </div>
+              </div>
+
+              {/* 🏢 Société à modifier — toujours visible quand patient choisi (comme hospit/bloc) */}
+              <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2">
+                <div className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">🏢 Société / Type client — modifiable
+                  <span className={`ml-auto px-1.5 py-0.5 rounded text-[10px] font-bold ${selPatient.clientType === 'societe' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'}`}>{selPatient.clientType === 'societe' ? `🏢 ${selPatient.company || 'Société non renseignée'}` : '🏪 Comptoir'}</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-0.5">Type</label>
+                    <select value={payEditClientType} onChange={e => setPayEditClientType(e.target.value as ClientType)} className="w-full px-2 py-1.5 border rounded bg-white cursor-pointer">
+                      <option value="comptoir">Client Comptoir</option>
+                      <option value="societe">Client Société</option>
+                    </select>
+                  </div>
+                  {payEditClientType === 'societe' && (
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-0.5">Société</label>
+                      <select value={payEditCompany} onChange={e => setPayEditCompany(e.target.value)} className="w-full px-2 py-1.5 border rounded bg-white cursor-pointer">
+                        <option value="">— Sélectionner —</option>
+                        {state.companies.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+                {payEditClientType === 'societe' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div className="flex gap-1">
+                      <input type="text" value={payEditNewCompany} onChange={e => setPayEditNewCompany(e.target.value.toUpperCase())} className="flex-1 px-2 py-1.5 border rounded uppercase bg-white" placeholder="Nouvelle société…" />
+                      <button type="button" onClick={() => { const name = addPartnerCompany(payEditNewCompany); if (name) { setPayEditCompany(name); setPayEditNewCompany(''); }}} className="px-2 py-1.5 bg-indigo-600 text-white rounded font-bold">+</button>
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-0.5">Sous-société</label>
+                      <input type="text" value={payEditSubCompany} onChange={e => setPayEditSubCompany(e.target.value.toUpperCase())} className="w-full px-2 py-1.5 border rounded uppercase bg-white" placeholder="Direction, service…" />
+                    </div>
+                  </div>
+                )}
+                <button type="button" onClick={paySaveClientType} className="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-800 text-white rounded text-xs font-bold cursor-pointer">Enregistrer type / société</button>
               </div>
 
               {/* === LISTE DES PRESCRIPTIONS === */}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { LabRequest, Patient, ClientType, LabExamCatalog, LabCategory, Article } from '../types';
 import type { AppState } from '../store';
@@ -47,6 +47,11 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
   const [patSearch, setPatSearch] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [newPat, setNewPat] = useState({ dossier: '', lastName: '', firstName: '', gender: 'F' as 'M' | 'F', dateOfBirth: '', contact: '', clientType: 'comptoir' as ClientType, company: '' });
+  // Edition société — toujours visible quand patient choisi (comme hospit/bloc)
+  const [labEditClientType, setLabEditClientType] = useState<ClientType>('comptoir');
+  const [labEditCompany, setLabEditCompany] = useState('');
+  const [labEditSubCompany, setLabEditSubCompany] = useState('');
+  const [labEditNewCompany, setLabEditNewCompany] = useState('');
   const [selectedExamIds, setSelectedExamIds] = useState<string[]>([]);
   const [urgent, setUrgent] = useState(false);
   const [sampleType, setSampleType] = useState('Sang veineux');
@@ -112,6 +117,34 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
     alert(`Examen « ${newExam.name} » (${newExam.code}) ajouté au catalogue et intégré à la base des articles (famille LABO).`);
   };
 
+  useEffect(() => {
+    if (selectedPatientId) {
+      const p = state.patients.find(x => x.id === selectedPatientId);
+      if (p) {
+        setLabEditClientType((p.clientType === 'externe' ? 'comptoir' : p.clientType) as ClientType);
+        setLabEditCompany(p.company || '');
+        setLabEditSubCompany(p.subCompany || '');
+        setLabEditNewCompany('');
+      }
+    }
+  }, [selectedPatientId, state.patients]);
+
+  const addLabPartnerCompany = (rawName: string): string | null => {
+    const name = rawName.trim().toUpperCase();
+    if (!name) return null;
+    const existing = state.companies.find(c => c.name.toUpperCase() === name);
+    if (existing) return existing.name;
+    setState(prev => ({ ...prev, companies: [...prev.companies, { id: `comp-${Date.now()}`, name, paymentMode: 'Crédit', settlementMode: 'monthly_global', createdAt: new Date().toISOString() }]}));
+    return name;
+  };
+  const saveLabSociete = () => {
+    if (!selectedPatientId) return;
+    setState(prev => ({
+      ...prev,
+      patients: prev.patients.map(p => p.id === selectedPatientId ? { ...p, clientType: labEditClientType === 'externe' ? 'comptoir' : labEditClientType as 'comptoir'|'societe', company: labEditClientType === 'societe' ? labEditCompany : undefined, subCompany: labEditClientType === 'societe' ? labEditSubCompany : undefined } : p)
+    }));
+  };
+
   // ---- Agrégation des demandes (consultations + autonomes) ----
   const allLabs: DispLab[] = [];
   const seenLabIds = new Set<string>();
@@ -161,17 +194,20 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
     d.lr.status === 'paid' || d.lr.status === 'sample_received' ||
     (d.lr.status === 'pending' && d.paid);
 
-  const filtered = visibleLabs.filter((d) => {
-    if (search) {
-      const q = search.toLowerCase();
-      if (!d.patientName.toLowerCase().includes(q) && !(d.lr.examType.toLowerCase().includes(q))) return false;
-    }
-    if (filterCat !== 'all' && (d.lr.category || 'autre') !== filterCat) return false;
-    if (tab === 'awaiting') return isAwaitingStatus(d);
-    if (tab === 'in_progress') return d.lr.status === 'in_progress';
-    if (tab === 'completed') return d.lr.status === 'completed';
-    return true;
-  });
+  // Ordre décroissant : dernier arrivé / dernière saisie en haut
+  const filtered = visibleLabs
+    .filter((d) => {
+      if (search) {
+        const q = search.toLowerCase();
+        if (!d.patientName.toLowerCase().includes(q) && !(d.lr.examType.toLowerCase().includes(q))) return false;
+      }
+      if (filterCat !== 'all' && (d.lr.category || 'autre') !== filterCat) return false;
+      if (tab === 'awaiting') return isAwaitingStatus(d);
+      if (tab === 'in_progress') return d.lr.status === 'in_progress';
+      if (tab === 'completed') return d.lr.status === 'completed';
+      return true;
+    })
+    .sort((a, b) => new Date(b.lr.requestedAt || 0).getTime() - new Date(a.lr.requestedAt || 0).getTime());
 
   const counts = {
     awaiting: visibleLabs.filter((d) => isAwaitingStatus(d)).length,
@@ -712,6 +748,42 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
                     <span className="text-xs text-slate-500"> ({state.patients.find((p) => p.id === selectedPatientId)?.dossier})</span>
                   </div>
                   <button onClick={() => setSelectedPatientId(null)} className="text-xs text-cyan-700 underline cursor-pointer">Changer</button>
+                </div>
+              )}
+              {selectedPatientId && (
+                <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2">
+                  <div className="text-xs font-bold text-indigo-900 flex items-center gap-2">🏢 Société / Type client — modifiable <span className={`ml-auto px-1.5 py-0.5 rounded text-[10px] font-bold ${state.patients.find(p=>p.id===selectedPatientId)?.clientType === 'societe' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'}`}>{state.patients.find(p=>p.id===selectedPatientId)?.clientType === 'societe' ? `🏢 ${state.patients.find(p=>p.id===selectedPatientId)?.company || 'Société'}` : '🏪 Comptoir'}</span></div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-0.5">Type</label>
+                      <select value={labEditClientType} onChange={e => setLabEditClientType(e.target.value as ClientType)} className="w-full px-2 py-1.5 border rounded bg-white cursor-pointer">
+                        <option value="comptoir">Client Comptoir</option>
+                        <option value="societe">Client Société</option>
+                      </select>
+                    </div>
+                    {labEditClientType === 'societe' && (
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-0.5">Société</label>
+                        <select value={labEditCompany} onChange={e => setLabEditCompany(e.target.value)} className="w-full px-2 py-1.5 border rounded bg-white cursor-pointer">
+                          <option value="">— Sélectionner —</option>
+                          {state.companies.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                  {labEditClientType === 'societe' && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                      <div className="flex gap-1">
+                        <input type="text" value={labEditNewCompany} onChange={e => setLabEditNewCompany(e.target.value.toUpperCase())} className="flex-1 px-2 py-1.5 border rounded uppercase bg-white" placeholder="Nouvelle société…" />
+                        <button type="button" onClick={() => { const name = addLabPartnerCompany(labEditNewCompany); if (name) { setLabEditCompany(name); setLabEditNewCompany(''); }}} className="px-2 py-1.5 bg-indigo-600 text-white rounded font-bold">+</button>
+                      </div>
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-0.5">Sous-société</label>
+                        <input type="text" value={labEditSubCompany} onChange={e => setLabEditSubCompany(e.target.value.toUpperCase())} className="w-full px-2 py-1.5 border rounded uppercase bg-white" placeholder="Direction, service…" />
+                      </div>
+                    </div>
+                  )}
+                  <button type="button" onClick={saveLabSociete} className="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-800 text-white rounded text-xs font-bold cursor-pointer">Enregistrer type / société</button>
                 </div>
               )}
 

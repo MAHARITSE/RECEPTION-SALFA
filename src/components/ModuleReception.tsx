@@ -25,6 +25,12 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
   const [blacklistReason, setBlacklistReason] = useState('');
   const { isDark, toggle: toggleDarkMode } = useDarkMode();
 
+  // Edition société — toujours visible quand patient choisi (comme hospit/bloc)
+  const [recEditClientType, setRecEditClientType] = useState<ClientType>('comptoir');
+  const [recEditCompany, setRecEditCompany] = useState('');
+  const [recEditSubCompany, setRecEditSubCompany] = useState('');
+  const [recEditNewCompany, setRecEditNewCompany] = useState('');
+
   const [patientTouched, setPatientTouched] = useState<Record<string, boolean>>({});
   const [patientSubmitted, setPatientSubmitted] = useState(false);
 
@@ -178,16 +184,44 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
     return () => clearInterval(timer);
   }, []);
 
-  const filteredPatients = state.patients.filter((p) => {
-    const q = searchQuery.toLowerCase();
-    const ms = p.firstName.toLowerCase().includes(q) || p.lastName.toLowerCase().includes(q) ||
-      p.dossier.toLowerCase().includes(q) || (p.matricule && p.matricule.toLowerCase().includes(q));
-    return ms;
-  });
+  useEffect(() => {
+    if (selectedPatient) {
+      setRecEditClientType((selectedPatient.clientType === 'externe' ? 'comptoir' : selectedPatient.clientType) as ClientType);
+      setRecEditCompany(selectedPatient.company || '');
+      setRecEditSubCompany(selectedPatient.subCompany || '');
+      setRecEditNewCompany('');
+    }
+  }, [selectedPatient?.id, selectedPatient?.clientType, selectedPatient?.company, selectedPatient?.subCompany]);
+
+  // Ordre décroissant : dernier enregistré / dernier arrivé en haut
+  const filteredPatients = state.patients
+    .filter((p) => {
+      const q = searchQuery.toLowerCase();
+      const ms = p.firstName.toLowerCase().includes(q) || p.lastName.toLowerCase().includes(q) ||
+        p.dossier.toLowerCase().includes(q) || (p.matricule && p.matricule.toLowerCase().includes(q));
+      return ms;
+    })
+    .sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime());
 
   const waitingCount = state.patients.filter((p) => p.status === 'waiting_consultation').length;
   const todayCount = state.patients.filter((p) => new Date(p.registeredAt).toDateString() === new Date().toDateString()).length;
   const blacklistedPatients = state.patients.filter((p) => p.blacklisted);
+
+  const addRecPartnerCompany = (rawName: string): string | null => {
+    const name = rawName.trim().toUpperCase();
+    if (!name) return null;
+    const existing = state.companies.find(c => c.name.toUpperCase() === name);
+    if (existing) return existing.name;
+    setState(prev => ({ ...prev, companies: [...prev.companies, { id: `comp-${Date.now()}`, name, paymentMode: 'Crédit', settlementMode: 'monthly_global', createdAt: new Date().toISOString() }]}));
+    return name;
+  };
+  const saveRecSociete = () => {
+    if (!selectedPatient) return;
+    setState(prev => ({
+      ...prev,
+      patients: prev.patients.map(p => p.id === selectedPatient.id ? { ...p, clientType: recEditClientType === 'externe' ? 'comptoir' : recEditClientType as 'comptoir'|'societe', company: recEditClientType === 'societe' ? recEditCompany : undefined, subCompany: recEditClientType === 'societe' ? recEditSubCompany : undefined } : p)
+    }));
+  };
 
   const handleRowDoubleClick = (patient: Patient) => {
     setSelectedPatient(patient);
@@ -521,6 +555,42 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
             <span className="text-xs font-semibold text-slate-600">📋 Patients — {filteredPatients.length} fiche(s)</span>
             <span className="text-[10px] text-amber-700 font-semibold bg-amber-100 px-2 py-0.5 rounded">💡 Double-clic → Saisie paramètres</span>
           </div>
+          {selectedPatient && (
+            <div className="mx-3 mt-3 rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2">
+              <div className="text-xs font-bold text-indigo-900 flex items-center gap-2">🏢 Société / Type client — modifiable <span className={`ml-auto px-1.5 py-0.5 rounded text-[10px] font-bold ${selectedPatient.clientType === 'societe' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'}`}>{selectedPatient.clientType === 'societe' ? selectedPatient.company || 'Société' : 'Comptoir'} — {selectedPatient.lastName} {selectedPatient.firstName} ({selectedPatient.dossier})</span></div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-0.5">Type</label>
+                  <select value={recEditClientType} onChange={e => setRecEditClientType(e.target.value as ClientType)} className="w-full px-2 py-1.5 border rounded bg-white cursor-pointer">
+                    <option value="comptoir">Client Comptoir</option>
+                    <option value="societe">Client Société</option>
+                  </select>
+                </div>
+                {recEditClientType === 'societe' && (
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-0.5">Société</label>
+                    <select value={recEditCompany} onChange={e => setRecEditCompany(e.target.value)} className="w-full px-2 py-1.5 border rounded bg-white cursor-pointer">
+                      <option value="">— Sélectionner —</option>
+                      {state.companies.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
+                    </select>
+                  </div>
+                )}
+              </div>
+              {recEditClientType === 'societe' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <div className="flex gap-1">
+                    <input type="text" value={recEditNewCompany} onChange={e => setRecEditNewCompany(e.target.value.toUpperCase())} className="flex-1 px-2 py-1.5 border rounded uppercase bg-white" placeholder="Nouvelle société…" />
+                    <button type="button" onClick={() => { const name = addRecPartnerCompany(recEditNewCompany); if (name) { setRecEditCompany(name); setRecEditNewCompany(''); }}} className="px-2 py-1.5 bg-indigo-600 text-white rounded font-bold">+</button>
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-0.5">Sous-société</label>
+                    <input type="text" value={recEditSubCompany} onChange={e => setRecEditSubCompany(e.target.value.toUpperCase())} className="w-full px-2 py-1.5 border rounded uppercase bg-white" placeholder="Direction, service…" />
+                  </div>
+                </div>
+              )}
+              <button type="button" onClick={saveRecSociete} className="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-800 text-white rounded text-xs font-bold cursor-pointer">Enregistrer type / société</button>
+            </div>
+          )}
           <div className="overflow-auto flex-1">
             <table className="w-full text-left border-collapse text-xs">
               <thead className="bg-gradient-to-b from-[#4a6fa5] to-[#3d5a80] text-white sticky top-0 z-10">

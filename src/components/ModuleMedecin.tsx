@@ -89,7 +89,22 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     address: '',
   });
 
+  // Edition société — toujours visible quand patient choisi (comme hospit/bloc)
+  const [medEditClientType, setMedEditClientType] = useState<ClientType>('comptoir');
+  const [medEditCompany, setMedEditCompany] = useState('');
+  const [medEditSubCompany, setMedEditSubCompany] = useState('');
+  const [medEditNewCompany, setMedEditNewCompany] = useState('');
+
   const selectedPatient = state.patients.find((p) => p.id === selectedPatientId);
+
+  useEffect(() => {
+    if (selectedPatient) {
+      setMedEditClientType((selectedPatient.clientType === 'externe' ? 'comptoir' : selectedPatient.clientType) as ClientType);
+      setMedEditCompany(selectedPatient.company || '');
+      setMedEditSubCompany(selectedPatient.subCompany || '');
+      setMedEditNewCompany('');
+    }
+  }, [selectedPatientId, selectedPatient?.clientType, selectedPatient?.company, selectedPatient?.subCompany]);
 
   useEffect(() => {
     if (selectedPatient) {
@@ -173,12 +188,31 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     setTimeout(() => setToastFeedback(null), 3000);
   };
 
+  const addMedPartnerCompany = (rawName: string): string | null => {
+    const name = rawName.trim().toUpperCase();
+    if (!name) return null;
+    const existing = state.companies.find(c => c.name.toUpperCase() === name);
+    if (existing) return existing.name;
+    setState(prev => ({ ...prev, companies: [...prev.companies, { id: `comp-${Date.now()}`, name, paymentMode: 'Crédit', settlementMode: 'monthly_global', createdAt: new Date().toISOString() }]}));
+    return name;
+  };
+  const saveMedSociete = () => {
+    if (!selectedPatientId || !selectedPatient) return;
+    setState(prev => ({
+      ...prev,
+      patients: prev.patients.map(p => p.id === selectedPatientId ? { ...p, clientType: medEditClientType === 'externe' ? 'comptoir' : medEditClientType as 'comptoir'|'societe', company: medEditClientType === 'societe' ? medEditCompany : undefined, subCompany: medEditClientType === 'societe' ? medEditSubCompany : undefined } : p)
+    }));
+    setToastFeedback(`Société mise à jour : ${medEditClientType === 'societe' ? medEditCompany || 'Société' : 'Comptoir'}`);
+    setTimeout(()=>setToastFeedback(null),3000);
+  };
+
   const isAdminUser = state.currentUser?.role === 'admin';
   // File d'attente du médecin : seuls les passages qui attendent encore le
   // médecin restent affichés. Dès qu'une consultation est VALIDÉE, le patient
   // quitte la file (il passe à la caisse / laboratoire / pharmacie) afin que
   // la file d'attente ne soit pas encombrée.
   const DOCTOR_QUEUE_STATUSES: PatientStatus[] = ['waiting_consultation', 'in_consultation', 'analyses_pending', 'analyses_complete'];
+  // Ordre décroissant : dernier arrivé en haut (exigence utilisateur) — tri secondaire par date après priorité statut
   const myWaiting = state.patients
     .filter((p) => {
       if (!DOCTOR_QUEUE_STATUSES.includes(p.status)) return false;
@@ -201,7 +235,11 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
         if (s === 'completed') return 8;
         return 9;
       };
-      return score(a.status) - score(b.status);
+      const diff = score(a.status) - score(b.status);
+      if (diff !== 0) return diff;
+      const da = new Date(a.lastVisitAt || a.registeredAt).getTime() || 0;
+      const db = new Date(b.lastVisitAt || b.registeredAt).getTime() || 0;
+      return db - da;
     });
   const searchResults = searchQuery.length >= 2 ? state.patients.filter((p) => { const q = searchQuery.toLowerCase(); return p.firstName.toLowerCase().includes(q) || p.lastName.toLowerCase().includes(q) || p.dossier.toLowerCase().includes(q); }) : [];
   const patientConsultations = selectedPatientId ? state.consultations.filter((c) => c.patientId === selectedPatientId) : [];
@@ -985,6 +1023,42 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                   ← Retour
                 </button>
               </div>
+            </div>
+
+            {/* 🏢 Société — toujours visible quand patient choisi (comme hospit/bloc) */}
+            <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2">
+              <div className="text-xs font-bold text-indigo-900 flex items-center gap-2">🏢 Société / Type client — modifiable <span className={`ml-auto px-1.5 py-0.5 rounded text-[10px] font-bold ${selectedPatient.clientType === 'societe' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'}`}>{selectedPatient.clientType === 'societe' ? `🏢 ${selectedPatient.company || 'Société non renseignée'}` : '🏪 Comptoir'}</span></div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-0.5">Type</label>
+                  <select value={medEditClientType} onChange={e => setMedEditClientType(e.target.value as ClientType)} className="w-full px-2 py-1.5 border rounded bg-white cursor-pointer">
+                    <option value="comptoir">Client Comptoir</option>
+                    <option value="societe">Client Société</option>
+                  </select>
+                </div>
+                {medEditClientType === 'societe' && (
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-0.5">Société</label>
+                    <select value={medEditCompany} onChange={e => setMedEditCompany(e.target.value)} className="w-full px-2 py-1.5 border rounded bg-white cursor-pointer">
+                      <option value="">— Sélectionner —</option>
+                      {state.companies.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
+                    </select>
+                  </div>
+                )}
+              </div>
+              {medEditClientType === 'societe' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <div className="flex gap-1">
+                    <input type="text" value={medEditNewCompany} onChange={e => setMedEditNewCompany(e.target.value.toUpperCase())} className="flex-1 px-2 py-1.5 border rounded uppercase bg-white" placeholder="Nouvelle société…" />
+                    <button type="button" onClick={() => { const name = addMedPartnerCompany(medEditNewCompany); if (name) { setMedEditCompany(name); setMedEditNewCompany(''); }}} className="px-2 py-1.5 bg-indigo-600 text-white rounded font-bold">+</button>
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-0.5">Sous-société</label>
+                    <input type="text" value={medEditSubCompany} onChange={e => setMedEditSubCompany(e.target.value.toUpperCase())} className="w-full px-2 py-1.5 border rounded uppercase bg-white" placeholder="Direction, service…" />
+                  </div>
+                </div>
+              )}
+              <button type="button" onClick={saveMedSociete} className="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-800 text-white rounded text-xs font-bold cursor-pointer">Enregistrer type / société</button>
             </div>
 
             {/* Badges synthétiques du dossier médical */}
