@@ -166,20 +166,6 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     setTimeout(() => setToastFeedback(null), 3000);
   };
 
-  const getPatientStatusBadge = (status: PatientStatus) => {
-    switch (status) {
-      case 'waiting_consultation': return { label: 'En attente', color: 'bg-amber-100 text-amber-700' };
-      case 'in_consultation': return { label: 'En consultation', color: 'bg-blue-100 text-blue-700' };
-      case 'consulted_awaiting_payment': return { label: 'Attente Paiement', color: 'bg-purple-100 text-purple-700' };
-      case 'invoice_paid': return { label: 'Payé', color: 'bg-emerald-100 text-emerald-700' };
-      case 'analyses_pending': return { label: 'Analyses en cours', color: 'bg-cyan-100 text-cyan-700' };
-      case 'analyses_complete': return { label: 'Analyses terminées', color: 'bg-green-100 text-green-700' };
-      case 'medications_delivered': return { label: 'Médicaments livrés', color: 'bg-emerald-100 text-emerald-700' };
-      case 'completed': return { label: 'Terminé', color: 'bg-slate-100 text-slate-700' };
-      default: return { label: status, color: 'bg-slate-100 text-slate-600' };
-    }
-  };
-
   const isAdminUser = state.currentUser?.role === 'admin';
   const myWaiting = state.patients
     .filter((p) => (isAdminUser || !p.assignedDoctor || p.assignedDoctor === state.currentUser?.id) && p.status !== 'registered')
@@ -819,13 +805,11 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
               <div className="p-3 border-b bg-amber-50"><h3 className="font-semibold text-sm"><Clock className="w-4 h-4 inline text-amber-500" /> File ({myWaiting.length})</h3></div>
               <div className="divide-y max-h-[500px] overflow-y-auto">{myWaiting.length === 0 ? <div className="p-6 text-center text-slate-400 text-sm">Aucun</div>
                 : myWaiting.map((p) => {
-                  const stBadge = getPatientStatusBadge(p.status);
                   return (
                     <div key={p.id} onClick={() => selectPatient(p.id)} className="p-3 cursor-pointer hover:bg-emerald-50 flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <div className="font-medium text-sm">{p.lastName} {p.firstName}</div>
-                          <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${stBadge.color}`}>{stBadge.label}</span>
                         </div>
                         <div className="text-xs text-slate-500">{p.dossier}{p.company ? ` • ${p.company}` : ''}</div>
                         {p.allergies.length > 0 && <div className="text-xs text-red-600"><AlertTriangle className="w-3 h-3 inline" /> {p.allergies.join(', ')}</div>}
