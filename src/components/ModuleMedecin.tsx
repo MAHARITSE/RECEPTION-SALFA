@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { Consultation, VitalSigns, Prescription, LabRequest, ClientType, Invoice, EchoRequest, PatientStatus, Patient } from '../types';
+import type { Consultation, VitalSigns, Prescription, LabRequest, ClientType, Invoice, EchoRequest, PatientStatus, Patient, Article } from '../types';
 import type { AppState } from '../store';
 import {
   addAuditLog, addNotification, formatAr, formatNum, roundTo2, getPrice, addJourneyEvent,
@@ -9,6 +9,8 @@ import {
 } from '../store';
 import type { EchoExamCatalog } from '../store';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
+import AlerteArticleIndisponible from './AlerteArticleIndisponible';
+import type { ArticleAlertInfo } from './AlerteArticleIndisponible';
 import { printLabResultTicket } from '../utils/printTicket';
 import {
   Stethoscope, History, Trash2, AlertTriangle, Heart, FileText, Clock, CheckCircle,
@@ -29,6 +31,8 @@ type ViewMode = 'queue' | 'consultation' | 'my_consults';
 export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: Props) {
   const [view, setView] = useState<ViewMode>('queue');
   const [toastFeedback, setToastFeedback] = useState<string | null>(null);
+  // Notification rouge centrée : article bloqué en vente par la pharmacie ou en rupture de stock
+  const [articleAlert, setArticleAlert] = useState<ArticleAlertInfo | null>(null);
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [articleSearch, setArticleSearch] = useState('');
@@ -430,18 +434,20 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); if (echoDraftIdx >= 0 && echoDraftIdx < echoDraft.length) { removeEchoExam(echoDraft[echoDraftIdx].examId); setEchoDraftIdx(i => Math.max(0, i - 1)); } }
   };
 
-  const handleArticleSelect = (articleId: string) => {
-    const a = state.articles.find((x) => x.id === articleId);
-    if (!a) return;
+  /** Statut de disponibilité d'un article vis-à-vis de la pharmacie (blocage vente / rupture) */
+  const articleAvailability = (a: Article) => {
+    const manages = familyManagesStock(a.family, state.familles);
+    return {
+      blocked: !!a.saleBlocked,
+      outOfStock: manages && a.stockPharmacie <= 0,
+      manages,
+    };
+  };
+
+  const applyArticleSelection = (a: Article) => {
     // Si on est en mode édition d'une ligne existante, on met à jour cette ligne (même id) au lieu de créer un doublon
     if (!isNewLine && selectedLineId && lines.find(l => l.id === selectedLineId)) {
       const existing = lines.find(l => l.id === selectedLineId)!;
-      const updated: Prescription = {
-        ...existing,
-        articleId: a.id,
-        articleName: a.name,
-        unitPrice: getPrice(a, clientType),
-      };
       // On garde la quantité / posologie déjà saisies si l'utilisateur était en train d'éditer
       // Mais si lineForm est déjà l'édition de cette ligne, on préfère garder les valeurs de lineForm pour quantité etc.
       // Pour éviter toute confusion, on met à jour lineForm directement avec le nouvel article tout en conservant l'id d'origine
@@ -462,6 +468,31 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     }
     const nl: Prescription = { id: uuidv4(), articleId: a.id, articleName: a.name, quantity: 1, posology: '', duration: '', instructions: '', unitPrice: getPrice(a, clientType), discount: 0, delivered: false };
     setLineForm({ ...nl }); setSelectedLineId(nl.id); setIsNewLine(true); setArticleSearch(''); setArtSearchIdx(0);
+  };
+
+  const handleArticleSelect = (articleId: string) => {
+    const a = state.articles.find((x) => x.id === articleId);
+    if (!a) return;
+    const { blocked, outOfStock } = articleAvailability(a);
+    // Notification rouge centrée : l'article est bloqué à la vente par la pharmacie
+    // ou en rupture de stock. Le médecin est prévenu AVANT de l'inscrire sur l'ordonnance.
+    if (blocked || outOfStock) {
+      setArticleAlert({
+        kind: blocked ? 'blocked' : 'out_of_stock',
+        title: blocked ? '⛔ Article bloqué à la vente par la pharmacie' : '🚨 Rupture de stock pharmacie',
+        message: `« ${a.name} »`,
+        reason: blocked ? (a.saleBlockReason || undefined) : undefined,
+        hint: blocked
+          ? "Cet article est bloqué à la vente par la pharmacie : il ne pourra pas être délivré ni encaissé. Prescrivez une alternative ou demandez son déblocage à la pharmacie."
+          : `Stock pharmacie = ${a.stockPharmacie}. Cet article ne pourra pas être délivré ni encaissé tant qu'il n'est pas réapprovisionné.`,
+        onForce: () => applyArticleSelection(a),
+        forceLabel: 'Prescrire quand même',
+      });
+      setArticleSearch('');
+      setArtSearchIdx(0);
+      return;
+    }
+    applyArticleSelection(a);
   };
 
   const resetLineDraft = () => {
@@ -670,10 +701,38 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
     });
   };
 
-  const submitConsultation = () => {
+  const submitConsultation = (force = false) => {
     if (!selectedPatientId || !selectedPatient || !consultForm.diagnosis) { alert('Diagnostic obligatoire'); return; }
     // Ne pas valider si une ligne d'ordonnance est en cours de saisie mais non enregistrée
     if (blockIfUnsavedDraftLine(lineForm, lines, { entityLabel: 'le médicament' })) return;
+    // Dernier contrôle avant validation : notification rouge centrée si l'ordonnance contient
+    // des articles bloqués à la vente par la pharmacie ou en rupture de stock.
+    if (!force) {
+      const koLines = lines
+        .map((l) => {
+          const art = state.articles.find((a) => a.id === l.articleId || a.name === l.articleName);
+          if (!art) return null;
+          const av = articleAvailability(art);
+          if (!av.blocked && !av.outOfStock) return null;
+          return { art, av };
+        })
+        .filter(Boolean) as { art: Article; av: { blocked: boolean; outOfStock: boolean; manages: boolean } }[];
+      if (koLines.length > 0) {
+        const anyBlocked = koLines.some((k) => k.av.blocked);
+        setArticleAlert({
+          kind: anyBlocked ? 'blocked' : 'out_of_stock',
+          title: '⛔ Ordonnance : article(s) non délivrable(s)',
+          message: `${koLines.length} article(s) de l'ordonnance ne peuvent pas être délivrés par la pharmacie.`,
+          items: koLines.map((k) => k.av.blocked
+            ? `${k.art.name} — BLOQUÉ À LA VENTE${k.art.saleBlockReason ? ` (${k.art.saleBlockReason})` : ''}`
+            : `${k.art.name} — RUPTURE DE STOCK (stock pharmacie = ${k.art.stockPharmacie})`),
+          hint: "Retirez ou remplacez ces lignes, ou validez quand même : le patient devra attendre le déblocage / réapprovisionnement.",
+          onForce: () => submitConsultation(true),
+          forceLabel: 'Valider quand même',
+        });
+        return;
+      }
+    }
     // Garde anti double-soumission : évite les doublons de factures labo/écho
     if (submittingRef.current) return;
     submittingRef.current = true;
@@ -801,6 +860,8 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
           </div>
         </div>
       )}
+      {/* Notification rouge centrée : article bloqué en vente par la pharmacie ou en rupture de stock */}
+      <AlerteArticleIndisponible alert={articleAlert} onClose={() => { setArticleAlert(null); setTimeout(() => searchRef.current?.focus(), 50); }} />
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-white rounded-xl p-4 shadow-sm border cursor-pointer hover:border-amber-400" onClick={() => setView('queue')}><div className="flex items-center gap-3"><div className="p-2 bg-amber-100 rounded-lg"><Clock className="w-5 h-5 text-amber-600" /></div><div><div className="text-2xl font-bold">{myWaiting.length}</div><div className="text-sm text-slate-500">En attente</div></div></div></div>
         <div className="bg-white rounded-xl p-4 shadow-sm border cursor-pointer hover:border-emerald-400" onClick={() => setView('my_consults')}><div className="flex items-center gap-3"><div className="p-2 bg-green-100 rounded-lg"><CheckCircle className="w-5 h-5 text-green-600" /></div><div><div className="text-2xl font-bold">{myTodayConsults.length}</div><div className="text-sm text-slate-500">Mes consultations (auj.)</div></div></div></div>
@@ -1096,20 +1157,26 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
                     <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 rounded-b shadow-xl z-30 max-h-40 overflow-y-auto">
                       {filteredArticles.map((a, idx) => {
                         const manages = familyManagesStock(a.family, state.familles);
+                        const isBlocked = !!a.saleBlocked;
                         const isOut = manages && a.stockPharmacie <= 0;
                         const isLow = manages && !isOut && a.stockPharmacie <= a.minStockPharmacie && !a.alertDisabledPharmacie;
+                        const isKo = isBlocked || isOut;
                         return (
                         <div key={a.id} onClick={() => handleArticleSelect(a.id)}
-                          title={isOut ? 'Rupture de stock pharmacie — non délivrable tant que non réapprovisionné' : undefined}
-                          className={`px-2 py-1 cursor-pointer text-xs flex justify-between border-b border-slate-100 ${isOut ? 'bg-red-50 text-red-700' : idx === artSearchIdx ? 'bg-blue-100' : 'hover:bg-blue-50'}`}>
+                          title={isBlocked
+                            ? `Bloqué à la vente par la pharmacie${a.saleBlockReason ? ` — ${a.saleBlockReason}` : ''}`
+                            : isOut ? 'Rupture de stock pharmacie — non délivrable tant que non réapprovisionné' : undefined}
+                          className={`px-2 py-1 cursor-pointer text-xs flex justify-between border-b border-slate-100 ${isKo ? 'bg-red-50 text-red-700' : idx === artSearchIdx ? 'bg-blue-100' : 'hover:bg-blue-50'}`}>
                           <span><span className="text-[9px] text-slate-400 mr-1">[{a.family}]</span> {a.name}</span>
                           <span className="flex items-center gap-2">
-                            {isOut
-                              ? <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-[9px] font-bold">🚨 RUPTURE</span>
-                              : manages
-                                ? <span className={`font-mono text-[10px] ${isLow ? 'text-amber-600 font-bold' : 'text-slate-400'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>
-                                : <span className="font-mono text-[10px] text-slate-400" title="Famille non gérée en stock">stock: —</span>}
-                            <span className={`font-mono ${isOut ? 'text-red-400' : 'text-blue-600'}`}>{formatAr(getPrice(a, clientType))}</span>
+                            {isBlocked
+                              ? <span className="px-1.5 py-0.5 bg-red-700 text-white rounded text-[9px] font-bold">⛔ BLOQUÉ VENTE</span>
+                              : isOut
+                                ? <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-[9px] font-bold">🚨 RUPTURE</span>
+                                : manages
+                                  ? <span className={`font-mono text-[10px] ${isLow ? 'text-amber-600 font-bold' : 'text-slate-400'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>
+                                  : <span className="font-mono text-[10px] text-slate-400" title="Famille non gérée en stock">stock: —</span>}
+                            <span className={`font-mono ${isKo ? 'text-red-400' : 'text-blue-600'}`}>{formatAr(getPrice(a, clientType))}</span>
                           </span>
                         </div>
                         );
@@ -1139,8 +1206,11 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
                 <tbody className="divide-y font-mono">
                   {lines.map((l) => {
                     const isSel = l.id === selectedLineId;
-                    return (<tr key={l.id} onClick={() => { setSelectedLineId(l.id); setIsNewLine(false); }} className={`cursor-pointer divide-x divide-slate-200 transition-colors ${isSel ? 'bg-blue-500 text-white font-medium' : 'hover:bg-slate-50 text-slate-800'}`}>
-                      <td className="p-1 font-sans">{l.articleName}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 font-sans">{l.posology || '—'}</td><td className="p-1 text-center">{l.discount > 0 ? `${l.discount}%` : '—'}</td><td className="p-1 text-right">{formatNum(l.unitPrice)}</td><td className="p-1 text-right font-bold">{formatNum(lineAmount(l))}</td>
+                    const art = state.articles.find((a) => a.id === l.articleId || a.name === l.articleName);
+                    const av = art ? articleAvailability(art) : null;
+                    const lineKo = !!av && (av.blocked || av.outOfStock);
+                    return (<tr key={l.id} onClick={() => { setSelectedLineId(l.id); setIsNewLine(false); }} className={`cursor-pointer divide-x divide-slate-200 transition-colors ${isSel ? 'bg-blue-500 text-white font-medium' : lineKo ? 'bg-red-50 text-red-700 hover:bg-red-100' : 'hover:bg-slate-50 text-slate-800'}`}>
+                      <td className="p-1 font-sans">{l.articleName}{lineKo && <span className={`ml-1.5 px-1 py-0.5 rounded text-[8px] font-bold align-middle ${isSel ? 'bg-white text-red-700' : 'bg-red-600 text-white'}`}>{av!.blocked ? '⛔ BLOQUÉ' : '🚨 RUPTURE'}</span>}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 font-sans">{l.posology || '—'}</td><td className="p-1 text-center">{l.discount > 0 ? `${l.discount}%` : '—'}</td><td className="p-1 text-right">{formatNum(l.unitPrice)}</td><td className="p-1 text-right font-bold">{formatNum(lineAmount(l))}</td>
                     </tr>);
                   })}
                   {lines.length === 0 && <tr><td colSpan={6} className="p-3 text-center text-slate-400 font-sans">Ordonnance optionnelle — tapez un article (↑↓ Entrée) ou validez sans médicament</td></tr>}
@@ -1276,7 +1346,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord }: 
           </div>
 
           <div className="flex gap-2">
-            <button onClick={submitConsultation} className="w-full py-3 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 flex items-center justify-center gap-2 cursor-pointer shadow-lg">
+            <button onClick={() => submitConsultation()} className="w-full py-3 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 flex items-center justify-center gap-2 cursor-pointer shadow-lg">
               <Send className="w-5 h-5" /> Valider — {formatAr(totalPres + labTotal + echoTotal)}
             </button>
           </div>
