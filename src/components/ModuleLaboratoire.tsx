@@ -7,6 +7,7 @@ import {
   labCategoryLabel, LAB_CATEGORIES, normalizeDossierNumber, isDossierTaken, calculateAge, formatAr, getLabCatalog,
 } from '../store';
 import { printLabResultTicket } from '../utils/printTicket';
+import { PhoneInput } from './PhoneInput';
 import {
   FlaskConical, CheckCircle, AlertTriangle, Send, Microscope, FileSearch,
   Plus, Search, Printer, Check,
@@ -687,7 +688,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
                       <input value={newPat.lastName} onChange={(e) => setNewPat({ ...newPat, lastName: e.target.value })} placeholder="Nom *" className="px-2 py-1.5 border rounded uppercase outline-none" />
                       <input value={newPat.firstName} onChange={(e) => setNewPat({ ...newPat, firstName: e.target.value })} placeholder="Prénom *" className="px-2 py-1.5 border rounded uppercase outline-none" />
                       <input type="date" value={newPat.dateOfBirth} onChange={(e) => setNewPat({ ...newPat, dateOfBirth: e.target.value })} className="px-2 py-1.5 border rounded outline-none" />
-                      <input value={newPat.contact} onChange={(e) => setNewPat({ ...newPat, contact: e.target.value })} placeholder="Téléphone" className="px-2 py-1.5 border rounded outline-none" />
+                      <PhoneInput value={newPat.contact} onChange={(v) => setNewPat({ ...newPat, contact: v })} placeholder="Téléphone" className="px-2 py-1.5 border rounded outline-none" />
                       <select value={newPat.gender} onChange={(e) => setNewPat({ ...newPat, gender: e.target.value as 'M' | 'F' })} className="px-2 py-1.5 border rounded cursor-pointer">
                         <option value="F">Femme</option><option value="M">Homme</option>
                       </select>
