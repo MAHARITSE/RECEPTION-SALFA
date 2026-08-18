@@ -89,11 +89,12 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     address: '',
   });
 
-  // Edition société — toujours visible quand patient choisi (comme hospit/bloc)
+  // Edition société — panneau repliable, ouvert via l'icône stylo à côté du dossier
   const [medEditClientType, setMedEditClientType] = useState<ClientType>('comptoir');
   const [medEditCompany, setMedEditCompany] = useState('');
   const [medEditSubCompany, setMedEditSubCompany] = useState('');
   const [medEditNewCompany, setMedEditNewCompany] = useState('');
+  const [showMedClientTypeEdit, setShowMedClientTypeEdit] = useState(false);
 
   const selectedPatient = state.patients.find((p) => p.id === selectedPatientId);
 
@@ -103,6 +104,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
       setMedEditCompany(selectedPatient.company || '');
       setMedEditSubCompany(selectedPatient.subCompany || '');
       setMedEditNewCompany('');
+      setShowMedClientTypeEdit(false);
     }
   }, [selectedPatientId, selectedPatient?.clientType, selectedPatient?.company, selectedPatient?.subCompany]);
 
@@ -203,6 +205,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
       patients: prev.patients.map(p => p.id === selectedPatientId ? { ...p, clientType: medEditClientType === 'externe' ? 'comptoir' : medEditClientType as 'comptoir'|'societe', company: medEditClientType === 'societe' ? medEditCompany : undefined, subCompany: medEditClientType === 'societe' ? medEditSubCompany : undefined } : p)
     }));
     setToastFeedback(`Société mise à jour : ${medEditClientType === 'societe' ? medEditCompany || 'Société' : 'Comptoir'}`);
+    setShowMedClientTypeEdit(false);
     setTimeout(()=>setToastFeedback(null),3000);
   };
 
@@ -981,7 +984,15 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                 <h3 className="font-bold text-lg flex items-center gap-2 flex-wrap">
                   <span>{selectedPatient.lastName} {selectedPatient.firstName}</span>
                   <span className="text-sm font-mono text-blue-600 font-semibold">({selectedPatient.dossier})</span>
-                  {selectedPatient.company && <span className="px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700 font-medium">{selectedPatient.company}</span>}
+                  <button
+                    type="button"
+                    onClick={() => setShowMedClientTypeEdit(v => !v)}
+                    className="p-1 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-100 rounded transition cursor-pointer"
+                    title="Modifier le type de client / société"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                  </button>
+                  {selectedPatient.company && <span className="px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700 font-medium">{selectedPatient.company}{selectedPatient.subCompany ? ` / ${selectedPatient.subCompany}` : ''}</span>}
                   {selectedPatient.famille && (
                     <span className="px-2 py-0.5 rounded text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 font-medium" title="Base de famille">
                       👨‍👩‍👧 {selectedPatient.famille} {selectedPatient.lienFamilial ? `(${selectedPatient.lienFamilial})` : ''}
@@ -1025,9 +1036,12 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
               </div>
             </div>
 
-            {/* 🏢 Société — toujours visible quand patient choisi (comme hospit/bloc) */}
+            {/* 🏢 Société / Type client — panneau repliable, ouvert via l'icône stylo du titre */}
+            {showMedClientTypeEdit && (
             <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2">
-              <div className="text-xs font-bold text-indigo-900 flex items-center gap-2">🏢 Société / Type client — modifiable <span className={`ml-auto px-1.5 py-0.5 rounded text-[10px] font-bold ${selectedPatient.clientType === 'societe' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'}`}>{selectedPatient.clientType === 'societe' ? `🏢 ${selectedPatient.company || 'Société non renseignée'}` : '🏪 Comptoir'}</span></div>
+              <div className="text-xs font-bold text-indigo-900 flex items-center gap-2">🏢 Société / Type client
+                <button type="button" onClick={() => setShowMedClientTypeEdit(false)} className="ml-auto text-indigo-500 hover:text-indigo-800 cursor-pointer" title="Fermer">✕</button>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                 <div>
                   <label className="block font-bold text-slate-700 mb-0.5">Type</label>
@@ -1058,8 +1072,12 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                   </div>
                 </div>
               )}
-              <button type="button" onClick={saveMedSociete} className="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-800 text-white rounded text-xs font-bold cursor-pointer">Enregistrer type / société</button>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={saveMedSociete} className="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-800 text-white rounded text-xs font-bold cursor-pointer">Enregistrer type / société</button>
+                <button type="button" onClick={() => setShowMedClientTypeEdit(false)} className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded text-xs font-bold cursor-pointer">Annuler</button>
+              </div>
             </div>
+            )}
 
             {/* Badges synthétiques du dossier médical */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pt-2 border-t border-slate-100 text-xs">
