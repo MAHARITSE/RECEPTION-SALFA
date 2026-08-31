@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useDarkMode } from './ThemeToggle';
 import { PhoneInput } from './PhoneInput';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; onStaffLogin: () => void; onOpenMessaging: () => void; }
 type ModalType = 'none' | 'add' | 'edit' | 'vitals' | 'blacklistConfirm' | 'blacklistReason' | 'blacklistList' | 'unblacklistConfirm' | 'deleteConfirm' | 'patientInfo';
@@ -555,53 +556,25 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
             <span className="text-xs font-semibold text-slate-600">📋 Patients — {filteredPatients.length} fiche(s)</span>
             <span className="text-[10px] text-amber-700 font-semibold bg-amber-100 px-2 py-0.5 rounded">💡 Double-clic → Saisie paramètres</span>
           </div>
-          {selectedPatient && (
-            <div className="mx-3 mt-3 rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2">
-              <div className="text-xs font-bold text-indigo-900 flex items-center gap-2">🏢 Société / Type client — modifiable <span className={`ml-auto px-1.5 py-0.5 rounded text-[10px] font-bold ${selectedPatient.clientType === 'societe' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'}`}>{selectedPatient.clientType === 'societe' ? selectedPatient.company || 'Société' : 'Comptoir'} — {selectedPatient.lastName} {selectedPatient.firstName} ({selectedPatient.dossier})</span></div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-0.5">Type</label>
-                  <select value={recEditClientType} onChange={e => setRecEditClientType(e.target.value as ClientType)} className="w-full px-2 py-1.5 border rounded bg-white cursor-pointer">
-                    <option value="comptoir">Client Comptoir</option>
-                    <option value="societe">Client Société</option>
-                  </select>
-                </div>
-                {recEditClientType === 'societe' && (
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-0.5">Société</label>
-                    <select value={recEditCompany} onChange={e => setRecEditCompany(e.target.value)} className="w-full px-2 py-1.5 border rounded bg-white cursor-pointer">
-                      <option value="">— Sélectionner —</option>
-                      {state.companies.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
-                    </select>
-                  </div>
-                )}
-              </div>
-              {recEditClientType === 'societe' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                  <div className="flex gap-1">
-                    <input type="text" value={recEditNewCompany} onChange={e => setRecEditNewCompany(e.target.value.toUpperCase())} className="flex-1 px-2 py-1.5 border rounded uppercase bg-white" placeholder="Nouvelle société…" />
-                    <button type="button" onClick={() => { const name = addRecPartnerCompany(recEditNewCompany); if (name) { setRecEditCompany(name); setRecEditNewCompany(''); }}} className="px-2 py-1.5 bg-indigo-600 text-white rounded font-bold">+</button>
-                  </div>
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-0.5">Sous-société</label>
-                    <input type="text" value={recEditSubCompany} onChange={e => setRecEditSubCompany(e.target.value.toUpperCase())} className="w-full px-2 py-1.5 border rounded uppercase bg-white" placeholder="Direction, service…" />
-                  </div>
-                </div>
-              )}
-              <button type="button" onClick={saveRecSociete} className="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-800 text-white rounded text-xs font-bold cursor-pointer">Enregistrer type / société</button>
-            </div>
-          )}
+
           <div className="overflow-auto flex-1">
             <table className="w-full text-left border-collapse text-xs">
               <thead className="bg-gradient-to-b from-[#4a6fa5] to-[#3d5a80] text-white sticky top-0 z-10">
                 <tr><th className="p-2 border-r border-[#5a7fb5] w-10 text-center">#</th><th className="p-2 border-r border-[#5a7fb5] w-8 text-center">BL</th><th className="p-2 border-r border-[#5a7fb5] w-8 text-center">P</th><th className="p-2 border-r border-[#5a7fb5] w-20">Dossier</th><th className="p-2 border-r border-[#5a7fb5] w-20">Matricule</th><th className="p-2 border-r border-[#5a7fb5] min-w-[200px]">Nom et Prénom</th><th className="p-2 border-r border-[#5a7fb5] w-24">Date Nais.</th><th className="p-2 border-r border-[#5a7fb5] w-16">Age</th><th className="p-2 border-r border-[#5a7fb5] w-12 text-center">Sexe</th><th className="p-2 border-r border-[#5a7fb5] w-28">Téléphone</th><th className="p-2 border-r border-[#5a7fb5] min-w-[120px]">Adresse</th><th className="p-2 border-r border-[#5a7fb5] w-32">Dernière visite</th><th className="p-2 min-w-[120px]">Société</th></tr>
               </thead>
               <tbody>
+                <AnimatePresence initial={false}>
                 {filteredPatients.map((patient, index) => {
                   const isSel = selectedPatient?.id === patient.id;
                   const hv = patient.vitalSigns && (patient.vitalSigns.temperature || patient.vitalSigns.weight);
                   return (
-                    <tr key={patient.id} onClick={() => setSelectedPatient(patient)} onDoubleClick={() => handleRowDoubleClick(patient)}
+                    <motion.tr 
+                      key={patient.id}
+                      initial={{ opacity: 0, y: -20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      transition={{ duration: 0.3, type: 'spring', bounce: 0 }}
+                      onClick={() => setSelectedPatient(patient)} onDoubleClick={() => handleRowDoubleClick(patient)}
                       className={`cursor-pointer border-b transition-colors ${patient.blacklisted ? (isSel ? 'bg-red-200 hover:bg-red-300 border-red-300 text-red-900' : 'bg-red-50 hover:bg-red-100 border-red-200 text-red-700') : isSel ? 'bg-[#cce5ff] hover:bg-[#b8daff] border-slate-200' : index % 2 === 0 ? 'bg-white hover:bg-slate-100 border-slate-200' : 'bg-slate-50 hover:bg-slate-100 border-slate-200'}`}>
                       <td className="p-2 border-r border-slate-200 text-center text-slate-400 font-mono">{index + 1}</td>
                       <td className="p-2 border-r border-slate-200 text-center">
@@ -633,9 +606,10 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                       <td className="p-2 border-r border-slate-200 uppercase truncate text-slate-600">{patient.address || '—'}</td>
                       <td className="p-2 border-r border-slate-200 text-slate-600 font-mono">{formatLastVisit(resolveLastVisit(patient))}</td>
                       <td className="p-2 uppercase truncate text-slate-600">{patient.company || patient.insureName || '—'}</td>
-                    </tr>
+                    </motion.tr>
                   );
                 })}
+                </AnimatePresence>
                 {filteredPatients.length === 0 && <tr><td colSpan={13} className="p-12 text-center text-slate-400"><Users className="w-12 h-12 mx-auto mb-2 opacity-30" /><p className="font-medium">Aucun patient trouvé</p></td></tr>}
               </tbody>
             </table>

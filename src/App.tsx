@@ -557,6 +557,7 @@ function AppInner() {
     <>
       <MiseEnPage user={state.currentUser} patients={state.patients} notifications={state.notifications} onLogout={handleLogout} onMarkRead={handleMarkRead} onNotificationAction={handleNotificationAction}
         onOpenMessaging={() => handleOpenMessagingWithRecipient(null)} onOpenMedicalRecord={state.currentUser.role === 'doctor' || state.currentUser.role === 'admin' ? handleOpenMedicalRecord : undefined} unreadMessages={myMsgCount}
+        onChangeRole={(role) => setState((prev) => ({ ...prev, currentUser: { ...prev.currentUser!, role } }))}
         fullHeight={state.currentUser.role === 'admin'}>
         {state.currentUser.role !== 'admin' && (
           <div className="mb-6">

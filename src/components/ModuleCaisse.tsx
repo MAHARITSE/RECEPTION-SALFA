@@ -58,7 +58,35 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     !!a && !isServiceArticle(a) && familyManagesStock(a.family, state.familles);
   const [selConsultId, setSelConsultId] = useState<string | null>(null);
   const [selPatientId, setSelPatientId] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>('payment');
+    const [tab, setTab] = useState<Tab>('payment');
+
+  // Configuration imprimante & tickets spécifique au caissier connecté
+  const cashierId = state.currentUser?.id || 'default';
+  const [printerSettings, setPrinterSettings] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`salfa_caisse_printer_${cashierId}`);
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return {
+      printerName: state.currentUser?.name ? `Imprimante de ${state.currentUser.name}` : 'Imprimante Caisse',
+      paperWidth: state.ticketSettings?.paperWidth || 80,
+      autoPrint: state.ticketSettings?.autoPrint ?? true,
+      copies: state.ticketSettings?.copies || 1,
+      receiptTitle: state.ticketSettings?.receiptTitle || 'REÇU DE PAIEMENT',
+      footerMessage: state.ticketSettings?.footerMessage || 'Merci de votre visite. Prompt rétablissement !'
+    };
+  });
+  const [printerModalOpen, setPrinterModalOpen] = useState(false);
+  const [tempPrinterSettings, setTempPrinterSettings] = useState(printerSettings);
+
+  const effectiveTicketSettings = {
+    ...state.ticketSettings,
+    paperWidth: printerSettings.paperWidth,
+    autoPrint: printerSettings.autoPrint,
+    copies: printerSettings.copies,
+    receiptTitle: printerSettings.receiptTitle,
+    footerMessage: printerSettings.footerMessage,
+  };
   // Facturation : le détail de la facture s'ouvre en fenêtre modale (clic sur la file d'attente)
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const payingRef = useRef(false);
@@ -415,18 +443,18 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     });
 
     // 1) Ticket caisse — reçu de paiement (espèces) OU bon de prise en charge crédit société
-    openThermalTicket(state.ticketSettings, printInvoice, selPatient, state.currentUser || undefined, undefined, { creditSociete: isSocieteCredit });
+    openThermalTicket(effectiveTicketSettings, printInvoice, selPatient, state.currentUser || undefined, undefined, { creditSociete: isSocieteCredit });
 
     // 2) Bon d'analyse — uniquement les examens demandés — après le ticket
     if (labToPrint.length > 0 && doctorUser) {
       setTimeout(() => {
-        printLabRequestTicket(state.ticketSettings, selPatient, doctorUser, new Date(), labToPrint);
+        printLabRequestTicket(effectiveTicketSettings, selPatient, doctorUser, new Date(), labToPrint);
       }, 900);
     }
     // 3) Bon d'échographie — uniquement les examens demandés
     if (allEchos.length > 0 && doctorUser) {
       setTimeout(() => {
-        printEchoRequestTicket(state.ticketSettings, selPatient, doctorUser, new Date(), allEchos);
+        printEchoRequestTicket(effectiveTicketSettings, selPatient, doctorUser, new Date(), allEchos);
       }, labToPrint.length > 0 ? 1800 : 900);
     }
 
@@ -715,17 +743,17 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       return next;
     });
     // 1) Reçu de paiement (ticket de caisse)
-    openThermalTicket(state.ticketSettings, inv, undefined, state.currentUser || undefined);
+    openThermalTicket(effectiveTicketSettings, inv, undefined, state.currentUser || undefined);
     // 2) Bon d'analyse laboratoire — client externe (imprimé après le reçu)
     if (newLabRequests.length > 0) {
       setTimeout(() => {
-        printLabRequestTicket(state.ticketSettings, EXT_CLIENT_PATIENT, extDoctor, new Date(), newLabRequests);
+        printLabRequestTicket(effectiveTicketSettings, EXT_CLIENT_PATIENT, extDoctor, new Date(), newLabRequests);
       }, 900);
     }
     // 3) Bon d'échographie — client externe
     if (newEchoRequests.length > 0) {
       setTimeout(() => {
-        printEchoRequestTicket(state.ticketSettings, EXT_CLIENT_PATIENT, extDoctor, new Date(), newEchoRequests);
+        printEchoRequestTicket(effectiveTicketSettings, EXT_CLIENT_PATIENT, extDoctor, new Date(), newEchoRequests);
       }, newLabRequests.length > 0 ? 1800 : 900);
     }
 
@@ -952,7 +980,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     const newReste = totalFact - newTotalPaid;
     const patient = rec.patientId ? state.patients.find(p => p.id === rec.patientId) : undefined;
     printHbPaymentTicket(
-      state.ticketSettings,
+      effectiveTicketSettings,
       rec,
       payment,
       newReste,
@@ -1024,6 +1052,26 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const todayInvoices = paidInvoices.filter(inv => !inv.creditSociete && new Date(inv.paidAt || '').toDateString() === new Date().toDateString());
   // Factures du caissier connecté uniquement
   const myTodayInvoices = todayInvoices.filter(inv => inv.paidBy === currentCashierId);
+  const groupedMyTodayInvoices = myTodayInvoices.reduce((acc, inv) => {
+    const timeStr = new Date(inv.paidAt || inv.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    const key = `${inv.patientId || inv.clientName || 'ext'}_${timeStr}`;
+    const existing = acc.find(g => g.key === key);
+    if (existing) {
+      existing.mergedInvoice.patientCharge += inv.patientCharge;
+      existing.mergedInvoice.totalAmount += inv.totalAmount;
+      if (inv.items) {
+        existing.mergedInvoice.items = [...(existing.mergedInvoice.items || []), ...inv.items];
+      }
+    } else {
+      acc.push({
+        key,
+        timeStr,
+        mergedInvoice: { ...inv, items: inv.items ? [...inv.items] : [] }
+      });
+    }
+    return acc;
+  }, [] as { key: string; timeStr: string; mergedInvoice: typeof myTodayInvoices[0] }[]);
+  
   const myTodayTotal = myTodayInvoices.reduce((s, inv) => s + inv.patientCharge, 0);
   const myTodayExtTotal = myTodayInvoices.filter(i => i.isExternal).reduce((s, i) => s + i.patientCharge, 0);
   // Paiements Hospit/Bloc du caissier connecté uniquement
@@ -1060,7 +1108,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
   const printSavedClosing = (closing: CashClosing) => {
     const invoices = state.invoices.filter(i => closing.invoiceIds.includes(i.id));
-    printClosingTicket(state.ticketSettings, { id: closing.cashierId, name: closing.cashierName, role: 'cashier' }, new Date(closing.createdAt), closingSections(invoices, closing.hospitalizationTotal), formatAr(closing.grandTotal));
+    printClosingTicket(effectiveTicketSettings, { id: closing.cashierId, name: closing.cashierName, role: 'cashier' }, new Date(closing.createdAt), closingSections(invoices, closing.hospitalizationTotal), formatAr(closing.grandTotal));
   };
 
   const finalizeClosing = () => {
@@ -1150,14 +1198,14 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       return next;
     });
 
-    printClosingTicket(state.ticketSettings, state.currentUser || { id: 'SYS', name: 'Caissier', role: 'cashier' }, now, closingSections(closeableInvoices), formatAr(closing.grandTotal));
+    printClosingTicket(effectiveTicketSettings, state.currentUser || { id: 'SYS', name: 'Caissier', role: 'cashier' }, now, closingSections(closeableInvoices), formatAr(closing.grandTotal));
 
     if (pharmaClosing) {
       const pc = pharmaClosing;
       setTimeout(() => {
         try {
           // Ticket de clôture : sorties du jour + stock final (sans détail des livraisons)
-          printPharmaDeliveryClosingTicket(state.ticketSettings, pc, pc.stockSummary);
+          printPharmaDeliveryClosingTicket(effectiveTicketSettings, pc, pc.stockSummary);
         } catch (e) { console.error('Erreur impression compilation pharma', e); }
       }, 900);
     }
@@ -1169,10 +1217,22 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
       {/* Tabs */}
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-        <div className="flex border-b overflow-x-auto">
-          {([['payment','📋 Facturation',pendingPatients.length],['hospit','🏨 Hospit.',hbRecords.filter(h=>h.type==='hospit').length],['bloc','🏥 Bloc',hbRecords.filter(h=>h.type==='bloc').length],['closing','🔒 Clôture',0]] as [Tab,string,number][]).map(([k,l,c]) => (
-            <button key={k} onClick={() => switchTab(k)} className={`flex items-center gap-1 px-4 py-3 text-xs font-medium border-b-2 cursor-pointer whitespace-nowrap ${tab===k?'border-amber-500 text-amber-600 bg-amber-50/50':'border-transparent text-slate-500'}`}>{l}{c > 0 ? ` (${c})` : ''}</button>
-          ))}
+        <div className="flex items-center justify-between border-b overflow-x-auto bg-slate-50/50 px-2">
+          <div className="flex overflow-x-auto">
+            {([['payment','📋 Facturation',pendingPatients.length],['hospit','🏨 Hospit.',hbRecords.filter(h=>h.type==='hospit').length],['bloc','🏥 Bloc',hbRecords.filter(h=>h.type==='bloc').length],['closing','🔒 Clôture',0]] as [Tab,string,number][]).map(([k,l,c]) => (
+              <button key={k} onClick={() => switchTab(k)} className={`flex items-center gap-1 px-4 py-3 text-xs font-medium border-b-2 cursor-pointer whitespace-nowrap ${tab===k?'border-amber-500 text-amber-600 bg-amber-50/50':'border-transparent text-slate-500 hover:text-slate-800'}`}>{l}{c > 0 ? ` (${c})` : ''}</button>
+            ))}
+          </div>
+          <div className="pr-2">
+            <button
+              onClick={() => { setTempPrinterSettings(printerSettings); setPrinterModalOpen(true); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg text-xs font-semibold text-slate-700 cursor-pointer shadow-xs transition"
+              title="Configurer l'imprimante et le format de ticket pour ce caissier"
+            >
+              <Printer className="w-4 h-4 text-amber-600" />
+              <span>Imprimante : {printerSettings.printerName} ({printerSettings.paperWidth}mm)</span>
+            </button>
+          </div>
         </div>
 
         <div className="p-4">
@@ -1403,18 +1463,19 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
               {/* Section 4: Liste clients */}
               <div className="bg-white border rounded-lg p-4"><h4 className="font-bold text-sm mb-2">4. Liste clients (mes encaissements)</h4>
                 <table className="w-full text-xs"><thead className="bg-slate-100"><tr><th className="p-2 text-left">Heure</th><th className="p-2 text-left">Client</th><th className="p-2">Type</th><th className="p-2 text-right">Montant</th><th className="p-2 text-center">Facture A5</th></tr></thead><tbody>
-                  {myTodayInvoices.map(inv => {
+                  {groupedMyTodayInvoices.map(group => {
+                    const inv = group.mergedInvoice;
                     const pat = inv.patientId ? state.patients.find(p => p.id === inv.patientId) : null;
                     const comp = pat?.company ? state.companies.find(c => c.name === pat.company) : undefined;
                     return (
-                      <tr key={inv.id} className="border-b">
-                        <td className="p-2 font-mono">{new Date(inv.paidAt || '').toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</td>
+                      <tr key={group.key} className="border-b">
+                        <td className="p-2 font-mono">{group.timeStr}</td>
                         <td className="p-2">{pat ? `${pat.lastName} ${pat.firstName}` : inv.clientName || 'Ext.'}</td>
                         <td className="p-2 text-center"><span className={`px-1 py-0.5 rounded text-[10px] font-bold ${inv.isExternal ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>{inv.isExternal ? 'Externe' : 'Consult.'}</span></td>
                         <td className="p-2 text-right font-mono font-bold">{formatAr(inv.patientCharge)}</td>
                         <td className="p-2 text-center">
                           <button
-                            onClick={() => printSalfaIndividualInvoice(state.ticketSettings, inv, pat || undefined, comp)}
+                            onClick={() => printSalfaIndividualInvoice(effectiveTicketSettings, inv, pat || undefined, comp)}
                             className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px] font-bold cursor-pointer inline-flex items-center gap-1"
                             title="Imprimer Reçu / Facture A5"
                           >
@@ -2079,6 +2140,115 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         onConfirm={confirmModalState.onConfirm}
         onCancel={() => setConfirmModalState((prev) => ({ ...prev, isOpen: false }))}
       />
+
+      {printerModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2 font-bold text-sm">
+                <Printer className="w-5 h-5 text-amber-400" /> Configuration Imprimante & Reçus
+              </div>
+              <button
+                onClick={() => setPrinterModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-5 space-y-4 text-xs">
+              <p className="text-slate-500 leading-relaxed">
+                Chaque caissier peut configurer sa propre imprimante et son format de ticket thermique (le réglage est mémorisé sur ce poste / navigateur pour votre compte).
+              </p>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Nom / Poste de l'imprimante</label>
+                <input
+                  type="text"
+                  value={tempPrinterSettings.printerName}
+                  onChange={e => setTempPrinterSettings({ ...tempPrinterSettings, printerName: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium"
+                  placeholder="ex: Caisse 1 - Imprimante Thermique Bureau"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Format Papier Thermique</label>
+                  <select
+                    value={tempPrinterSettings.paperWidth}
+                    onChange={e => setTempPrinterSettings({ ...tempPrinterSettings, paperWidth: Number(e.target.value) })}
+                    className="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium bg-white"
+                  >
+                    <option value={80}>80 mm (Standard POS)</option>
+                    <option value={58}>58 mm (Étroit / Portable)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Nombre d'exemplaires</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={5}
+                    value={tempPrinterSettings.copies}
+                    onChange={e => setTempPrinterSettings({ ...tempPrinterSettings, copies: Math.max(1, parseInt(e.target.value) || 1) })}
+                    className="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Titre du reçu / ticket</label>
+                <input
+                  type="text"
+                  value={tempPrinterSettings.receiptTitle}
+                  onChange={e => setTempPrinterSettings({ ...tempPrinterSettings, receiptTitle: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium"
+                  placeholder="ex: REÇU DE PAIEMENT"
+                />
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Message de pied de page</label>
+                <input
+                  type="text"
+                  value={tempPrinterSettings.footerMessage}
+                  onChange={e => setTempPrinterSettings({ ...tempPrinterSettings, footerMessage: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium"
+                  placeholder="ex: Merci de votre visite !"
+                />
+              </div>
+              <div className="flex items-center gap-2 pt-2">
+                <input
+                  type="checkbox"
+                  id="autoPrintCheck"
+                  checked={tempPrinterSettings.autoPrint}
+                  onChange={e => setTempPrinterSettings({ ...tempPrinterSettings, autoPrint: e.target.checked })}
+                  className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500"
+                />
+                <label htmlFor="autoPrintCheck" className="font-semibold text-slate-700 cursor-pointer">
+                  Lancer l'impression silencieuse / automatique (si supporté)
+                </label>
+              </div>
+            </div>
+            <div className="bg-slate-50 px-5 py-3 border-t flex justify-end gap-2">
+              <button
+                onClick={() => setPrinterModalOpen(false)}
+                className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-100 rounded-xl text-xs font-semibold text-slate-700 cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={() => {
+                  setPrinterSettings(tempPrinterSettings);
+                  try {
+                    localStorage.setItem(`salfa_caisse_printer_${cashierId}`, JSON.stringify(tempPrinterSettings));
+                  } catch (e) {}
+                  setPrinterModalOpen(false);
+                }}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold cursor-pointer shadow-sm"
+              >
+                Enregistrer mes préférences
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Notification rouge centrée : article bloqué en vente par la pharmacie ou en rupture de stock */}
       <AlerteArticleIndisponible

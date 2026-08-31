@@ -1,0 +1,8 @@
+{
+  "name": "MediCare HIS",
+  "description": "Système de Gestion Hospitalière - Réception, consultation, caisse, pharmacie, magasin, laboratoire, administration, facturation",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

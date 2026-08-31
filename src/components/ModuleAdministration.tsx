@@ -81,6 +81,7 @@ interface UserModalState {
     id: string;
     name: string;
     role: UserRole;
+    roles?: UserRole[];
     password?: string;
   };
 }
@@ -149,7 +150,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
   const [userModal, setUserModal] = useState<UserModalState>({
     isOpen: false,
     mode: 'add',
-    user: { id: '', name: '', role: 'doctor', password: '' },
+    user: { id: '', name: '', role: 'doctor', roles: ['doctor'], password: '' },
   });
 
   const [resetPasswordModal, setResetPasswordModal] = useState<ResetPasswordModalState>({
@@ -180,7 +181,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
     setUserModal({
       isOpen: true,
       mode: 'add',
-      user: { id: '', name: '', role: 'doctor', password: 'pass' + Math.floor(100 + Math.random() * 900) },
+      user: { id: '', name: '', role: 'doctor', roles: ['doctor'], password: 'pass' + Math.floor(100 + Math.random() * 900) },
     });
   };
 
@@ -188,7 +189,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
     setUserModal({
       isOpen: true,
       mode: 'edit',
-      user: { id: user.id, name: user.name, role: user.role, password: '' },
+      user: { id: user.id, name: user.name, role: user.role, roles: user.roles || [user.role], password: '' },
     });
   };
 
@@ -202,6 +203,11 @@ export default function ModuleAdministration({ state, setState }: Props) {
       return;
     }
 
+    if (!user.roles || user.roles.length === 0) {
+      showToast('⚠️ Veuillez sélectionner au moins un rôle');
+      return;
+    }
+
     if (mode === 'add') {
       if (state.users.some(u => u.id.toLowerCase() === cleanId.toLowerCase())) {
         showToast('⚠️ Cet identifiant ID existe déjà');
@@ -210,7 +216,8 @@ export default function ModuleAdministration({ state, setState }: Props) {
       const newU: User = {
         id: cleanId,
         name: cleanName,
-        role: user.role,
+        role: user.roles[0],
+        roles: user.roles,
         password: user.password?.trim() || 'pass123',
       };
       setState((prev) => {
@@ -229,14 +236,15 @@ export default function ModuleAdministration({ state, setState }: Props) {
               return {
                 ...u,
                 name: cleanName,
-                role: user.role,
+                role: user.roles![0],
+                roles: user.roles,
                 ...(user.password?.trim() ? { password: user.password.trim() } : {}),
               };
             }
             return u;
           }),
         };
-        addAuditLog(next, 'MODIFICATION_UTILISATEUR', `${cleanName} (${cleanId}) — ${roleLabels[user.role]}`);
+        addAuditLog(next, 'MODIFICATION_UTILISATEUR', `${cleanName} (${cleanId}) — ${roleLabels[user.roles![0]]}`);
         return next;
       });
       showToast(`✅ Utilisateur ${cleanId} mis à jour`);
@@ -769,16 +777,29 @@ export default function ModuleAdministration({ state, setState }: Props) {
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">Rôle et permissions *</label>
-                <select
-                  value={userModal.user.role}
-                  onChange={(e) => setUserModal({ ...userModal, user: { ...userModal.user, role: e.target.value as UserRole } })}
-                  className="w-full px-3 py-2 border rounded-xl text-sm bg-white cursor-pointer outline-none"
-                >
+                <label className="text-xs font-bold text-slate-700 block mb-1">Rôles et permissions (Cocher un ou plusieurs) *</label>
+                <div className="grid grid-cols-2 gap-2 border rounded-xl p-3 bg-slate-50 max-h-48 overflow-y-auto">
                   {ALL_ROLES.map((r) => (
-                    <option key={r} value={r}>{roleLabels[r]}</option>
+                    <label key={r} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-slate-100 p-1 rounded transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={userModal.user.roles?.includes(r) || false}
+                        onChange={(e) => {
+                          const currentRoles = userModal.user.roles || [];
+                          let newRoles;
+                          if (e.target.checked) {
+                            newRoles = [...currentRoles, r];
+                          } else {
+                            newRoles = currentRoles.filter(role => role !== r);
+                          }
+                          setUserModal({ ...userModal, user: { ...userModal.user, roles: newRoles, role: newRoles.length > 0 ? newRoles[0] : userModal.user.role } });
+                        }}
+                        className="w-4 h-4 text-blue-600 rounded cursor-pointer accent-blue-600"
+                      />
+                      <span className="text-slate-700 select-none">{roleLabels[r]}</span>
+                    </label>
                   ))}
-                </select>
+                </div>
               </div>
 
               <div>
@@ -937,72 +958,32 @@ export default function ModuleAdministration({ state, setState }: Props) {
 
       {/* Main Admin Workspace Card — occupe toute la fenêtre (hauteur restante) */}
       <div className="flex min-h-0 flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-          {/* Sidebar Menu administrateur */}
-          <aside className="w-72 shrink-0 border-r border-slate-800 bg-slate-900 text-white overflow-y-auto">
-            <div className="sticky top-0 z-10 bg-slate-950/95 px-4 py-4 border-b border-white/10">
-              <div className="flex items-center gap-2 font-bold text-sm text-emerald-400">
-                <Menu className="w-4 h-4 text-emerald-400" /> Console d'Administration
-              </div>
-              <p className="mt-1 text-[11px] text-slate-400 leading-snug">Supervision système, sécurité & accès directs aux modules.</p>
-            </div>
-
-            <div className="p-3 space-y-5">
-              <div>
-                <div className="px-2 pb-1.5 text-[10px] uppercase tracking-wider text-slate-400 font-bold">Panneaux d'administration</div>
-                <div className="space-y-1">
-                  {TABS.map((t) => {
-                    const Icon = t.icon;
-                    const active = !activeModule && tab === t.key;
-                    return (
-                      <button
-                        key={t.key}
-                        onClick={() => selectAdminTab(t.key)}
-                        title={t.desc}
-                        className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold cursor-pointer flex items-start gap-2.5 transition ${
-                          active ? 'bg-white text-slate-900 shadow-md font-bold' : 'text-slate-300 hover:bg-white/10 hover:text-white'
-                        }`}
-                      >
-                        <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${active ? 'text-emerald-600' : 'text-slate-400'}`} />
-                        <span>
-                          <span className="block">{t.label}</span>
-                          <span className={`block font-normal text-[10px] leading-tight ${active ? 'text-slate-500' : 'text-slate-400'}`}>{t.desc}</span>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div>
-                <div className="px-2 pb-1.5 text-[10px] uppercase tracking-wider text-emerald-400 font-bold">Interfaces Applicatives</div>
-                <div className="space-y-1">
-                  {APP_MODULES.map((m) => {
-                    const Icon = m.icon;
-                    const active = activeModule === m.key;
-                    return (
-                      <button
-                        key={m.key}
-                        onClick={() => selectAppModule(m.key)}
-                        title={m.desc}
-                        className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold cursor-pointer flex items-start gap-2.5 transition ${
-                          active ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-300 hover:bg-white/10 hover:text-white'
-                        }`}
-                      >
-                        <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${active ? 'text-white' : 'text-emerald-400'}`} />
-                        <span>
-                          <span className="block">{m.label}</span>
-                          <span className={`block font-normal text-[10px] leading-tight ${active ? 'text-emerald-100' : 'text-slate-400'}`}>{m.desc}</span>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </aside>
-
           {/* Main Content Area */}
           <section className="flex min-w-0 flex-1 flex-col bg-slate-50/70">
+             {/* Top Navigation Bar with Tabs & Modules */}
+            <div className="bg-slate-900 text-white px-4 py-2.5 border-b border-slate-800 flex items-center justify-between gap-4 overflow-x-auto shrink-0">
+              <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
+                <span className="text-[10px] uppercase tracking-wider text-emerald-400 font-bold px-2 whitespace-nowrap">Admin :</span>
+                {TABS.map((t) => {
+                  const Icon = t.icon;
+                  const active = !activeModule && tab === t.key;
+                  return (
+                    <button
+                      key={t.key}
+                      onClick={() => { setActiveModule(null); setTab(t.key); }}
+                      title={t.desc}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap cursor-pointer flex items-center gap-1.5 transition ${
+                        active ? 'bg-emerald-600 text-white shadow' : 'text-slate-300 hover:bg-white/10 hover:text-white'
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      <span>{t.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {activeModule && (
               <div className="px-5 py-3 border-b bg-white flex items-center justify-between gap-3 shadow-xs">
                 <div>
