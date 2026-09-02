@@ -180,10 +180,37 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     return i.items.some((it) => it.category === 'lab' || it.category === 'echo' || it.category === 'consultation');
   });
 
+  /**
+   * Les médicaments d'une consultation sont-ils déjà encaissés/réglés ?
+   * Une ordonnance est considérée payée quand :
+   *  1. il existe une facture payée comportant une ligne pharmacie liée à cette
+   *     consultation (`consultationId`), ou une vente payée « pharmacie » liée ;
+   *  2. sinon (données legacy / démo : la consultation et sa facture « globale »
+   *     n'ont pas de lien `consultationId`), une facture **payée** du même
+   *     patient, comportant une ligne pharmacie, datée du même jour que la
+   *     consultation. Évite de ré-afficher en Caisse des médicaments déjà
+   *     facturés/réglés (cas par ex. des lignes « Médicaments & Soins »).
+   */
+  const consultationPharmacyPaid = (c: { id: string; patientId?: string; date?: string }) => {
+    const pid = c.patientId;
+    if (!pid) return false;
+    if (state.invoices.some(inv =>
+      inv.patientId === pid && inv.status === 'paid' && inv.consultationId === c.id &&
+      inv.items.some(it => it.category === 'pharmacy'))) return true;
+    if ((state.ventes || []).some(v =>
+      v.patientId === pid && v.status === 'paid' && v.consultationId === c.id &&
+      (state.venteLines || []).some(l => l.venteId === v.id && l.category === 'pharmacy'))) return true;
+    const cDay = (c.date || '').slice(0, 10);
+    return state.invoices.some(inv =>
+      inv.patientId === pid && inv.status === 'paid' && !inv.consultationId &&
+      inv.items.some(it => it.category === 'pharmacy') &&
+      (inv.createdAt || inv.paidAt || '').slice(0, 10) === cDay);
+  };
+
   // Helper: get all pending items for a patient (pharmacy + lab + echo)
   const getPendingAmount = (p: any) => {
-    const cons = state.consultations.filter(c => c.patientId === p.id && !state.invoices.some(inv => inv.consultationId === c.id && inv.status === 'paid' && inv.items.some(it => it.category === 'pharmacy')));
-    let amt = cons.reduce((s, c) => s + c.prescriptions.reduce((ss, pr) => ss + roundTo2(pr.unitPrice * pr.quantity * (1 - pr.discount / 100)), 0), 0);
+    const cons = state.consultations.filter(c => c.patientId === p.id && !consultationPharmacyPaid(c));
+    let amt = cons.reduce((s, c) => s + c.prescriptions.reduce((ss, pr) => ss + roundTo2((pr.unitPrice || 0) * (pr.quantity || 0) * (1 - (pr.discount || 0) / 100)), 0), 0);
     const svcInvs = pendingServiceInvoices.filter(i => i.patientId === p.id);
     amt += svcInvs.reduce((s, i) => s + i.totalAmount, 0);
     return amt;
@@ -192,7 +219,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const getConsults = (pid: string) => state.consultations.filter(c =>
     c.patientId === pid &&
     c.prescriptions.length > 0 &&
-    !state.invoices.some(inv => inv.consultationId === c.id && inv.status === 'paid' && inv.items.some(it => it.category === 'pharmacy'))
+    !consultationPharmacyPaid(c)
   );
   const selConsult = state.consultations.find(c => c.id === selConsultId);
   const selPatient = state.patients.find(p => p.id === (selPatientId || selConsult?.patientId)) || null;

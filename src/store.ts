@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import type {
-  Patient, Consultation, Invoice, CashClosing, Article, AuditLog, VitalSigns, Prescription,
+  Patient, Consultation, Invoice, InvoiceItem, CashClosing, Article, AuditLog, VitalSigns, Prescription,
   Notification, UserRole, User, Company, Fournisseur, Famille,
   Message, StockTransfer, StockEntry, ClientType, ArticleFamily, TransferCategory,
   LabExamCatalog, LabCategory, LabRequest, PatientJourneyEvent, JourneyDepartment,
@@ -1137,12 +1137,78 @@ export function ensureUnifiedArticles(state: AppState): {
 }
 
 /**
+ * Garantit que chaque consultation possède ses tableaux d'ordonnance et de
+ * demandes (labo/écho). Les modules (Laboratoire, Dossier médical, Caisse,
+ * Pharmacie…) font l'hypothèse que `prescriptions`/`labRequests` sont des
+ * tableaux, or certaines consultations anciennes (seed) ou issues d'imports
+ * peuvent les omettre — ce qui faisait planter le module Laboratoire (liste
+ * vide / écran blanc) et pouvait casser le dossier médical. On normalise donc
+ * au chargement, sans perdre de données.
+ */
+function ensureConsultationArrays(state: AppState): AppState {
+  const consults = state.consultations || [];
+  const needs = consults.some(
+    (c) => !Array.isArray(c.labRequests) || !Array.isArray(c.echoRequests) || !Array.isArray(c.prescriptions)
+  );
+  if (!needs) return state;
+  return {
+    ...state,
+    consultations: consults.map((c) => ({
+      ...c,
+      prescriptions: Array.isArray(c.prescriptions) ? c.prescriptions : [],
+      labRequests: Array.isArray(c.labRequests) ? c.labRequests : [],
+      echoRequests: Array.isArray(c.echoRequests) ? c.echoRequests : [],
+    })),
+  };
+}
+
+/** Déduit la catégorie d'une ligne de facture absente des anciennes données (seed). */
+function inferInvoiceItemCategory(description: string): InvoiceItem['category'] | undefined {
+  const d = (description || '').toLowerCase();
+  if (/médicament|ordonnance|paracétamol|vitamine|sirop|comprimé|gélule|capsule|pommade|sérum|antibiothérapie|médoc|pharmacie/.test(d)) return 'pharmacy';
+  if (/échograph|écho/.test(d)) return 'echo';
+  if (/analyse|glycémie|\bnfs\b|crp|créatinine|bilan|tdr|laboratoire|prélèvement|hémoglobine|sang veineux|urine|goutte épaisse|réactif/.test(d)) return 'lab';
+  if (/hospitalisation|journée|forfait maternité|maternité|chambre|lit|salle de surveillance/.test(d)) return 'hospitalization';
+  if (/bloc|chirurgie|opération/.test(d)) return 'surgery';
+  if (/consultation|médecin|médical|spécialiste|urgences|générale|visite|soins/.test(d)) return 'consultation';
+  return undefined;
+}
+
+/**
+ * Comble les `category` manquantes des lignes de factures anciennes (seed) : de
+ * nombreuses lignes « Médicaments & Soins » n'ont pas de catégorie, ce qui
+ * empêchait la Caisse de reconnaître que les médicaments d'une consultation
+ * avaient déjà été payés → elle les ré-affichait comme « à payer », avec
+ * doublons (une fois par consultation) et montants à 0. L'inférence se fait
+ * sur la description et ne modifie jamais une catégorie déjà renseignée.
+ */
+function normalizeInvoiceItemCategories(state: AppState): AppState {
+  const invs = state.invoices || [];
+  let changed = false;
+  const nextInvoices = invs.map((inv) => {
+    if (!inv.items.some((it) => !it.category)) return inv;
+    const items = inv.items.map((it) => {
+      if (it.category) return it;
+      const inferred = inferInvoiceItemCategory(it.description);
+      if (!inferred) return it;
+      changed = true;
+      return { ...it, category: inferred };
+    });
+    return { ...inv, items };
+  });
+  return changed ? { ...state, invoices: nextInvoices } : state;
+}
+
+/**
  * Prépare un état chargé depuis une base locale (IndexedDB ou MySQL) :
- * normalisation des familles, garantie de l'établissement principal et
+ * normalisation des familles, garantie de l'établissement principal, des
+ * tableaux de consultations, des catégories de lignes de factures et
  * synchronisation de la base unifiée des articles (LABO + ECHO).
  */
 export function prepareLoadedState(state: AppState): AppState {
-  const normalized = ensureEtablissements(normalizeFamilyBases(state));
+  const normalized = ensureEtablissements(
+    normalizeFamilyBases(ensureConsultationArrays(normalizeInvoiceItemCategories(state)))
+  );
   const { state: unified, changed, addedLab, addedEcho, addedHosp } = ensureUnifiedArticles(normalized);
   if (changed) {
     // eslint-disable-next-line no-console

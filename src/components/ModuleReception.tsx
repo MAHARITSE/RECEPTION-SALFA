@@ -47,6 +47,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
 
   const getPatientFormErrors = (pf: typeof patientForm) => {
     const errors: Record<string, string> = {};
+    const isNew = modal === 'add';
 
     const dossier = normalizeDossierNumber(pf.dossier);
     if (!dossier) {
@@ -63,15 +64,17 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
       errors.lastName = 'Le nom contient des caractères invalides';
     }
 
-    if (!pf.firstName.trim()) {
-      errors.firstName = 'Le prénom est obligatoire';
-    } else if (pf.firstName.trim().length < 2) {
+    // Prénom facultatif : on ne le contrôle que s'il est renseigné.
+    if (pf.firstName.trim() && pf.firstName.trim().length < 2) {
       errors.firstName = 'Le prénom doit comporter au moins 2 caractères';
-    } else if (!/^[A-Za-zÀ-ÖØ-öø-ÿ\s'-]+$/.test(pf.firstName.trim())) {
+    } else if (pf.firstName.trim() && !/^[A-Za-zÀ-ÖØ-öø-ÿ\s'-]+$/.test(pf.firstName.trim())) {
       errors.firstName = 'Le prénom contient des caractères invalides';
     }
 
-    if (pf.dateOfBirth) {
+    // Date de naissance obligatoire à la création.
+    if (isNew && !pf.dateOfBirth) {
+      errors.dateOfBirth = 'La date de naissance est obligatoire';
+    } else if (pf.dateOfBirth) {
       const dob = new Date(pf.dateOfBirth);
       const today = new Date();
       if (isNaN(dob.getTime())) {
@@ -88,6 +91,11 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
       if (!/^\d{8,15}$/.test(cleanPhone)) {
         errors.contact = 'Numéro invalide (ex: 034 12 345 67, 8 à 15 chiffres)';
       }
+    }
+
+    // Adresse obligatoire à la création.
+    if (isNew && !pf.address.trim()) {
+      errors.address = "L'adresse est obligatoire";
     }
 
     if (pf.clientType === 'societe' && !pf.company.trim()) {
@@ -489,53 +497,56 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
   };
 
   return (
-    <div className="flex flex-col min-h-screen w-full bg-[#e8e8e8] text-slate-800 font-sans select-none">
-      <header className="bg-gradient-to-b from-[#4a90d9] to-[#3a7bc8] text-white px-4 py-2 flex justify-between items-center shadow-md">
-        <div className="flex items-center gap-4 shrink-0">
-          <div className="flex items-center justify-center bg-white/20 backdrop-blur rounded-lg p-2"><Hospital className="w-7 h-7" /></div>
-          <div><h1 className="text-2xl font-bold tracking-tight">MediCare HIS</h1><p className="text-blue-100 text-xs font-medium">Module Réception</p></div>
+    <div className="flex flex-col min-h-screen w-full bg-slate-100 text-slate-800 font-sans select-none">
+      {/* En-tête principal */}
+      <header className="bg-gradient-to-r from-blue-700 via-blue-600 to-indigo-700 text-white px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3 shadow-lg">
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center justify-center bg-white/20 backdrop-blur rounded-xl p-2 shadow-inner"><Hospital className="w-7 h-7" /></div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight">MediCare HIS</h1>
+              <span className="hidden sm:inline-block rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">Réception &amp; Accueil</span>
+            </div>
+            <p className="text-blue-100 text-xs font-medium">Enregistrement des patients · File d'attente des consultations</p>
+          </div>
         </div>
 
-        <div className="flex items-center gap-4 shrink-0">
-
-          <div className="text-right bg-white/10 backdrop-blur rounded-lg px-4 py-1.5">
-            <div className="text-xl font-mono font-bold">{currentTime.toLocaleTimeString('fr-FR')}</div>
-            <div className="text-xs text-blue-100">{currentTime.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <div className="text-right bg-white/10 backdrop-blur rounded-xl px-4 py-1.5 border border-white/10">
+            <div className="text-lg sm:text-xl font-mono font-bold tabular-nums leading-tight">{currentTime.toLocaleTimeString('fr-FR')}</div>
+            <div className="text-[11px] text-blue-100 capitalize">{currentTime.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
           </div>
-          <button onClick={onOpenMessaging} className="flex items-center gap-2 px-3 py-2 bg-white/20 hover:bg-white/30 backdrop-blur rounded-lg transition font-medium cursor-pointer" title="Messagerie">
-
-
-
-
-            <MessageCircle className="w-4 h-4" />
+          <button onClick={onOpenMessaging} className="flex items-center justify-center gap-2 p-2.5 bg-white/20 hover:bg-white/30 backdrop-blur rounded-xl transition font-medium cursor-pointer" title="Messagerie interne">
+            <MessageCircle className="w-5 h-5" />
           </button>
-          <button onClick={onStaffLogin} className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur rounded-lg transition font-medium cursor-pointer">
-            <LogIn className="w-4 h-4" /> Personnel
+          <button onClick={onStaffLogin} className="flex items-center gap-2 px-4 py-2.5 bg-white text-blue-700 hover:bg-blue-50 rounded-xl shadow transition font-semibold cursor-pointer">
+            <LogIn className="w-4 h-4" /> <span className="hidden sm:inline">Espace</span> Personnel
           </button>
         </div>
       </header>
 
-      <section className="bg-[#f5f5f5] border-b border-slate-300 px-4 py-2 sticky top-0 z-20 shadow-xs">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 flex-1 max-w-xl">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-2 h-4 w-4 text-slate-400" />
-              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-300 rounded text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-inner" placeholder="Rechercher: Nom, Dossier, Matricule..." />
-            </div>
-
+      {/* Barre d'outils — recherche + actions */}
+      <section className="sticky top-0 z-20 mt-4 border-y border-slate-200 bg-slate-50/95 px-4 sm:px-6 py-2.5 shadow-sm backdrop-blur">
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="relative w-full max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-9 pr-9 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900 shadow-inner" placeholder="Rechercher : nom, dossier, matricule…" />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer" aria-label="Effacer la recherche"><X className="h-4 w-4" /></button>
+            )}
           </div>
-          <div className="flex items-center gap-1">
-            <button onClick={() => { setModal('add'); setPatientTouched({}); setPatientSubmitted(false); setPatientForm({ dossier: '', lastName: '', firstName: '', dateOfBirth: '', gender: 'F', address: '', contact: '', ssn: '', matricule: '', insureName: '', clientType: 'comptoir', company: '', subCompany: '', famille: '', lienFamilial: '' }); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold shadow transition cursor-pointer"><Plus className="h-4 w-4" /> Nouveau</button>
-            <button onClick={() => { if (!selectedPatient) return; setPatientTouched({}); setPatientSubmitted(false); setPatientForm({ dossier: selectedPatient.dossier, lastName: selectedPatient.lastName, firstName: selectedPatient.firstName, dateOfBirth: selectedPatient.dateOfBirth === 'N/A' ? '' : selectedPatient.dateOfBirth, gender: selectedPatient.gender, address: selectedPatient.address, contact: selectedPatient.contact, ssn: selectedPatient.ssn, matricule: selectedPatient.matricule || '', insureName: selectedPatient.company || selectedPatient.insureName || '', clientType: selectedPatient.clientType === 'externe' ? 'comptoir' : selectedPatient.clientType, company: selectedPatient.company || '', subCompany: selectedPatient.subCompany || '', famille: selectedPatient.famille || '', lienFamilial: selectedPatient.lienFamilial || '' }); setModal('edit'); }} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Edit className="h-4 w-4" /> Modifier</button>
-            <button onClick={handleDeletePatient} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Trash2 className="h-4 w-4" /> Supprimer</button>
-            <div className="w-px h-6 bg-slate-300 mx-1" />
-            <button onClick={() => selectedPatient && setModal('patientInfo')} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Info className="h-4 w-4" /> Info</button>
-            <button onClick={handleBlacklistClick} title="Afficher les patients bloqués" className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-600 hover:bg-slate-700 text-white rounded text-xs font-bold shadow cursor-pointer"><UserX className="h-4 w-4" /> Bloqués{blacklistedPatients.length > 0 && <span className="ml-0.5 rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] leading-none">{blacklistedPatients.length}</span>}</button>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button onClick={() => { setModal('add'); setPatientTouched({}); setPatientSubmitted(false); setPatientForm({ dossier: '', lastName: '', firstName: '', dateOfBirth: '', gender: 'F', address: '', contact: '', ssn: '', matricule: '', insureName: '', clientType: 'comptoir', company: '', subCompany: '', famille: '', lienFamilial: '' }); }} className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-sm transition cursor-pointer"><Plus className="h-4 w-4" /> Nouveau</button>
+            <button onClick={() => { if (!selectedPatient) return; setPatientTouched({}); setPatientSubmitted(false); setPatientForm({ dossier: selectedPatient.dossier, lastName: selectedPatient.lastName, firstName: selectedPatient.firstName, dateOfBirth: selectedPatient.dateOfBirth === 'N/A' ? '' : selectedPatient.dateOfBirth, gender: selectedPatient.gender, address: selectedPatient.address, contact: selectedPatient.contact, ssn: selectedPatient.ssn, matricule: selectedPatient.matricule || '', insureName: selectedPatient.company || selectedPatient.insureName || '', clientType: selectedPatient.clientType === 'externe' ? 'comptoir' : selectedPatient.clientType, company: selectedPatient.company || '', subCompany: selectedPatient.subCompany || '', famille: selectedPatient.famille || '', lienFamilial: selectedPatient.lienFamilial || '' }); setModal('edit'); }} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Edit className="h-4 w-4" /> Modifier</button>
+            <button onClick={handleDeletePatient} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Trash2 className="h-4 w-4" /> Supprimer</button>
+            <div className="mx-0.5 hidden h-6 w-px bg-slate-300 sm:block" />
+            <button onClick={() => selectedPatient && setModal('patientInfo')} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Info className="h-4 w-4" /> Info</button>
+            <button onClick={handleBlacklistClick} title="Afficher les patients bloqués" className="flex items-center gap-1.5 px-3 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg text-xs font-bold shadow-sm transition cursor-pointer"><UserX className="h-4 w-4" /> Bloqués{blacklistedPatients.length > 0 && <span className="ml-0.5 rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] leading-none">{blacklistedPatients.length}</span>}</button>
           </div>
         </div>
       </section>
 
-      <main className="flex-1 p-3">
+      <main className="flex-1 px-4 sm:px-6 pt-4 pb-8">
         {unblacklistToast && (
           <div className="fixed inset-0 z-[9999] pointer-events-none flex items-center justify-center p-4">
             <div className="pointer-events-auto max-w-md w-full p-4 sm:p-5 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 text-white rounded-2xl shadow-2xl border border-emerald-300/40 flex items-center justify-between gap-4 animate-in fade-in zoom-in-95">
@@ -551,16 +562,16 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
             </div>
           </div>
         )}
-        <div className="bg-white border border-slate-400 rounded shadow-lg overflow-hidden h-full flex flex-col">
-          <div className="bg-gradient-to-b from-slate-100 to-slate-200 border-b border-slate-400 px-3 py-1.5 flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-600">📋 Patients — {filteredPatients.length} fiche(s)</span>
-            <span className="text-[10px] text-amber-700 font-semibold bg-amber-100 px-2 py-0.5 rounded">💡 Double-clic → Saisie paramètres</span>
+        <div className="bg-white border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm overflow-hidden flex flex-col">
+          <div className="border-b border-slate-200 dark:border-slate-700 px-4 py-2.5 flex items-center justify-between bg-slate-50 dark:bg-slate-800/60">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">📋 Patients — <span className="text-slate-700">{filteredPatients.length}</span> fiche(s)</span>
+            <span className="text-[11px] text-amber-700 font-semibold bg-amber-100 dark:bg-amber-900/50 px-2.5 py-1 rounded-full">💡 Double-clic sur une ligne → saisie des paramètres</span>
           </div>
 
           <div className="overflow-auto flex-1">
             <table className="w-full text-left border-collapse text-xs">
-              <thead className="bg-gradient-to-b from-[#4a6fa5] to-[#3d5a80] text-white sticky top-0 z-10">
-                <tr><th className="p-2 border-r border-[#5a7fb5] w-10 text-center">#</th><th className="p-2 border-r border-[#5a7fb5] w-8 text-center">BL</th><th className="p-2 border-r border-[#5a7fb5] w-8 text-center">P</th><th className="p-2 border-r border-[#5a7fb5] w-20">Dossier</th><th className="p-2 border-r border-[#5a7fb5] w-20">Matricule</th><th className="p-2 border-r border-[#5a7fb5] min-w-[200px]">Nom et Prénom</th><th className="p-2 border-r border-[#5a7fb5] w-24">Date Nais.</th><th className="p-2 border-r border-[#5a7fb5] w-16">Age</th><th className="p-2 border-r border-[#5a7fb5] w-12 text-center">Sexe</th><th className="p-2 border-r border-[#5a7fb5] w-28">Téléphone</th><th className="p-2 border-r border-[#5a7fb5] min-w-[120px]">Adresse</th><th className="p-2 border-r border-[#5a7fb5] w-32">Dernière visite</th><th className="p-2 min-w-[120px]">Société</th></tr>
+              <thead className="bg-slate-800 text-white sticky top-0 z-10">
+                <tr><th className="p-2.5 border-r border-slate-700 w-10 text-center text-xs uppercase tracking-wide">#</th><th className="p-2.5 border-r border-slate-700 w-8 text-center text-xs uppercase" title="Liste noire">BL</th><th className="p-2.5 border-r border-slate-700 w-8 text-center text-xs uppercase" title="Paramètres">P</th><th className="p-2.5 border-r border-slate-700 w-20 text-left">Dossier</th><th className="p-2.5 border-r border-slate-700 w-20 text-left">Matricule</th><th className="p-2.5 border-r border-slate-700 min-w-[200px] text-left">Nom et Prénom</th><th className="p-2.5 border-r border-slate-700 w-24 text-left">Date naiss.</th><th className="p-2.5 border-r border-slate-700 w-16 text-left">Âge</th><th className="p-2.5 border-r border-slate-700 w-12 text-center">Sexe</th><th className="p-2.5 border-r border-slate-700 w-28 text-left">Téléphone</th><th className="p-2.5 border-r border-slate-700 min-w-[120px] text-left">Adresse</th><th className="p-2.5 border-r border-slate-700 w-32 text-left">Dernière visite</th><th className="p-2.5 min-w-[120px] text-left">Société</th></tr>
               </thead>
               <tbody>
                 <AnimatePresence initial={false}>
@@ -617,9 +628,15 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
         </div>
       </main>
 
-      <footer className="bg-gradient-to-b from-slate-200 to-slate-300 border-t border-slate-400 px-4 py-1 flex justify-between items-center text-xs text-slate-600">
-        <div className="flex items-center gap-4"><span>📊 Total: <strong>{filteredPatients.length}</strong></span><span>|</span><span>🩺 <strong className="text-amber-700">{waitingCount}</strong></span><span>|</span><span>📅 <strong className="text-blue-700">{todayCount}</strong></span></div>
-        <div className="font-semibold">MediCare HIS v2.0 © 2026</div>
+      <footer className="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+        <div className="flex items-center gap-3 flex-wrap">
+          <span>Affichage : <strong className="text-slate-700 dark:text-slate-200">{filteredPatients.length}</strong> sur <strong className="text-slate-700 dark:text-slate-200">{state.patients.length}</strong> dossiers</span>
+          <span className="hidden sm:inline text-slate-300 dark:text-slate-600">|</span>
+          <span className="inline-flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-amber-400" /> En attente : <strong className="text-amber-700 dark:text-amber-400 tabular-nums">{waitingCount}</strong></span>
+          <span className="hidden sm:inline text-slate-300 dark:text-slate-600">|</span>
+          <span className="inline-flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-blue-500" /> Aujourd'hui : <strong className="text-blue-700 dark:text-blue-400 tabular-nums">{todayCount}</strong></span>
+        </div>
+        <div className="font-semibold">MediCare HIS — Module Réception</div>
       </footer>
 
       {/* SAISIE PATIENT — fenêtre modale centrée */}
@@ -669,7 +686,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                   </div>
 
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">Prénom *</label>
+                    <label className="block font-bold text-slate-700 mb-1">Prénom</label>
                     <input
                       type="text"
                       value={patientForm.firstName}
@@ -680,11 +697,12 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                     {(patientTouched.firstName || patientSubmitted) && patientErrors.firstName && (
                       <span className="text-[11px] text-rose-600 font-medium mt-0.5 block">{patientErrors.firstName}</span>
                     )}
+                    <span className="text-[10px] text-slate-500 mt-0.5 block">Facultatif.</span>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block font-bold text-slate-700 mb-1">Date Naiss.</label>
+                      <label className="block font-bold text-slate-700 mb-1">Date Naiss. *</label>
                       <input
                         type="date"
                         value={patientForm.dateOfBirth}
@@ -724,11 +742,27 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                   </div>
                   <div>
                     <label className="block font-bold text-slate-700 mb-1">Société (libre)</label>
-                    <input type="text" value={patientForm.company} onChange={(e) => setPatientForm({ ...patientForm, company: e.target.value })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 uppercase focus:outline-none focus:border-blue-500" />
+                    <input
+                      type="text"
+                      value={patientForm.company}
+                      disabled
+                      title="La société se choisit dans la liste ci-dessous (Type Client → Société)."
+                      placeholder="Sélection dans la liste"
+                      className="w-full bg-slate-200 text-slate-400 border border-slate-300 rounded px-2 py-1.5 uppercase cursor-not-allowed"
+                    />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">Adresse</label>
-                    <input type="text" value={patientForm.address} onChange={(e) => setPatientForm({ ...patientForm, address: e.target.value })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 uppercase focus:outline-none focus:border-blue-500" />
+                    <label className="block font-bold text-slate-700 mb-1">Adresse *</label>
+                    <input
+                      type="text"
+                      value={patientForm.address}
+                      onBlur={() => setPatientTouched((t) => ({ ...t, address: true }))}
+                      onChange={(e) => setPatientForm({ ...patientForm, address: e.target.value })}
+                      className={`w-full bg-white border rounded px-2 py-1.5 uppercase focus:outline-none ${ (patientTouched.address || patientSubmitted) && patientErrors.address ? 'border-rose-500 bg-rose-50/50 focus:border-rose-600' : 'border-slate-400 focus:border-blue-500'}`}
+                    />
+                    {(patientTouched.address || patientSubmitted) && patientErrors.address && (
+                      <span className="text-[11px] text-rose-600 font-medium mt-0.5 block">{patientErrors.address}</span>
+                    )}
                   </div>
                   <div>
                     <label className="block font-bold text-slate-700 mb-1">Type Client</label>

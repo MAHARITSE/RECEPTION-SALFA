@@ -155,7 +155,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
   state.consultations.forEach((c) => {
     const patient = state.patients.find((p) => p.id === c.patientId);
     const inv = state.invoices.find((i) => i.consultationId === c.id && i.status === 'paid');
-    c.labRequests.forEach((lr) => {
+    (c.labRequests || []).forEach((lr) => {
       if (!seenLabIds.has(lr.id)) {
         seenLabIds.add(lr.id);
         const canProcess = !!inv || c.isEmergency;
@@ -227,7 +227,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
           ...prev,
           consultations: prev.consultations.map((c) =>
             c.id === d.consultationId
-              ? { ...c, labRequests: c.labRequests.map((l) => (l.id === d.lr.id ? { ...l, ...patch } : l)) }
+              ? { ...c, labRequests: (c.labRequests || []).map((l) => (l.id === d.lr.id ? { ...l, ...patch } : l)) }
               : c,
           ),
         };
@@ -288,7 +288,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
           ...prev,
           consultations: prev.consultations.map((c) =>
             c.id === d.consultationId
-              ? { ...c, labRequests: c.labRequests.map((l) => (l.id === d.lr.id ? {
+              ? { ...c, labRequests: (c.labRequests || []).map((l) => (l.id === d.lr.id ? {
                   ...l, status: 'completed', results, labConclusion, biologicalAlert: hasAbnormal, completedAt: new Date().toISOString(),
                   completedBy: prev.currentUser?.id || '', validatedBy: prev.currentUser?.id || '',
                 } : l)) }
