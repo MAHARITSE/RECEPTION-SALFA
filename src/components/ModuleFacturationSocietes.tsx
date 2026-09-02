@@ -17,7 +17,14 @@ import { printSalfaCompanyMonthlyInvoice, printSalfaIndividualInvoice } from '..
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
 
-type Tab = 'societe' | 'comptoir' | 'externe' | 'historique_paiements';
+/** Deux grandes familles de factures, conformément au métier :
+ *  - 'client'   → Facture Client : chaque personne est facturée individuellement (A5).
+ *                 Inclut TOUTES les factures individuelles — comptoir, externe ET société
+ *                 (un salarié de société, même facturé en crédit société, apparaît ici
+ *                 pour être traité individuellement, A5 en bonne et due forme).
+ *  - 'societe'  → Facture Société : regroupement mensuel de toutes les personnes d'une société.
+ */
+type Tab = 'client' | 'societe' | 'historique_paiements';
 
 const monthLabel = (month: string) =>
   new Date(`${month}-01T00:00:00`).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
@@ -44,7 +51,7 @@ const invoiceDesignation = (inv: Invoice, state: AppState, separator = ', ') => 
 };
 
 export default function ModuleFacturationSocietes({ state, setState }: Props) {
-  const [tab, setTab] = useState<Tab>('societe');
+  const [tab, setTab] = useState<Tab>('client');
   const [filterCompany, setFilterCompany] = useState<string>('all');
   const [filterMonth, setFilterMonth] = useState<string>(currentMonth());
   const [filterStatus, setFilterStatus] = useState<'all' | 'impaye' | 'partiel' | 'payee'>('all');
@@ -52,6 +59,8 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
   const [filterNameComptoir, setFilterNameComptoir] = useState('');
   const [filterNumFactureExterne, setFilterNumFactureExterne] = useState('');
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<string>>(new Set());
+  // Sous-filtre de l'onglet « Facture Client » : toutes / comptoir / société / externe.
+  const [clientKind, setClientKind] = useState<'all' | 'comptoir' | 'externe' | 'societe'>('all');
 
   // ====== MODAL : Patients & Prescriptions d'une société (Double-clic) ======
   const [activeCompanyForPatients, setActiveCompanyForPatients] = useState<string | null>(null);
@@ -413,6 +422,42 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
     });
   }, [externeInvoices, filterMonth, filterStatus, filterNumFactureExterne, search, state]);
 
+  /** Liste unifiée de l'onglet « Facture Client » : TOUTES les factures individuelles
+   *  (comptoir + externe + société), traitées personne par personne (A5). Même les
+   *  factures en crédit société (clientType 'societe') apparaissent ici pour être
+   *  traitées individuellement ; elles restent également dans le regroupement mensuel
+   *  de l'onglet Facture Société. */
+  const clientInvoices = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { inv: Invoice; patient?: typeof state.patients[number]; source: 'comptoir' | 'externe' | 'societe'; company?: string }[] = [];
+    comptoirInvoices.forEach((x) => { if (!seen.has(x.inv.id)) { seen.add(x.inv.id); out.push({ ...x, source: 'comptoir' as const }); } });
+    externeInvoices.forEach((x) => { if (!seen.has(x.inv.id)) { seen.add(x.inv.id); out.push({ ...x, source: 'externe' as const }); } });
+    allCompanyInvoices.forEach((x) => {
+      if (seen.has(x.inv.id)) return;
+      seen.add(x.inv.id);
+      out.push({ inv: x.inv, patient: x.patient, source: 'societe' as const, company: x.companyName || x.patient?.company });
+    });
+    return out;
+  }, [comptoirInvoices, externeInvoices, allCompanyInvoices]);
+
+  /** Factures individuelles filtrées (onglet Facture Client). */
+  const filteredClientInvoices = useMemo(() => {
+    const q = (search.trim() || filterNameComptoir.trim()).toLowerCase();
+    return clientInvoices.filter(({ inv, patient, source }) => {
+      if (clientKind !== 'all' && source !== clientKind) return false;
+      if (!inv.createdAt.startsWith(filterMonth)) return false;
+      const st = invoiceStatusLabel(inv, state);
+      if (filterStatus === 'impaye' && st.balance <= 0) return false;
+      if (filterStatus === 'partiel' && st.label !== 'Partiellement payée') return false;
+      if (filterStatus === 'payee' && st.label !== 'Payée') return false;
+      if (!q) return true;
+      return [
+        patient?.lastName, patient?.firstName, patient?.dossier, patient?.company,
+        inv.clientName, inv.id, source,
+      ].some((v) => (v || '').toLowerCase().includes(q));
+    }).sort((a, b) => new Date(b.inv.createdAt).getTime() - new Date(a.inv.createdAt).getTime());
+  }, [clientInvoices, clientKind, filterMonth, filterStatus, search, filterNameComptoir, state]);
+
   /** Synthèse par société pour l'onglet Société */
   const companySummaryList = useMemo(() => {
     const map = new Map<string, {
@@ -489,9 +534,9 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
   /* ======================= TOTAUX GLOBAUX ======================= */
   const activeInvoicesList = tab === 'societe'
     ? filteredCompanyInvoices.map(x => x.inv)
-    : tab === 'comptoir'
-    ? filteredComptoirInvoices.map(x => x.inv)
-    : filteredExterneInvoices.map(x => x.inv);
+    : tab === 'client'
+    ? filteredClientInvoices.map(x => x.inv)
+    : [];
 
   const totalBilled = activeInvoicesList.reduce((s, i) => s + i.totalAmount, 0);
   const totalPaid = activeInvoicesList.reduce((s, i) => s + invoiceStatusLabel(i, state).paid, 0);
@@ -968,10 +1013,8 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
   /* ======================= RENDU DES ONGLETS ======================= */
 
   const TABS: [Tab, React.ReactNode][] = [
-    ['societe', <span className="flex items-center gap-1.5"><Building2 className="w-4 h-4 text-indigo-600" /> Sociétés / Conventions</span>],
-    ['comptoir', <span className="flex items-center gap-1.5"><ShoppingBag className="w-4 h-4 text-emerald-600" /> Patients au Comptoir</span>],
-    ['externe', <span className="flex items-center gap-1.5"><Store className="w-4 h-4 text-purple-600" /> Ventes & Examens Externes</span>],
-    ['historique_paiements', <span className="flex items-center gap-1.5"><History className="w-4 h-4 text-blue-600" /> Historique & Règlements Antérieurs</span>],
+    ['client', <span className="flex items-center gap-1.5"><Receipt className="w-4 h-4 text-emerald-600" /> Facture Client <span className="hidden sm:inline font-semibold text-slate-400">(A5 individuel)</span></span>],
+    ['societe', <span className="flex items-center gap-1.5"><Building2 className="w-4 h-4 text-indigo-600" /> Facture Société <span className="hidden sm:inline font-semibold text-slate-400">(Regroupement mensuel)</span></span>],
   ];
 
   return (
@@ -992,7 +1035,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
             <span className="text-[11px] font-semibold text-slate-500 uppercase flex items-center gap-1"><Calendar className="w-3 h-3" /> Mois</span>
             <input type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="w-full mt-1 px-3 py-1.5 border rounded-lg text-xs bg-white outline-none font-medium" />
           </label>
-          {tab !== 'comptoir' && (
+          {tab !== 'historique_paiements' && (
             <label className="block flex-1 min-w-[140px]">
               <span className="text-[11px] font-semibold text-slate-500 uppercase flex items-center gap-1"><BadgeCheck className="w-3 h-3" /> Statut</span>
               <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as any)} className="w-full mt-1 px-3 py-1.5 border rounded-lg text-xs bg-white outline-none cursor-pointer font-medium">
@@ -1022,7 +1065,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
         </div>
 
         <div className="p-4">
-          {/* ==================== 1. ONGLET SOCIÉTÉ ==================== */}
+          {/* ==================== 2. FACTURE SOCIÉTÉ (Regroupement mensuel) ==================== */}
           {tab === 'societe' && (
             <div className="space-y-4">
               {/* Selector Bar between Mode 1 and Mode 2 */}
@@ -1343,26 +1386,37 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
             </div>
           )}
 
-          {/* ==================== 2. ONGLET COMPTOIR ==================== */}
-          {tab === 'comptoir' && (
+          {/* ==================== 1. FACTURE CLIENT (A5 individuel) ==================== */}
+          {tab === 'client' && (
             <div className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl text-xs">
+              {/* En-tête explicatif */}
+              <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl text-xs">
                 <div className="flex items-center gap-2 font-bold text-emerald-900">
-                  <ShoppingBag className="w-4 h-4 text-emerald-600" />
-                  <span>Ventes Payées au Comptoir ({filteredComptoirInvoices.length})</span>
+                  <Receipt className="w-4 h-4 text-emerald-600" />
+                  <span>Facture Client — factures individuelles ({filteredClientInvoices.length})</span>
                 </div>
-                <div className="flex items-center gap-2 flex-1 max-w-sm ml-auto">
-                  <span className="text-[11px] font-semibold text-slate-600 shrink-0">Filtre Nom :</span>
-                  <div className="relative flex-1">
-                    <UserIcon className="absolute left-2.5 top-2 w-3.5 h-3.5 text-slate-400" />
-                    <input
-                      type="text"
-                      value={filterNameComptoir}
-                      onChange={e => setFilterNameComptoir(e.target.value)}
-                      placeholder="Filtrer par nom de patient..."
-                      className="w-full pl-8 pr-3 py-1.5 bg-white border border-emerald-300 rounded-lg text-xs font-medium outline-none focus:border-emerald-600 shadow-inner"
-                    />
-                  </div>
+                <p className="text-emerald-800/80 italic">
+                  Chaque personne est traitée individuellement (Facture A5) : comptoir, externe et salariés de société (y compris en crédit société).
+                </p>
+              </div>
+
+              {/* Sous-filtre du type de client */}
+              <div className="flex flex-wrap items-center gap-2">
+                {([['all', 'Tous les clients'], ['comptoir', 'Comptoir & salariés'], ['societe', 'Société'], ['externe', 'Externes']] as const).map(([v, l]) => (
+                  <button key={v} onClick={() => setClientKind(v)}
+                    className={`px-3 py-1.5 rounded-full text-[11px] font-bold cursor-pointer transition ${clientKind === v ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white border border-emerald-200 text-emerald-800 hover:bg-emerald-100'}`}>
+                    {l}
+                  </button>
+                ))}
+                <div className="relative w-full sm:w-72 ml-auto">
+                  <UserIcon className="absolute left-2.5 top-2 w-3.5 h-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={filterNameComptoir}
+                    onChange={e => setFilterNameComptoir(e.target.value)}
+                    placeholder="Filtrer par nom, société, n° facture…"
+                    className="w-full pl-8 pr-3 py-1.5 bg-white border border-emerald-300 rounded-lg text-xs font-medium outline-none focus:border-emerald-600 shadow-inner"
+                  />
                 </div>
               </div>
 
@@ -1370,91 +1424,10 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                 <table className="w-full text-xs">
                   <thead className="bg-slate-100 text-slate-700">
                     <tr>
+                      <th className="p-2.5 text-left font-bold">Type</th>
                       <th className="p-2.5 text-left font-bold">N° Facture</th>
                       <th className="p-2.5 text-left font-bold">Date</th>
-                      <th className="p-2.5 text-left font-bold">Patient</th>
-                      <th className="p-2.5 text-left font-bold">Dossier</th>
-                      <th className="p-2.5 text-left font-bold">Désignation</th>
-                      <th className="p-2.5 text-right font-bold">Montant</th>
-                      <th className="p-2.5 text-center font-bold">Statut</th>
-                      <th className="p-2.5 text-center font-bold">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filteredComptoirInvoices.length === 0 && (
-                      <tr><td colSpan={8} className="p-10 text-center text-slate-400">Aucune vente payée au comptoir pour ce filtre.</td></tr>
-                    )}
-                    {filteredComptoirInvoices.map(({ inv, patient }) => {
-                      return (
-                        <tr key={inv.id} className="hover:bg-slate-50 transition">
-                          <td className="p-2.5 font-mono text-slate-600 font-bold flex items-center gap-1">
-                            <Hash className="w-3.5 h-3.5 text-slate-400" /> {inv.id.slice(0, 8).toUpperCase()}
-                          </td>
-                          <td className="p-2.5 whitespace-nowrap">{new Date(inv.createdAt).toLocaleDateString('fr-FR')}</td>
-                          <td className="p-2.5 font-bold text-slate-800 flex items-center gap-1">
-                            <UserIcon className="w-3.5 h-3.5 text-slate-400" />
-                            {patient ? `${patient.lastName} ${patient.firstName}` : inv.clientName || 'Patient comptoir'}
-                          </td>
-                          <td className="p-2.5 font-mono text-slate-500">{patient?.dossier || '—'}</td>
-                          <td className="p-2.5 max-w-xs truncate text-slate-600">{invoiceDesignation(inv, state)}</td>
-                          <td className="p-2.5 text-right font-mono font-bold text-emerald-700">{formatAr(inv.totalAmount)}</td>
-                          <td className="p-2.5 text-center">
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">Payée</span>
-                          </td>
-                          <td className="p-2.5 text-center flex items-center justify-center gap-1">
-                            <button
-                              onClick={() => printSalfaIndividualInvoice(state.ticketSettings, inv, patient)}
-                              className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px] font-bold cursor-pointer flex items-center gap-1"
-                              title="Imprimer Reçu A5"
-                            >
-                              <FileText className="w-3 h-3" /> Reçu A5
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* ==================== 3. ONGLET EXTERNE ==================== */}
-          {tab === 'externe' && (
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-purple-50/70 border border-purple-200 rounded-xl text-xs">
-                <div className="flex items-center gap-2 font-bold text-purple-900">
-                  <Store className="w-4 h-4 text-purple-600" />
-                  <span>Ventes & Examens Externes ({filteredExterneInvoices.length})</span>
-                </div>
-                <div className="flex items-center gap-2 flex-1 max-w-sm ml-auto">
-                  <span className="text-[11px] font-semibold text-slate-600 shrink-0">Filtre N° Facture :</span>
-                  <div className="relative flex-1">
-                    <Hash className="absolute left-2.5 top-2 w-3.5 h-3.5 text-slate-400" />
-                    <input
-                      type="text"
-                      value={filterNumFactureExterne}
-                      onChange={e => setFilterNumFactureExterne(e.target.value)}
-                      placeholder="Filtrer par N° facture..."
-                      className="w-full pl-8 pr-3 py-1.5 bg-white border border-purple-300 rounded-lg text-xs font-medium outline-none focus:border-purple-600 shadow-inner"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="border rounded-xl overflow-x-auto shadow-sm">
-                <table className="w-full text-xs">
-                  <thead className="bg-slate-100 text-slate-700">
-                    <tr>
-                      <th className="p-2.5 w-8 text-center">
-                        <input type="checkbox" checked={filteredExterneInvoices.length > 0 && filteredExterneInvoices.every(x => selectedInvoiceIds.has(x.inv.id))} onChange={e => {
-                          if (e.target.checked) setSelectedInvoiceIds(new Set(filteredExterneInvoices.map(x => x.inv.id)));
-                          else setSelectedInvoiceIds(new Set());
-                        }} />
-                      </th>
-                      <th className="p-2.5 text-left font-bold">N° Facture</th>
-                      <th className="p-2.5 text-left font-bold">Date</th>
-                      <th className="p-2.5 text-left font-bold">Client / Intervenant Externe</th>
+                      <th className="p-2.5 text-left font-bold">Client</th>
                       <th className="p-2.5 text-left font-bold">Désignation</th>
                       <th className="p-2.5 text-right font-bold">Facturé</th>
                       <th className="p-2.5 text-right font-bold text-emerald-700">Réglé</th>
@@ -1464,31 +1437,33 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredExterneInvoices.length === 0 && (
-                      <tr><td colSpan={10} className="p-10 text-center text-slate-400">Aucune facture externe répertoriée.</td></tr>
+                    {filteredClientInvoices.length === 0 && (
+                      <tr><td colSpan={10} className="p-10 text-center text-slate-400">Aucune facture client pour ce filtre.</td></tr>
                     )}
-                    {filteredExterneInvoices.map(({ inv, patient }) => {
+                    {filteredClientInvoices.map(({ inv, patient, source, company }) => {
                       const st = invoiceStatusLabel(inv, state);
                       return (
                         <tr key={inv.id} className="hover:bg-slate-50 transition">
-                          <td className="p-2.5 text-center">
-                            {st.balance > 0 && (
-                              <input type="checkbox" checked={selectedInvoiceIds.has(inv.id)}
-                                onChange={e => {
-                                  const next = new Set(selectedInvoiceIds);
-                                  if (e.target.checked) next.add(inv.id); else next.delete(inv.id);
-                                  setSelectedInvoiceIds(next);
-                                }} />
-                            )}
+                          <td className="p-2.5">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              source === 'comptoir' ? 'bg-emerald-100 text-emerald-700'
+                              : source === 'societe' ? 'bg-indigo-100 text-indigo-700'
+                              : 'bg-purple-100 text-purple-700'
+                            }`}>
+                              {source === 'comptoir' ? 'Comptoir' : source === 'societe' ? 'Société' : 'Externe'}
+                            </span>
                           </td>
                           <td className="p-2.5 font-mono text-slate-600 font-bold flex items-center gap-1">
                             <Hash className="w-3.5 h-3.5 text-slate-400" /> {inv.id.slice(0, 8).toUpperCase()}
                           </td>
                           <td className="p-2.5 whitespace-nowrap">{new Date(inv.createdAt).toLocaleDateString('fr-FR')}</td>
                           <td className="p-2.5 font-bold text-slate-800">
-                            {inv.clientName || (patient ? `${patient.lastName} ${patient.firstName}` : 'Client Externe')}
+                            {patient ? `${patient.lastName} ${patient.firstName}` : inv.clientName || 'Client'}
+                            <div className="text-[10px] font-normal text-slate-400">
+                              {patient?.dossier ? `Dossier ${patient.dossier}` : ''} {company ? ` · ${company}` : ''}
+                            </div>
                           </td>
-                          <td className="p-2.5 max-w-xs truncate text-slate-600">{invoiceDesignation(inv, state)}</td>
+                          <td className="p-2.5 max-w-xs truncate text-slate-600" title={invoiceDesignation(inv, state)}>{invoiceDesignation(inv, state)}</td>
                           <td className="p-2.5 text-right font-mono font-bold">{formatAr(inv.totalAmount)}</td>
                           <td className="p-2.5 text-right font-mono font-bold text-emerald-600">{formatAr(st.paid)}</td>
                           <td className="p-2.5 text-right font-mono font-bold text-rose-600">{formatAr(st.balance)}</td>
@@ -1499,12 +1474,12 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                             <button
                               onClick={() => printSalfaIndividualInvoice(state.ticketSettings, inv, patient)}
                               className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px] font-bold cursor-pointer flex items-center gap-1"
-                              title="Imprimer Reçu A5"
+                              title="Imprimer Facture A5"
                             >
-                              <FileText className="w-3 h-3" /> Reçu A5
+                              <FileText className="w-3 h-3" /> Facture A5
                             </button>
                             {st.balance > 0 && (
-                              <button onClick={() => openIndividualSettle([inv.id])} className="px-2 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded text-[10px] font-bold cursor-pointer">
+                              <button onClick={() => openIndividualSettle([inv.id])} className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold cursor-pointer">
                                 Régler
                               </button>
                             )}
@@ -1521,6 +1496,15 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
           {/* ==================== 4. ONGLET HISTORIQUE DES PAIEMENTS ANTÉRIEURS ==================== */}
           {tab === 'historique_paiements' && (
             <div className="space-y-4">
+              {/* Retour vers les factures */}
+              <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <button onClick={() => setTab('societe')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-100 cursor-pointer transition">
+                  <RotateCcw className="w-3.5 h-3.5" /> Retour aux factures
+                </button>
+                <span className="text-[11px] font-semibold text-slate-500">Historique &amp; règlements antérieurs — Globaux &amp; individuels</span>
+              </div>
+
               {/* En-tête / Statistiques rapides */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="p-3.5 bg-gradient-to-br from-blue-700 to-indigo-800 text-white rounded-xl shadow-xs">
