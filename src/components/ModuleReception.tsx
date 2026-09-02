@@ -651,144 +651,152 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                   <span>Veuillez corriger les erreurs de saisie ci-dessous.</span>
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-4 text-xs">
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3"><label className="font-bold text-slate-700 w-16">Sexe</label><div className="flex border border-slate-400 rounded overflow-hidden"><button type="button" onClick={() => setPatientForm({ ...patientForm, gender: 'M' })} className={`px-4 py-1.5 font-bold transition cursor-pointer ${patientForm.gender === 'M' ? 'bg-blue-500 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'}`}>M</button><button type="button" onClick={() => setPatientForm({ ...patientForm, gender: 'F' })} className={`px-4 py-1.5 font-bold border-l border-slate-400 transition cursor-pointer ${patientForm.gender === 'F' ? 'bg-pink-500 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'}`}>F</button></div></div>
-                  
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">N° Dossier *</label>
-                    <input
-                      type="text"
-                      value={patientForm.dossier}
-                      onBlur={() => setPatientTouched((t) => ({ ...t, dossier: true }))}
-                      onChange={(e) => setPatientForm({ ...patientForm, dossier: e.target.value.toUpperCase() })}
-                      className={`w-full bg-white border rounded px-2 py-1.5 uppercase font-mono font-bold tracking-wide focus:outline-none ${ (patientTouched.dossier || patientSubmitted) && patientErrors.dossier ? 'border-rose-500 bg-rose-50/50 focus:border-rose-600' : 'border-slate-400 focus:border-blue-500'}`}
-                      placeholder="SAISIE MANUELLE — MAJUSCULES"
-                      autoComplete="off"
-                    />
-                    {(patientTouched.dossier || patientSubmitted) && patientErrors.dossier && (
-                      <span className="text-[11px] text-rose-600 font-medium mt-0.5 block">{patientErrors.dossier}</span>
-                    )}
-                    <span className="text-[10px] text-slate-500 mt-0.5 block">Clé unique, saisie manuelle, uniquement en majuscules.</span>
-                  </div>
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">Nom *</label>
-                    <input
-                      type="text"
-                      value={patientForm.lastName}
-                      onBlur={() => setPatientTouched((t) => ({ ...t, lastName: true }))}
-                      onChange={(e) => setPatientForm({ ...patientForm, lastName: e.target.value })}
-                      className={`w-full bg-white border rounded px-2 py-1.5 uppercase font-medium focus:outline-none ${ (patientTouched.lastName || patientSubmitted) && patientErrors.lastName ? 'border-rose-500 bg-rose-50/50 focus:border-rose-600' : 'border-slate-400 focus:border-blue-500'}`}
-                    />
-                    {(patientTouched.lastName || patientSubmitted) && patientErrors.lastName && (
-                      <span className="text-[11px] text-rose-600 font-medium mt-0.5 block">{patientErrors.lastName}</span>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">Prénom</label>
-                    <input
-                      type="text"
-                      value={patientForm.firstName}
-                      onBlur={() => setPatientTouched((t) => ({ ...t, firstName: true }))}
-                      onChange={(e) => setPatientForm({ ...patientForm, firstName: e.target.value })}
-                      className={`w-full bg-white border rounded px-2 py-1.5 uppercase font-medium focus:outline-none ${ (patientTouched.firstName || patientSubmitted) && patientErrors.firstName ? 'border-rose-500 bg-rose-50/50 focus:border-rose-600' : 'border-slate-400 focus:border-blue-500'}`}
-                    />
-                    {(patientTouched.firstName || patientSubmitted) && patientErrors.firstName && (
-                      <span className="text-[11px] text-rose-600 font-medium mt-0.5 block">{patientErrors.firstName}</span>
-                    )}
-                    <span className="text-[10px] text-slate-500 mt-0.5 block">Facultatif.</span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block font-bold text-slate-700 mb-1">Date Naiss. *</label>
-                      <input
-                        type="date"
-                        value={patientForm.dateOfBirth}
-                        onBlur={() => setPatientTouched((t) => ({ ...t, dateOfBirth: true }))}
-                        onChange={(e) => setPatientForm({ ...patientForm, dateOfBirth: e.target.value })}
-                        className={`w-full bg-white border rounded px-2 py-1.5 focus:outline-none ${ (patientTouched.dateOfBirth || patientSubmitted) && patientErrors.dateOfBirth ? 'border-rose-500 bg-rose-50/50' : 'border-slate-400 focus:border-blue-500'}`}
-                      />
-                      {(patientTouched.dateOfBirth || patientSubmitted) && patientErrors.dateOfBirth && (
-                        <span className="text-[10px] text-rose-600 font-medium mt-0.5 block">{patientErrors.dateOfBirth}</span>
-                      )}
-                    </div>
-                    <div>
-                      <label className="block font-bold text-slate-700 mb-1">Age</label>
-                      <input type="text" readOnly value={patientForm.dateOfBirth ? calculateAge(patientForm.dateOfBirth) : '—'} className="w-full bg-slate-200 border border-slate-400 rounded px-2 py-1.5" />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">Téléphone</label>
-                    <PhoneInput
-                      value={patientForm.contact}
-                      onBlur={() => setPatientTouched((t) => ({ ...t, contact: true }))}
-                      onChange={(v) => setPatientForm({ ...patientForm, contact: v })}
-                      className={`w-full bg-white border rounded px-2 py-1.5 font-mono focus:outline-none ${ (patientTouched.contact || patientSubmitted) && patientErrors.contact ? 'border-rose-500 bg-rose-50/50' : 'border-slate-400 focus:border-blue-500'}`}
-                      placeholder="Ex: 038 34 092 61"
-                    />
-                    {(patientTouched.contact || patientSubmitted) && patientErrors.contact && (
-                      <span className="text-[11px] text-rose-600 font-medium mt-0.5 block">{patientErrors.contact}</span>
-                    )}
+              <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs items-start">
+                {/* Sexe — pleine largeur */}
+                <div className="col-span-2 flex items-center gap-3">
+                  <label className="font-bold text-slate-700 h-4 leading-4 shrink-0">Sexe</label>
+                  <div className="flex h-9 border border-slate-400 rounded overflow-hidden">
+                    <button type="button" onClick={() => setPatientForm({ ...patientForm, gender: 'M' })} className={`px-5 font-bold transition cursor-pointer ${patientForm.gender === 'M' ? 'bg-blue-500 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'}`}>M</button>
+                    <button type="button" onClick={() => setPatientForm({ ...patientForm, gender: 'F' })} className={`px-5 font-bold border-l border-slate-400 transition cursor-pointer ${patientForm.gender === 'F' ? 'bg-pink-500 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'}`}>F</button>
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">Matricule</label>
-                    <input type="text" value={patientForm.matricule} onChange={(e) => setPatientForm({ ...patientForm, matricule: e.target.value })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 font-mono focus:outline-none focus:border-blue-500" />
-                  </div>
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">Société (libre)</label>
-                    <input
-                      type="text"
-                      value={patientForm.company}
-                      disabled
-                      title="La société se choisit dans la liste ci-dessous (Type Client → Société)."
-                      placeholder="Sélection dans la liste"
-                      className="w-full bg-slate-200 text-slate-400 border border-slate-300 rounded px-2 py-1.5 uppercase cursor-not-allowed"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">Adresse *</label>
-                    <input
-                      type="text"
-                      value={patientForm.address}
-                      onBlur={() => setPatientTouched((t) => ({ ...t, address: true }))}
-                      onChange={(e) => setPatientForm({ ...patientForm, address: e.target.value })}
-                      className={`w-full bg-white border rounded px-2 py-1.5 uppercase focus:outline-none ${ (patientTouched.address || patientSubmitted) && patientErrors.address ? 'border-rose-500 bg-rose-50/50 focus:border-rose-600' : 'border-slate-400 focus:border-blue-500'}`}
-                    />
-                    {(patientTouched.address || patientSubmitted) && patientErrors.address && (
-                      <span className="text-[11px] text-rose-600 font-medium mt-0.5 block">{patientErrors.address}</span>
-                    )}
-                  </div>
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">Type Client</label>
-                    <select value={patientForm.clientType} onChange={(e) => setPatientForm({ ...patientForm, clientType: e.target.value as ClientType })} className="w-full bg-white border border-slate-400 rounded px-2 py-1.5 focus:outline-none focus:border-blue-500 cursor-pointer">
-                      <option value="comptoir">Client Comptoir</option>
-                      <option value="societe">Client Société</option>
-                    </select>
-                  </div>
-                  {patientForm.clientType === 'societe' && (
-                    <div>
-                      <label className="block font-bold text-slate-700 mb-1">Société *</label>
-                      <select
-                        value={patientForm.company}
-                        onBlur={() => setPatientTouched((t) => ({ ...t, company: true }))}
-                        onChange={(e) => setPatientForm({ ...patientForm, company: e.target.value })}
-                        className={`w-full bg-white border rounded px-2 py-1.5 focus:outline-none cursor-pointer ${ (patientTouched.company || patientSubmitted) && patientErrors.company ? 'border-rose-500 bg-rose-50/50' : 'border-slate-400 focus:border-blue-500'}`}
-                      >
-                        <option value="">— Sélectionner une société —</option>
-                        {state.companies.map((c) => (<option key={c.id} value={c.name}>{c.name}</option>))}
-                      </select>
-                      {(patientTouched.company || patientSubmitted) && patientErrors.company && (
-                        <span className="text-[11px] text-rose-600 font-medium mt-0.5 block">{patientErrors.company}</span>
-                      )}
-                    </div>
+                {/* Ligne : N° Dossier / Matricule */}
+                <div className="flex flex-col">
+                  <label className="block font-bold text-slate-700 h-4 leading-4 mb-1">N° Dossier *</label>
+                  <input
+                    type="text"
+                    value={patientForm.dossier}
+                    onBlur={() => setPatientTouched((t) => ({ ...t, dossier: true }))}
+                    onChange={(e) => setPatientForm({ ...patientForm, dossier: e.target.value.toUpperCase() })}
+                    className={`w-full h-9 bg-white border rounded px-2 uppercase font-mono font-bold tracking-wide focus:outline-none ${ (patientTouched.dossier || patientSubmitted) && patientErrors.dossier ? 'border-rose-500 bg-rose-50/50 focus:border-rose-600' : 'border-slate-400 focus:border-blue-500'}`}
+                    placeholder="SAISIE MANUELLE — MAJUSCULES"
+                    autoComplete="off"
+                  />
+                  {(patientTouched.dossier || patientSubmitted) && patientErrors.dossier && (
+                    <span className="text-[11px] text-rose-600 font-medium mt-0.5 block">{patientErrors.dossier}</span>
+                  )}
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">Clé unique, saisie manuelle, uniquement en majuscules.</span>
+                </div>
+                <div className="flex flex-col">
+                  <label className="block font-bold text-slate-700 h-4 leading-4 mb-1">Matricule</label>
+                  <input type="text" value={patientForm.matricule} onChange={(e) => setPatientForm({ ...patientForm, matricule: e.target.value })} className="w-full h-9 bg-white border border-slate-400 rounded px-2 font-mono focus:outline-none focus:border-blue-500" />
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">Facultatif.</span>
+                </div>
+
+                {/* Ligne : Nom / Prénom */}
+                <div className="flex flex-col">
+                  <label className="block font-bold text-slate-700 h-4 leading-4 mb-1">Nom *</label>
+                  <input
+                    type="text"
+                    value={patientForm.lastName}
+                    onBlur={() => setPatientTouched((t) => ({ ...t, lastName: true }))}
+                    onChange={(e) => setPatientForm({ ...patientForm, lastName: e.target.value })}
+                    className={`w-full h-9 bg-white border rounded px-2 uppercase font-medium focus:outline-none ${ (patientTouched.lastName || patientSubmitted) && patientErrors.lastName ? 'border-rose-500 bg-rose-50/50 focus:border-rose-600' : 'border-slate-400 focus:border-blue-500'}`}
+                  />
+                  {(patientTouched.lastName || patientSubmitted) && patientErrors.lastName && (
+                    <span className="text-[11px] text-rose-600 font-medium mt-0.5 block">{patientErrors.lastName}</span>
                   )}
                 </div>
+                <div className="flex flex-col">
+                  <label className="block font-bold text-slate-700 h-4 leading-4 mb-1">Prénom</label>
+                  <input
+                    type="text"
+                    value={patientForm.firstName}
+                    onBlur={() => setPatientTouched((t) => ({ ...t, firstName: true }))}
+                    onChange={(e) => setPatientForm({ ...patientForm, firstName: e.target.value })}
+                    className={`w-full h-9 bg-white border rounded px-2 uppercase font-medium focus:outline-none ${ (patientTouched.firstName || patientSubmitted) && patientErrors.firstName ? 'border-rose-500 bg-rose-50/50 focus:border-rose-600' : 'border-slate-400 focus:border-blue-500'}`}
+                  />
+                  {(patientTouched.firstName || patientSubmitted) && patientErrors.firstName && (
+                    <span className="text-[11px] text-rose-600 font-medium mt-0.5 block">{patientErrors.firstName}</span>
+                  )}
+                </div>
+
+                {/* Ligne : Date de naissance + Age / Téléphone */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex flex-col">
+                    <label className="block font-bold text-slate-700 h-4 leading-4 mb-1">Date Naiss. *</label>
+                    <input
+                      type="date"
+                      value={patientForm.dateOfBirth}
+                      onBlur={() => setPatientTouched((t) => ({ ...t, dateOfBirth: true }))}
+                      onChange={(e) => setPatientForm({ ...patientForm, dateOfBirth: e.target.value })}
+                      className={`w-full h-9 bg-white border rounded px-2 focus:outline-none ${ (patientTouched.dateOfBirth || patientSubmitted) && patientErrors.dateOfBirth ? 'border-rose-500 bg-rose-50/50' : 'border-slate-400 focus:border-blue-500'}`}
+                    />
+                    {(patientTouched.dateOfBirth || patientSubmitted) && patientErrors.dateOfBirth && (
+                      <span className="text-[10px] text-rose-600 font-medium mt-0.5 block">{patientErrors.dateOfBirth}</span>
+                    )}
+                  </div>
+                  <div className="flex flex-col">
+                    <label className="block font-bold text-slate-700 h-4 leading-4 mb-1">Age</label>
+                    <input type="text" readOnly value={patientForm.dateOfBirth ? calculateAge(patientForm.dateOfBirth) : '—'} className="w-full h-9 bg-slate-200 border border-slate-400 rounded px-2" />
+                  </div>
+                </div>
+                <div className="flex flex-col">
+                  <label className="block font-bold text-slate-700 h-4 leading-4 mb-1">Téléphone</label>
+                  <PhoneInput
+                    value={patientForm.contact}
+                    onBlur={() => setPatientTouched((t) => ({ ...t, contact: true }))}
+                    onChange={(v) => setPatientForm({ ...patientForm, contact: v })}
+                    className={`w-full h-9 bg-white border rounded px-2 font-mono focus:outline-none ${ (patientTouched.contact || patientSubmitted) && patientErrors.contact ? 'border-rose-500 bg-rose-50/50' : 'border-slate-400 focus:border-blue-500'}`}
+                    placeholder="Ex: 038 34 092 61"
+                  />
+                  {(patientTouched.contact || patientSubmitted) && patientErrors.contact && (
+                    <span className="text-[11px] text-rose-600 font-medium mt-0.5 block">{patientErrors.contact}</span>
+                  )}
+                </div>
+
+                {/* Ligne : Adresse / Société (libre) */}
+                <div className="flex flex-col">
+                  <label className="block font-bold text-slate-700 h-4 leading-4 mb-1">Adresse *</label>
+                  <input
+                    type="text"
+                    value={patientForm.address}
+                    onBlur={() => setPatientTouched((t) => ({ ...t, address: true }))}
+                    onChange={(e) => setPatientForm({ ...patientForm, address: e.target.value })}
+                    className={`w-full h-9 bg-white border rounded px-2 uppercase focus:outline-none ${ (patientTouched.address || patientSubmitted) && patientErrors.address ? 'border-rose-500 bg-rose-50/50 focus:border-rose-600' : 'border-slate-400 focus:border-blue-500'}`}
+                  />
+                  {(patientTouched.address || patientSubmitted) && patientErrors.address && (
+                    <span className="text-[11px] text-rose-600 font-medium mt-0.5 block">{patientErrors.address}</span>
+                  )}
+                </div>
+                <div className="flex flex-col">
+                  <label className="block font-bold text-slate-700 h-4 leading-4 mb-1">Société (libre)</label>
+                  <input
+                    type="text"
+                    value={patientForm.company}
+                    disabled
+                    title="La société se choisit dans la liste ci-dessous (Type Client → Société)."
+                    placeholder="Sélection dans la liste"
+                    className="w-full h-9 bg-slate-200 text-slate-400 border border-slate-300 rounded px-2 uppercase cursor-not-allowed"
+                  />
+                </div>
+
+                {/* Ligne : Type Client / Société */}
+                <div className="flex flex-col">
+                  <label className="block font-bold text-slate-700 h-4 leading-4 mb-1">Type Client</label>
+                  <select value={patientForm.clientType} onChange={(e) => setPatientForm({ ...patientForm, clientType: e.target.value as ClientType })} className="w-full h-9 bg-white border border-slate-400 rounded px-2 focus:outline-none focus:border-blue-500 cursor-pointer">
+                    <option value="comptoir">Client Comptoir</option>
+                    <option value="societe">Client Société</option>
+                  </select>
+                </div>
+                {patientForm.clientType === 'societe' && (
+                  <div className="flex flex-col">
+                    <label className="block font-bold text-slate-700 h-4 leading-4 mb-1">Société *</label>
+                    <select
+                      value={patientForm.company}
+                      onBlur={() => setPatientTouched((t) => ({ ...t, company: true }))}
+                      onChange={(e) => setPatientForm({ ...patientForm, company: e.target.value })}
+                      className={`w-full h-9 bg-white border rounded px-2 focus:outline-none cursor-pointer ${ (patientTouched.company || patientSubmitted) && patientErrors.company ? 'border-rose-500 bg-rose-50/50' : 'border-slate-400 focus:border-blue-500'}`}
+                    >
+                      <option value="">— Sélectionner une société —</option>
+                      {state.companies.map((c) => (<option key={c.id} value={c.name}>{c.name}</option>))}
+                    </select>
+                    {(patientTouched.company || patientSubmitted) && patientErrors.company && (
+                      <span className="text-[11px] text-rose-600 font-medium mt-0.5 block">{patientErrors.company}</span>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="flex items-center justify-center gap-3 mt-6 pt-4 border-t border-slate-300">
                 <button onClick={modal === 'add' ? handleAddPatient : handleEditPatient} className="flex items-center gap-2 px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-bold shadow transition cursor-pointer"><Check className="w-4 h-4" /> VALIDER</button>
