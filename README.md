@@ -117,6 +117,33 @@ npm run build:wamp     # version WAMP  → dist/index.html → copier vers WAMP/
 
 ---
 
+## 🧪 Jeu de données de démonstration pour l'analyse (3 mois)
+
+`src/data/localData.json` contient un jeu de **démo cohérent sur 3 mois pleins
+révolus (Juin–Août 2026)** destiné à l'analyse : patients comptoir + salariés
+conventionnés (liés à une société), consultations, **factures individuelles
+(comptoir / société / externe)**, ventes (miroir unifié), demandes de laboratoire,
+parcours patient, et **comptes de facturation mensuels des sociétés** (mois
+soldés + mois impayés) pour alimenter le module Facturation Société.
+
+- **Régénérer** le jeu (idempotent, il nettoie sa précédente génération) :
+
+  ```bash
+  node generate_data_3mois.cjs
+  npm run build      # pour embarquer les nouvelles données dans dist/index.html
+  ```
+
+- **Charger ces données dans la version navigateur déjà ouverte** : connectez‑vous
+  en **Administrateur** puis **Réinitialisation TOTALE de la Base de Données**
+  (le module Administration recharge le jeu de démo depuis `localData.json`).
+  Pour analyser, choisissez le mois voulu (Juin / Juillet / Août) dans les filtres
+  des modules Caisse et Facturation.
+
+> ⚠️ N'utilisez ce jeu que pour la **démonstration / l'analyse** : les montants,
+> personnes et sociétés sont fictifs.
+
+---
+
 ## 📚 Documentation & Modèles de Données
 
 - [`CONSTITUTION_BASE_DONNEES.md`](./CONSTITUTION_BASE_DONNEES.md) : Dictionnaire complet des tables et helpers du store React.
