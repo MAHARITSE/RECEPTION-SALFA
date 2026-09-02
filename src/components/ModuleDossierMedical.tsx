@@ -1,12 +1,12 @@
 import { useRef, useState } from 'react';
 import type { AppState } from '../store';
-import { formatAr, roundTo2, labCategoryLabel, paidPrescriptionsForConsultation, safeInvoiceItemDescriptions } from '../store';
+import { labCategoryLabel, paidPrescriptionsForConsultation, safeInvoiceItemDescriptions } from '../store';
 import type { LabRequest, Consultation, Invoice, HbRecord } from '../types';
 import { printDossierTicket, printLabResultTicket } from '../utils/printTicket';
 import {
   ArrowLeft, Printer, Search, FileText, FlaskConical, Stethoscope,
   Receipt, AlertTriangle, Droplets, Pill, Clock, Calendar, Activity,
-  ChevronDown, ChevronUp, Filter, CheckCircle2,
+  ChevronDown, ChevronUp,
 } from 'lucide-react';
 
 interface Props {
@@ -16,7 +16,7 @@ interface Props {
 }
 
 type DispLab = { lr: LabRequest; doctorName: string; consultationId?: string };
-type Tab = 'timeline' | 'consultations' | 'analyses' | 'factures';
+type Tab = 'timeline' | 'analyses';
 
 const statusCfg: Record<string, { label: string; bg: string; text: string }> = {
   registered: { label: 'Enregistré', bg: 'bg-slate-200', text: 'text-slate-700' },
@@ -35,7 +35,8 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
   const [selectedListId, setSelectedListId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<Tab>('timeline');
-  const [timelineFilter, setTimelineFilter] = useState<'all' | 'consultations' | 'prescriptions' | 'analyses' | 'factures'>('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [expandedTimelineId, setExpandedTimelineId] = useState<string | null>(null);
   const lastRowClickRef = useRef<{ patientId: string; timestamp: number } | null>(null);
   // Ne jamais rendre une donnée clinique si le composant est appelé hors du parcours médecin / administrateur.
@@ -107,7 +108,10 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
 
   consultations.forEach((c) => {
     const d = new Date(c.date);
-    const prescr = paidPrescriptionsForConsultation(state, c);
+    // Dossier médical (réservé médecin/admin) : on montre TOUJOURS le détail
+    // clinique de l'ordonnance, indépendamment de son règlement — pas besoin de
+    // la règle de confidentialité réservée aux écrans Caisse/Pharmacie.
+    const prescr = (c.prescriptions || []).map((p) => ({ ...p }));
 
     const consultLabs = allLabs.filter((item) => {
       const isDirectMatch = item.lr.consultationId === c.id;
@@ -201,16 +205,15 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
 
   encounters.sort((a, b) => b.timestamp - a.timestamp);
 
+  // Chronologie 100 % clinique : on retire les factures (financier) — ni
+  // rattachées à une visite, ni en événement « Facture directe ».
+  // Un filtre sur un intervalle de dates (bornes incluses) est appliqué ensuite.
   const filteredTimeline = encounters.filter((item) => {
-    if (timelineFilter === 'all') return true;
-    if (timelineFilter === 'consultations') return item.isEmergency || item.type === 'visit';
-    if (timelineFilter === 'prescriptions') return item.prescriptions.length > 0;
-    if (timelineFilter === 'analyses') return item.labs.length > 0;
-    if (timelineFilter === 'factures') return !!item.invoice;
+    if (item.type === 'invoice') return false;
+    if (dateFrom && item.timestamp < new Date(`${dateFrom}T00:00:00`).getTime()) return false;
+    if (dateTo && item.timestamp > new Date(`${dateTo}T23:59:59`).getTime()) return false;
     return true;
   });
-
-  const totalPrescriptionsCount = consultations.reduce((acc, c) => acc + paidPrescriptionsForConsultation(state, c).length, 0);
 
   const openDossier = (id: string) => {
     setSelectedListId(id);
@@ -435,9 +438,7 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
         <div className="flex border-b overflow-x-auto">
           {[
             { key: 'timeline' as Tab, icon: <Clock className="w-4 h-4" />, label: `Chronologie (${encounters.length})` },
-            { key: 'consultations' as Tab, icon: <Stethoscope className="w-4 h-4" />, label: `Consult. (${consultations.length})` },
             { key: 'analyses' as Tab, icon: <FlaskConical className="w-4 h-4" />, label: `Analyses (${labCount})` },
-            { key: 'factures' as Tab, icon: <Receipt className="w-4 h-4" />, label: `Factures (${invoices.length})` },
           ].map((t) => (
             <button
               key={t.key}
@@ -462,30 +463,42 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
                   <Activity className="w-4 h-4 text-indigo-600" />
                   <span className="font-bold text-slate-800 text-sm">Visites & rencontres médicales</span>
                   <span className="text-xs bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full font-semibold">
-                    {encounters.length}
+                    {filteredTimeline.length}
                   </span>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {[
-                    { id: 'all', label: `Toutes (${encounters.length})` },
-                    { id: 'consultations', label: `🚨 Urgences (${encounters.filter(e => e.isEmergency).length})` },
-                    { id: 'prescriptions', label: `💊 Ordonnances (${encounters.filter(e => e.prescriptions.length > 0).length})` },
-                    { id: 'analyses', label: `🧪 Examens (${encounters.filter(e => e.labs.length > 0).length})` },
-                    { id: 'factures', label: `💳 Facturées (${encounters.filter(e => !!e.invoice).length})` },
-                  ].map((f) => (
+                {/* Filtre par intervalle de dates */}
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <label className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2 py-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                    <span className="font-semibold text-slate-600">Du</span>
+                    <input
+                      type="date"
+                      value={dateFrom}
+                      max={dateTo || undefined}
+                      onChange={(e) => setDateFrom(e.target.value)}
+                      className="bg-transparent outline-none text-slate-700"
+                    />
+                  </label>
+                  <label className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2 py-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                    <span className="font-semibold text-slate-600">Au</span>
+                    <input
+                      type="date"
+                      value={dateTo}
+                      min={dateFrom || undefined}
+                      onChange={(e) => setDateTo(e.target.value)}
+                      className="bg-transparent outline-none text-slate-700"
+                    />
+                  </label>
+                  {(dateFrom || dateTo) && (
                     <button
-                      key={f.id}
-                      onClick={() => setTimelineFilter(f.id as any)}
-                      className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                        timelineFilter === f.id
-                          ? 'bg-slate-800 text-white shadow-sm'
-                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
-                      }`}
+                      onClick={() => { setDateFrom(''); setDateTo(''); }}
+                      className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-indigo-600 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 transition cursor-pointer"
                     >
-                      {f.label}
+                      ✕ Réinitialiser
                     </button>
-                  ))}
+                  )}
                 </div>
               </div>
 
@@ -493,8 +506,8 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
               {filteredTimeline.length === 0 ? (
                 <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-300 p-8">
                   <Clock className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                  <p className="text-slate-600 font-semibold text-base">Aucune visite correspondant aux filtres</p>
-                  <p className="text-slate-400 text-xs mt-1">Sélectionnez "Toutes" ou modifiez vos critères de recherche.</p>
+                  <p className="text-slate-600 font-semibold text-base">Aucune visite dans cet intervalle de dates</p>
+                  <p className="text-slate-400 text-xs mt-1">Élargissez la période (« Du » / « Au ») ou réinitialisez le filtre.</p>
                 </div>
               ) : (
                 <div className="relative pl-6 sm:pl-8 border-l-2 border-indigo-200 ml-4 sm:ml-6 space-y-5 py-2">
@@ -577,11 +590,6 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
                                     🧪 Analyses ({item.labs.length})
                                   </span>
                                 )}
-                                {item.invoice && (
-                                  <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800">
-                                    💳 Facture ({formatAr(item.invoice.patientCharge)})
-                                  </span>
-                                )}
                               </div>
                             </div>
 
@@ -662,17 +670,28 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
                                   <div className="divide-y border rounded-lg overflow-hidden bg-purple-50/20">
                                     {item.prescriptions.map((p: any) => (
                                       <div key={p.id} className="p-2.5 flex items-start justify-between gap-3 text-xs">
-                                        <div>
-                                          <div className="font-bold text-slate-800">{p.articleName}</div>
-                                          <div className="text-slate-600">
-                                            Posologie : <strong className="text-purple-700">{p.posology || 'Selon prescription'}</strong>{' '}
-                                            {p.duration ? `· Durée : ${p.duration}` : ''}
+                                        <div className="min-w-0 flex-1">
+                                          <div className="font-bold text-slate-800">
+                                            {p.articleName}
+                                            {p.quantity ? (
+                                              <span className="ml-1.5 font-mono font-bold text-purple-700">× {p.quantity}</span>
+                                            ) : null}
                                           </div>
+                                          <div className="mt-0.5 text-slate-600">
+                                            <span className="font-semibold text-slate-500">Posologie :</span>{' '}
+                                            <strong className="text-purple-700">{p.posology || 'Selon prescription'}</strong>
+                                          </div>
+                                          {(p.duration || p.instructions) && (
+                                            <div className="text-[11px] text-slate-500 mt-0.5">
+                                              {p.duration ? <span>Durée : {p.duration}</span> : null}
+                                              {p.duration && p.instructions ? ' · ' : ''}
+                                              {p.instructions ? <span>{p.instructions}</span> : null}
+                                            </div>
+                                          )}
                                         </div>
-                                        <div className="text-right shrink-0">
-                                          <div className="font-mono font-bold">×{p.quantity} ({formatAr(p.unitPrice * p.quantity)})</div>
+                                        <div className="shrink-0 flex flex-col items-end gap-1">
                                           <span
-                                            className={`inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded mt-0.5 ${
+                                            className={`inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded ${
                                               p.delivered ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
                                             }`}
                                           >
@@ -748,25 +767,7 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
                                 </div>
                               )}
 
-                              {/* 4. Invoice */}
-                              {item.invoice && (
-                                <div className="bg-white p-3.5 rounded-xl border border-amber-200 space-y-2">
-                                  <div className="text-xs font-bold text-amber-900 uppercase tracking-wide flex justify-between">
-                                    <span>💳 Facturation & Règlement</span>
-                                    <span className="text-emerald-700 font-mono font-bold text-sm">{formatAr(item.invoice.patientCharge)}</span>
-                                  </div>
-                                  <div className="divide-y border rounded-lg overflow-hidden bg-slate-50 text-xs">
-                                    {item.invoice.items.map((it: any, idx: number) => (
-                                      <div key={idx} className="p-2 flex justify-between">
-                                        <span>{safeInvoiceItemDescriptions(item.invoice!)[idx] || it.type}</span>
-                                        <span className="font-mono font-bold">{formatAr(it.unitPrice * (it.quantity || 1))}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* 5. Hospitalization */}
+                              {/* Hospitalization */}
                               {item.hbRecord && (
                                 <div className="bg-white p-3.5 rounded-xl border border-indigo-200 space-y-2 text-xs">
                                   <div className="font-bold text-indigo-900 uppercase tracking-wide">🏥 Dossier Hospitalisation / Bloc</div>
@@ -787,108 +788,6 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
             </div>
           )}
           {/* CONSULTATIONS */}
-          {tab === 'consultations' && (
-            <div className="space-y-3">
-              {consultations.length === 0 && <p className="text-slate-400 text-sm text-center py-6">Aucune consultation.</p>}
-              {consultations.map((c) => (
-                <div key={c.id} className="border border-slate-200 rounded-xl overflow-hidden">
-                  <div className="p-3 bg-emerald-50 flex items-center justify-between">
-                    <div>
-                      <div className="font-semibold text-slate-800">{c.doctorName}</div>
-                      <div className="text-xs text-slate-500">{new Date(c.date).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' })}</div>
-                    </div>
-                    {c.isEmergency && <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full font-bold">🚨 Urgence</span>}
-                  </div>
-                  <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-slate-200">
-                    {/* Détails de la consultation */}
-                    <div className="p-3 text-sm space-y-1">
-                      {c.visitReason && <div><span className="font-medium text-slate-600">Motif :</span> {c.visitReason}</div>}
-                      <div><span className="font-medium text-slate-600">Diagnostic :</span> {c.diagnosis}</div>
-                      {c.notes && <div><span className="font-medium text-slate-600">Notes :</span> {c.notes}</div>}
-                      {state.currentUser?.role === 'doctor' && (
-                        <div className="mt-2 pt-2 border-t text-xs">
-                          <button className="px-2 py-0.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700" onClick={() => alert('Ajout observation médecin (simulé) — dossier mis à jour.')}>+ Ajouter observation médecin</button>
-                        </div>
-                      )}
-                    </div>
-                    {/* Colonne prestations : articles + quantité + posologie */}
-                    <div className="bg-slate-50 p-3">
-                      {(() => {
-                        const hasHiddenPrescriptions = c.prescriptions.length > 0 && paidPrescriptionsForConsultation(state, c).length === 0;
-                        const prescriptions = paidPrescriptionsForConsultation(state, c).map((p) => ({
-                          id: p.id,
-                          name: p.articleName,
-                          info: [p.posology, p.duration, p.instructions].filter(Boolean).join(' · ') || undefined,
-                          qty: p.quantity,
-                          amount: roundTo2(p.unitPrice * p.quantity * (1 - p.discount / 100)),
-                          sTxt: p.delivered ? '✓ délivré' : 'à délivrer',
-                          sCol: p.delivered ? 'text-emerald-600' : 'text-amber-600',
-                        }));
-                        const prest = [
-                          ...c.labRequests.map((l) => ({ id: l.id, name: l.examType, info: l.sampleType, qty: 1, sTxt: l.status === 'completed' ? '✓ fait' : 'en attente', sCol: l.status === 'completed' ? 'text-emerald-600' : 'text-amber-600' })),
-                          ...(c.echoRequests || []).map((e) => ({ id: e.id, name: e.examType, info: e.notes, qty: 1, sTxt: e.status === 'completed' ? '✓ fait' : 'en attente', sCol: e.status === 'completed' ? 'text-emerald-600' : 'text-amber-600' })),
-                        ];
-                        if (c.hospitalizeRequested) prest.push({ id: `hosp-${c.id}`, name: 'Hospitalisation demandée', info: undefined, qty: 1, sTxt: 'Demande', sCol: 'text-blue-600' });
-                        if (c.surgeryRequested) prest.push({ id: `surg-${c.id}`, name: 'Intervention bloc demandée', info: undefined, qty: 1, sTxt: 'Demande', sCol: 'text-blue-600' });
-                        const totalItems = prescriptions.length + prest.length + (hasHiddenPrescriptions ? 1 : 0);
-
-                        return totalItems > 0 ? (
-                          <div>
-                            <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">Prestations ({totalItems} acte{totalItems > 1 ? 's' : ''})</div>
-                            {hasHiddenPrescriptions && (
-                              <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-2 text-[11px] font-semibold text-amber-800">
-                                Prescription masquée — paiement non enregistré.
-                              </div>
-                            )}
-                            {prescriptions.length > 0 && (
-                              <div className="mb-3 rounded-lg border border-emerald-100 bg-white p-2">
-                                <div className="mb-1.5 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
-                                  <Pill className="h-3 w-3" /> Prescriptions ({prescriptions.length})
-                                </div>
-                                <div className="space-y-1.5">
-                                  {prescriptions.map((p) => (
-                                    <div key={p.id} className="flex items-start justify-between gap-2 text-xs border-b border-emerald-100 last:border-0 pb-1.5 last:pb-0">
-                                      <div className="flex-1 min-w-0">
-                                        <div className="font-medium text-slate-700">{p.name}</div>
-                                        {p.info && <div className="text-[10px] text-slate-400 mt-0.5">{p.info}</div>}
-                                      </div>
-                                      <div className="shrink-0 text-right">
-                                        <span className="font-mono font-bold text-slate-600">×{p.qty}</span>
-                                        <span className="block font-mono text-[10px] text-slate-500">{formatAr(p.amount)}</span>
-                                        <span className={`block text-[9px] ${p.sCol}`}>{p.sTxt}</span>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            {prest.length > 0 && (
-                              <div className="space-y-1.5">
-                                {prest.map((p) => (
-                                  <div key={p.id} className="flex items-start justify-between gap-2 text-xs border-b border-slate-200 last:border-0 pb-1.5 last:pb-0">
-                                    <div className="flex-1 min-w-0">
-                                      <div className="font-medium text-slate-700">{p.name}</div>
-                                      {p.info && <div className="text-[10px] text-slate-400 mt-0.5">{p.info}</div>}
-                                    </div>
-                                    <div className="shrink-0 text-right">
-                                      <span className="font-mono font-bold text-slate-600">×{p.qty}</span>
-                                      <span className={`block text-[9px] ${p.sCol}`}>{p.sTxt}</span>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="text-xs text-slate-400 italic text-center py-4">Aucune prestation</div>
-                        );
-                      })()}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
 
           {/* ANALYSES */}
           {tab === 'analyses' && (
@@ -960,37 +859,6 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
           )}
 
           {/* FACTURES */}
-          {tab === 'factures' && (
-            <div>
-              {invoices.length === 0 && <p className="text-slate-400 text-sm text-center py-6">Aucune facture.</p>}
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 border-b">
-                  <tr>
-                    <th className="p-2 text-left">Date</th>
-                    <th className="p-2 text-left">Réf</th>
-                    <th className="p-2 text-left">Détail</th>
-                    <th className="p-2 text-right">Montant</th>
-                    <th className="p-2 text-center">Statut</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {invoices.map((i) => (
-                    <tr key={i.id} className="border-b border-slate-100">
-                      <td className="p-2 text-slate-500">{new Date(i.paidAt || i.createdAt).toLocaleDateString('fr-FR')}</td>
-                      <td className="p-2 font-mono text-xs">{i.id.slice(0, 8).toUpperCase()}</td>
-                      <td className="p-2 text-xs">{safeInvoiceItemDescriptions(i).join(' ; ')}</td>
-                      <td className="p-2 text-right font-mono font-bold">{formatAr(i.patientCharge)}</td>
-                      <td className="p-2 text-center">
-                        {i.status === 'paid'
-                          ? <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs rounded-full font-bold">Payée</span>
-                          : <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full font-bold">En attente</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
         </div>
       </div>
     </div>
