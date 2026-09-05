@@ -36,13 +36,13 @@ const invoiceStatusLabel = (inv: Invoice, state: AppState) => {
   const totalPaid = state.companyBillingAccounts
     .flatMap(a => a.payments.filter(p => p.invoiceIds?.includes(inv.id)).map(p => p.amount))
     .reduce((s, v) => s + v, 0);
-  if (totalPaid >= inv.totalAmount && inv.totalAmount > 0) return { label: 'Payée', color: 'bg-emerald-100 text-emerald-700', paid: inv.totalAmount, balance: 0 };
+  if (totalPaid >= inv.totalAmount && inv.totalAmount > 0) return { label: 'Payée', color: 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400', paid: inv.totalAmount, balance: 0 };
   // Facture validée en caisse en CRÉDIT SOCIÉTÉ : aucune espèce n'a été encaissée.
   // La société reste débitrice tant qu'aucun règlement n'est enregistré ici.
-  if (inv.creditSociete) return { label: 'Crédit Société', color: 'bg-blue-100 text-blue-800', paid: totalPaid, balance: inv.totalAmount - totalPaid };
-  if (inv.status === 'paid') return { label: 'Payée', color: 'bg-emerald-100 text-emerald-700', paid: inv.totalAmount, balance: 0 };
-  if (totalPaid > 0) return { label: 'Partiellement payée', color: 'bg-amber-100 text-amber-700', paid: totalPaid, balance: inv.totalAmount - totalPaid };
-  return { label: 'Impayée', color: 'bg-rose-100 text-rose-700', paid: 0, balance: inv.totalAmount };
+  if (inv.creditSociete) return { label: 'Crédit Société', color: 'bg-blue-100 dark:bg-cyan-500/15 text-blue-800 dark:text-cyan-300', paid: totalPaid, balance: inv.totalAmount - totalPaid };
+  if (inv.status === 'paid') return { label: 'Payée', color: 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400', paid: inv.totalAmount, balance: 0 };
+  if (totalPaid > 0) return { label: 'Partiellement payée', color: 'bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400', paid: totalPaid, balance: inv.totalAmount - totalPaid };
+  return { label: 'Impayée', color: 'bg-rose-100 dark:bg-rose-500/15 text-rose-700 dark:text-rose-400', paid: 0, balance: inv.totalAmount };
 };
 
 const invoiceDesignation = (inv: Invoice, state: AppState, separator = ', ') => {
@@ -120,11 +120,11 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
     }
 
     const items: PredefinedItem[] = [
-      { code: 'CONS-GEN', description: 'Consultation Médecin Généraliste', category: 'consultation', price: 15000, familyLabel: 'Consultation', badgeColor: 'bg-indigo-100 text-indigo-800' },
-      { code: 'CONS-SPE', description: 'Consultation Médecin Spécialiste', category: 'consultation', price: 35000, familyLabel: 'Consultation', badgeColor: 'bg-indigo-100 text-indigo-800' },
-      { code: 'CONS-URG', description: 'Consultation Urgences / Garde', category: 'consultation', price: 25000, familyLabel: 'Consultation', badgeColor: 'bg-rose-100 text-rose-800' },
-      { code: 'SOIN-INJ', description: 'Injection / Pansement / Petite Chirurgie', category: 'surgery', price: 20000, familyLabel: 'Soins & Chirurgie', badgeColor: 'bg-rose-100 text-rose-800' },
-      { code: 'BLOC-OP', description: 'Acte Chirurgical — Bloc Opératoire', category: 'surgery', price: 250000, familyLabel: 'Bloc opératoire', badgeColor: 'bg-rose-100 text-rose-800' },
+      { code: 'CONS-GEN', description: 'Consultation Médecin Généraliste', category: 'consultation', price: 15000, familyLabel: 'Consultation', badgeColor: 'bg-indigo-100 dark:bg-indigo-500/15 text-indigo-800 dark:text-indigo-300' },
+      { code: 'CONS-SPE', description: 'Consultation Médecin Spécialiste', category: 'consultation', price: 35000, familyLabel: 'Consultation', badgeColor: 'bg-indigo-100 dark:bg-indigo-500/15 text-indigo-800 dark:text-indigo-300' },
+      { code: 'CONS-URG', description: 'Consultation Urgences / Garde', category: 'consultation', price: 25000, familyLabel: 'Consultation', badgeColor: 'bg-rose-100 dark:bg-rose-500/15 text-rose-800 dark:text-rose-300' },
+      { code: 'SOIN-INJ', description: 'Injection / Pansement / Petite Chirurgie', category: 'surgery', price: 20000, familyLabel: 'Soins & Chirurgie', badgeColor: 'bg-rose-100 dark:bg-rose-500/15 text-rose-800 dark:text-rose-300' },
+      { code: 'BLOC-OP', description: 'Acte Chirurgical — Bloc Opératoire', category: 'surgery', price: 250000, familyLabel: 'Bloc opératoire', badgeColor: 'bg-rose-100 dark:bg-rose-500/15 text-rose-800 dark:text-rose-300' },
     ];
 
     // Ajouter tous les articles de la base unifiée (médicaments, laboratoire, échographies,
@@ -135,7 +135,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
       const isHosp = isHospFamily(art.family);
       const cat: CatalogCategory = isLab ? 'lab' : isEcho ? 'echo' : isHosp ? 'hospitalization' : 'pharmacy';
       const label = isLab ? 'Laboratoire' : isEcho ? 'Échographie' : isHosp ? 'Hospitalisation' : familyLabel(art.family, state.familles);
-      const badge = isLab ? 'bg-emerald-100 text-emerald-800' : isEcho ? 'bg-amber-100 text-amber-800' : isHosp ? 'bg-orange-100 text-orange-800' : 'bg-blue-100 text-blue-800';
+      const badge = isLab ? 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-300' : isEcho ? 'bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300' : isHosp ? 'bg-orange-100 dark:bg-orange-500/15 text-orange-800 dark:text-orange-300' : 'bg-blue-100 dark:bg-cyan-500/15 text-blue-800 dark:text-cyan-300';
 
       items.push({
         code: art.code || art.barcode || art.id,
@@ -325,7 +325,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
   // Garde d'accès : le responsable facturation et l'administrateur ont un accès complet.
   if (state.currentUser?.role !== 'billing' && state.currentUser?.role !== 'admin') {
     return (
-      <div className="p-12 text-center text-rose-700 font-semibold bg-rose-50 border border-rose-200 rounded-xl">
+      <div className="p-12 text-center text-rose-700 dark:text-rose-400 font-semibold bg-rose-50 dark:bg-rose-500/8 border border-rose-200 dark:border-rose-500/25 rounded-xl">
         Accès refusé — le module « Facturation sociétés » est réservé au rôle Responsable facturation ou Administrateur.
       </div>
     );
@@ -1013,32 +1013,32 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
   /* ======================= RENDU DES ONGLETS ======================= */
 
   const TABS: [Tab, React.ReactNode][] = [
-    ['client', <span className="flex items-center gap-1.5"><Receipt className="w-4 h-4 text-emerald-600" /> Facture Client <span className="hidden sm:inline font-semibold text-slate-400">(A5 individuel)</span></span>],
-    ['societe', <span className="flex items-center gap-1.5"><Building2 className="w-4 h-4 text-indigo-600" /> Facture Société <span className="hidden sm:inline font-semibold text-slate-400">(Regroupement mensuel)</span></span>],
+    ['client', <span className="flex items-center gap-1.5"><Receipt className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Facture Client <span className="hidden sm:inline font-semibold text-ink-faint">(A5 individuel)</span></span>],
+    ['societe', <span className="flex items-center gap-1.5"><Building2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" /> Facture Société <span className="hidden sm:inline font-semibold text-ink-faint">(Regroupement mensuel)</span></span>],
   ];
 
   return (
     <div className="space-y-4">
       {/* ===== BARRE DE FILTRES GLOBALE ET COMPACTE ===== */}
-      <div className="bg-white rounded-xl shadow-sm border p-3">
+      <div className="bg-surface rounded-xl shadow-sm border p-3">
         <div className="flex flex-wrap items-center gap-3">
           {tab === 'societe' && (
             <label className="block flex-1 min-w-[160px]">
-              <span className="text-[11px] font-semibold text-slate-500 uppercase flex items-center gap-1"><Building2 className="w-3 h-3" /> Société</span>
-              <select value={filterCompany} onChange={e => setFilterCompany(e.target.value)} className="w-full mt-1 px-3 py-1.5 border rounded-lg text-xs bg-white outline-none cursor-pointer font-medium">
+              <span className="text-[11px] font-semibold text-ink-muted uppercase flex items-center gap-1"><Building2 className="w-3 h-3" /> Société</span>
+              <select value={filterCompany} onChange={e => setFilterCompany(e.target.value)} className="w-full mt-1 px-3 py-1.5 border rounded-lg text-xs bg-surface outline-none cursor-pointer font-medium">
                 <option value="all">Toutes les sociétés</option>
                 {state.companies.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
               </select>
             </label>
           )}
           <label className="block flex-1 min-w-[140px]">
-            <span className="text-[11px] font-semibold text-slate-500 uppercase flex items-center gap-1"><Calendar className="w-3 h-3" /> Mois</span>
-            <input type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="w-full mt-1 px-3 py-1.5 border rounded-lg text-xs bg-white outline-none font-medium" />
+            <span className="text-[11px] font-semibold text-ink-muted uppercase flex items-center gap-1"><Calendar className="w-3 h-3" /> Mois</span>
+            <input type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="w-full mt-1 px-3 py-1.5 border rounded-lg text-xs bg-surface outline-none font-medium" />
           </label>
           {tab !== 'historique_paiements' && (
             <label className="block flex-1 min-w-[140px]">
-              <span className="text-[11px] font-semibold text-slate-500 uppercase flex items-center gap-1"><BadgeCheck className="w-3 h-3" /> Statut</span>
-              <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as any)} className="w-full mt-1 px-3 py-1.5 border rounded-lg text-xs bg-white outline-none cursor-pointer font-medium">
+              <span className="text-[11px] font-semibold text-ink-muted uppercase flex items-center gap-1"><BadgeCheck className="w-3 h-3" /> Statut</span>
+              <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as any)} className="w-full mt-1 px-3 py-1.5 border rounded-lg text-xs bg-surface outline-none cursor-pointer font-medium">
                 <option value="all">Tous les statuts</option>
                 <option value="impaye">Impayée</option>
                 <option value="partiel">Partiellement payée</option>
@@ -1047,18 +1047,18 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
             </label>
           )}
           <label className="block flex-1 min-w-[180px]">
-            <span className="text-[11px] font-semibold text-slate-500 uppercase flex items-center gap-1"><Search className="w-3 h-3" /> Recherche Globale</span>
-            <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Recherche rapide..." className="w-full mt-1 px-3 py-1.5 border rounded-lg text-xs bg-white outline-none font-medium" />
+            <span className="text-[11px] font-semibold text-ink-muted uppercase flex items-center gap-1"><Search className="w-3 h-3" /> Recherche Globale</span>
+            <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Recherche rapide..." className="w-full mt-1 px-3 py-1.5 border rounded-lg text-xs bg-surface outline-none font-medium" />
           </label>
         </div>
       </div>
 
       {/* ===== BARRE DES 3 ONGLETS PRINCIPAUX ===== */}
-      <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-        <div className="flex border-b overflow-x-auto bg-slate-50/50 p-1.5 gap-2">
+      <div className="bg-surface rounded-xl shadow-sm border overflow-hidden">
+        <div className="flex border-b overflow-x-auto bg-surface-muted/50 p-1.5 gap-2">
           {TABS.map(([k, label]) => (
             <button key={k} onClick={() => setTab(k)}
-              className={`px-5 py-3 text-xs font-bold rounded-lg cursor-pointer whitespace-nowrap flex items-center gap-2 transition ${tab === k ? 'bg-white text-indigo-700 shadow-sm border border-slate-200' : 'text-slate-600 hover:bg-slate-100'}`}>
+              className={`px-5 py-3 text-xs font-bold rounded-lg cursor-pointer whitespace-nowrap flex items-center gap-2 transition ${tab === k ? 'bg-surface text-indigo-700 dark:text-indigo-400 shadow-sm border border-line' : 'text-ink-secondary hover:bg-surface-hover'}`}>
               {label}
             </button>
           ))}
@@ -1069,10 +1069,10 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
           {tab === 'societe' && (
             <div className="space-y-4">
               {/* Selector Bar between Mode 1 and Mode 2 */}
-              <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200 rounded-xl">
+              <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-gradient-to-r from-indigo-50 dark:from-indigo-950/60 to-blue-50 dark:to-cyan-950/60 border border-indigo-200 dark:border-indigo-500/25 rounded-xl">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
-                    <CreditCard className="w-4 h-4 text-indigo-600" /> Mode de Saisie des Règlements Sociétés :
+                  <span className="text-xs font-bold text-indigo-900 dark:text-indigo-300 flex items-center gap-1.5">
+                    <CreditCard className="w-4 h-4 text-indigo-600 dark:text-indigo-400" /> Mode de Saisie des Règlements Sociétés :
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -1081,7 +1081,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                     className={`px-3.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition flex items-center gap-1.5 ${
                       societeMode === 'global'
                         ? 'bg-indigo-700 text-white shadow-sm'
-                        : 'bg-white text-indigo-800 border border-indigo-200 hover:bg-indigo-100'
+                        : 'bg-surface text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/25 hover:bg-indigo-100 dark:hover:bg-indigo-500/15'
                     }`}
                   >
                     <Building2 className="w-4 h-4" /> 1 - Global Mensuel (Totalité)
@@ -1091,7 +1091,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                     className={`px-3.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition flex items-center gap-1.5 ${
                       societeMode === 'individuel'
                         ? 'bg-indigo-700 text-white shadow-sm'
-                        : 'bg-white text-indigo-800 border border-indigo-200 hover:bg-indigo-100'
+                        : 'bg-surface text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/25 hover:bg-indigo-100 dark:hover:bg-indigo-500/15'
                     }`}
                   >
                     <Users className="w-4 h-4" /> 2 - Paiement Individuel (Par Salarié)
@@ -1113,26 +1113,26 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
               {/* MODE 1 : GLOBAL MENSUEL */}
               {societeMode === 'global' && (
                 <div className="space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-indigo-50/60 border border-indigo-100 rounded-xl text-xs text-indigo-900">
+                  <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-indigo-50/60 dark:bg-indigo-500/5 border border-indigo-100 dark:border-indigo-500/25 rounded-xl text-xs text-indigo-900 dark:text-indigo-300">
                     <span>💡 <strong>Mode 1 (Global Mensuel) :</strong> La société paie la totalité des factures du mois en une seule fois. Double-cliquez sur une ligne pour voir ses patients.</span>
                   </div>
 
                   <div className="border rounded-xl overflow-x-auto shadow-sm">
                     <table className="w-full text-xs">
-                      <thead className="bg-slate-100 text-slate-700 border-b">
+                      <thead className="bg-surface-hover text-ink border-b">
                         <tr>
                           <th className="p-3 text-left font-bold">Société / Convention</th>
                           <th className="p-3 text-center font-bold">Patients (Mois)</th>
                           <th className="p-3 text-right font-bold">Montant Total Mois</th>
                           <th className="p-3 text-right font-bold">Montant Global Factures</th>
-                          <th className="p-3 text-right font-bold text-emerald-700">Déjà Payé</th>
-                          <th className="p-3 text-right font-bold text-rose-700">Reste à Payer</th>
+                          <th className="p-3 text-right font-bold text-emerald-700 dark:text-emerald-400">Déjà Payé</th>
+                          <th className="p-3 text-right font-bold text-rose-700 dark:text-rose-400">Reste à Payer</th>
                           <th className="p-3 text-center font-bold">Actions</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100">
+                      <tbody className="divide-y divide-line-soft">
                         {companySummaryList.length === 0 && (
-                          <tr><td colSpan={7} className="p-10 text-center text-slate-400">Aucune société répertoriée.</td></tr>
+                          <tr><td colSpan={7} className="p-10 text-center text-ink-faint">Aucune société répertoriée.</td></tr>
                         )}
                         {companySummaryList.map((item) => {
                           const c = item.company;
@@ -1140,22 +1140,22 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                             <tr
                               key={c.id}
                               onDoubleClick={() => setActiveCompanyForPatients(c.name)}
-                              className="hover:bg-indigo-50/40 transition cursor-pointer group"
+                              className="hover:bg-indigo-50/40 dark:hover:bg-indigo-500/3 transition cursor-pointer group"
                               title="Double-cliquez pour voir les patients du mois et éditer les prescriptions"
                             >
-                              <td className="p-3 font-bold text-slate-800 flex items-center gap-2">
-                                <Building2 className="w-4 h-4 text-indigo-600" />
+                              <td className="p-3 font-bold text-ink-strong flex items-center gap-2">
+                                <Building2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                                 <span>{c.name}</span>
                               </td>
                               <td className="p-3 text-center">
-                                <span className="px-2.5 py-1 bg-indigo-100 text-indigo-800 rounded-full font-bold text-[11px]">
+                                <span className="px-2.5 py-1 bg-indigo-100 dark:bg-indigo-500/15 text-indigo-800 dark:text-indigo-300 rounded-full font-bold text-[11px]">
                                   👥 {item.patientCountMonth} patient(s)
                                 </span>
                               </td>
-                              <td className="p-3 text-right font-mono font-bold text-slate-800">{formatAr(item.montantTotalMois)}</td>
-                              <td className="p-3 text-right font-mono font-bold text-indigo-900">{formatAr(item.montantGlobalFactures)}</td>
-                              <td className="p-3 text-right font-mono font-bold text-emerald-600">{formatAr(item.montantDejaPaye)}</td>
-                              <td className="p-3 text-right font-mono font-bold text-rose-600">{formatAr(item.resteAPayer)}</td>
+                              <td className="p-3 text-right font-mono font-bold text-ink-strong">{formatAr(item.montantTotalMois)}</td>
+                              <td className="p-3 text-right font-mono font-bold text-indigo-900 dark:text-indigo-300">{formatAr(item.montantGlobalFactures)}</td>
+                              <td className="p-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">{formatAr(item.montantDejaPaye)}</td>
+                              <td className="p-3 text-right font-mono font-bold text-rose-600 dark:text-rose-400">{formatAr(item.resteAPayer)}</td>
                               <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex items-center justify-center gap-1.5 flex-wrap">
                                   <button
@@ -1210,33 +1210,33 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
               {/* MODE 2 : PAIEMENT INDIVIDUEL (PAR SALARIÉ) */}
               {societeMode === 'individuel' && (
                 <div className="space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">
+                  <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-amber-50 dark:bg-amber-500/8 border border-amber-200 dark:border-amber-500/25 rounded-xl text-xs text-amber-900 dark:text-amber-300">
                     <div className="flex items-center gap-2">
-                      <Users className="w-4 h-4 text-amber-700" />
+                      <Users className="w-4 h-4 text-amber-700 dark:text-amber-400" />
                       <span>💡 <strong>Mode 2 (Paiement Individuel) :</strong> Affichage de tous les salariés payés partiellement ou non payés ({unpaidSalariesList.length}). Vous pouvez saisir un rajout de montant à payer pour chaque salarié.</span>
                     </div>
                   </div>
 
-                  <div className="border rounded-xl overflow-x-auto shadow-sm bg-white">
+                  <div className="border rounded-xl overflow-x-auto shadow-sm bg-surface">
                     <table className="w-full text-xs">
-                      <thead className="bg-slate-100 text-slate-700 border-b">
+                      <thead className="bg-surface-hover text-ink border-b">
                         <tr>
                           <th className="p-2.5 text-left font-bold">Salarié / Patient</th>
                           <th className="p-2.5 text-left font-bold">Société</th>
                           <th className="p-2.5 text-left font-bold">Facture & Date</th>
                           <th className="p-2.5 text-left font-bold">Désignation / Actes</th>
                           <th className="p-2.5 text-right font-bold">Montant Facturé</th>
-                          <th className="p-2.5 text-right font-bold text-emerald-700">Déjà Payé</th>
-                          <th className="p-2.5 text-right font-bold text-rose-700">Reste à Payer</th>
-                          <th className="p-2.5 text-center font-bold text-indigo-900">Rajout de Montant à Payer (Ar)</th>
+                          <th className="p-2.5 text-right font-bold text-emerald-700 dark:text-emerald-400">Déjà Payé</th>
+                          <th className="p-2.5 text-right font-bold text-rose-700 dark:text-rose-400">Reste à Payer</th>
+                          <th className="p-2.5 text-center font-bold text-indigo-900 dark:text-indigo-300">Rajout de Montant à Payer (Ar)</th>
                           <th className="p-2.5 text-center font-bold">Mode & Réf.</th>
                           <th className="p-2.5 text-center font-bold">Action</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100">
+                      <tbody className="divide-y divide-line-soft">
                         {unpaidSalariesList.length === 0 && (
                           <tr>
-                            <td colSpan={10} className="p-12 text-center text-slate-400">
+                            <td colSpan={10} className="p-12 text-center text-ink-faint">
                               🎉 Aucun salarié en attente de versement ou impayé pour les filtres sélectionnés ({filterCompany === 'all' ? 'Toutes les sociétés' : filterCompany} — {monthLabel(filterMonth)}).
                             </td>
                           </tr>
@@ -1246,45 +1246,45 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                           const inputState = indivPaymentInputs[inv.id] || { amount: '', method: 'Virement', ref: '', obs: '' };
 
                           return (
-                            <tr key={inv.id} className="hover:bg-slate-50/80 transition">
+                            <tr key={inv.id} className="hover:bg-surface-muted/80 transition">
                               <td className="p-2.5">
-                                <div className="font-bold text-slate-800 flex items-center gap-1">
-                                  <UserIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <div className="font-bold text-ink-strong flex items-center gap-1">
+                                  <UserIcon className="w-3.5 h-3.5 text-ink-faint shrink-0" />
                                   <span>{patient ? `${patient.lastName} ${patient.firstName}` : inv.clientName || 'Salarié'}</span>
                                 </div>
-                                <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                                <div className="text-[10px] text-ink-muted font-mono mt-0.5">
                                   Dossier: {patient?.dossier || '—'} {patient?.matricule ? `| Matr: ${patient.matricule}` : ''}
                                 </div>
                                 {patient?.famille && (
-                                  <div className="text-[10px] text-indigo-700 font-medium mt-0.5">
+                                  <div className="text-[10px] text-indigo-700 dark:text-indigo-400 font-medium mt-0.5">
                                     👨‍👩‍👧 {patient.famille} {patient?.lienFamilial ? `(${patient.lienFamilial})` : ''}
                                   </div>
                                 )}
                               </td>
 
-                              <td className="p-2.5 font-bold text-indigo-900 whitespace-nowrap">
+                              <td className="p-2.5 font-bold text-indigo-900 dark:text-indigo-300 whitespace-nowrap">
                                 <Building2 className="w-3.5 h-3.5 text-indigo-500 inline mr-1" />
                                 {companyName}
                               </td>
 
                               <td className="p-2.5 whitespace-nowrap">
-                                <div className="font-mono font-bold text-slate-700">#{inv.id.slice(0, 8).toUpperCase()}</div>
-                                <div className="text-[10px] text-slate-500">{new Date(inv.createdAt).toLocaleDateString('fr-FR')}</div>
+                                <div className="font-mono font-bold text-ink">#{inv.id.slice(0, 8).toUpperCase()}</div>
+                                <div className="text-[10px] text-ink-muted">{new Date(inv.createdAt).toLocaleDateString('fr-FR')}</div>
                               </td>
 
-                              <td className="p-2.5 max-w-xs truncate text-slate-600" title={invoiceDesignation(inv, state)}>
+                              <td className="p-2.5 max-w-xs truncate text-ink-secondary" title={invoiceDesignation(inv, state)}>
                                 {invoiceDesignation(inv, state)}
                               </td>
 
-                              <td className="p-2.5 text-right font-mono font-bold text-slate-800 whitespace-nowrap">
+                              <td className="p-2.5 text-right font-mono font-bold text-ink-strong whitespace-nowrap">
                                 {formatAr(inv.totalAmount)}
                               </td>
 
-                              <td className="p-2.5 text-right font-mono font-bold text-emerald-600 whitespace-nowrap">
+                              <td className="p-2.5 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
                                 {formatAr(st.paid)}
                               </td>
 
-                              <td className="p-2.5 text-right font-mono font-bold text-rose-600 whitespace-nowrap">
+                              <td className="p-2.5 text-right font-mono font-bold text-rose-600 dark:text-rose-400 whitespace-nowrap">
                                 <div>{formatAr(st.balance)}</div>
                                 <span className={`px-1.5 py-0.5 rounded text-[9px] font-extrabold ${st.color}`}>
                                   {st.label}
@@ -1292,7 +1292,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                               </td>
 
                               {/* CHAMP DE RAJOUT DE MONTANT À PAYER */}
-                              <td className="p-2.5 text-center bg-indigo-50/40 border-x border-indigo-100">
+                              <td className="p-2.5 text-center bg-indigo-50/40 dark:bg-indigo-500/3 border-x border-indigo-100 dark:border-indigo-500/25">
                                 <div className="flex items-center justify-center gap-1.5">
                                   <input
                                     type="number"
@@ -1306,7 +1306,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                                         [inv.id]: { ...inputState, amount: val },
                                       }));
                                     }}
-                                    className="w-28 px-2.5 py-1.5 border border-indigo-300 rounded-lg text-xs font-mono font-bold bg-white text-indigo-900 outline-none focus:ring-2 focus:ring-indigo-500 shadow-xs"
+                                    className="w-28 px-2.5 py-1.5 border border-indigo-300 dark:border-indigo-500/40 rounded-lg text-xs font-mono font-bold bg-surface text-indigo-900 dark:text-indigo-300 outline-none focus:ring-2 focus:ring-indigo-500 shadow-xs"
                                   />
                                   <button
                                     onClick={() => {
@@ -1315,7 +1315,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                                         [inv.id]: { ...inputState, amount: String(st.balance) },
                                       }));
                                     }}
-                                    className="px-2 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-lg text-[10px] font-bold cursor-pointer shrink-0 transition"
+                                    className="px-2 py-1.5 bg-surface-active hover:bg-line-strong text-ink-strong rounded-lg text-[10px] font-bold cursor-pointer shrink-0 transition"
                                     title="Remplir automatiquement le solde restant dû"
                                   >
                                     Solder
@@ -1335,7 +1335,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                                         [inv.id]: { ...inputState, method: val },
                                       }));
                                     }}
-                                    className="w-full px-2 py-1 border rounded text-[11px] bg-white cursor-pointer font-medium"
+                                    className="w-full px-2 py-1 border rounded text-[11px] bg-surface cursor-pointer font-medium"
                                   >
                                     {paymentMethods.map(m => (
                                       <option key={m} value={m}>{m}</option>
@@ -1352,7 +1352,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                                         [inv.id]: { ...inputState, ref: val },
                                       }));
                                     }}
-                                    className="w-full px-2 py-1 border rounded text-[10px] font-mono bg-white outline-none"
+                                    className="w-full px-2 py-1 border rounded text-[10px] font-mono bg-surface outline-none"
                                   />
                                 </div>
                               </td>
@@ -1390,12 +1390,12 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
           {tab === 'client' && (
             <div className="space-y-3">
               {/* En-tête explicatif */}
-              <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl text-xs">
-                <div className="flex items-center gap-2 font-bold text-emerald-900">
-                  <Receipt className="w-4 h-4 text-emerald-600" />
+              <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-emerald-50/70 dark:bg-emerald-500/6 border border-emerald-200 dark:border-emerald-500/25 rounded-xl text-xs">
+                <div className="flex items-center gap-2 font-bold text-emerald-900 dark:text-emerald-300">
+                  <Receipt className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                   <span>Facture Client — factures individuelles ({filteredClientInvoices.length})</span>
                 </div>
-                <p className="text-emerald-800/80 italic">
+                <p className="text-emerald-800/80 dark:text-emerald-300/80 italic">
                   Chaque personne est traitée individuellement (Facture A5) : comptoir, externe et salariés de société (y compris en crédit société).
                 </p>
               </div>
@@ -1404,25 +1404,25 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
               <div className="flex flex-wrap items-center gap-2">
                 {([['all', 'Tous les clients'], ['comptoir', 'Comptoir & salariés'], ['societe', 'Société'], ['externe', 'Externes']] as const).map(([v, l]) => (
                   <button key={v} onClick={() => setClientKind(v)}
-                    className={`px-3 py-1.5 rounded-full text-[11px] font-bold cursor-pointer transition ${clientKind === v ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white border border-emerald-200 text-emerald-800 hover:bg-emerald-100'}`}>
+                    className={`px-3 py-1.5 rounded-full text-[11px] font-bold cursor-pointer transition ${clientKind === v ? 'bg-emerald-600 text-white shadow-sm' : 'bg-surface border border-emerald-200 dark:border-emerald-500/25 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-500/15'}`}>
                     {l}
                   </button>
                 ))}
                 <div className="relative w-full sm:w-72 ml-auto">
-                  <UserIcon className="absolute left-2.5 top-2 w-3.5 h-3.5 text-slate-400" />
+                  <UserIcon className="absolute left-2.5 top-2 w-3.5 h-3.5 text-ink-faint" />
                   <input
                     type="text"
                     value={filterNameComptoir}
                     onChange={e => setFilterNameComptoir(e.target.value)}
                     placeholder="Filtrer par nom, société, n° facture…"
-                    className="w-full pl-8 pr-3 py-1.5 bg-white border border-emerald-300 rounded-lg text-xs font-medium outline-none focus:border-emerald-600 shadow-inner"
+                    className="w-full pl-8 pr-3 py-1.5 bg-surface border border-emerald-300 dark:border-emerald-500/40 rounded-lg text-xs font-medium outline-none focus:border-emerald-600 shadow-inner"
                   />
                 </div>
               </div>
 
               <div className="border rounded-xl overflow-x-auto shadow-sm">
                 <table className="w-full text-xs">
-                  <thead className="bg-slate-100 text-slate-700">
+                  <thead className="bg-surface-hover text-ink">
                     <tr>
                       <th className="p-2.5 text-left font-bold">Type</th>
                       <th className="p-2.5 text-left font-bold">N° Facture</th>
@@ -1430,43 +1430,43 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                       <th className="p-2.5 text-left font-bold">Client</th>
                       <th className="p-2.5 text-left font-bold">Désignation</th>
                       <th className="p-2.5 text-right font-bold">Facturé</th>
-                      <th className="p-2.5 text-right font-bold text-emerald-700">Réglé</th>
-                      <th className="p-2.5 text-right font-bold text-rose-700">Solde</th>
+                      <th className="p-2.5 text-right font-bold text-emerald-700 dark:text-emerald-400">Réglé</th>
+                      <th className="p-2.5 text-right font-bold text-rose-700 dark:text-rose-400">Solde</th>
                       <th className="p-2.5 text-center font-bold">Statut</th>
                       <th className="p-2.5 text-center font-bold">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-line-soft">
                     {filteredClientInvoices.length === 0 && (
-                      <tr><td colSpan={10} className="p-10 text-center text-slate-400">Aucune facture client pour ce filtre.</td></tr>
+                      <tr><td colSpan={10} className="p-10 text-center text-ink-faint">Aucune facture client pour ce filtre.</td></tr>
                     )}
                     {filteredClientInvoices.map(({ inv, patient, source, company }) => {
                       const st = invoiceStatusLabel(inv, state);
                       return (
-                        <tr key={inv.id} className="hover:bg-slate-50 transition">
+                        <tr key={inv.id} className="hover:bg-surface-muted transition">
                           <td className="p-2.5">
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              source === 'comptoir' ? 'bg-emerald-100 text-emerald-700'
-                              : source === 'societe' ? 'bg-indigo-100 text-indigo-700'
-                              : 'bg-purple-100 text-purple-700'
+                              source === 'comptoir' ? 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'
+                              : source === 'societe' ? 'bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400'
+                              : 'bg-purple-100 dark:bg-purple-500/15 text-purple-700 dark:text-purple-400'
                             }`}>
                               {source === 'comptoir' ? 'Comptoir' : source === 'societe' ? 'Société' : 'Externe'}
                             </span>
                           </td>
-                          <td className="p-2.5 font-mono text-slate-600 font-bold flex items-center gap-1">
-                            <Hash className="w-3.5 h-3.5 text-slate-400" /> {inv.id.slice(0, 8).toUpperCase()}
+                          <td className="p-2.5 font-mono text-ink-secondary font-bold flex items-center gap-1">
+                            <Hash className="w-3.5 h-3.5 text-ink-faint" /> {inv.id.slice(0, 8).toUpperCase()}
                           </td>
                           <td className="p-2.5 whitespace-nowrap">{new Date(inv.createdAt).toLocaleDateString('fr-FR')}</td>
-                          <td className="p-2.5 font-bold text-slate-800">
+                          <td className="p-2.5 font-bold text-ink-strong">
                             {patient ? `${patient.lastName} ${patient.firstName}` : inv.clientName || 'Client'}
-                            <div className="text-[10px] font-normal text-slate-400">
+                            <div className="text-[10px] font-normal text-ink-faint">
                               {patient?.dossier ? `Dossier ${patient.dossier}` : ''} {company ? ` · ${company}` : ''}
                             </div>
                           </td>
-                          <td className="p-2.5 max-w-xs truncate text-slate-600" title={invoiceDesignation(inv, state)}>{invoiceDesignation(inv, state)}</td>
+                          <td className="p-2.5 max-w-xs truncate text-ink-secondary" title={invoiceDesignation(inv, state)}>{invoiceDesignation(inv, state)}</td>
                           <td className="p-2.5 text-right font-mono font-bold">{formatAr(inv.totalAmount)}</td>
-                          <td className="p-2.5 text-right font-mono font-bold text-emerald-600">{formatAr(st.paid)}</td>
-                          <td className="p-2.5 text-right font-mono font-bold text-rose-600">{formatAr(st.balance)}</td>
+                          <td className="p-2.5 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">{formatAr(st.paid)}</td>
+                          <td className="p-2.5 text-right font-mono font-bold text-rose-600 dark:text-rose-400">{formatAr(st.balance)}</td>
                           <td className="p-2.5 text-center">
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${st.color}`}>{st.label}</span>
                           </td>
@@ -1497,12 +1497,12 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
           {tab === 'historique_paiements' && (
             <div className="space-y-4">
               {/* Retour vers les factures */}
-              <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+              <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-surface-muted border border-line rounded-xl">
                 <button onClick={() => setTab('societe')}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-100 cursor-pointer transition">
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface border border-line text-xs font-bold text-ink hover:bg-surface-hover cursor-pointer transition">
                   <RotateCcw className="w-3.5 h-3.5" /> Retour aux factures
                 </button>
-                <span className="text-[11px] font-semibold text-slate-500">Historique &amp; règlements antérieurs — Globaux &amp; individuels</span>
+                <span className="text-[11px] font-semibold text-ink-muted">Historique &amp; règlements antérieurs — Globaux &amp; individuels</span>
               </div>
 
               {/* En-tête / Statistiques rapides */}
@@ -1517,38 +1517,38 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                   </div>
                 </div>
 
-                <div className="p-3.5 bg-white border border-slate-200 rounded-xl shadow-xs">
-                  <div className="text-xs font-medium text-slate-500">Règlements de Sociétés (Globaux)</div>
-                  <div className="text-xl font-bold font-mono text-purple-700 mt-1">
+                <div className="p-3.5 bg-surface border border-line rounded-xl shadow-xs">
+                  <div className="text-xs font-medium text-ink-muted">Règlements de Sociétés (Globaux)</div>
+                  <div className="text-xl font-bold font-mono text-purple-700 dark:text-purple-400 mt-1">
                     {formatAr(historicalPaymentsList.filter(p => p.type === 'global').reduce((acc, p) => acc + p.amount, 0))}
                   </div>
-                  <div className="text-[11px] text-slate-400 mt-0.5">
+                  <div className="text-[11px] text-ink-faint mt-0.5">
                     {historicalPaymentsList.filter(p => p.type === 'global').length} relevé(s) payé(s)
                   </div>
                 </div>
 
-                <div className="p-3.5 bg-white border border-slate-200 rounded-xl shadow-xs">
-                  <div className="text-xs font-medium text-slate-500">Règlements Individuels (Par Patient)</div>
-                  <div className="text-xl font-bold font-mono text-emerald-700 mt-1">
+                <div className="p-3.5 bg-surface border border-line rounded-xl shadow-xs">
+                  <div className="text-xs font-medium text-ink-muted">Règlements Individuels (Par Patient)</div>
+                  <div className="text-xl font-bold font-mono text-emerald-700 dark:text-emerald-400 mt-1">
                     {formatAr(historicalPaymentsList.filter(p => p.type === 'individuel').reduce((acc, p) => acc + p.amount, 0))}
                   </div>
-                  <div className="text-[11px] text-slate-400 mt-0.5">
+                  <div className="text-[11px] text-ink-faint mt-0.5">
                     {historicalPaymentsList.filter(p => p.type === 'individuel').length} facture(s) individuelle(s)
                   </div>
                 </div>
               </div>
 
               {/* Barre de filtres et de recherche */}
-              <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div className="bg-surface p-3 rounded-xl border border-line shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-bold text-slate-700 flex items-center gap-1">
-                    <Filter className="w-3.5 h-3.5 text-indigo-600" /> Filtres :
+                  <span className="font-bold text-ink flex items-center gap-1">
+                    <Filter className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" /> Filtres :
                   </span>
 
                   <select
                     value={histTypeFilter}
                     onChange={e => setHistTypeFilter(e.target.value as any)}
-                    className="px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white font-medium text-slate-700 cursor-pointer"
+                    className="px-2.5 py-1.5 border border-line-strong rounded-lg bg-surface font-medium text-ink cursor-pointer"
                   >
                     <option value="all">Tous types de règlements</option>
                     <option value="global">Règlements Globaux (Relevé Société)</option>
@@ -1558,7 +1558,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                   <select
                     value={histCompanyFilter}
                     onChange={e => setHistCompanyFilter(e.target.value)}
-                    className="px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white font-medium text-slate-700 cursor-pointer max-w-[200px]"
+                    className="px-2.5 py-1.5 border border-line-strong rounded-lg bg-surface font-medium text-ink cursor-pointer max-w-[200px]"
                   >
                     <option value="all">Toutes les sociétés</option>
                     {histAvailableCompanies.map(comp => (
@@ -1569,7 +1569,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                   <select
                     value={histMonthFilter}
                     onChange={e => setHistMonthFilter(e.target.value)}
-                    className="px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white font-medium text-slate-700 cursor-pointer"
+                    className="px-2.5 py-1.5 border border-line-strong rounded-lg bg-surface font-medium text-ink cursor-pointer"
                   >
                     <option value="all">Tous les mois / périodes</option>
                     {histAvailableMonths.map(m => (
@@ -1580,16 +1580,16 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
 
                 <div className="flex items-center gap-2 w-full sm:w-auto">
                   <div className="relative flex-1 sm:w-64">
-                    <Search className="w-4 h-4 text-slate-400 absolute left-2.5 top-2" />
+                    <Search className="w-4 h-4 text-ink-faint absolute left-2.5 top-2" />
                     <input
                       type="text"
                       value={histSearch}
                       onChange={e => setHistSearch(e.target.value)}
                       placeholder="Rechercher référence, patient, n°…"
-                      className="w-full pl-8 pr-3 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:border-indigo-500"
+                      className="w-full pl-8 pr-3 py-1.5 border border-line-strong rounded-lg text-xs outline-none focus:border-indigo-500"
                     />
                     {histSearch && (
-                      <button onClick={() => setHistSearch('')} className="absolute right-2 top-2 text-slate-400 hover:text-slate-600">
+                      <button onClick={() => setHistSearch('')} className="absolute right-2 top-2 text-ink-faint hover:text-ink-secondary">
                         <X className="w-3.5 h-3.5" />
                       </button>
                     )}
@@ -1598,17 +1598,17 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
               </div>
 
               {/* Tableau d'historique des règlements */}
-              <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-                <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-700 flex items-center gap-1.5">
-                    <History className="w-4 h-4 text-blue-600" />
+              <div className="bg-surface rounded-xl border border-line shadow-xs overflow-hidden">
+                <div className="p-3 bg-surface-muted border-b border-line flex items-center justify-between text-xs">
+                  <span className="font-bold text-ink flex items-center gap-1.5">
+                    <History className="w-4 h-4 text-blue-600 dark:text-cyan-400" />
                     Règlements & Paiements Antérieurs enregistrés ({historicalPaymentsList.length})
                   </span>
                 </div>
 
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
-                    <thead className="bg-slate-100 text-slate-600 uppercase text-[10px] font-bold">
+                    <thead className="bg-surface-hover text-ink-secondary uppercase text-[10px] font-bold">
                       <tr>
                         <th className="p-2.5 text-left">Date</th>
                         <th className="p-2.5 text-center">Type</th>
@@ -1620,44 +1620,44 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                         <th className="p-2.5 text-center">Actions / Reçu</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <tbody className="divide-y divide-line-soft">
                       {historicalPaymentsList.length === 0 ? (
                         <tr>
-                          <td colSpan={8} className="p-12 text-center text-slate-400">
+                          <td colSpan={8} className="p-12 text-center text-ink-faint">
                             Aucun paiement antérieur ne correspond à vos filtres.
                           </td>
                         </tr>
                       ) : (
                         historicalPaymentsList.map((p) => (
-                          <tr key={p.id} className="hover:bg-slate-50/80 transition">
-                            <td className="p-2.5 whitespace-nowrap text-slate-600">
+                          <tr key={p.id} className="hover:bg-surface-muted/80 transition">
+                            <td className="p-2.5 whitespace-nowrap text-ink-secondary">
                               {new Date(p.date).toLocaleDateString('fr-FR')}
                             </td>
                             <td className="p-2.5 text-center">
                               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                p.type === 'global' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
+                                p.type === 'global' ? 'bg-purple-100 dark:bg-purple-500/15 text-purple-800 dark:text-purple-300' : 'bg-blue-100 dark:bg-cyan-500/15 text-blue-800 dark:text-cyan-300'
                               }`}>
                                 {p.type === 'global' ? 'RÈGLEMENT GLOBAL' : 'INDIVIDUEL'}
                               </span>
                             </td>
-                            <td className="p-2.5 font-bold text-slate-800">
+                            <td className="p-2.5 font-bold text-ink-strong">
                               {p.company}
-                              <div className="text-[10px] text-slate-400 font-normal">Période : {monthLabel(p.month)}</div>
+                              <div className="text-[10px] text-ink-faint font-normal">Période : {monthLabel(p.month)}</div>
                             </td>
-                            <td className="p-2.5 font-medium text-slate-700">
+                            <td className="p-2.5 font-medium text-ink">
                               {p.beneficiaryLabel}
                             </td>
                             <td className="p-2.5">
-                              <span className="font-semibold text-slate-800">{p.method}</span>
+                              <span className="font-semibold text-ink-strong">{p.method}</span>
                               {p.reference && (
-                                <div className="text-[10px] text-slate-500 font-mono">Réf: {p.reference}</div>
+                                <div className="text-[10px] text-ink-muted font-mono">Réf: {p.reference}</div>
                               )}
                             </td>
-                            <td className="p-2.5 text-slate-600 italic">
+                            <td className="p-2.5 text-ink-secondary italic">
                               {p.observation || '—'}
-                              {p.receivedBy && <div className="text-[10px] text-slate-400 not-italic">Par: {p.receivedBy}</div>}
+                              {p.receivedBy && <div className="text-[10px] text-ink-faint not-italic">Par: {p.receivedBy}</div>}
                             </td>
-                            <td className="p-2.5 text-right font-mono font-bold text-emerald-600 text-sm">
+                            <td className="p-2.5 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400 text-sm">
                               {formatAr(p.amount)}
                             </td>
                             <td className="p-2.5 text-center">
@@ -1671,7 +1671,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                                 </button>
                                 <button
                                   onClick={() => cancelHistoricalPayment(p)}
-                                  className="p-1 text-rose-500 hover:bg-rose-50 rounded cursor-pointer transition"
+                                  className="p-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/8 rounded cursor-pointer transition"
                                   title="Annuler ce règlement et rétablir le solde"
                                 >
                                   <RotateCcw className="w-4 h-4" />
@@ -1693,7 +1693,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
       {/* ==================== MODAL DOUBLE-CLIC : LISTE PATIENTS & PRESCRIPTIONS D'UNE SOCIÉTÉ ==================== */}
       {activeCompanyForPatients && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4" onClick={() => setActiveCompanyForPatients(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+          <div className="bg-surface rounded-2xl shadow-2xl border border-line w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="p-4 bg-gradient-to-r from-indigo-800 to-blue-700 text-white flex justify-between items-center shrink-0">
               <div className="flex items-center gap-2">
                 <Building2 className="w-6 h-6 text-indigo-200" />
@@ -1712,7 +1712,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                 const compInvs = allCompanyInvoices.filter(x => x.companyName === activeCompanyForPatients && x.inv.createdAt.startsWith(filterMonth));
                 if (compInvs.length === 0) {
                   return (
-                    <div className="p-12 text-center text-slate-400">
+                    <div className="p-12 text-center text-ink-faint">
                       Aucune facture / prescription enregistrée pour {activeCompanyForPatients} pendant ce mois.
                     </div>
                   );
@@ -1723,15 +1723,15 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                   const consultation = inv.consultationId ? state.consultations.find(c => c.id === inv.consultationId) : undefined;
 
                   return (
-                    <div key={inv.id} className="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-3">
-                      <div className="flex flex-wrap justify-between items-start gap-2 border-b border-slate-200 pb-2">
+                    <div key={inv.id} className="bg-surface-muted rounded-xl p-4 border border-line space-y-3">
+                      <div className="flex flex-wrap justify-between items-start gap-2 border-b border-line pb-2">
                         <div>
-                          <h4 className="font-bold text-sm text-slate-800 flex items-center gap-2">
+                          <h4 className="font-bold text-sm text-ink-strong flex items-center gap-2">
                             <span>{patient ? `${patient.lastName} ${patient.firstName}` : inv.clientName || 'Patient'}</span>
-                            <span className="font-mono text-blue-600 text-xs">({patient?.dossier || '—'})</span>
-                            {patient?.famille && <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded text-[10px] font-medium">👨‍👩‍👧 {patient.famille}</span>}
+                            <span className="font-mono text-blue-600 dark:text-cyan-400 text-xs">({patient?.dossier || '—'})</span>
+                            {patient?.famille && <span className="px-2 py-0.5 bg-indigo-100 dark:bg-indigo-500/15 text-indigo-800 dark:text-indigo-300 rounded text-[10px] font-medium">👨‍👩‍👧 {patient.famille}</span>}
                           </h4>
-                          <div className="text-[11px] text-slate-500 mt-0.5">
+                          <div className="text-[11px] text-ink-muted mt-0.5">
                             Date: {new Date(inv.createdAt).toLocaleDateString('fr-FR')} | N° Facture: <span className="font-mono font-bold">{inv.id.slice(0, 8).toUpperCase()}</span>
                           </div>
                         </div>
@@ -1748,39 +1748,39 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
 
                       {/* Diagnostic & ordonnances si consultation */}
                       {consultation && (
-                        <div className="p-2.5 bg-white rounded-lg border border-slate-200 text-xs space-y-1">
+                        <div className="p-2.5 bg-surface rounded-lg border border-line text-xs space-y-1">
                           {consultation.diagnosis && (
-                            <div><strong className="text-slate-700">Diagnostic Médecin :</strong> <span className="text-slate-900 font-medium">{consultation.diagnosis}</span></div>
+                            <div><strong className="text-ink">Diagnostic Médecin :</strong> <span className="text-ink-strong font-medium">{consultation.diagnosis}</span></div>
                           )}
                           {consultation.doctorName && (
-                            <div className="text-[11px] text-slate-500">Prescrit par : Dr. {consultation.doctorName}</div>
+                            <div className="text-[11px] text-ink-muted">Prescrit par : Dr. {consultation.doctorName}</div>
                           )}
                         </div>
                       )}
 
                       {/* Détail des lignes facturées / prescriptions */}
-                      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+                      <div className="bg-surface rounded-lg border border-line overflow-hidden">
                         <table className="w-full text-xs">
-                          <thead className="bg-slate-100 text-slate-600">
+                          <thead className="bg-surface-hover text-ink-secondary">
                             <tr>
                               <th className="p-2 text-left">Désignation / Acte / Médicament</th>
                               <th className="p-2 text-center">Catégorie</th>
                               <th className="p-2 text-right">Montant (Ar)</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-slate-100">
+                          <tbody className="divide-y divide-line-soft">
                             {inv.items.map((it, idx) => (
-                              <tr key={idx} className="hover:bg-slate-50">
-                                <td className="p-2 font-medium text-slate-800">{it.description}</td>
-                                <td className="p-2 text-center uppercase text-[10px] font-bold text-slate-500">{it.category}</td>
+                              <tr key={idx} className="hover:bg-surface-muted">
+                                <td className="p-2 font-medium text-ink-strong">{it.description}</td>
+                                <td className="p-2 text-center uppercase text-[10px] font-bold text-ink-muted">{it.category}</td>
                                 <td className="p-2 text-right font-mono font-bold">{formatAr(it.amount)}</td>
                               </tr>
                             ))}
                           </tbody>
-                          <tfoot className="bg-slate-50 font-bold border-t">
+                          <tfoot className="bg-surface-muted font-bold border-t">
                             <tr>
-                              <td colSpan={2} className="p-2 text-right uppercase text-slate-600">Total Facturé :</td>
-                              <td className="p-2 text-right font-mono text-indigo-900 text-sm">{formatAr(inv.totalAmount)}</td>
+                              <td colSpan={2} className="p-2 text-right uppercase text-ink-secondary">Total Facturé :</td>
+                              <td className="p-2 text-right font-mono text-indigo-900 dark:text-indigo-300 text-sm">{formatAr(inv.totalAmount)}</td>
                             </tr>
                           </tfoot>
                         </table>
@@ -1791,11 +1791,11 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
               })()}
             </div>
 
-            <div className="p-3 bg-slate-100 border-t border-slate-200 flex justify-between items-center text-xs">
-              <span className="text-slate-500">Société sélectionnée : <strong>{activeCompanyForPatients}</strong></span>
+            <div className="p-3 bg-surface-hover border-t border-line flex justify-between items-center text-xs">
+              <span className="text-ink-muted">Société sélectionnée : <strong>{activeCompanyForPatients}</strong></span>
               <button
                 onClick={() => setActiveCompanyForPatients(null)}
-                className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-lg cursor-pointer transition"
+                className="px-4 py-1.5 bg-surface-active hover:bg-line-strong text-ink font-bold rounded-lg cursor-pointer transition"
               >
                 Fermer
               </button>
@@ -1807,7 +1807,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
       {/* ==================== MODAL : ÉDITION DES PRESCRIPTIONS / FACTURE ==================== */}
       {editingInvoice && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4" onClick={() => setEditingInvoice(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl overflow-hidden" onClick={e => e.stopPropagation()}>
+          <div className="bg-surface rounded-2xl shadow-2xl border border-line w-full max-w-4xl overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="p-4 bg-indigo-700 text-white flex justify-between items-center font-sans">
               <div className="flex items-center gap-2">
                 <Edit2 className="w-5 h-5 text-indigo-200" />
@@ -1819,16 +1819,16 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
             </div>
 
             <div className="p-4 space-y-4 text-xs max-h-[80vh] overflow-y-auto">
-              <div className="p-3 bg-blue-50 border border-blue-200 text-blue-900 rounded-lg font-sans">
+              <div className="p-3 bg-blue-50 dark:bg-cyan-500/8 border border-blue-200 dark:border-cyan-500/25 text-blue-900 dark:text-cyan-300 rounded-lg font-sans">
                 <p className="font-semibold mb-0.5">Saisie Sage (Saisie Préméditée) :</p>
-                <p className="text-slate-600">Recherchez un article ou acte dans le catalogue complet ci-dessous, ajustez la quantité ou le prix unitaire, puis cliquez sur <strong>Enregistrer la ligne</strong> (ou cliquez sur une ligne du tableau ci-dessous pour la modifier ou la supprimer).</p>
+                <p className="text-ink-secondary">Recherchez un article ou acte dans le catalogue complet ci-dessous, ajustez la quantité ou le prix unitaire, puis cliquez sur <strong>Enregistrer la ligne</strong> (ou cliquez sur une ligne du tableau ci-dessous pour la modifier ou la supprimer).</p>
               </div>
 
               {/* Saisie Sage / Catalogue Prémédité block */}
-              <div className="bg-[#f4f4f4] border border-slate-300 rounded-lg p-3 select-none space-y-3 font-sans">
+              <div className="bg-surface-muted border border-line-strong rounded-lg p-3 select-none space-y-3 font-sans">
                 {/* Search Input */}
                 <div className="relative">
-                  <label className="block text-[10px] font-bold text-slate-500 mb-1">🔍 Recherche d'Article / Examen (Saisie Préméditée : tapez pour rechercher, ↑↓ + Entrée)</label>
+                  <label className="block text-[10px] font-bold text-ink-muted mb-1">🔍 Recherche d'Article / Examen (Saisie Préméditée : tapez pour rechercher, ↑↓ + Entrée)</label>
                   <input
                     ref={sageSearchRef}
                     type="text"
@@ -1838,30 +1838,30 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                       setSageSearchIdx(0);
                     }}
                     onKeyDown={handleSageSearchKeyDown}
-                    className="w-full bg-white border border-blue-400 rounded-lg px-2.5 py-1.5 text-xs font-mono outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500 text-slate-800"
+                    className="w-full bg-surface border border-blue-400 rounded-lg px-2.5 py-1.5 text-xs font-mono outline-none focus:border-accent focus:ring-1 focus:ring-accent/25 text-ink-strong"
                     placeholder="Tapez le nom d'un médicament, d'un examen de labo, d'une consultation ou échographie..."
                     autoFocus
                   />
                   
                   {/* Dropdown for catalog search */}
                   {sageSearch.trim().length >= 1 && filteredSageCatalog.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 rounded-b-lg shadow-2xl z-50 max-h-48 overflow-y-auto">
+                    <div className="absolute top-full left-0 right-0 bg-surface border border-line-strong rounded-b-lg shadow-2xl z-50 max-h-48 overflow-y-auto">
                       {filteredSageCatalog.map((item, idx) => (
                         <div
                           key={`${item.code}-${idx}`}
                           onClick={() => handleSelectCatalogItem(item)}
-                          className={`px-3 py-2 text-xs flex justify-between border-b border-slate-100 cursor-pointer transition-colors ${
-                            idx === sageSearchIdx ? 'bg-blue-500 text-white font-medium' : 'hover:bg-slate-50 text-slate-800'
+                          className={`px-3 py-2 text-xs flex justify-between border-b border-line-soft cursor-pointer transition-colors ${
+                            idx === sageSearchIdx ? 'bg-blue-500 text-white font-medium' : 'hover:bg-surface-muted text-ink-strong'
                           }`}
                         >
                           <span className="flex items-center gap-1.5">
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${idx === sageSearchIdx ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${idx === sageSearchIdx ? 'bg-blue-600 text-white' : 'bg-surface-active text-ink'}`}>
                               {item.code}
                             </span>
                             <span>{item.description}</span>
-                            <span className={`text-[10px] ${idx === sageSearchIdx ? 'text-blue-100' : 'text-slate-400'}`}>({item.familyLabel})</span>
+                            <span className={`text-[10px] ${idx === sageSearchIdx ? 'text-blue-100' : 'text-ink-faint'}`}>({item.familyLabel})</span>
                           </span>
-                          <span className={`font-mono font-bold ${idx === sageSearchIdx ? 'text-white' : 'text-blue-600'}`}>
+                          <span className={`font-mono font-bold ${idx === sageSearchIdx ? 'text-white' : 'text-blue-600 dark:text-cyan-400'}`}>
                             {formatAr(item.price)}
                           </span>
                         </div>
@@ -1871,40 +1871,40 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                 </div>
 
                 {/* Input fields bar for the line */}
-                <div className="bg-slate-100 border border-slate-200 rounded-lg p-2.5 shadow-inner">
+                <div className="bg-surface-hover border border-line rounded-lg p-2.5 shadow-inner">
                   <div className="grid grid-cols-12 gap-2 items-end">
                     
                     {/* Code input */}
                     <div className="col-span-2">
-                      <label className="block text-[10px] font-bold text-slate-500 mb-1">Référence / Code</label>
+                      <label className="block text-[10px] font-bold text-ink-muted mb-1">Référence / Code</label>
                       <input
                         type="text"
                         value={activeCode}
                         onChange={e => setActiveCode(e.target.value)}
-                        className="w-full bg-white border border-slate-300 rounded px-2.5 py-1 text-xs font-mono text-slate-700 outline-none focus:border-slate-500"
+                        className="w-full bg-surface border border-line-strong rounded px-2.5 py-1 text-xs font-mono text-ink outline-none focus:border-line-control"
                         placeholder="Ex: PHA-01"
                       />
                     </div>
 
                     {/* Designation input */}
                     <div className="col-span-4">
-                      <label className="block text-[10px] font-bold text-slate-500 mb-1">Désignation / Acte / Médicament</label>
+                      <label className="block text-[10px] font-bold text-ink-muted mb-1">Désignation / Acte / Médicament</label>
                       <input
                         type="text"
                         value={activeDescription}
                         onChange={e => setActiveDescription(e.target.value)}
-                        className="w-full bg-white border border-slate-300 rounded px-2.5 py-1 text-xs text-slate-800 font-medium outline-none focus:border-slate-500"
+                        className="w-full bg-surface border border-line-strong rounded px-2.5 py-1 text-xs text-ink-strong font-medium outline-none focus:border-line-control"
                         placeholder="Saisissez un acte ou article..."
                       />
                     </div>
 
                     {/* Category select */}
                     <div className="col-span-2">
-                      <label className="block text-[10px] font-bold text-slate-500 mb-1">Catégorie</label>
+                      <label className="block text-[10px] font-bold text-ink-muted mb-1">Catégorie</label>
                       <select
                         value={activeCategory}
                         onChange={e => setActiveCategory(e.target.value as any)}
-                        className="w-full bg-white border border-slate-300 rounded px-2.5 py-1 text-xs text-slate-800 cursor-pointer font-medium outline-none focus:border-slate-500"
+                        className="w-full bg-surface border border-line-strong rounded px-2.5 py-1 text-xs text-ink-strong cursor-pointer font-medium outline-none focus:border-line-control"
                       >
                         <option value="consultation">Consultation</option>
                         <option value="pharmacy">Pharmacie</option>
@@ -1917,36 +1917,36 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
 
                     {/* Qté input */}
                     <div className="col-span-1">
-                      <label className="block text-[10px] font-bold text-slate-500 mb-1">Qté</label>
+                      <label className="block text-[10px] font-bold text-ink-muted mb-1">Qté</label>
                       <input
                         type="number"
                         min={1}
                         value={activeQuantity}
                         onChange={e => setActiveQuantity(parseFloat(e.target.value) || 1)}
-                        className="w-full bg-white border border-slate-300 rounded px-2.5 py-1 text-xs text-right font-mono text-slate-800 outline-none focus:border-slate-500"
+                        className="w-full bg-surface border border-line-strong rounded px-2.5 py-1 text-xs text-right font-mono text-ink-strong outline-none focus:border-line-control"
                       />
                     </div>
 
                     {/* P.U. input */}
                     <div className="col-span-2">
-                      <label className="block text-[10px] font-bold text-slate-500 mb-1">P.U. (Ar)</label>
+                      <label className="block text-[10px] font-bold text-ink-muted mb-1">P.U. (Ar)</label>
                       <input
                         type="number"
                         min={0}
                         value={activeUnitPrice}
                         onChange={e => setActiveUnitPrice(parseFloat(e.target.value) || 0)}
-                        className="w-full bg-white border border-slate-300 rounded px-2.5 py-1 text-xs text-right font-mono font-bold text-slate-800 outline-none focus:border-slate-500"
+                        className="w-full bg-surface border border-line-strong rounded px-2.5 py-1 text-xs text-right font-mono font-bold text-ink-strong outline-none focus:border-line-control"
                       />
                     </div>
 
                     {/* Montant calculated */}
                     <div className="col-span-1">
-                      <label className="block text-[10px] font-bold text-slate-500 mb-1">Montant</label>
+                      <label className="block text-[10px] font-bold text-ink-muted mb-1">Montant</label>
                       <input
                         type="text"
                         readOnly
                         value={formatNum(activeQuantity * activeUnitPrice)}
-                        className="w-full bg-slate-200 border border-slate-300 rounded px-2.5 py-1 text-xs text-right font-mono font-bold text-slate-600"
+                        className="w-full bg-surface-active border border-line-strong rounded px-2.5 py-1 text-xs text-right font-mono font-bold text-ink-secondary"
                       />
                     </div>
 
@@ -1957,7 +1957,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                     <button
                       type="button"
                       onClick={handleResetLine}
-                      className="flex items-center gap-1 px-3 py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded text-slate-700 font-semibold cursor-pointer shadow-xs transition-colors"
+                      className="flex items-center gap-1 px-3 py-1 bg-surface hover:bg-surface-muted border border-line-strong rounded text-ink font-semibold cursor-pointer shadow-xs transition-colors"
                     >
                       <Plus className="w-3.5 h-3.5" /> Nouveau / Effacer
                     </button>
@@ -1965,7 +1965,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                       type="button"
                       onClick={handleDeleteLine}
                       disabled={selectedItemIdx === null}
-                      className="flex items-center gap-1 px-3 py-1 bg-white hover:bg-rose-50 border border-slate-300 text-rose-600 disabled:opacity-40 rounded font-semibold cursor-pointer shadow-xs transition-colors"
+                      className="flex items-center gap-1 px-3 py-1 bg-surface hover:bg-rose-50 dark:hover:bg-rose-500/8 border border-line-strong text-rose-600 dark:text-rose-400 disabled:opacity-40 rounded font-semibold cursor-pointer shadow-xs transition-colors"
                     >
                       <Trash2 className="w-3.5 h-3.5" /> Supprimer
                     </button>
@@ -1982,10 +1982,10 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
               </div>
 
               {/* Table of items in the Invoice */}
-              <div className="bg-white border border-slate-300 rounded-lg overflow-hidden shadow-xs">
+              <div className="bg-surface border border-line-strong rounded-lg overflow-hidden shadow-xs">
                 <table className="w-full text-left border-collapse text-xs">
-                  <thead className="bg-slate-100 border-b border-slate-300 text-slate-600 font-bold font-sans">
-                    <tr className="divide-x divide-slate-200">
+                  <thead className="bg-surface-hover border-b border-line-strong text-ink-secondary font-bold font-sans">
+                    <tr className="divide-x divide-line">
                       <th className="p-2 w-24">Code</th>
                       <th className="p-2">Désignation / Acte / Médicament</th>
                       <th className="p-2 w-32 text-center">Catégorie</th>
@@ -1994,32 +1994,32 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                       <th className="p-2 w-28 text-right">Montant (Ar)</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200 font-mono">
+                  <tbody className="divide-y divide-line font-mono">
                     {editingItems.map((item, idx) => {
                       const isSel = idx === selectedItemIdx;
                       return (
                         <tr
                           key={idx}
                           onClick={() => selectItemForEditing(idx)}
-                          className={`cursor-pointer divide-x divide-slate-200 transition-colors ${
+                          className={`cursor-pointer divide-x divide-line transition-colors ${
                             isSel
                               ? 'bg-blue-500 text-white font-semibold'
-                              : 'hover:bg-slate-50 text-slate-800'
+                              : 'hover:bg-surface-muted text-ink-strong'
                           }`}
                         >
                           <td className="p-2 truncate">{item.code || `ACT-${String(idx + 1).padStart(2, '0')}`}</td>
-                          <td className={`p-2 truncate ${isSel ? 'text-white' : 'text-slate-900 font-medium font-sans'}`}>
+                          <td className={`p-2 truncate ${isSel ? 'text-white' : 'text-ink-strong font-medium font-sans'}`}>
                             {item.description}
                           </td>
                           <td className="p-2 text-center uppercase text-[10px] font-bold">
                             <span className={`px-1.5 py-0.5 rounded font-sans ${
                               isSel 
                                 ? 'bg-blue-600 text-white' 
-                                : item.category === 'pharmacy' ? 'bg-emerald-100 text-emerald-800'
-                                : item.category === 'lab' ? 'bg-blue-100 text-blue-800'
-                                : item.category === 'consultation' ? 'bg-indigo-100 text-indigo-800'
-                                : item.category === 'echo' ? 'bg-purple-100 text-purple-800'
-                                : 'bg-amber-100 text-amber-800'
+                                : item.category === 'pharmacy' ? 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-300'
+                                : item.category === 'lab' ? 'bg-blue-100 dark:bg-cyan-500/15 text-blue-800 dark:text-cyan-300'
+                                : item.category === 'consultation' ? 'bg-indigo-100 dark:bg-indigo-500/15 text-indigo-800 dark:text-indigo-300'
+                                : item.category === 'echo' ? 'bg-purple-100 dark:bg-purple-500/15 text-purple-800 dark:text-purple-300'
+                                : 'bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300'
                             }`}>
                               {item.category === 'surgery' ? 'bloc' : item.category}
                             </span>
@@ -2028,7 +2028,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                           <td className="p-2 text-right">
                             {formatNum(item.unitPrice !== undefined ? item.unitPrice : (item.amount / (item.quantity || 1)))}
                           </td>
-                          <td className={`p-2 text-right font-bold ${isSel ? 'text-white' : 'text-indigo-900'}`}>
+                          <td className={`p-2 text-right font-bold ${isSel ? 'text-white' : 'text-indigo-900 dark:text-indigo-300'}`}>
                             {formatNum(item.amount)}
                           </td>
                         </tr>
@@ -2036,7 +2036,7 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                     })}
                     {editingItems.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="p-6 text-center text-slate-400 font-sans">
+                        <td colSpan={6} className="p-6 text-center text-ink-faint font-sans">
                           Aucun acte ou prescription dans cette facture. Utilisez la Saisie Sage ci-dessus pour ajouter des lignes.
                         </td>
                       </tr>
@@ -2045,14 +2045,14 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
                 </table>
               </div>
 
-              <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg flex justify-between items-center text-sm font-bold text-indigo-900 font-sans">
+              <div className="p-3 bg-indigo-50 dark:bg-indigo-500/8 border border-indigo-200 dark:border-indigo-500/25 rounded-lg flex justify-between items-center text-sm font-bold text-indigo-900 dark:text-indigo-300 font-sans">
                 <span>Nouveau Total Facture :</span>
                 <span className="font-mono text-base">{formatAr(editingItems.reduce((s, i) => s + Number(i.amount || 0), 0))}</span>
               </div>
             </div>
 
-            <div className="p-3 bg-slate-100 border-t flex justify-end gap-2 font-sans">
-              <button onClick={() => setEditingInvoice(null)} className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-lg text-xs cursor-pointer">
+            <div className="p-3 bg-surface-hover border-t flex justify-end gap-2 font-sans">
+              <button onClick={() => setEditingInvoice(null)} className="px-4 py-1.5 bg-surface-active hover:bg-line-strong text-ink font-bold rounded-lg text-xs cursor-pointer">
                 Annuler
               </button>
               <button onClick={saveInvoiceItems} className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs flex items-center gap-1 cursor-pointer shadow-md">
@@ -2066,25 +2066,25 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
       {/* ===== MODAL : RÈGLEMENT GLOBAL ===== */}
       {payingAccount && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={()=>setPayingAccount(null)}>
-          <div className="w-full max-w-lg bg-white rounded-xl shadow-2xl overflow-hidden" onClick={e=>e.stopPropagation()}>
+          <div className="w-full max-w-lg bg-surface rounded-xl shadow-2xl overflow-hidden" onClick={e=>e.stopPropagation()}>
             <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 px-4 py-3 flex justify-between items-center text-white">
               <span className="font-bold flex items-center gap-2"><BadgeCheck className="w-5 h-5"/> Régler toutes les factures du mois — {payingAccount.company}</span>
               <button onClick={()=>setPayingAccount(null)} className="hover:bg-white/20 rounded p-1 cursor-pointer"><X className="w-5 h-5"/></button>
             </div>
             <div className="p-4 space-y-3">
-              <div className="p-3 bg-slate-50 border rounded-lg text-xs grid grid-cols-3 gap-2 text-center">
-                <div><div className="text-slate-400">Facturé</div><div className="font-mono font-bold">{formatAr(payingAccount.totalAmount)}</div></div>
-                <div><div className="text-slate-400">Déjà réglé</div><div className="font-mono font-bold text-emerald-600">{formatAr(payingAccount.paidAmount)}</div></div>
-                <div><div className="text-slate-400">Solde</div><div className="font-mono font-bold text-rose-600">{formatAr(payingAccount.totalAmount-payingAccount.paidAmount)}</div></div>
+              <div className="p-3 bg-surface-muted border rounded-lg text-xs grid grid-cols-3 gap-2 text-center">
+                <div><div className="text-ink-faint">Facturé</div><div className="font-mono font-bold">{formatAr(payingAccount.totalAmount)}</div></div>
+                <div><div className="text-ink-faint">Déjà réglé</div><div className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{formatAr(payingAccount.paidAmount)}</div></div>
+                <div><div className="text-ink-faint">Solde</div><div className="font-mono font-bold text-rose-600 dark:text-rose-400">{formatAr(payingAccount.totalAmount-payingAccount.paidAmount)}</div></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-xs font-semibold text-slate-600 mb-1">Date de paiement</label><input type="date" value={payDate} onChange={e=>setPayDate(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm outline-none"/></div>
-                <div><label className="block text-xs font-semibold text-slate-600 mb-1">Mode de paiement</label><select value={payMethod} onChange={e=>setPayMethod(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm bg-white cursor-pointer">{paymentMethods.map(m=><option key={m} value={m}>{m}</option>)}</select></div>
+                <div><label className="block text-xs font-semibold text-ink-secondary mb-1">Date de paiement</label><input type="date" value={payDate} onChange={e=>setPayDate(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm outline-none"/></div>
+                <div><label className="block text-xs font-semibold text-ink-secondary mb-1">Mode de paiement</label><select value={payMethod} onChange={e=>setPayMethod(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm bg-surface cursor-pointer">{paymentMethods.map(m=><option key={m} value={m}>{m}</option>)}</select></div>
               </div>
-              <div><label className="block text-xs font-semibold text-slate-600 mb-1">Référence de paiement</label><input type="text" value={payReference} onChange={e=>setPayReference(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm font-mono outline-none" placeholder="Ex: VIR-2026-01234"/></div>
-              <div><label className="block text-xs font-semibold text-slate-600 mb-1">Observation</label><textarea value={payObservation} onChange={e=>setPayObservation(e.target.value)} rows={2} className="w-full px-3 py-2 border rounded-lg text-sm outline-none" placeholder="Note libre…"/></div>
+              <div><label className="block text-xs font-semibold text-ink-secondary mb-1">Référence de paiement</label><input type="text" value={payReference} onChange={e=>setPayReference(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm font-mono outline-none" placeholder="Ex: VIR-2026-01234"/></div>
+              <div><label className="block text-xs font-semibold text-ink-secondary mb-1">Observation</label><textarea value={payObservation} onChange={e=>setPayObservation(e.target.value)} rows={2} className="w-full px-3 py-2 border rounded-lg text-sm outline-none" placeholder="Note libre…"/></div>
               <div className="flex justify-end gap-2 pt-1">
-                <button onClick={()=>setPayingAccount(null)} className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-semibold cursor-pointer">Annuler</button>
+                <button onClick={()=>setPayingAccount(null)} className="px-3 py-2 bg-surface-active hover:bg-line-strong text-ink rounded-lg text-xs font-semibold cursor-pointer">Annuler</button>
                 <button onClick={saveGlobalPayment} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold cursor-pointer flex items-center gap-1"><Check className="w-3.5 h-3.5"/>Valider et solder le relevé</button>
               </div>
             </div>
@@ -2095,21 +2095,21 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
       {/* ===== MODAL : RÈGLEMENT INDIVIDUEL ===== */}
       {payingIndividual && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={()=>setPayingIndividual(null)}>
-          <div className="w-full max-w-lg bg-white rounded-xl shadow-2xl overflow-hidden" onClick={e=>e.stopPropagation()}>
+          <div className="w-full max-w-lg bg-surface rounded-xl shadow-2xl overflow-hidden" onClick={e=>e.stopPropagation()}>
             <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 px-4 py-3 flex justify-between items-center text-white">
               <span className="font-bold flex items-center gap-2"><CreditCard className="w-5 h-5"/> Règlement individuel — {payingIndividual.ids.length} facture(s)</span>
               <button onClick={()=>setPayingIndividual(null)} className="hover:bg-white/20 rounded p-1 cursor-pointer"><X className="w-5 h-5"/></button>
             </div>
             <div className="p-4 space-y-3">
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-xs font-semibold text-slate-600 mb-1">Montant (Ar)</label><input type="number" min={1} value={indivAmount} onChange={e=>setIndivAmount(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm font-mono outline-none"/></div>
-                <div><label className="block text-xs font-semibold text-slate-600 mb-1">Date</label><input type="date" value={indivDate} onChange={e=>setIndivDate(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm outline-none"/></div>
+                <div><label className="block text-xs font-semibold text-ink-secondary mb-1">Montant (Ar)</label><input type="number" min={1} value={indivAmount} onChange={e=>setIndivAmount(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm font-mono outline-none"/></div>
+                <div><label className="block text-xs font-semibold text-ink-secondary mb-1">Date</label><input type="date" value={indivDate} onChange={e=>setIndivDate(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm outline-none"/></div>
               </div>
-              <div><label className="block text-xs font-semibold text-slate-600 mb-1">Mode de paiement</label><select value={indivMethod} onChange={e=>setIndivMethod(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm bg-white cursor-pointer">{paymentMethods.map(m=><option key={m} value={m}>{m}</option>)}</select></div>
-              <div><label className="block text-xs font-semibold text-slate-600 mb-1">Référence</label><input type="text" value={indivReference} onChange={e=>setIndivReference(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm font-mono outline-none"/></div>
-              <div><label className="block text-xs font-semibold text-slate-600 mb-1">Observation</label><textarea value={indivObservation} onChange={e=>setIndivObservation(e.target.value)} rows={2} className="w-full px-3 py-2 border rounded-lg text-sm outline-none"/></div>
+              <div><label className="block text-xs font-semibold text-ink-secondary mb-1">Mode de paiement</label><select value={indivMethod} onChange={e=>setIndivMethod(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm bg-surface cursor-pointer">{paymentMethods.map(m=><option key={m} value={m}>{m}</option>)}</select></div>
+              <div><label className="block text-xs font-semibold text-ink-secondary mb-1">Référence</label><input type="text" value={indivReference} onChange={e=>setIndivReference(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm font-mono outline-none"/></div>
+              <div><label className="block text-xs font-semibold text-ink-secondary mb-1">Observation</label><textarea value={indivObservation} onChange={e=>setIndivObservation(e.target.value)} rows={2} className="w-full px-3 py-2 border rounded-lg text-sm outline-none"/></div>
               <div className="flex justify-end gap-2 pt-1">
-                <button onClick={()=>setPayingIndividual(null)} className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-semibold cursor-pointer">Annuler</button>
+                <button onClick={()=>setPayingIndividual(null)} className="px-3 py-2 bg-surface-active hover:bg-line-strong text-ink rounded-lg text-xs font-semibold cursor-pointer">Annuler</button>
                 <button onClick={saveIndividualPayment} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold cursor-pointer flex items-center gap-1"><Check className="w-3.5 h-3.5"/>Enregistrer le paiement</button>
               </div>
             </div>

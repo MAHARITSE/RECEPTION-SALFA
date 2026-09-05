@@ -474,15 +474,15 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
         const stockBas = lowStockPharmacie.filter((a) => a.stockPharmacie > 0);
 
         return (
-          <div className="bg-amber-50 dark:bg-amber-950/40 border-l-4 border-amber-500 rounded-xl p-4 shadow-sm transition-all text-slate-800 dark:text-slate-100">
+          <div className="bg-amber-50 dark:bg-amber-500/8 border-l-4 border-amber-500 rounded-xl p-4 shadow-sm transition-all text-ink-strong">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 rounded-lg shrink-0">
+                <div className="p-2 bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 rounded-lg shrink-0">
                   <AlertTriangle className="w-5 h-5 animate-pulse text-amber-600 dark:text-amber-400" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h4 className="font-bold text-sm text-amber-900 dark:text-amber-200">
+                    <h4 className="font-bold text-sm text-amber-900 dark:text-amber-300">
                       Alerte Stock Pharmacie : {lowStockPharmacie.length} article(s) sous le seuil d'alerte
                     </h4>
                     {ruptures.length > 0 && (
@@ -496,7 +496,7 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+                  <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
                     Ces articles ont atteint ou dépassé le seuil minimum configuré. Transmettez une demande d'approvisionnement au magasinier.
                   </p>
                 </div>
@@ -505,7 +505,7 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setBannerExpanded(!bannerExpanded)}
-                  className="px-3 py-1.5 bg-amber-200/80 hover:bg-amber-300 dark:bg-amber-900 dark:hover:bg-amber-800 text-amber-900 dark:text-amber-100 rounded-lg text-xs font-semibold cursor-pointer transition flex items-center gap-1"
+                  className="px-3 py-1.5 bg-amber-200/80 dark:bg-amber-500/20 hover:bg-amber-300 dark:hover:bg-amber-500/35 text-amber-900 dark:text-amber-300 rounded-lg text-xs font-semibold cursor-pointer transition flex items-center gap-1"
                 >
                   {bannerExpanded ? 'Masquer la liste' : `Voir les ${lowStockPharmacie.length} articles`}
                 </button>
@@ -513,10 +513,10 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
             </div>
 
             {bannerExpanded && (
-              <div className="mt-4 pt-3 border-t border-amber-200 dark:border-amber-800/60 overflow-x-auto">
+              <div className="mt-4 pt-3 border-t border-amber-200 dark:border-amber-500/25 overflow-x-auto">
                 <table className="w-full text-xs text-left">
                   <thead>
-                    <tr className="text-amber-900 dark:text-amber-300 border-b border-amber-200 dark:border-amber-800/60">
+                    <tr className="text-amber-900 dark:text-amber-300 border-b border-amber-200 dark:border-amber-500/25">
                       <th className="py-2 px-2 font-semibold">Article</th>
                       <th className="py-2 px-2 font-semibold">Famille</th>
                       <th className="py-2 px-2 font-semibold text-center">Stock Pharmacie</th>
@@ -526,33 +526,33 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                       <th className="py-2 px-2 font-semibold text-right">Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-amber-200/50 dark:divide-amber-800/40">
+                  <tbody className="divide-y divide-amber-200/50 dark:divide-amber-500/12">
                     {lowStockPharmacie.map((a) => {
                       const isOut = a.stockPharmacie <= 0;
                       return (
-                        <tr key={a.id} className="hover:bg-amber-100/50 dark:hover:bg-amber-900/40">
-                          <td className="py-2 px-2 font-bold text-slate-800 dark:text-slate-100">{a.name}</td>
+                        <tr key={a.id} className="hover:bg-amber-100/50 dark:hover:bg-amber-500/8">
+                          <td className="py-2 px-2 font-bold text-ink-strong">{a.name}</td>
                           <td className="py-2 px-2">
-                            <span className="px-2 py-0.5 bg-amber-200/60 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 rounded font-mono text-[10px]">
+                            <span className="px-2 py-0.5 bg-amber-200/60 dark:bg-amber-500/15 text-amber-900 dark:text-amber-300 rounded font-mono text-[10px]">
                               {familyLabel(a.family)}
                             </span>
                           </td>
-                          <td className={`py-2 px-2 text-center font-mono font-bold ${isOut ? 'text-red-600 dark:text-red-400 font-extrabold' : 'text-amber-700 dark:text-amber-300'}`}>
+                          <td className={`py-2 px-2 text-center font-mono font-bold ${isOut ? 'text-red-600 dark:text-red-400 font-extrabold' : 'text-amber-700 dark:text-amber-400'}`}>
                             {a.stockPharmacie} {a.unit}
                           </td>
-                          <td className="py-2 px-2 text-center font-mono text-slate-600 dark:text-slate-400">
+                          <td className="py-2 px-2 text-center font-mono text-ink-secondary">
                             {a.minStockPharmacie} {a.unit}
                           </td>
-                          <td className="py-2 px-2 text-center font-mono font-semibold text-indigo-700 dark:text-indigo-300">
+                          <td className="py-2 px-2 text-center font-mono font-semibold text-indigo-700 dark:text-indigo-400">
                             {a.stockCentral} {a.unit}
                           </td>
                           <td className="py-2 px-2 text-center">
                             {isOut ? (
-                              <span className="px-2 py-0.5 rounded bg-red-100 dark:bg-red-900/60 text-red-700 dark:text-red-300 font-bold text-[10px]">
+                              <span className="px-2 py-0.5 rounded bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-400 font-bold text-[10px]">
                                 RUPTURE
                               </span>
                             ) : (
-                              <span className="px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 font-semibold text-[10px]">
+                              <span className="px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300 font-semibold text-[10px]">
                                 STOCK BAS
                               </span>
                             )}
@@ -576,10 +576,10 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
         );
       })()}
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="flex border-b border-slate-200 overflow-x-auto">
+      <div className="bg-surface rounded-xl shadow-sm border border-line overflow-hidden">
+        <div className="flex border-b border-line overflow-x-auto">
           {[
-            { key: 'caisse' as Tab, icon: <CreditCard className="w-4 h-4 text-blue-600" />, label: '💳 Caisse de garde' },
+            { key: 'caisse' as Tab, icon: <CreditCard className="w-4 h-4 text-blue-600 dark:text-cyan-400" />, label: '💳 Caisse de garde' },
             { key: 'pending' as Tab, icon: <Clock className="w-4 h-4" />, label: `Ordonnances (${allPending.length})` },
             { key: 'stock' as Tab, icon: <Package className="w-4 h-4" />, label: `Stock pharmacie${blockedCount > 0 ? ` ⛔${blockedCount}` : ''}${pendingCount > 0 ? ` · ${pendingCount} dem.` : ''}` },
             { key: 'request' as Tab, icon: <Send className="w-4 h-4" />, label: 'Nouvelle demande appro' },
@@ -588,7 +588,7 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
               key={t.key}
               onClick={() => setTab(t.key)}
               className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
-                tab === t.key ? 'border-purple-500 text-purple-600 bg-purple-50/50' : 'border-transparent text-slate-500 hover:text-slate-700'
+                tab === t.key ? 'border-purple-500 text-purple-600 dark:text-purple-400 bg-purple-50/50 dark:bg-purple-500/4' : 'border-transparent text-ink-muted hover:text-ink'
               }`}
             >
               {t.icon}{t.label}
@@ -600,20 +600,20 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
           {/* === CAISSE DE GARDE (premier) === */}
           {tab === 'caisse' && (
             <div className="space-y-4">
-              <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between">
+              <div className="p-4 bg-blue-50 dark:bg-cyan-500/8 border border-blue-200 dark:border-cyan-500/25 rounded-xl flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-100 text-blue-700 rounded-lg">
+                  <div className="p-2 bg-blue-100 dark:bg-cyan-500/15 text-blue-700 dark:text-cyan-400 rounded-lg">
                     <CreditCard className="w-6 h-6" />
                   </div>
                   <div>
-                    <h4 className="font-bold text-blue-900 text-base">Caisse de garde — Nuit & Jours fériés</h4>
-                    <p className="text-xs text-blue-700 mt-0.5">
+                    <h4 className="font-bold text-blue-900 dark:text-cyan-300 text-base">Caisse de garde — Nuit & Jours fériés</h4>
+                    <p className="text-xs text-blue-700 dark:text-cyan-400 mt-0.5">
                       Encaissement unifié, ventes externes, hospitalisation/bloc et clôture journalière pendant les permanences.
                     </p>
                   </div>
                 </div>
               </div>
-              <div className="-mx-6 -mb-6 p-6 bg-slate-50/50 border-t border-slate-200">
+              <div className="-mx-6 -mb-6 p-6 bg-surface-muted/50 border-t border-line">
                 <ModuleCaisse state={state} setState={setState} onOpenMessagingWithRecipient={onOpenMessagingWithRecipient} />
               </div>
             </div>
@@ -629,13 +629,13 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
             return (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
                 {/* À GAUCHE DE L'ÉCRAN : LA FILE D'ATTENTE */}
-                <div className="divide-y border border-slate-200 rounded-xl max-h-[640px] overflow-y-auto bg-white shadow-sm">
-                  <div className="p-3.5 border-b bg-purple-50 font-semibold text-xs flex justify-between items-center text-purple-900 sticky top-0 z-10">
-                    <span className="flex items-center gap-1.5"><Clock className="w-4 h-4 text-purple-600" /> File d'attente Ordonnances</span>
+                <div className="divide-y border border-line rounded-xl max-h-[640px] overflow-y-auto bg-surface shadow-sm">
+                  <div className="p-3.5 border-b bg-purple-50 dark:bg-purple-500/8 font-semibold text-xs flex justify-between items-center text-purple-900 dark:text-purple-300 sticky top-0 z-10">
+                    <span className="flex items-center gap-1.5"><Clock className="w-4 h-4 text-purple-600 dark:text-purple-400" /> File d'attente Ordonnances</span>
                     <span className="bg-purple-600 text-white font-mono font-bold px-2 py-0.5 rounded-full text-[10px]">{allPending.length}</span>
                   </div>
                   {allPending.length === 0 ? (
-                    <div className="p-12 text-center text-slate-400">
+                    <div className="p-12 text-center text-ink-faint">
                       <Pill className="w-12 h-12 mx-auto mb-3 opacity-30" />
                       <p className="text-sm font-medium">Aucune ordonnance en attente</p>
                     </div>
@@ -649,25 +649,25 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                         <div
                           key={c.id}
                           onClick={() => setSelConsultId(c.id)}
-                          className={`p-3.5 cursor-pointer transition-all ${isSelected ? 'bg-purple-50/90 border-l-4 border-purple-600 shadow-sm' : 'hover:bg-slate-50'}`}
+                          className={`p-3.5 cursor-pointer transition-all ${isSelected ? 'bg-purple-50/90 dark:bg-purple-500/7 border-l-4 border-purple-600 shadow-sm' : 'hover:bg-surface-muted'}`}
                         >
                           <div className="flex justify-between items-start">
                             <div>
-                              <div className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
+                              <div className="font-bold text-sm text-ink-strong flex items-center gap-1.5">
                                 {pat ? `${pat.lastName} ${pat.firstName}` : extInv ? extInv.clientName : c.diagnosis === 'Client Externe' ? 'Client Externe' : 'Inconnu'}
-                                {urg && <span className="px-1.5 py-0.2 rounded bg-red-100 text-red-700 text-[10px] font-bold">🚨 URGENT</span>}
+                                {urg && <span className="px-1.5 py-0.2 rounded bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-400 text-[10px] font-bold">🚨 URGENT</span>}
                               </div>
-                              <div className="text-xs text-slate-500 mt-0.5">{c.doctorName}</div>
+                              <div className="text-xs text-ink-muted mt-0.5">{c.doctorName}</div>
                             </div>
-                            <span className="font-mono text-xs font-bold text-purple-700 bg-purple-100/70 px-2 py-0.5 rounded">
+                            <span className="font-mono text-xs font-bold text-purple-700 dark:text-purple-400 bg-purple-100/70 dark:bg-purple-500/10 px-2 py-0.5 rounded">
                               {c.prescriptions.filter((p) => !p.delivered).length} art.
                             </span>
                           </div>
                           {pat && (
-                            <div className="mt-1 text-[11px] text-slate-400 font-mono">Dossier: {pat.dossier}</div>
+                            <div className="mt-1 text-[11px] text-ink-faint font-mono">Dossier: {pat.dossier}</div>
                           )}
                           {!pat && (c.diagnosis === 'Client Externe' || extInv) && (
-                            <div className="mt-1 text-[11px] text-purple-600 font-mono">Vente Externe</div>
+                            <div className="mt-1 text-[11px] text-purple-600 dark:text-purple-400 font-mono">Vente Externe</div>
                           )}
                         </div>
                       );
@@ -683,12 +683,12 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
 
 
                   {!selConsult ? (
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center text-slate-400">
+                    <div className="bg-surface rounded-xl shadow-sm border border-line p-12 text-center text-ink-faint">
                       <Pill className="w-16 h-16 mx-auto mb-4 opacity-30" />
                       <p className="text-base font-medium">Sélectionnez une ordonnance à gauche pour la valider / délivrer</p>
                     </div>
                   ) : (
-                    <div className={`bg-white rounded-xl shadow-sm border overflow-hidden transition-all ${isUrgent ? 'border-red-300 ring-2 ring-red-100' : 'border-purple-200 ring-1 ring-purple-100'}`}>
+                    <div className={`bg-surface rounded-xl shadow-sm border overflow-hidden transition-all ${isUrgent ? 'border-red-300 dark:border-red-500/40 ring-2 ring-red-100 dark:ring-red-500/25' : 'border-purple-200 dark:border-purple-500/25 ring-1 ring-purple-100 dark:ring-purple-500/25'}`}>
                       <div className="p-4 bg-gradient-to-r from-slate-800 to-slate-900 text-white flex items-center justify-between flex-wrap gap-3">
                         <div>
                           <div className="font-bold text-base flex items-center gap-2">
@@ -719,7 +719,7 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                       <div className="p-4">
                         <table className="w-full text-sm">
                           <thead>
-                            <tr className="border-b border-slate-200 text-slate-600 text-xs">
+                            <tr className="border-b border-line text-ink-secondary text-xs">
                               <th className="text-left py-2 font-semibold">Article</th>
                               <th className="text-center py-2 font-semibold">Qté</th>
                               <th className="text-left py-2 font-semibold">Posologie</th>
@@ -733,18 +733,18 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                               const blocked = !!art?.saleBlocked;
                               const noStock = (art?.stockPharmacie || 0) < p.quantity;
                               return (
-                                <tr key={p.id} className={`border-b border-slate-100 ${blocked ? 'bg-orange-50' : noStock ? 'bg-red-50/60' : ''}`}>
-                                  <td className="py-2.5 font-bold text-slate-800">{p.articleName}</td>
-                                  <td className="py-2.5 text-center font-mono font-bold text-purple-700">{p.quantity}</td>
-                                  <td className="py-2.5 text-xs text-slate-600 font-sans">{p.posology || '—'}</td>
-                                  <td className={`py-2.5 text-right font-mono font-bold ${(art?.stockPharmacie || 0) <= 0 ? 'text-red-600' : 'text-slate-700'}`}>{art?.stockPharmacie || 0}</td>
+                                <tr key={p.id} className={`border-b border-line-soft ${blocked ? 'bg-orange-50 dark:bg-orange-500/8' : noStock ? 'bg-red-50/60 dark:bg-red-500/5' : ''}`}>
+                                  <td className="py-2.5 font-bold text-ink-strong">{p.articleName}</td>
+                                  <td className="py-2.5 text-center font-mono font-bold text-purple-700 dark:text-purple-400">{p.quantity}</td>
+                                  <td className="py-2.5 text-xs text-ink-secondary font-sans">{p.posology || '—'}</td>
+                                  <td className={`py-2.5 text-right font-mono font-bold ${(art?.stockPharmacie || 0) <= 0 ? 'text-red-600 dark:text-red-400' : 'text-ink'}`}>{art?.stockPharmacie || 0}</td>
                                   <td className="py-2.5 text-center">
                                     {blocked ? (
-                                      <span className="px-2 py-0.5 bg-orange-100 text-orange-800 text-[10px] rounded-full font-bold">⛔ Bloqué</span>
+                                      <span className="px-2 py-0.5 bg-orange-100 dark:bg-orange-500/15 text-orange-800 dark:text-orange-300 text-[10px] rounded-full font-bold">⛔ Bloqué</span>
                                     ) : noStock ? (
-                                      <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] rounded-full font-bold">Rupture</span>
+                                      <span className="px-2 py-0.5 bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-400 text-[10px] rounded-full font-bold">Rupture</span>
                                     ) : (
-                                      <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] rounded-full font-bold">OK pour délivrance</span>
+                                      <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 text-[10px] rounded-full font-bold">OK pour délivrance</span>
                                     )}
                                   </td>
                                 </tr>
@@ -757,7 +757,7 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                   )}
 
                   {/* 2. LISTE APRÈS VALIDATION (Livraisons de garde avant clôture) */}
-                  <div className="border border-emerald-200 rounded-xl bg-emerald-50/40 overflow-hidden shadow-sm">
+                  <div className="border border-emerald-200 dark:border-emerald-500/25 rounded-xl bg-emerald-50/40 dark:bg-emerald-500/3 overflow-hidden shadow-sm">
                     <div className="p-3.5 bg-gradient-to-r from-emerald-700 to-teal-800 text-white flex justify-between items-center flex-wrap gap-2">
                       <div>
                         <h4 className="font-bold text-sm flex items-center gap-2">
@@ -769,18 +769,18 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                         </p>
                       </div>
                       {unclosedDeliveryItems.length > 0 ? (
-                        <div className="text-[10px] font-bold text-emerald-700">{unclosedDeliveryItems.length} ligne(s) non clôturée(s) · {formatAr(unclosedTotalAmt)}</div>
+                        <div className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400">{unclosedDeliveryItems.length} ligne(s) non clôturée(s) · {formatAr(unclosedTotalAmt)}</div>
                       ) : (
                         <div />
                       )}
                     </div>
 
                     {/* Sous-onglets : Récap par article (défaut) / Livraisons détaillées */}
-                    <div className="flex gap-2 px-3 py-2 bg-slate-100 border-b border-slate-200">
+                    <div className="flex gap-2 px-3 py-2 bg-surface-hover border-b border-line">
                       <button
                         onClick={() => setDeliverySub('recap')}
                         className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition ${
-                          deliverySub === 'recap' ? 'bg-emerald-600 text-white shadow' : 'bg-white text-slate-600 hover:bg-slate-50'
+                          deliverySub === 'recap' ? 'bg-emerald-600 text-white shadow' : 'bg-surface text-ink-secondary hover:bg-surface-muted'
                         }`}
                       >
                         📊 Récap par article
@@ -788,51 +788,51 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                       <button
                         onClick={() => setDeliverySub('detail')}
                         className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition ${
-                          deliverySub === 'detail' ? 'bg-emerald-600 text-white shadow' : 'bg-white text-slate-600 hover:bg-slate-50'
+                          deliverySub === 'detail' ? 'bg-emerald-600 text-white shadow' : 'bg-surface text-ink-secondary hover:bg-surface-muted'
                         }`}
                       >
                         📋 Livraisons détaillées ({unclosedDeliveryItems.length})
                       </button>
                     </div>
 
-                    <div className="p-3 bg-white max-h-72 overflow-y-auto">
+                    <div className="p-3 bg-surface max-h-72 overflow-y-auto">
                       {unclosedDeliveryItems.length === 0 ? (
-                        <div className="py-6 text-center text-slate-400 text-xs">
+                        <div className="py-6 text-center text-ink-faint text-xs">
                           Aucune livraison non clôturée. Les ordonnances validées apparaîtront ici avant la clôture du tour de garde.
                         </div>
                       ) : deliverySub === 'recap' ? (
                         /* 📊 1er onglet (défaut) : ce qui sera imprimé à la clôture —
                            sortie du jour + stock final, médicaments gérés en stock */
                         <>
-                        <div className="mb-2 text-[10px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5">
+                        <div className="mb-2 text-[10px] text-ink-muted bg-surface-muted border border-line rounded-lg px-2 py-1.5">
                           🧾 Ticket de clôture : uniquement les <strong>médicaments gérés en stock</strong> — quantité <strong>sortie du jour</strong> et <strong>stock final</strong>. Le détail des livraisons n'est pas imprimé.
                         </div>
                         <table className="w-full text-xs">
-                          <thead className="bg-slate-50 text-slate-600 border-b">
+                          <thead className="bg-surface-muted text-ink-secondary border-b">
                             <tr>
                               <th className="p-2 text-left">Article délivré</th>
                               <th className="p-2 text-right">Qté sortie</th>
                               <th className="p-2 text-right">Stock final</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-slate-100">
+                          <tbody className="divide-y divide-line-soft">
                             {deliveryRecapByArticle.map((r) => (
-                              <tr key={r.articleName} className="hover:bg-emerald-50/50">
-                                <td className="p-2 font-semibold text-emerald-900">
+                              <tr key={r.articleName} className="hover:bg-emerald-50/50 dark:hover:bg-emerald-500/4">
+                                <td className="p-2 font-semibold text-emerald-900 dark:text-emerald-300">
                                   {r.articleName}
-                                  {r.finalStock === null && <span className="ml-1.5 text-[9px] text-slate-400 font-normal">(non géré en stock)</span>}
+                                  {r.finalStock === null && <span className="ml-1.5 text-[9px] text-ink-faint font-normal">(non géré en stock)</span>}
                                 </td>
-                                <td className="p-2 text-right font-mono font-bold text-emerald-700">{r.totalQuantity}</td>
-                                <td className={`p-2 text-right font-mono ${r.finalStock === null ? 'text-slate-300' : r.finalStock <= 0 ? 'text-red-600 font-bold' : 'text-slate-700'}`}>
+                                <td className="p-2 text-right font-mono font-bold text-emerald-700 dark:text-emerald-400">{r.totalQuantity}</td>
+                                <td className={`p-2 text-right font-mono ${r.finalStock === null ? 'text-slate-300' : r.finalStock <= 0 ? 'text-red-600 dark:text-red-400 font-bold' : 'text-ink'}`}>
                                   {r.finalStock === null ? '—' : r.finalStock}
                                 </td>
                               </tr>
                             ))}
                           </tbody>
-                          <tfoot className="bg-emerald-50 font-bold border-t border-emerald-200">
+                          <tfoot className="bg-emerald-50 dark:bg-emerald-500/8 font-bold border-t border-emerald-200 dark:border-emerald-500/25">
                             <tr>
-                              <td className="p-2 text-right text-emerald-900">TOTAL SORTIES (stock géré) :</td>
-                              <td className="p-2 text-right font-mono text-sm text-emerald-800">{deliveryRecapStockOnly.reduce((s, r) => s + r.totalQuantity, 0)}</td>
+                              <td className="p-2 text-right text-emerald-900 dark:text-emerald-300">TOTAL SORTIES (stock géré) :</td>
+                              <td className="p-2 text-right font-mono text-sm text-emerald-800 dark:text-emerald-300">{deliveryRecapStockOnly.reduce((s, r) => s + r.totalQuantity, 0)}</td>
                               <td></td>
                             </tr>
                           </tfoot>
@@ -841,7 +841,7 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                       ) : (
                         /* 📋 2e onglet : liste détaillée Heure / Patient / Article / Qté */
                         <table className="w-full text-xs">
-                          <thead className="bg-slate-50 text-slate-600 border-b">
+                          <thead className="bg-surface-muted text-ink-secondary border-b">
                             <tr>
                               <th className="p-2 text-left">Heure</th>
                               <th className="p-2 text-left">Patient / Client</th>
@@ -849,20 +849,20 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                               <th className="p-2 text-right">Qté</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-slate-100">
+                          <tbody className="divide-y divide-line-soft">
                             {unclosedDeliveryItems.map((item) => (
-                              <tr key={item.id} className="hover:bg-emerald-50/50">
-                                <td className="p-2 font-mono text-slate-500">{new Date(item.deliveredAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</td>
-                                <td className="p-2 font-medium text-slate-800">{item.patientName}</td>
-                                <td className="p-2 font-semibold text-emerald-900">{item.articleName}</td>
+                              <tr key={item.id} className="hover:bg-emerald-50/50 dark:hover:bg-emerald-500/4">
+                                <td className="p-2 font-mono text-ink-muted">{new Date(item.deliveredAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</td>
+                                <td className="p-2 font-medium text-ink-strong">{item.patientName}</td>
+                                <td className="p-2 font-semibold text-emerald-900 dark:text-emerald-300">{item.articleName}</td>
                                 <td className="p-2 text-right font-mono font-bold">{item.quantity}</td>
                               </tr>
                             ))}
                           </tbody>
-                          <tfoot className="bg-emerald-50 font-bold border-t border-emerald-200">
+                          <tfoot className="bg-emerald-50 dark:bg-emerald-500/8 font-bold border-t border-emerald-200 dark:border-emerald-500/25">
                             <tr>
-                              <td colSpan={2} className="p-2 text-right text-emerald-900">TOTAL :</td>
-                              <td className="p-2 text-right font-mono text-sm text-emerald-800">{unclosedDeliveryItems.reduce((s, d) => s + d.quantity, 0)}</td>
+                              <td colSpan={2} className="p-2 text-right text-emerald-900 dark:text-emerald-300">TOTAL :</td>
+                              <td className="p-2 text-right font-mono text-sm text-emerald-800 dark:text-emerald-300">{unclosedDeliveryItems.reduce((s, d) => s + d.quantity, 0)}</td>
                             </tr>
                           </tfoot>
                         </table>
@@ -877,7 +877,7 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
           {/* === STOCK PHARMACIE — réappro + historique fusionnés ici === */}
           {tab === 'stock' && (
             <div className="space-y-4">
-              <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
+              <div className="flex flex-wrap items-center gap-2 border-b border-line pb-3">
                 {[
                   { k: 'articles' as const, l: '📦 Articles & blocage vente' },
                   { k: 'demandes' as const, l: `📩 Demandes réappro (${pendingCount})` },
@@ -887,7 +887,7 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                     key={s.k}
                     onClick={() => setStockSub(s.k)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition ${
-                      stockSub === s.k ? 'bg-purple-600 text-white shadow' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      stockSub === s.k ? 'bg-purple-600 text-white shadow' : 'bg-surface-hover text-ink-secondary hover:bg-surface-active'
                     }`}
                   >
                     {s.l}
@@ -906,32 +906,32 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                 <div>
                   <div className="mb-3 flex flex-wrap gap-3 items-center">
                     <div className="relative max-w-md flex-1 min-w-[200px]">
-                      <Search className="absolute left-3 top-2.5 w-5 h-5 text-slate-400" />
-                      <input type="text" value={searchStock} onChange={(e) => setSearchStock(e.target.value)} className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none" placeholder="Rechercher un article..." />
+                      <Search className="absolute left-3 top-2.5 w-5 h-5 text-ink-faint" />
+                      <input type="text" value={searchStock} onChange={(e) => setSearchStock(e.target.value)} className="w-full pl-10 pr-4 py-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-purple-500 outline-none" placeholder="Rechercher un article..." />
                     </div>
-                    <div className="text-xs text-slate-500 bg-orange-50 border border-orange-200 px-3 py-2 rounded-lg flex items-center gap-2">
-                      <Ban className="w-4 h-4 text-orange-600" />
+                    <div className="text-xs text-ink-muted bg-orange-50 dark:bg-orange-500/8 border border-orange-200 dark:border-orange-500/25 px-3 py-2 rounded-lg flex items-center gap-2">
+                      <Ban className="w-4 h-4 text-orange-600 dark:text-orange-400" />
                       Bloquez la vente même si le stock est encore disponible (réservé, régularisation…).
                     </div>
-                    <div className="text-xs text-slate-500 bg-sky-50 border border-sky-200 px-3 py-2 rounded-lg flex items-center gap-2">
-                      <BellOff className="w-4 h-4 text-sky-600" />
+                    <div className="text-xs text-ink-muted bg-sky-50 dark:bg-sky-500/8 border border-sky-200 dark:border-sky-500/25 px-3 py-2 rounded-lg flex items-center gap-2">
+                      <BellOff className="w-4 h-4 text-sky-600 dark:text-sky-400" />
                       Réglez le <strong>stock d'alerte</strong> par article ou désactivez l'alerte (🔕). En rupture, l'article reste <strong>invendable</strong> même si l'alerte est désactivée.
                     </div>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="bg-slate-50 border-b border-slate-200">
-                          <th className="text-left py-3 px-3 font-semibold text-slate-600">Famille</th>
-                          <th className="text-left py-3 px-3 font-semibold text-slate-600">Article</th>
-                          <th className="text-center py-3 px-3 font-semibold text-slate-600">Stock Pharma</th>
-                          <th className="text-center py-3 px-3 font-semibold text-slate-600">Stock Central</th>
-                          <th className="text-center py-3 px-3 font-semibold text-slate-600" title="Seuil d'alerte (stock bas) pour la pharmacie">Stock d'alerte</th>
-                          <th className="text-center py-3 px-3 font-semibold text-slate-600" title="Activer / désactiver l'alerte pour cet article">Alerte</th>
-                          <th className="text-right py-3 px-3 font-semibold text-slate-600">Prix</th>
-                          <th className="text-center py-3 px-3 font-semibold text-slate-600">État stock</th>
-                          <th className="text-center py-3 px-3 font-semibold text-slate-600">Vente</th>
-                          <th className="text-right py-3 px-3 font-semibold text-slate-600">Action</th>
+                        <tr className="bg-surface-muted border-b border-line">
+                          <th className="text-left py-3 px-3 font-semibold text-ink-secondary">Famille</th>
+                          <th className="text-left py-3 px-3 font-semibold text-ink-secondary">Article</th>
+                          <th className="text-center py-3 px-3 font-semibold text-ink-secondary">Stock Pharma</th>
+                          <th className="text-center py-3 px-3 font-semibold text-ink-secondary">Stock Central</th>
+                          <th className="text-center py-3 px-3 font-semibold text-ink-secondary" title="Seuil d'alerte (stock bas) pour la pharmacie">Stock d'alerte</th>
+                          <th className="text-center py-3 px-3 font-semibold text-ink-secondary" title="Activer / désactiver l'alerte pour cet article">Alerte</th>
+                          <th className="text-right py-3 px-3 font-semibold text-ink-secondary">Prix</th>
+                          <th className="text-center py-3 px-3 font-semibold text-ink-secondary">État stock</th>
+                          <th className="text-center py-3 px-3 font-semibold text-ink-secondary">Vente</th>
+                          <th className="text-right py-3 px-3 font-semibold text-ink-secondary">Action</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -942,18 +942,18 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                           const isOut = managesStock && !alertMuted && a.stockPharmacie === 0;
                           const blocked = !!a.saleBlocked;
                           return (
-                            <tr key={a.id} className={`border-b border-slate-100 ${blocked ? 'bg-orange-50/80' : isOut ? 'bg-red-50' : isLow ? 'bg-amber-50' : ''}`}>
-                              <td className="py-3 px-3"><span className="px-2 py-0.5 bg-slate-200 rounded text-xs">{familyLabel(a.family)}</span></td>
+                            <tr key={a.id} className={`border-b border-line-soft ${blocked ? 'bg-orange-50/80 dark:bg-orange-500/6' : isOut ? 'bg-red-50 dark:bg-red-500/8' : isLow ? 'bg-amber-50 dark:bg-amber-500/8' : ''}`}>
+                              <td className="py-3 px-3"><span className="px-2 py-0.5 bg-surface-active rounded text-xs">{familyLabel(a.family)}</span></td>
                               <td className="py-3 px-3 font-medium">
                                 {a.name}
                                 {blocked && a.saleBlockReason && (
-                                  <div className="text-[10px] text-orange-700 mt-0.5 flex items-center gap-1">
+                                  <div className="text-[10px] text-orange-700 dark:text-orange-400 mt-0.5 flex items-center gap-1">
                                     <AlertTriangle className="w-3 h-3" /> {a.saleBlockReason}
                                   </div>
                                 )}
                               </td>
                               <td className="py-3 px-3 text-center font-mono font-bold">{managesStock ? a.stockPharmacie : '—'}</td>
-                              <td className="py-3 px-3 text-center font-mono text-slate-500">{managesStock ? a.stockCentral : '—'}</td>
+                              <td className="py-3 px-3 text-center font-mono text-ink-muted">{managesStock ? a.stockCentral : '—'}</td>
                               <td className="py-3 px-3 text-center">
                                 {managesStock ? (
                                   <input
@@ -961,50 +961,50 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                                     min={0}
                                     value={a.minStockPharmacie}
                                     onChange={(e) => updateAlertThreshold(a.id, parseFloat(e.target.value) || 0)}
-                                    className="w-16 px-1.5 py-1 border border-slate-300 rounded text-center font-mono text-xs outline-none focus:border-purple-500 bg-white"
+                                    className="w-16 px-1.5 py-1 border border-line-strong rounded text-center font-mono text-xs outline-none focus:border-purple-500 bg-surface"
                                     title="Stock d'alerte : en dessous, l'article est signalé « stock bas »"
                                   />
                                 ) : (
-                                  <span className="text-slate-400" title="Famille non gérée en stock">—</span>
+                                  <span className="text-ink-faint" title="Famille non gérée en stock">—</span>
                                 )}
                               </td>
                               <td className="py-3 px-3 text-center">
                                 {managesStock ? (
                                   <button
                                     onClick={() => togglePharmaAlert(a.id, a.name)}
-                                    className={`p-1.5 rounded-lg cursor-pointer ${alertMuted ? 'bg-slate-200 text-slate-500 hover:bg-slate-300' : 'bg-purple-100 text-purple-700 hover:bg-purple-200'}`}
+                                    className={`p-1.5 rounded-lg cursor-pointer ${alertMuted ? 'bg-surface-active text-ink-muted hover:bg-line-strong' : 'bg-purple-100 dark:bg-purple-500/15 text-purple-700 dark:text-purple-400 hover:bg-purple-200 dark:hover:bg-purple-500/25'}`}
                                     title={alertMuted ? 'Alerte désactivée — cliquez pour réactiver' : 'Alerte activée — cliquez pour désactiver'}
                                   >
                                     {alertMuted ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
                                   </button>
                                 ) : (
-                                  <span className="text-slate-400" title="Famille non gérée en stock">—</span>
+                                  <span className="text-ink-faint" title="Famille non gérée en stock">—</span>
                                 )}
                               </td>
                               <td className="py-3 px-3 text-right font-mono">{formatAr(a.priceComptoir)}</td>
                               <td className="py-3 px-3 text-center">
-                                {!managesStock ? <span className="px-2 py-1 bg-slate-100 text-slate-500 text-xs rounded-full font-medium" title="Cette famille ne gère pas le stock">Non géré</span>
-                                  : alertMuted ? <span className="px-2 py-1 bg-slate-200 text-slate-600 text-xs rounded-full font-medium" title="Alerte désactivée pour cet article">🔕 Alerte off</span>
-                                  : isOut ? <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full font-medium">RUPTURE</span>
-                                  : isLow ? <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs rounded-full font-medium">Stock bas</span>
-                                  : <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full font-medium">OK</span>}
+                                {!managesStock ? <span className="px-2 py-1 bg-surface-hover text-ink-muted text-xs rounded-full font-medium" title="Cette famille ne gère pas le stock">Non géré</span>
+                                  : alertMuted ? <span className="px-2 py-1 bg-surface-active text-ink-secondary text-xs rounded-full font-medium" title="Alerte désactivée pour cet article">🔕 Alerte off</span>
+                                  : isOut ? <span className="px-2 py-1 bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-400 text-xs rounded-full font-medium">RUPTURE</span>
+                                  : isLow ? <span className="px-2 py-1 bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 text-xs rounded-full font-medium">Stock bas</span>
+                                  : <span className="px-2 py-1 bg-green-100 dark:bg-green-500/15 text-green-700 dark:text-green-400 text-xs rounded-full font-medium">OK</span>}
                               </td>
                               <td className="py-3 px-3 text-center">
                                 {blocked
-                                  ? <span className="px-2 py-1 bg-orange-200 text-orange-900 text-xs rounded-full font-bold" title="Cliquez sur « Débloquer » pour rendre l'article vendable immédiatement">⛔ BLOQUÉ</span>
+                                  ? <span className="px-2 py-1 bg-orange-200 dark:bg-orange-500/25 text-orange-900 dark:text-orange-300 text-xs rounded-full font-bold" title="Cliquez sur « Débloquer » pour rendre l'article vendable immédiatement">⛔ BLOQUÉ</span>
                                   : !managesStock
-                                    ? <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs rounded-full font-medium" title="Famille non gérée en stock : vente sans condition de stock">Vendable</span>
+                                    ? <span className="px-2 py-1 bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-xs rounded-full font-medium" title="Famille non gérée en stock : vente sans condition de stock">Vendable</span>
                                     : isArticleSaleable(a)
-                                      ? <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs rounded-full font-medium">Vendable</span>
-                                      : <span className="px-2 py-1 bg-slate-200 text-slate-600 text-xs rounded-full font-medium">Non vendable</span>}
+                                      ? <span className="px-2 py-1 bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-xs rounded-full font-medium">Vendable</span>
+                                      : <span className="px-2 py-1 bg-surface-active text-ink-secondary text-xs rounded-full font-medium">Non vendable</span>}
                               </td>
                               <td className="py-3 px-3 text-right">
                                 <button
                                   onClick={() => { setBlockModal({ articleId: a.id, name: a.name, currentlyBlocked: blocked }); setBlockReason(a.saleBlockReason || ''); }}
                                   className={`px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1 cursor-pointer ml-auto ${
                                     blocked
-                                      ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
-                                      : 'bg-orange-100 text-orange-800 hover:bg-orange-200'
+                                      ? 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-500/25'
+                                      : 'bg-orange-100 dark:bg-orange-500/15 text-orange-800 dark:text-orange-300 hover:bg-orange-200 dark:hover:bg-orange-500/25'
                                   }`}
                                 >
                                   {blocked ? <><Unlock className="w-3.5 h-3.5" /> Débloquer</> : <><Ban className="w-3.5 h-3.5" /> Bloquer vente</>}
@@ -1021,24 +1021,24 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
 
               {stockSub === 'demandes' && (
                 <div className="space-y-3">
-                  <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl text-xs text-purple-800">
+                  <div className="p-3 bg-purple-50 dark:bg-purple-500/8 border border-purple-200 dark:border-purple-500/25 rounded-xl text-xs text-purple-800 dark:text-purple-300">
                     Les demandes sont transmises au <strong>magasinier</strong> qui les traite depuis le <strong>dépôt central</strong> (dispersion vers la pharmacie).
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <Filter className="w-4 h-4 text-slate-500" />
-                    <button onClick={() => setFilterCat('all')} className={`px-2 py-0.5 rounded text-xs cursor-pointer ${filterCat === 'all' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Toutes</button>
+                    <Filter className="w-4 h-4 text-ink-muted" />
+                    <button onClick={() => setFilterCat('all')} className={`px-2 py-0.5 rounded text-xs cursor-pointer ${filterCat === 'all' ? 'bg-slate-700 text-white' : 'bg-surface-hover text-ink-secondary hover:bg-surface-active'}`}>Toutes</button>
                     {CATEGORIES.map(c => (
-                      <button key={c} onClick={() => setFilterCat(c)} className={`px-2 py-0.5 rounded text-xs cursor-pointer ${filterCat === c ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{transferCategoryLabel(c)}</button>
+                      <button key={c} onClick={() => setFilterCat(c)} className={`px-2 py-0.5 rounded text-xs cursor-pointer ${filterCat === c ? 'bg-slate-700 text-white' : 'bg-surface-hover text-ink-secondary hover:bg-surface-active'}`}>{transferCategoryLabel(c)}</button>
                     ))}
                   </div>
                   {myRequests.filter(t => t.status === 'requested' && (filterCat === 'all' || t.category === filterCat)).length === 0 ? (
-                    <div className="text-center py-8 text-slate-400 bg-slate-50 border border-dashed rounded-lg text-sm">
+                    <div className="text-center py-8 text-ink-faint bg-surface-muted border border-dashed rounded-lg text-sm">
                       Aucune demande en cours. Cliquez sur <strong>Demander réappro</strong>.
                     </div>
                   ) : (
-                    <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
+                    <div className="border rounded-lg overflow-hidden bg-surface shadow-sm">
                       <table className="w-full text-sm">
-                        <thead className="bg-slate-50 border-b text-xs text-slate-600">
+                        <thead className="bg-surface-muted border-b text-xs text-ink-secondary">
                           <tr>
                             <th className="p-2 text-left">Service</th>
                             <th className="p-2 text-left">Article</th>
@@ -1050,18 +1050,18 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                         </thead>
                         <tbody>
                           {myRequests.filter(t => t.status === 'requested' && (filterCat === 'all' || t.category === filterCat)).map(tr => (
-                            <tr key={tr.id} className="border-b hover:bg-slate-50">
-                              <td className="p-2"><span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700">{tr.targetServiceName || 'Pharmacie'}</span></td>
+                            <tr key={tr.id} className="border-b hover:bg-surface-muted">
+                              <td className="p-2"><span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 dark:bg-purple-500/15 text-purple-700 dark:text-purple-400">{tr.targetServiceName || 'Pharmacie'}</span></td>
                               <td className="p-2 font-medium">{tr.articleName}</td>
                               <td className="p-2 text-center font-mono font-bold">{tr.quantity}</td>
-                              <td className="p-2 text-xs text-slate-500 truncate max-w-[180px]">{tr.notes || '—'}</td>
-                              <td className="p-2 text-xs text-slate-500">{tr.requestedAt ? new Date(tr.requestedAt).toLocaleDateString('fr-FR') : '—'}</td>
+                              <td className="p-2 text-xs text-ink-muted truncate max-w-[180px]">{tr.notes || '—'}</td>
+                              <td className="p-2 text-xs text-ink-muted">{tr.requestedAt ? new Date(tr.requestedAt).toLocaleDateString('fr-FR') : '—'}</td>
                               <td className="p-2 text-right">
                                 <div className="flex justify-end gap-1">
-                                  <button onClick={() => openReapproEdit(tr.id)} className="px-2 py-1 bg-amber-100 text-amber-700 hover:bg-amber-200 rounded text-xs flex items-center gap-1 cursor-pointer font-medium">
+                                  <button onClick={() => openReapproEdit(tr.id)} className="px-2 py-1 bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-500/25 rounded text-xs flex items-center gap-1 cursor-pointer font-medium">
                                     <Edit3 className="w-3 h-3" /> Modifier
                                   </button>
-                                  <button onClick={() => cancelRequest(tr.id)} className="px-2 py-1 bg-rose-100 text-rose-700 hover:bg-rose-200 rounded text-xs cursor-pointer font-medium">
+                                  <button onClick={() => cancelRequest(tr.id)} className="px-2 py-1 bg-rose-100 dark:bg-rose-500/15 text-rose-700 dark:text-rose-400 hover:bg-rose-200 dark:hover:bg-rose-500/25 rounded text-xs cursor-pointer font-medium">
                                     <Trash2 className="w-3 h-3" /> Annuler
                                   </button>
                                 </div>
@@ -1078,15 +1078,15 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
               {stockSub === 'historique' && (
                 <div>
                   <div className="flex items-center gap-2 mb-3 flex-wrap">
-                    <Filter className="w-4 h-4 text-slate-500" />
-                    <button onClick={() => setFilterCat('all')} className={`px-2 py-0.5 rounded text-xs cursor-pointer ${filterCat === 'all' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Toutes</button>
+                    <Filter className="w-4 h-4 text-ink-muted" />
+                    <button onClick={() => setFilterCat('all')} className={`px-2 py-0.5 rounded text-xs cursor-pointer ${filterCat === 'all' ? 'bg-slate-700 text-white' : 'bg-surface-hover text-ink-secondary hover:bg-surface-active'}`}>Toutes</button>
                     {CATEGORIES.map(c => (
-                      <button key={c} onClick={() => setFilterCat(c)} className={`px-2 py-0.5 rounded text-xs cursor-pointer ${filterCat === c ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{transferCategoryLabel(c)}</button>
+                      <button key={c} onClick={() => setFilterCat(c)} className={`px-2 py-0.5 rounded text-xs cursor-pointer ${filterCat === c ? 'bg-slate-700 text-white' : 'bg-surface-hover text-ink-secondary hover:bg-surface-active'}`}>{transferCategoryLabel(c)}</button>
                     ))}
                   </div>
                   <div className="border rounded-lg overflow-hidden">
                     <table className="w-full text-xs">
-                      <thead className="bg-slate-50 border-b text-slate-600">
+                      <thead className="bg-surface-muted border-b text-ink-secondary">
                         <tr>
                           <th className="p-2 text-left">Date</th>
                           <th className="p-2 text-left">Service</th>
@@ -1100,22 +1100,22 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                         {myRequestsFiltered.slice().reverse().slice(0, 50).map(tr => {
                           const u = state.users.find(x => x.id === tr.requestedBy);
                           return (
-                            <tr key={tr.id} className="border-b hover:bg-slate-50">
-                              <td className="p-2 text-slate-500">{tr.requestedAt ? new Date(tr.requestedAt).toLocaleString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+                            <tr key={tr.id} className="border-b hover:bg-surface-muted">
+                              <td className="p-2 text-ink-muted">{tr.requestedAt ? new Date(tr.requestedAt).toLocaleString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—'}</td>
                               <td className="p-2"><span className={`px-2 py-0.5 rounded text-[10px] font-bold ${transferCategoryColor(tr.category)}`}>{tr.targetServiceName || transferCategoryLabel(tr.category)}</span></td>
                               <td className="p-2 font-medium">{tr.articleName}</td>
                               <td className="p-2 text-center font-mono font-bold">{tr.quantity}</td>
                               <td className="p-2">{u?.name || '—'}</td>
                               <td className="p-2 text-center">
-                                {tr.status === 'requested' && <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] rounded-full font-bold">En attente magasinier</span>}
-                                {tr.status === 'transferred' && <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] rounded-full font-bold">Livrée</span>}
-                                {tr.status === 'cancelled' && <span className="px-2 py-0.5 bg-slate-200 text-slate-600 text-[10px] rounded-full font-bold">Annulée</span>}
+                                {tr.status === 'requested' && <span className="px-2 py-0.5 bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 text-[10px] rounded-full font-bold">En attente magasinier</span>}
+                                {tr.status === 'transferred' && <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-[10px] rounded-full font-bold">Livrée</span>}
+                                {tr.status === 'cancelled' && <span className="px-2 py-0.5 bg-surface-active text-ink-secondary text-[10px] rounded-full font-bold">Annulée</span>}
                               </td>
                             </tr>
                           );
                         })}
                         {myRequestsFiltered.length === 0 && (
-                          <tr><td colSpan={6} className="p-6 text-center text-slate-400">Aucune demande.</td></tr>
+                          <tr><td colSpan={6} className="p-6 text-center text-ink-faint">Aucune demande.</td></tr>
                         )}
                       </tbody>
                     </table>
@@ -1127,12 +1127,12 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
 
           {tab === 'request' && (
             <div className="space-y-4">
-              <div className="p-4 bg-purple-50 border border-purple-200 rounded-xl flex items-center justify-between flex-wrap gap-3">
+              <div className="p-4 bg-purple-50 dark:bg-purple-500/8 border border-purple-200 dark:border-purple-500/25 rounded-xl flex items-center justify-between flex-wrap gap-3">
                 <div>
-                  <h4 className="font-bold text-purple-800 flex items-center gap-2">
-                    <Send className="w-5 h-5 text-purple-600" /> Demande d'approvisionnement → Magasinier
+                  <h4 className="font-bold text-purple-800 dark:text-purple-300 flex items-center gap-2">
+                    <Send className="w-5 h-5 text-purple-600 dark:text-purple-400" /> Demande d'approvisionnement → Magasinier
                   </h4>
-                  <p className="text-xs text-purple-700 mt-1">
+                  <p className="text-xs text-purple-700 dark:text-purple-400 mt-1">
                     La demande est envoyée au magasinier qui crée le transfert depuis le <strong>dépôt central</strong> vers la pharmacie.
                   </p>
                 </div>
@@ -1140,8 +1140,8 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                   <Plus className="w-4 h-4" /> Nouvelle demande
                 </button>
               </div>
-              <div className="text-center py-6 text-slate-500 text-sm">
-                Ou consultez les demandes en cours dans l'onglet <button onClick={() => { setTab('stock'); setStockSub('demandes'); }} className="text-purple-600 font-semibold underline cursor-pointer">Stock pharmacie → Demandes</button>.
+              <div className="text-center py-6 text-ink-muted text-sm">
+                Ou consultez les demandes en cours dans l'onglet <button onClick={() => { setTab('stock'); setStockSub('demandes'); }} className="text-purple-600 dark:text-purple-400 font-semibold underline cursor-pointer">Stock pharmacie → Demandes</button>.
               </div>
             </div>
           )}
@@ -1158,7 +1158,7 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
             role="dialog"
             aria-modal="true"
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-200"
+            className="w-full max-w-md bg-surface rounded-2xl shadow-2xl border border-line overflow-hidden animate-in zoom-in-95 duration-200"
           >
             <div className={`px-5 py-3.5 text-white font-bold flex items-center gap-2 ${blockModal.currentlyBlocked ? 'bg-gradient-to-r from-emerald-600 to-teal-600' : 'bg-gradient-to-r from-orange-500 to-orange-600'}`}>
               {blockModal.currentlyBlocked ? <Unlock className="w-5 h-5" /> : <Ban className="w-5 h-5" />}
@@ -1175,19 +1175,19 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
             <div className="p-5 space-y-3">
               {!blockModal.currentlyBlocked ? (
                 <>
-                  <p className="text-sm text-slate-700">
+                  <p className="text-sm text-ink">
                     Article : <strong>{blockModal.name}</strong>
                   </p>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-ink-muted">
                     Empêche la délivrance / vente même si le stock est encore disponible (réservation, attente de régularisation, lot douteux…).
                   </p>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Motif du blocage *</label>
+                    <label className="block text-xs font-bold text-ink mb-1">Motif du blocage *</label>
                     <input
                       type="text"
                       value={blockReason}
                       onChange={(e) => setBlockReason(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm"
+                      className="w-full px-3 py-2 border border-line-strong rounded-lg outline-none focus:ring-2 focus:ring-orange-500 text-sm"
                       placeholder="Ex: Réservé patient X / En attente régularisation / Lot à vérifier"
                       autoFocus
                     />
@@ -1195,10 +1195,10 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                 </>
               ) : (
                 <>
-                  <p className="text-base font-semibold text-slate-800 leading-relaxed">
+                  <p className="text-base font-semibold text-ink-strong leading-relaxed">
                     Débloquer la vente de l'article « {blockModal.name} » ?
                   </p>
-                  <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-xl p-3">
+                  <p className="text-xs text-ink-muted bg-surface-muted border border-line rounded-xl p-3">
                     En répondant <strong>Oui</strong>, l'article est <strong>débloqué immédiatement</strong> par la pharmacie :
                     aucune validation de la caisse n'est nécessaire. Il redevient vendable et délivrable aussitôt
                     (l'opération est tracée dans le journal d'audit).
@@ -1208,7 +1208,7 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   onClick={() => setBlockModal(null)}
-                  className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 cursor-pointer hover:bg-slate-50"
+                  className="px-4 py-2 border border-line-strong rounded-lg text-sm font-semibold text-ink cursor-pointer hover:bg-surface-muted"
                 >
                   {blockModal.currentlyBlocked ? 'Non' : 'Annuler'}
                 </button>

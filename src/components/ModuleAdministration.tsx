@@ -605,10 +605,10 @@ export default function ModuleAdministration({ state, setState }: Props) {
     const w = s.paperWidth;
     const isNarrow = w === 58;
     return (
-      <div className="bg-white border-2 border-slate-300 rounded-2xl p-6 shadow-2xl max-h-[85vh] overflow-y-auto max-w-lg w-full">
+      <div className="bg-surface border-2 border-line-strong rounded-2xl p-6 shadow-2xl max-h-[85vh] overflow-y-auto max-w-lg w-full">
         <div className="flex justify-between items-center mb-4 pb-3 border-b">
-          <span className="font-bold text-base flex items-center gap-2 text-slate-800">
-            <Receipt className="w-5 h-5 text-blue-600" /> Aperçu du Ticket POS {w}mm
+          <span className="font-bold text-base flex items-center gap-2 text-ink-strong">
+            <Receipt className="w-5 h-5 text-blue-600 dark:text-cyan-400" /> Aperçu du Ticket POS {w}mm
           </span>
           <div className="flex items-center gap-2">
             <button
@@ -617,14 +617,14 @@ export default function ModuleAdministration({ state, setState }: Props) {
             >
               <Printer className="w-3.5 h-3.5" /> Imprimer test
             </button>
-            <button onClick={() => setShowPreview(false)} className="text-slate-400 hover:text-slate-700 cursor-pointer p-1">
+            <button onClick={() => setShowPreview(false)} className="text-ink-faint hover:text-ink cursor-pointer p-1">
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
         
         <div
-          className="bg-white mx-auto font-mono text-black shadow-lg border border-slate-200 rounded-lg p-4"
+          className="theme-paper mx-auto font-mono shadow-lg border border-line rounded-lg p-4"
           style={{
             width: w === 58 ? '58mm' : '80mm',
             fontSize: isNarrow ? '9.5px' : '10.5px',
@@ -696,7 +696,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
       {/* Toast Notification */}
       {toast && (
         <div className="fixed inset-0 z-[9999] pointer-events-none flex items-center justify-center p-4">
-          <div className="pointer-events-auto bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 text-white border border-emerald-300/40 px-6 py-4 rounded-2xl shadow-2xl animate-in fade-in zoom-in-95 font-semibold text-sm flex items-center gap-3">
+          <div className="pointer-events-auto bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 text-white border border-emerald-300/40 dark:border-emerald-500/16 px-6 py-4 rounded-2xl shadow-2xl animate-in fade-in zoom-in-95 font-semibold text-sm flex items-center gap-3">
             <div className="p-1.5 bg-white/20 rounded-lg">
               <Check className="w-5 h-5 text-white" />
             </div>
@@ -708,20 +708,20 @@ export default function ModuleAdministration({ state, setState }: Props) {
       {/* Custom Confirmation Modal */}
       {confirmModal.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-slate-200">
+          <div className="bg-surface rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-line">
             <div className="flex items-center gap-3">
               <div className={`p-3 rounded-xl ${
-                confirmModal.variant === 'danger' ? 'bg-red-100 text-red-600' : confirmModal.variant === 'warning' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'
+                confirmModal.variant === 'danger' ? 'bg-red-100 dark:bg-red-500/15 text-red-600 dark:text-red-400' : confirmModal.variant === 'warning' ? 'bg-amber-100 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400' : 'bg-blue-100 dark:bg-cyan-500/15 text-blue-600 dark:text-cyan-400'
               }`}>
                 <AlertTriangle className="w-6 h-6" />
               </div>
-              <h3 className="font-bold text-slate-800 text-lg">{confirmModal.title}</h3>
+              <h3 className="font-bold text-ink-strong text-lg">{confirmModal.title}</h3>
             </div>
-            <p className="text-sm text-slate-600 leading-relaxed">{confirmModal.message}</p>
+            <p className="text-sm text-ink-secondary leading-relaxed">{confirmModal.message}</p>
             <div className="flex justify-end gap-2 pt-2 border-t">
               <button
                 onClick={() => setConfirmModal((cm) => ({ ...cm, isOpen: false }))}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold cursor-pointer"
+                className="px-4 py-2 bg-surface-hover hover:bg-surface-active text-ink rounded-xl text-xs font-semibold cursor-pointer"
               >
                 {confirmModal.cancelText || 'Annuler'}
               </button>
@@ -741,32 +741,32 @@ export default function ModuleAdministration({ state, setState }: Props) {
       {/* User Create / Edit Modal */}
       {userModal.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4 border border-slate-200">
+          <div className="bg-surface rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4 border border-line">
             <div className="flex items-center justify-between border-b pb-3">
-              <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
-                <Users className="w-5 h-5 text-emerald-600" />
+              <h3 className="font-bold text-ink-strong text-lg flex items-center gap-2">
+                <Users className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                 {userModal.mode === 'add' ? 'Créer un nouveau compte utilisateur' : `Modifier le compte ${userModal.user.id}`}
               </h3>
-              <button onClick={() => setUserModal({ ...userModal, isOpen: false })} className="text-slate-400 hover:text-slate-700 cursor-pointer">
+              <button onClick={() => setUserModal({ ...userModal, isOpen: false })} className="text-ink-faint hover:text-ink cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">Identifiant ID *</label>
+                <label className="text-xs font-bold text-ink block mb-1">Identifiant ID *</label>
                 <input
                   type="text"
                   disabled={userModal.mode === 'edit'}
                   value={userModal.user.id}
                   onChange={(e) => setUserModal({ ...userModal, user: { ...userModal.user, id: e.target.value } })}
-                  className="w-full px-3 py-2 border rounded-xl text-sm font-mono uppercase bg-slate-50 disabled:bg-slate-100 outline-none"
+                  className="w-full px-3 py-2 border rounded-xl text-sm font-mono uppercase bg-surface-muted disabled:bg-surface-hover outline-none"
                   placeholder="Ex: DOC004, CAI002"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">Nom complet du collaborateur *</label>
+                <label className="text-xs font-bold text-ink block mb-1">Nom complet du collaborateur *</label>
                 <input
                   type="text"
                   value={userModal.user.name}
@@ -777,10 +777,10 @@ export default function ModuleAdministration({ state, setState }: Props) {
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">Rôles et permissions (Cocher un ou plusieurs) *</label>
-                <div className="grid grid-cols-2 gap-2 border rounded-xl p-3 bg-slate-50 max-h-48 overflow-y-auto">
+                <label className="text-xs font-bold text-ink block mb-1">Rôles et permissions (Cocher un ou plusieurs) *</label>
+                <div className="grid grid-cols-2 gap-2 border rounded-xl p-3 bg-surface-muted max-h-48 overflow-y-auto">
                   {ALL_ROLES.map((r) => (
-                    <label key={r} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-slate-100 p-1 rounded transition-colors">
+                    <label key={r} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-surface-hover p-1 rounded transition-colors">
                       <input
                         type="checkbox"
                         checked={userModal.user.roles?.includes(r) || false}
@@ -794,16 +794,16 @@ export default function ModuleAdministration({ state, setState }: Props) {
                           }
                           setUserModal({ ...userModal, user: { ...userModal.user, roles: newRoles, role: newRoles.length > 0 ? newRoles[0] : userModal.user.role } });
                         }}
-                        className="w-4 h-4 text-blue-600 rounded cursor-pointer accent-blue-600"
+                        className="w-4 h-4 text-blue-600 dark:text-cyan-400 rounded cursor-pointer accent-blue-600"
                       />
-                      <span className="text-slate-700 select-none">{roleLabels[r]}</span>
+                      <span className="text-ink select-none">{roleLabels[r]}</span>
                     </label>
                   ))}
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">
+                <label className="text-xs font-bold text-ink block mb-1">
                   {userModal.mode === 'add' ? 'Mot de passe initial *' : 'Nouveau mot de passe (laisser vide pour ne pas modifier)'}
                 </label>
                 <input
@@ -819,7 +819,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
             <div className="flex justify-end gap-2 pt-3 border-t">
               <button
                 onClick={() => setUserModal({ ...userModal, isOpen: false })}
-                className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-200 cursor-pointer"
+                className="px-4 py-2 bg-surface-hover text-ink rounded-xl text-xs font-semibold hover:bg-surface-active cursor-pointer"
               >
                 Annuler
               </button>
@@ -837,25 +837,25 @@ export default function ModuleAdministration({ state, setState }: Props) {
       {/* Reset Password Modal */}
       {resetPasswordModal.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-slate-200">
+          <div className="bg-surface rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-line">
             <div className="flex items-center justify-between border-b pb-3">
-              <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
-                <Key className="w-5 h-5 text-blue-600" /> Réinitialiser le mot de passe
+              <h3 className="font-bold text-ink-strong text-lg flex items-center gap-2">
+                <Key className="w-5 h-5 text-blue-600 dark:text-cyan-400" /> Réinitialiser le mot de passe
               </h3>
-              <button onClick={() => setResetPasswordModal((rpm) => ({ ...rpm, isOpen: false }))} className="text-slate-400 hover:text-slate-700 cursor-pointer">
+              <button onClick={() => setResetPasswordModal((rpm) => ({ ...rpm, isOpen: false }))} className="text-ink-faint hover:text-ink cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-3">
-              <div className="bg-slate-50 p-3 rounded-xl border text-xs text-slate-700 space-y-1">
-                <div>Collaborateur : <strong className="text-slate-900">{resetPasswordModal.user?.name}</strong></div>
-                <div>Identifiant ID : <strong className="font-mono text-blue-700">{resetPasswordModal.user?.id}</strong></div>
-                <div>Rôle : <strong className="text-slate-800">{roleLabels[resetPasswordModal.user?.role || '']}</strong></div>
+              <div className="bg-surface-muted p-3 rounded-xl border text-xs text-ink space-y-1">
+                <div>Collaborateur : <strong className="text-ink-strong">{resetPasswordModal.user?.name}</strong></div>
+                <div>Identifiant ID : <strong className="font-mono text-blue-700 dark:text-cyan-400">{resetPasswordModal.user?.id}</strong></div>
+                <div>Rôle : <strong className="text-ink-strong">{roleLabels[resetPasswordModal.user?.role || '']}</strong></div>
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">Nouveau mot de passe :</label>
+                <label className="text-xs font-bold text-ink block mb-1">Nouveau mot de passe :</label>
                 <div className="relative">
                   <input
                     type={resetPasswordModal.showPassword ? 'text' : 'password'}
@@ -866,7 +866,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
                   <button
                     type="button"
                     onClick={() => setResetPasswordModal({ ...resetPasswordModal, showPassword: !resetPasswordModal.showPassword })}
-                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-700 cursor-pointer"
+                    className="absolute right-3 top-2.5 text-ink-faint hover:text-ink cursor-pointer"
                   >
                     {resetPasswordModal.showPassword ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
                   </button>
@@ -876,7 +876,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
               <button
                 type="button"
                 onClick={() => setResetPasswordModal({ ...resetPasswordModal, newPassword: 'pass' + Math.floor(100 + Math.random() * 900) })}
-                className="text-xs text-blue-600 font-semibold hover:underline flex items-center gap-1 cursor-pointer"
+                className="text-xs text-blue-600 dark:text-cyan-400 font-semibold hover:underline flex items-center gap-1 cursor-pointer"
               >
                 <RefreshCw className="w-3.5 h-3.5" /> Générer un mot de passe aléatoire
               </button>
@@ -885,7 +885,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
             <div className="flex justify-end gap-2 pt-3 border-t">
               <button
                 onClick={() => setResetPasswordModal((rpm) => ({ ...rpm, isOpen: false }))}
-                className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-200 cursor-pointer"
+                className="px-4 py-2 bg-surface-hover text-ink rounded-xl text-xs font-semibold hover:bg-surface-active cursor-pointer"
               >
                 Annuler
               </button>
@@ -903,37 +903,37 @@ export default function ModuleAdministration({ state, setState }: Props) {
       {/* Restore Backup Inspection Modal */}
       {restoreModal.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4 border border-slate-200">
+          <div className="bg-surface rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4 border border-line">
             <div className="flex items-center justify-between border-b pb-3">
-              <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
-                <Upload className="w-5 h-5 text-blue-600" /> Restauration système
+              <h3 className="font-bold text-ink-strong text-lg flex items-center gap-2">
+                <Upload className="w-5 h-5 text-blue-600 dark:text-cyan-400" /> Restauration système
               </h3>
-              <button onClick={() => setRestoreModal({ ...restoreModal, isOpen: false })} className="text-slate-400 hover:text-slate-700 cursor-pointer">
+              <button onClick={() => setRestoreModal({ ...restoreModal, isOpen: false })} className="text-ink-faint hover:text-ink cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-3">
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 space-y-1.5">
-                <div className="font-bold text-sm text-blue-950 flex items-center gap-1.5">
-                  <FileText className="w-4 h-4 text-blue-700" /> {restoreModal.fileName}
+              <div className="p-3 bg-blue-50 dark:bg-cyan-500/8 border border-blue-200 dark:border-cyan-500/25 rounded-xl text-xs text-blue-900 dark:text-cyan-300 space-y-1.5">
+                <div className="font-bold text-sm text-blue-950 dark:text-cyan-300 flex items-center gap-1.5">
+                  <FileText className="w-4 h-4 text-blue-700 dark:text-cyan-400" /> {restoreModal.fileName}
                 </div>
                 <div>Date d'exportation : <strong>{restoreModal.exportedAt ? new Date(restoreModal.exportedAt).toLocaleString('fr-FR') : 'Non spécifiée'}</strong></div>
                 <div>Opérateur source : <strong>{restoreModal.exportedBy || 'ADM001'}</strong></div>
                 <div>Version du format : <strong>{restoreModal.version || 'Standard'}</strong></div>
               </div>
 
-              <div className="border rounded-xl p-3 bg-slate-50 space-y-2 text-xs">
-                <div className="font-bold text-slate-700">Contenu détecté dans la sauvegarde :</div>
+              <div className="border rounded-xl p-3 bg-surface-muted space-y-2 text-xs">
+                <div className="font-bold text-ink">Contenu détecté dans la sauvegarde :</div>
                 <div className="grid grid-cols-2 gap-2 font-mono">
-                  <div className="bg-white p-2 border rounded">👥 Patients : <strong>{restoreModal.stats?.patientsCount}</strong></div>
-                  <div className="bg-white p-2 border rounded">💳 Factures : <strong>{restoreModal.stats?.invoicesCount}</strong></div>
-                  <div className="bg-white p-2 border rounded">💊 Articles : <strong>{restoreModal.stats?.articlesCount}</strong></div>
-                  <div className="bg-white p-2 border rounded">👤 Utilisateurs : <strong>{restoreModal.stats?.usersCount}</strong></div>
+                  <div className="bg-surface p-2 border rounded">👥 Patients : <strong>{restoreModal.stats?.patientsCount}</strong></div>
+                  <div className="bg-surface p-2 border rounded">💳 Factures : <strong>{restoreModal.stats?.invoicesCount}</strong></div>
+                  <div className="bg-surface p-2 border rounded">💊 Articles : <strong>{restoreModal.stats?.articlesCount}</strong></div>
+                  <div className="bg-surface p-2 border rounded">👤 Utilisateurs : <strong>{restoreModal.stats?.usersCount}</strong></div>
                 </div>
               </div>
 
-              <p className="text-xs text-red-600 font-medium">
+              <p className="text-xs text-red-600 dark:text-red-400 font-medium">
                 ⚠️ En confirmant la restauration, toutes les données actuelles de l'application seront écrasées et remplacées par celles du fichier.
               </p>
             </div>
@@ -941,7 +941,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
             <div className="flex justify-end gap-2 pt-3 border-t">
               <button
                 onClick={() => setRestoreModal({ ...restoreModal, isOpen: false })}
-                className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-200 cursor-pointer"
+                className="px-4 py-2 bg-surface-hover text-ink rounded-xl text-xs font-semibold hover:bg-surface-active cursor-pointer"
               >
                 Annuler
               </button>
@@ -957,13 +957,13 @@ export default function ModuleAdministration({ state, setState }: Props) {
       )}
 
       {/* Main Admin Workspace Card — occupe toute la fenêtre (hauteur restante) */}
-      <div className="flex min-h-0 flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+      <div className="flex min-h-0 flex-1 bg-surface rounded-2xl shadow-sm border border-line overflow-hidden">
           {/* Main Content Area */}
-          <section className="flex min-w-0 flex-1 flex-col bg-slate-50/70">
+          <section className="flex min-w-0 flex-1 flex-col bg-surface-muted/70">
              {/* Top Navigation Bar with Tabs & Modules */}
-            <div className="bg-slate-900 text-white px-4 py-2.5 border-b border-slate-800 flex items-center justify-between gap-4 overflow-x-auto shrink-0">
+            <div className="bg-surface text-ink px-4 py-2.5 border-b border-line flex items-center justify-between gap-4 overflow-x-auto shrink-0">
               <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
-                <span className="text-[10px] uppercase tracking-wider text-emerald-400 font-bold px-2 whitespace-nowrap">Admin :</span>
+                <span className="text-[10px] uppercase tracking-wider text-accent font-mono font-bold px-2 whitespace-nowrap">Admin :</span>
                 {TABS.map((t) => {
                   const Icon = t.icon;
                   const active = !activeModule && tab === t.key;
@@ -973,7 +973,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
                       onClick={() => { setActiveModule(null); setTab(t.key); }}
                       title={t.desc}
                       className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap cursor-pointer flex items-center gap-1.5 transition ${
-                        active ? 'bg-emerald-600 text-white shadow' : 'text-slate-300 hover:bg-white/10 hover:text-white'
+                        active ? 'bg-accent-soft text-accent-strong border border-accent-line shadow-sm' : 'text-ink-muted border border-transparent hover:bg-surface-hover hover:text-ink-strong'
                       }`}
                     >
                       <Icon className="w-3.5 h-3.5" />
@@ -985,14 +985,14 @@ export default function ModuleAdministration({ state, setState }: Props) {
             </div>
 
             {activeModule && (
-              <div className="px-5 py-3 border-b bg-white flex items-center justify-between gap-3 shadow-xs">
+              <div className="px-5 py-3 border-b bg-surface flex items-center justify-between gap-3 shadow-xs">
                 <div>
-                  <div className="text-xs uppercase tracking-wider font-bold text-emerald-600">Mode Supervision Administrateur</div>
-                  <h3 className="font-bold text-slate-800 text-base">{APP_MODULES.find((m) => m.key === activeModule)?.label}</h3>
+                  <div className="text-xs uppercase tracking-wider font-bold text-emerald-600 dark:text-emerald-400">Mode Supervision Administrateur</div>
+                  <h3 className="font-bold text-ink-strong text-base">{APP_MODULES.find((m) => m.key === activeModule)?.label}</h3>
                 </div>
                 <button
                   onClick={() => setActiveModule(null)}
-                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                  className="px-3 py-1.5 bg-surface-hover hover:bg-surface-active text-ink rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
                 >
                   <ArrowRight className="w-4 h-4 rotate-180" /> Retour au panneau admin
                 </button>
@@ -1007,27 +1007,27 @@ export default function ModuleAdministration({ state, setState }: Props) {
                     <div className="space-y-6">
                       <div className="flex items-center justify-between border-b pb-4 flex-wrap gap-3">
                         <div>
-                          <h3 className="font-bold text-slate-800 text-xl flex items-center gap-2.5">
-                            <Activity className="w-6 h-6 text-emerald-600" /> Tableau de bord & Supervision Système
+                          <h3 className="font-bold text-ink-strong text-xl flex items-center gap-2.5">
+                            <Activity className="w-6 h-6 text-emerald-600 dark:text-emerald-400" /> Tableau de bord & Supervision Système
                           </h3>
-                          <p className="text-xs text-slate-500 mt-0.5">Vue globale de l'activité médicale, des ventes et des paramètres d'infrastructure.</p>
+                          <p className="text-xs text-ink-muted mt-0.5">Vue globale de l'activité médicale, des ventes et des paramètres d'infrastructure.</p>
                         </div>
-                        <div className="text-xs bg-white border border-slate-200 px-3.5 py-2 rounded-xl text-slate-700 font-mono shadow-xs flex items-center gap-2">
-                          <Hospital className="w-4 h-4 text-emerald-600" />
-                          <span>Établissement : <strong className="text-slate-900">{state.ticketSettings.facilityName}</strong></span>
+                        <div className="text-xs bg-surface border border-line px-3.5 py-2 rounded-xl text-ink font-mono shadow-xs flex items-center gap-2">
+                          <Hospital className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                          <span>Établissement : <strong className="text-ink-strong">{state.ticketSettings.facilityName}</strong></span>
                         </div>
                       </div>
 
                       {/* Stock Alert Warning Banner if any */}
                       {lowStockArticles.length > 0 && (
-                        <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-between gap-4">
+                        <div className="p-4 bg-amber-50 dark:bg-amber-500/8 border border-amber-200 dark:border-amber-500/25 rounded-2xl flex items-center justify-between gap-4">
                           <div className="flex items-center gap-3">
-                            <div className="p-2 bg-amber-100 rounded-xl text-amber-700 shrink-0">
+                            <div className="p-2 bg-amber-100 dark:bg-amber-500/15 rounded-xl text-amber-700 dark:text-amber-400 shrink-0">
                               <AlertTriangle className="w-5 h-5" />
                             </div>
                             <div>
-                              <div className="font-bold text-amber-900 text-sm">Alertes Stock : {lowStockArticles.length} article(s) en seuil critique ou rupture</div>
-                              <div className="text-xs text-amber-700 mt-0.5">Des articles requièrent un réapprovisionnement au dépôt central ou en pharmacie.</div>
+                              <div className="font-bold text-amber-900 dark:text-amber-300 text-sm">Alertes Stock : {lowStockArticles.length} article(s) en seuil critique ou rupture</div>
+                              <div className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">Des articles requièrent un réapprovisionnement au dépôt central ou en pharmacie.</div>
                             </div>
                           </div>
                           <button
@@ -1041,82 +1041,82 @@ export default function ModuleAdministration({ state, setState }: Props) {
 
                       {/* Metric Cards Row */}
                       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                        <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-1">
-                          <div className="text-xs text-emerald-700 font-semibold uppercase tracking-wider flex items-center justify-between">
+                        <div className="p-4 bg-surface border border-line rounded-2xl shadow-xs space-y-1">
+                          <div className="text-xs text-emerald-700 dark:text-emerald-400 font-semibold uppercase tracking-wider flex items-center justify-between">
                             <span>Recettes du jour</span>
-                            <Receipt className="w-4 h-4 text-emerald-600" />
+                            <Receipt className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                           </div>
-                          <div className="text-2xl font-bold text-slate-900 font-mono">{formatAr(totalRevenue)}</div>
-                          <div className="text-xs text-slate-500 font-medium">{todayInvoices.length} facture(s) réglée(s) aujourd'hui</div>
+                          <div className="text-2xl font-bold text-ink-strong font-mono">{formatAr(totalRevenue)}</div>
+                          <div className="text-xs text-ink-muted font-medium">{todayInvoices.length} facture(s) réglée(s) aujourd'hui</div>
                         </div>
 
-                        <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-1">
-                          <div className="text-xs text-blue-700 font-semibold uppercase tracking-wider flex items-center justify-between">
+                        <div className="p-4 bg-surface border border-line rounded-2xl shadow-xs space-y-1">
+                          <div className="text-xs text-blue-700 dark:text-cyan-400 font-semibold uppercase tracking-wider flex items-center justify-between">
                             <span>Personnel & Comptes</span>
-                            <Users className="w-4 h-4 text-blue-600" />
+                            <Users className="w-4 h-4 text-blue-600 dark:text-cyan-400" />
                           </div>
-                          <div className="text-2xl font-bold text-slate-900 font-mono">{state.users.length}</div>
-                          <div className="text-xs text-slate-500 font-medium">{ALL_ROLES.length} rôles opérationnels définis</div>
+                          <div className="text-2xl font-bold text-ink-strong font-mono">{state.users.length}</div>
+                          <div className="text-xs text-ink-muted font-medium">{ALL_ROLES.length} rôles opérationnels définis</div>
                         </div>
 
-                        <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-1">
-                          <div className="text-xs text-purple-700 font-semibold uppercase tracking-wider flex items-center justify-between">
+                        <div className="p-4 bg-surface border border-line rounded-2xl shadow-xs space-y-1">
+                          <div className="text-xs text-purple-700 dark:text-purple-400 font-semibold uppercase tracking-wider flex items-center justify-between">
                             <span>Dossiers Patients</span>
-                            <FileText className="w-4 h-4 text-purple-600" />
+                            <FileText className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                           </div>
-                          <div className="text-2xl font-bold text-slate-900 font-mono">{state.patients.length}</div>
-                          <div className="text-xs text-slate-500 font-medium">{state.consultations.length} consultation(s) enregistrée(s)</div>
+                          <div className="text-2xl font-bold text-ink-strong font-mono">{state.patients.length}</div>
+                          <div className="text-xs text-ink-muted font-medium">{state.consultations.length} consultation(s) enregistrée(s)</div>
                         </div>
 
-                        <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-1">
-                          <div className="text-xs text-amber-700 font-semibold uppercase tracking-wider flex items-center justify-between">
+                        <div className="p-4 bg-surface border border-line rounded-2xl shadow-xs space-y-1">
+                          <div className="text-xs text-amber-700 dark:text-amber-400 font-semibold uppercase tracking-wider flex items-center justify-between">
                             <span>Impression POS</span>
-                            <Printer className="w-4 h-4 text-amber-600" />
+                            <Printer className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                           </div>
-                          <div className="text-2xl font-bold text-slate-900 font-mono">{state.ticketSettings.paperWidth} mm</div>
-                          <div className="text-xs text-slate-500 font-medium">Impression {state.ticketSettings.autoPrint ? 'Automatique' : 'Manuelle'}</div>
+                          <div className="text-2xl font-bold text-ink-strong font-mono">{state.ticketSettings.paperWidth} mm</div>
+                          <div className="text-xs text-ink-muted font-medium">Impression {state.ticketSettings.autoPrint ? 'Automatique' : 'Manuelle'}</div>
                         </div>
                       </div>
 
                       {/* Quick Actions Toolbar */}
-                      <div className="bg-white p-5 border border-slate-200 rounded-2xl shadow-xs space-y-3">
-                        <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                          <SettingsIcon className="w-4 h-4 text-emerald-600" /> Raccourcis Administrateur Rapides
+                      <div className="bg-surface p-5 border border-line rounded-2xl shadow-xs space-y-3">
+                        <h4 className="font-bold text-ink-strong text-sm flex items-center gap-2">
+                          <SettingsIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Raccourcis Administrateur Rapides
                         </h4>
                         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                           <button
                             onClick={openAddUserModal}
-                            className="p-3 bg-slate-50 hover:bg-emerald-50 hover:border-emerald-300 border rounded-xl text-xs font-semibold text-slate-700 hover:text-emerald-800 transition flex flex-col items-center gap-2 cursor-pointer text-center"
+                            className="p-3 bg-surface-muted hover:bg-emerald-50 dark:hover:bg-emerald-500/8 hover:border-emerald-300 dark:hover:border-emerald-500/40 border rounded-xl text-xs font-semibold text-ink hover:text-emerald-800 dark:hover:text-emerald-300 transition flex flex-col items-center gap-2 cursor-pointer text-center"
                           >
-                            <Plus className="w-5 h-5 text-emerald-600" />
+                            <Plus className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                             <span>Nouveau Compte</span>
                           </button>
                           <button
                             onClick={() => { selectAdminTab('companies'); setAddCompany(true); }}
-                            className="p-3 bg-slate-50 hover:bg-indigo-50 hover:border-indigo-300 border rounded-xl text-xs font-semibold text-slate-700 hover:text-indigo-800 transition flex flex-col items-center gap-2 cursor-pointer text-center"
+                            className="p-3 bg-surface-muted hover:bg-indigo-50 dark:hover:bg-indigo-500/8 hover:border-indigo-300 dark:hover:border-indigo-500/40 border rounded-xl text-xs font-semibold text-ink hover:text-indigo-800 dark:hover:text-indigo-300 transition flex flex-col items-center gap-2 cursor-pointer text-center"
                           >
-                            <Building2 className="w-5 h-5 text-indigo-600" />
+                            <Building2 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                             <span>Société Partenaire</span>
                           </button>
                           <button
                             onClick={exportBackup}
-                            className="p-3 bg-slate-50 hover:bg-blue-50 hover:border-blue-300 border rounded-xl text-xs font-semibold text-slate-700 hover:text-blue-800 transition flex flex-col items-center gap-2 cursor-pointer text-center"
+                            className="p-3 bg-surface-muted hover:bg-blue-50 dark:hover:bg-cyan-500/8 hover:border-blue-300 dark:hover:border-cyan-500/40 border rounded-xl text-xs font-semibold text-ink hover:text-blue-800 dark:hover:text-cyan-300 transition flex flex-col items-center gap-2 cursor-pointer text-center"
                           >
-                            <Download className="w-5 h-5 text-blue-600" />
+                            <Download className="w-5 h-5 text-blue-600 dark:text-cyan-400" />
                             <span>Exporter Base (JSON)</span>
                           </button>
                           <button
                             onClick={() => setShowPreview(true)}
-                            className="p-3 bg-slate-50 hover:bg-purple-50 hover:border-purple-300 border rounded-xl text-xs font-semibold text-slate-700 hover:text-purple-800 transition flex flex-col items-center gap-2 cursor-pointer text-center"
+                            className="p-3 bg-surface-muted hover:bg-purple-50 dark:hover:bg-purple-500/8 hover:border-purple-300 dark:hover:border-purple-500/40 border rounded-xl text-xs font-semibold text-ink hover:text-purple-800 dark:hover:text-purple-300 transition flex flex-col items-center gap-2 cursor-pointer text-center"
                           >
-                            <Printer className="w-5 h-5 text-purple-600" />
+                            <Printer className="w-5 h-5 text-purple-600 dark:text-purple-400" />
                             <span>Tester Ticket POS</span>
                           </button>
                           <button
                             onClick={() => selectAdminTab('audit')}
-                            className="p-3 bg-slate-50 hover:bg-cyan-50 hover:border-cyan-300 border rounded-xl text-xs font-semibold text-slate-700 hover:text-cyan-800 transition flex flex-col items-center gap-2 cursor-pointer text-center"
+                            className="p-3 bg-surface-muted hover:bg-cyan-50 dark:hover:bg-cyan-500/8 hover:border-cyan-300 dark:hover:border-cyan-500/40 border rounded-xl text-xs font-semibold text-ink hover:text-cyan-800 dark:hover:text-cyan-300 transition flex flex-col items-center gap-2 cursor-pointer text-center"
                           >
-                            <Shield className="w-5 h-5 text-cyan-600" />
+                            <Shield className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
                             <span>Journal d'Audit</span>
                           </button>
                         </div>
@@ -1124,58 +1124,58 @@ export default function ModuleAdministration({ state, setState }: Props) {
 
                       {/* Two Column Section: Configuration Summary + Audit feed */}
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                        <div className="p-5 border border-slate-200 rounded-2xl bg-white space-y-3 shadow-xs">
-                          <h4 className="font-bold text-sm text-slate-800 flex items-center justify-between border-b pb-2">
-                            <span className="flex items-center gap-2"><Building2 className="w-4 h-4 text-indigo-600" /> Configuration de l'établissement</span>
-                            <button onClick={() => selectAdminTab('etablissements')} className="text-xs text-indigo-600 font-semibold hover:underline cursor-pointer">Modifier</button>
+                        <div className="p-5 border border-line rounded-2xl bg-surface space-y-3 shadow-xs">
+                          <h4 className="font-bold text-sm text-ink-strong flex items-center justify-between border-b pb-2">
+                            <span className="flex items-center gap-2"><Building2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" /> Configuration de l'établissement</span>
+                            <button onClick={() => selectAdminTab('etablissements')} className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline cursor-pointer">Modifier</button>
                           </h4>
-                          <ul className="text-xs space-y-2 text-slate-600">
-                            <li className="flex justify-between border-b border-slate-100 pb-1.5">
-                              <span className="text-slate-500">Nom établissement :</span>
-                              <strong className="text-slate-800">{state.ticketSettings.facilityName}</strong>
+                          <ul className="text-xs space-y-2 text-ink-secondary">
+                            <li className="flex justify-between border-b border-line-soft pb-1.5">
+                              <span className="text-ink-muted">Nom établissement :</span>
+                              <strong className="text-ink-strong">{state.ticketSettings.facilityName}</strong>
                             </li>
-                            <li className="flex justify-between border-b border-slate-100 pb-1.5">
-                              <span className="text-slate-500">Adresse :</span>
-                              <span className="text-slate-800 font-medium">{state.ticketSettings.address || 'Non spécifiée'}</span>
+                            <li className="flex justify-between border-b border-line-soft pb-1.5">
+                              <span className="text-ink-muted">Adresse :</span>
+                              <span className="text-ink-strong font-medium">{state.ticketSettings.address || 'Non spécifiée'}</span>
                             </li>
-                            <li className="flex justify-between border-b border-slate-100 pb-1.5">
-                              <span className="text-slate-500">Téléphone :</span>
-                              <span className="text-slate-800 font-medium">{state.ticketSettings.phone || 'Non spécifié'}</span>
+                            <li className="flex justify-between border-b border-line-soft pb-1.5">
+                              <span className="text-ink-muted">Téléphone :</span>
+                              <span className="text-ink-strong font-medium">{state.ticketSettings.phone || 'Non spécifié'}</span>
                             </li>
-                            <li className="flex justify-between border-b border-slate-100 pb-1.5">
-                              <span className="text-slate-500">NIF / STAT :</span>
-                              <span className="text-slate-800 font-mono font-medium">{state.ticketSettings.nif || 'Non renseigné'}</span>
+                            <li className="flex justify-between border-b border-line-soft pb-1.5">
+                              <span className="text-ink-muted">NIF / STAT :</span>
+                              <span className="text-ink-strong font-mono font-medium">{state.ticketSettings.nif || 'Non renseigné'}</span>
                             </li>
-                            <li className="flex justify-between border-b border-slate-100 pb-1.5">
-                              <span className="text-slate-500">Préfixe factures :</span>
-                              <strong className="text-emerald-700 font-mono">{state.ticketSettings.invoicePrefix}</strong>
+                            <li className="flex justify-between border-b border-line-soft pb-1.5">
+                              <span className="text-ink-muted">Préfixe factures :</span>
+                              <strong className="text-emerald-700 dark:text-emerald-400 font-mono">{state.ticketSettings.invoicePrefix}</strong>
                             </li>
                             <li className="flex justify-between">
-                              <span className="text-slate-500">Devise facturation :</span>
-                              <strong className="text-slate-800 font-mono">{state.ticketSettings.currency}</strong>
+                              <span className="text-ink-muted">Devise facturation :</span>
+                              <strong className="text-ink-strong font-mono">{state.ticketSettings.currency}</strong>
                             </li>
                           </ul>
                         </div>
 
-                        <div className="p-5 border border-slate-200 rounded-2xl bg-white space-y-3 shadow-xs">
-                          <h4 className="font-bold text-sm text-slate-800 flex items-center justify-between border-b pb-2">
-                            <span className="flex items-center gap-2"><Shield className="w-4 h-4 text-blue-600" /> Activités récentes (Audit)</span>
-                            <button onClick={() => selectAdminTab('audit')} className="text-xs text-blue-600 font-semibold hover:underline cursor-pointer">Tout voir ({state.auditLogs.length})</button>
+                        <div className="p-5 border border-line rounded-2xl bg-surface space-y-3 shadow-xs">
+                          <h4 className="font-bold text-sm text-ink-strong flex items-center justify-between border-b pb-2">
+                            <span className="flex items-center gap-2"><Shield className="w-4 h-4 text-blue-600 dark:text-cyan-400" /> Activités récentes (Audit)</span>
+                            <button onClick={() => selectAdminTab('audit')} className="text-xs text-blue-600 dark:text-cyan-400 font-semibold hover:underline cursor-pointer">Tout voir ({state.auditLogs.length})</button>
                           </h4>
-                          <ul className="text-xs space-y-2 text-slate-600">
+                          <ul className="text-xs space-y-2 text-ink-secondary">
                             {state.auditLogs.slice(0, 5).map((log) => (
-                              <li key={log.id} className="border-b border-slate-100 pb-1.5 space-y-0.5">
+                              <li key={log.id} className="border-b border-line-soft pb-1.5 space-y-0.5">
                                 <div className="flex items-center justify-between">
-                                  <span className="font-bold text-slate-800">{log.userName} <span className="text-slate-400 font-normal">({log.userRole})</span></span>
-                                  <span className="text-[10px] text-slate-400 font-mono">{new Date(log.timestamp).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
+                                  <span className="font-bold text-ink-strong">{log.userName} <span className="text-ink-faint font-normal">({log.userRole})</span></span>
+                                  <span className="text-[10px] text-ink-faint font-mono">{new Date(log.timestamp).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
                                 </div>
                                 <div className="flex items-center gap-1.5">
-                                  <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded text-[10px] font-mono font-bold">{log.action}</span>
-                                  <span className="truncate text-slate-600">{log.details}</span>
+                                  <span className="px-1.5 py-0.5 bg-blue-100 dark:bg-cyan-500/15 text-blue-800 dark:text-cyan-300 rounded text-[10px] font-mono font-bold">{log.action}</span>
+                                  <span className="truncate text-ink-secondary">{log.details}</span>
                                 </div>
                               </li>
                             ))}
-                            {state.auditLogs.length === 0 && <li className="text-slate-400 italic py-2">Aucune action enregistrée pour le moment.</li>}
+                            {state.auditLogs.length === 0 && <li className="text-ink-faint italic py-2">Aucune action enregistrée pour le moment.</li>}
                           </ul>
                         </div>
                       </div>
@@ -1193,10 +1193,10 @@ export default function ModuleAdministration({ state, setState }: Props) {
                     <div className="space-y-6">
                       <div className="flex justify-between items-start flex-wrap gap-3">
                         <div>
-                          <h3 className="font-bold text-slate-800 text-xl flex items-center gap-2.5">
-                            <Printer className="w-6 h-6 text-blue-600" /> Configuration Impression & Format Reçus POS
+                          <h3 className="font-bold text-ink-strong text-xl flex items-center gap-2.5">
+                            <Printer className="w-6 h-6 text-blue-600 dark:text-cyan-400" /> Configuration Impression & Format Reçus POS
                           </h3>
-                          <p className="text-xs text-slate-500 mt-0.5">Personnalisation des tickets thermiques (58mm / 80mm), impression directe Kiosk et options de mise en page.</p>
+                          <p className="text-xs text-ink-muted mt-0.5">Personnalisation des tickets thermiques (58mm / 80mm), impression directe Kiosk et options de mise en page.</p>
                         </div>
                         <button
                           onClick={() => setShowPreview(true)}
@@ -1212,38 +1212,38 @@ export default function ModuleAdministration({ state, setState }: Props) {
                         </div>
                       )}
 
-                      <div className="rounded-2xl border-2 p-5 bg-gradient-to-r from-blue-50/70 to-indigo-50/70 border-blue-200 space-y-4">
-                        <h4 className="font-bold text-slate-800 flex items-center gap-2 text-sm">
-                          <Receipt className="w-5 h-5 text-blue-600" /> Largeur du papier papier thermique
+                      <div className="rounded-2xl border-2 p-5 bg-gradient-to-r from-blue-50/70 dark:from-cyan-950/42 to-indigo-50/70 dark:to-indigo-950/42 border-blue-200 dark:border-cyan-500/25 space-y-4">
+                        <h4 className="font-bold text-ink-strong flex items-center gap-2 text-sm">
+                          <Receipt className="w-5 h-5 text-blue-600 dark:text-cyan-400" /> Largeur du papier papier thermique
                         </h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <button
                             onClick={() => updateTicket({ paperWidth: 58 })}
                             className={`p-5 border-2 rounded-2xl cursor-pointer text-center transition ${
-                              state.ticketSettings.paperWidth === 58 ? 'border-blue-600 bg-white shadow-md ring-2 ring-blue-400' : 'border-slate-300 hover:border-blue-400 bg-white/70'
+                              state.ticketSettings.paperWidth === 58 ? 'border-blue-600 bg-surface shadow-md ring-2 ring-blue-400' : 'border-line-strong hover:border-blue-400 bg-surface/70'
                             }`}
                           >
-                            <div className="text-3xl font-extrabold text-slate-800">58 mm</div>
-                            <div className="text-xs text-slate-600 mt-1.5 font-medium">Imprimante compacte / mobile Bluetooth & POS</div>
+                            <div className="text-3xl font-extrabold text-ink-strong">58 mm</div>
+                            <div className="text-xs text-ink-secondary mt-1.5 font-medium">Imprimante compacte / mobile Bluetooth & POS</div>
                           </button>
                           <button
                             onClick={() => updateTicket({ paperWidth: 80 })}
                             className={`p-5 border-2 rounded-2xl cursor-pointer text-center transition ${
-                              state.ticketSettings.paperWidth === 80 ? 'border-blue-600 bg-white shadow-md ring-2 ring-blue-400' : 'border-slate-300 hover:border-blue-400 bg-white/70'
+                              state.ticketSettings.paperWidth === 80 ? 'border-blue-600 bg-surface shadow-md ring-2 ring-blue-400' : 'border-line-strong hover:border-blue-400 bg-surface/70'
                             }`}
                           >
-                            <div className="text-3xl font-extrabold text-slate-800">80 mm</div>
-                            <div className="text-xs text-slate-600 mt-1.5 font-medium">Imprimante thermique standard caisse POS</div>
+                            <div className="text-3xl font-extrabold text-ink-strong">80 mm</div>
+                            <div className="text-xs text-ink-secondary mt-1.5 font-medium">Imprimante thermique standard caisse POS</div>
                           </button>
                         </div>
 
                         <div className="space-y-3 pt-2">
-                          <label className="text-xs font-bold text-slate-700 flex items-center gap-2.5 cursor-pointer">
+                          <label className="text-xs font-bold text-ink flex items-center gap-2.5 cursor-pointer">
                             <input
                               type="checkbox"
                               checked={state.ticketSettings.autoPrint}
                               onChange={e => updateTicket({ autoPrint: e.target.checked })}
-                              className="w-4 h-4 rounded text-blue-600 cursor-pointer"
+                              className="w-4 h-4 rounded text-blue-600 dark:text-cyan-400 cursor-pointer"
                             />
                             <span>Lancer l'impression automatique dès la validation des règlements à la caisse</span>
                           </label>
@@ -1251,17 +1251,17 @@ export default function ModuleAdministration({ state, setState }: Props) {
                       </div>
 
                       {/* Devise & Messages */}
-                      <div className="rounded-2xl border border-slate-200 p-5 bg-white space-y-4 shadow-xs">
-                        <h4 className="font-bold text-slate-800 flex items-center gap-2 text-sm">
-                          <CreditCard className="w-4 h-4 text-emerald-600" /> Devise & Messages du Ticket
+                      <div className="rounded-2xl border border-line p-5 bg-surface space-y-4 shadow-xs">
+                        <h4 className="font-bold text-ink-strong flex items-center gap-2 text-sm">
+                          <CreditCard className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Devise & Messages du Ticket
                         </h4>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div>
-                            <label className="text-xs font-bold text-slate-700 block mb-1">Devise monétaire principale</label>
+                            <label className="text-xs font-bold text-ink block mb-1">Devise monétaire principale</label>
                             <select
                               value={state.ticketSettings.currency}
                               onChange={e => updateTicket({ currency: e.target.value as any })}
-                              className="w-full px-3.5 py-2 border rounded-xl text-sm bg-white cursor-pointer outline-none"
+                              className="w-full px-3.5 py-2 border rounded-xl text-sm bg-surface cursor-pointer outline-none"
                             >
                               <option value="Ar">Ariary Malagasy (Ar)</option>
                               <option value="€">Euro (€)</option>
@@ -1270,19 +1270,19 @@ export default function ModuleAdministration({ state, setState }: Props) {
                             </select>
                           </div>
                           <div>
-                            <label className="text-xs font-bold text-slate-700 block mb-1">Titre principal du reçu</label>
+                            <label className="text-xs font-bold text-ink block mb-1">Titre principal du reçu</label>
                             <input
                               value={state.ticketSettings.receiptTitle}
                               onChange={e => updateTicket({ receiptTitle: e.target.value })}
-                              className="w-full px-3.5 py-2 border rounded-xl text-sm text-slate-800 outline-none"
+                              className="w-full px-3.5 py-2 border rounded-xl text-sm text-ink-strong outline-none"
                             />
                           </div>
                           <div className="sm:col-span-2">
-                            <label className="text-xs font-bold text-slate-700 block mb-1">Message de remerciement en bas de reçu</label>
+                            <label className="text-xs font-bold text-ink block mb-1">Message de remerciement en bas de reçu</label>
                             <input
                               value={state.ticketSettings.footerMessage}
                               onChange={e => updateTicket({ footerMessage: e.target.value })}
-                              className="w-full px-3.5 py-2 border rounded-xl text-sm text-slate-800 outline-none"
+                              className="w-full px-3.5 py-2 border rounded-xl text-sm text-ink-strong outline-none"
                               placeholder="Merci de votre confiance et prompt rétablissement !"
                             />
                           </div>
@@ -1296,10 +1296,10 @@ export default function ModuleAdministration({ state, setState }: Props) {
                     <div className="space-y-5">
                       <div className="flex justify-between items-center flex-wrap gap-3">
                         <div>
-                          <h3 className="font-bold text-slate-800 text-xl flex items-center gap-2.5">
-                            <Users className="w-6 h-6 text-emerald-600" /> Gestion du Personnel & Comptes d'Accès
+                          <h3 className="font-bold text-ink-strong text-xl flex items-center gap-2.5">
+                            <Users className="w-6 h-6 text-emerald-600 dark:text-emerald-400" /> Gestion du Personnel & Comptes d'Accès
                           </h3>
-                          <p className="text-xs text-slate-500 mt-0.5">Comptes personnels des agents, attribution des rôles et réinitialisation des mots de passe.</p>
+                          <p className="text-xs text-ink-muted mt-0.5">Comptes personnels des agents, attribution des rôles et réinitialisation des mots de passe.</p>
                         </div>
                         <button
                           onClick={openAddUserModal}
@@ -1310,9 +1310,9 @@ export default function ModuleAdministration({ state, setState }: Props) {
                       </div>
 
                       {/* Filter Bar */}
-                      <div className="bg-white p-3.5 border border-slate-200 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-xs">
+                      <div className="bg-surface p-3.5 border border-line rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-xs">
                         <div className="relative flex-1 min-w-[240px] max-w-md">
-                          <Search className="absolute left-3.5 top-2.5 w-4 h-4 text-slate-400" />
+                          <Search className="absolute left-3.5 top-2.5 w-4 h-4 text-ink-faint" />
                           <input
                             type="text"
                             value={searchUser}
@@ -1323,11 +1323,11 @@ export default function ModuleAdministration({ state, setState }: Props) {
                         </div>
 
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="text-xs font-semibold text-slate-500 mr-1">Rôle :</span>
+                          <span className="text-xs font-semibold text-ink-muted mr-1">Rôle :</span>
                           <button
                             onClick={() => setUserRoleFilter('all')}
                             className={`px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer transition ${
-                              userRoleFilter === 'all' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                              userRoleFilter === 'all' ? 'bg-slate-800 text-white' : 'bg-surface-hover text-ink-secondary hover:bg-surface-active'
                             }`}
                           >
                             Tous ({state.users.length})
@@ -1339,7 +1339,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
                                 key={r}
                                 onClick={() => setUserRoleFilter(r)}
                                 className={`px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer transition ${
-                                  userRoleFilter === r ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                  userRoleFilter === r ? 'bg-emerald-600 text-white' : 'bg-surface-hover text-ink-secondary hover:bg-surface-active'
                                 }`}
                               >
                                 {roleLabels[r]} ({count})
@@ -1350,9 +1350,9 @@ export default function ModuleAdministration({ state, setState }: Props) {
                       </div>
 
                       {/* Users Table */}
-                      <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs">
+                      <div className="border border-line rounded-2xl overflow-hidden bg-surface shadow-xs">
                         <table className="w-full text-xs text-left">
-                          <thead className="bg-slate-50 border-b text-slate-600 font-bold">
+                          <thead className="bg-surface-muted border-b text-ink-secondary font-bold">
                             <tr>
                               <th className="p-3.5">ID Utilisateur</th>
                               <th className="p-3.5">Nom du collaborateur</th>
@@ -1361,34 +1361,34 @@ export default function ModuleAdministration({ state, setState }: Props) {
                               <th className="p-3.5 text-right">Actions de supervision</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y border-slate-100">
+                          <tbody className="divide-y border-line-soft">
                             {filteredUsers.map((u) => (
-                              <tr key={u.id} className="hover:bg-slate-50/80 transition">
-                                <td className="p-3.5 font-mono font-bold text-slate-900">{u.id}</td>
-                                <td className="p-3.5 font-bold text-slate-800">{u.name}</td>
+                              <tr key={u.id} className="hover:bg-surface-muted/80 transition">
+                                <td className="p-3.5 font-mono font-bold text-ink-strong">{u.id}</td>
+                                <td className="p-3.5 font-bold text-ink-strong">{u.name}</td>
                                 <td className="p-3.5 text-center">
                                   <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
-                                    u.role === 'admin' ? 'bg-purple-100 text-purple-800'
-                                      : u.role === 'doctor' ? 'bg-blue-100 text-blue-800'
-                                      : u.role === 'magasinier' ? 'bg-amber-100 text-amber-800'
-                                      : u.role === 'billing' ? 'bg-indigo-100 text-indigo-800'
-                                      : 'bg-emerald-100 text-emerald-800'
+                                    u.role === 'admin' ? 'bg-purple-100 dark:bg-purple-500/15 text-purple-800 dark:text-purple-300'
+                                      : u.role === 'doctor' ? 'bg-blue-100 dark:bg-cyan-500/15 text-blue-800 dark:text-cyan-300'
+                                      : u.role === 'magasinier' ? 'bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300'
+                                      : u.role === 'billing' ? 'bg-indigo-100 dark:bg-indigo-500/15 text-indigo-800 dark:text-indigo-300'
+                                      : 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-300'
                                   }`}>
                                     {roleLabels[u.role] || u.role}
                                   </span>
                                 </td>
-                                <td className="p-3.5 text-center font-mono text-slate-400">••••••••</td>
+                                <td className="p-3.5 text-center font-mono text-ink-faint">••••••••</td>
                                 <td className="p-3.5 text-right space-x-1.5">
                                   <button
                                     onClick={() => openEditUserModal(u)}
-                                    className="px-2.5 py-1 text-xs bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg cursor-pointer font-semibold inline-flex items-center gap-1"
+                                    className="px-2.5 py-1 text-xs bg-surface-hover text-ink hover:bg-surface-active rounded-lg cursor-pointer font-semibold inline-flex items-center gap-1"
                                     title="Modifier le compte"
                                   >
                                     <Edit2 className="w-3.5 h-3.5" /> Modifier
                                   </button>
                                   <button
                                     onClick={() => openResetPasswordModal(u)}
-                                    className="px-2.5 py-1 text-xs bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg cursor-pointer font-semibold inline-flex items-center gap-1"
+                                    className="px-2.5 py-1 text-xs bg-blue-50 dark:bg-cyan-500/8 text-blue-700 dark:text-cyan-400 hover:bg-blue-100 dark:hover:bg-cyan-500/15 rounded-lg cursor-pointer font-semibold inline-flex items-center gap-1"
                                     title="Réinitialiser le mot de passe"
                                   >
                                     <Key className="w-3.5 h-3.5" /> MDP
@@ -1396,7 +1396,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
                                   <button
                                     onClick={() => deleteUser(u.id, u.name)}
                                     disabled={u.id === 'ADM001'}
-                                    className="p-1 text-rose-600 hover:bg-rose-50 rounded-lg disabled:opacity-30 cursor-pointer inline-flex"
+                                    className="p-1 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/8 rounded-lg disabled:opacity-30 cursor-pointer inline-flex"
                                     title="Supprimer"
                                   >
                                     <Trash2 className="w-4 h-4" />
@@ -1406,7 +1406,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
                             ))}
                             {filteredUsers.length === 0 && (
                               <tr>
-                                <td colSpan={5} className="p-8 text-center text-slate-400 italic">
+                                <td colSpan={5} className="p-8 text-center text-ink-faint italic">
                                   Aucun utilisateur ne correspond à vos critères de recherche.
                                 </td>
                               </tr>
@@ -1422,10 +1422,10 @@ export default function ModuleAdministration({ state, setState }: Props) {
                     <div className="space-y-5">
                       <div className="flex justify-between items-center flex-wrap gap-3">
                         <div>
-                          <h3 className="font-bold text-slate-800 text-xl flex items-center gap-2.5">
-                            <Building2 className="w-6 h-6 text-indigo-600" /> Sociétés Partenaires & Clients Conventionnés
+                          <h3 className="font-bold text-ink-strong text-xl flex items-center gap-2.5">
+                            <Building2 className="w-6 h-6 text-indigo-600 dark:text-indigo-400" /> Sociétés Partenaires & Clients Conventionnés
                           </h3>
-                          <p className="text-xs text-slate-500 mt-0.5">Raison sociale des entreprises partenaires et sous-modes de règlement (Global mensuel / Individuel par facture).</p>
+                          <p className="text-xs text-ink-muted mt-0.5">Raison sociale des entreprises partenaires et sous-modes de règlement (Global mensuel / Individuel par facture).</p>
                         </div>
                         <button
                           onClick={() => setAddCompany(true)}
@@ -1437,20 +1437,20 @@ export default function ModuleAdministration({ state, setState }: Props) {
 
                       {/* Add company form */}
                       {addCompany && (
-                        <div className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-2xl space-y-3 animate-in fade-in">
-                          <h4 className="font-bold text-sm text-indigo-950">Enregistrer une entreprise partenaire</h4>
+                        <div className="p-4 bg-indigo-50/70 dark:bg-indigo-500/6 border border-indigo-200 dark:border-indigo-500/25 rounded-2xl space-y-3 animate-in fade-in">
+                          <h4 className="font-bold text-sm text-indigo-950 dark:text-indigo-300">Enregistrer une entreprise partenaire</h4>
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                             <input
                               type="text"
                               value={newCompany.name}
                               onChange={(e) => setNewCompany({ ...newCompany, name: e.target.value })}
-                              className="md:col-span-2 px-3.5 py-2 border rounded-xl text-sm uppercase bg-white outline-none"
+                              className="md:col-span-2 px-3.5 py-2 border rounded-xl text-sm uppercase bg-surface outline-none"
                               placeholder="Nom de la société (ex: ORANGE MADAGASCAR, JIRAMA)"
                             />
                             <select
                               value={newCompany.settlementMode}
                               onChange={(e) => setNewCompany({ ...newCompany, settlementMode: e.target.value as CompanySettlementMode })}
-                              className="px-3.5 py-2 border rounded-xl text-sm bg-white outline-none cursor-pointer"
+                              className="px-3.5 py-2 border rounded-xl text-sm bg-surface outline-none cursor-pointer"
                             >
                               <option value="monthly_global">Règlement global mensuel</option>
                               <option value="per_invoice">Règlement individuel par facture</option>
@@ -1459,7 +1459,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
                           <div className="flex justify-end gap-2">
                             <button
                               onClick={() => { setAddCompany(false); setNewCompany({ name: '', settlementMode: 'monthly_global' }); }}
-                              className="px-3.5 py-2 bg-slate-200 text-slate-700 rounded-xl cursor-pointer font-semibold text-xs"
+                              className="px-3.5 py-2 bg-surface-active text-ink rounded-xl cursor-pointer font-semibold text-xs"
                             >
                               Annuler
                             </button>
@@ -1474,9 +1474,9 @@ export default function ModuleAdministration({ state, setState }: Props) {
                       )}
 
                       {/* Filter Bar */}
-                      <div className="bg-white p-3.5 border border-slate-200 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-xs">
+                      <div className="bg-surface p-3.5 border border-line rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-xs">
                         <div className="relative flex-1 min-w-[240px] max-w-md">
-                          <Search className="absolute left-3.5 top-2.5 w-4 h-4 text-slate-400" />
+                          <Search className="absolute left-3.5 top-2.5 w-4 h-4 text-ink-faint" />
                           <input
                             type="text"
                             value={searchCompany}
@@ -1487,11 +1487,11 @@ export default function ModuleAdministration({ state, setState }: Props) {
                         </div>
 
                         <div className="flex items-center gap-2">
-                          <span className="text-xs font-semibold text-slate-500">Sous-mode :</span>
+                          <span className="text-xs font-semibold text-ink-muted">Sous-mode :</span>
                           <button
                             onClick={() => setCompanySettlementFilter('all')}
                             className={`px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer ${
-                              companySettlementFilter === 'all' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600'
+                              companySettlementFilter === 'all' ? 'bg-slate-800 text-white' : 'bg-surface-hover text-ink-secondary'
                             }`}
                           >
                             Toutes ({state.companies.length})
@@ -1499,7 +1499,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
                           <button
                             onClick={() => setCompanySettlementFilter('monthly_global')}
                             className={`px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer ${
-                              companySettlementFilter === 'monthly_global' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+                              companySettlementFilter === 'monthly_global' ? 'bg-indigo-600 text-white' : 'bg-surface-hover text-ink-secondary'
                             }`}
                           >
                             📅 Mensuel global
@@ -1507,7 +1507,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
                           <button
                             onClick={() => setCompanySettlementFilter('per_invoice')}
                             className={`px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer ${
-                              companySettlementFilter === 'per_invoice' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+                              companySettlementFilter === 'per_invoice' ? 'bg-indigo-600 text-white' : 'bg-surface-hover text-ink-secondary'
                             }`}
                           >
                             🧾 Par facture
@@ -1516,9 +1516,9 @@ export default function ModuleAdministration({ state, setState }: Props) {
                       </div>
 
                       {/* Companies Table */}
-                      <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs">
+                      <div className="border border-line rounded-2xl overflow-hidden bg-surface shadow-xs">
                         <table className="w-full text-xs text-left">
-                          <thead className="bg-slate-50 border-b text-slate-600 font-bold">
+                          <thead className="bg-surface-muted border-b text-ink-secondary font-bold">
                             <tr>
                               <th className="p-3.5">Nom de la société partenaire</th>
                               <th className="p-3.5 text-center">Mode Général</th>
@@ -1526,9 +1526,9 @@ export default function ModuleAdministration({ state, setState }: Props) {
                               <th className="p-3.5 text-right">Actions</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y border-slate-100">
+                          <tbody className="divide-y border-line-soft">
                             {filteredCompanies.map((c) => (
-                              <tr key={c.id} className="hover:bg-slate-50/80 transition">
+                              <tr key={c.id} className="hover:bg-surface-muted/80 transition">
                                 {editingCompanyId === c.id ? (
                                   <>
                                     <td className="p-2.5">
@@ -1540,13 +1540,13 @@ export default function ModuleAdministration({ state, setState }: Props) {
                                       />
                                     </td>
                                     <td className="p-2.5 text-center">
-                                      <span className="px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-800 text-[11px] font-bold">Crédit</span>
+                                      <span className="px-2.5 py-1 rounded-full bg-indigo-100 dark:bg-indigo-500/15 text-indigo-800 dark:text-indigo-300 text-[11px] font-bold">Crédit</span>
                                     </td>
                                     <td className="p-2.5">
                                       <select
                                         value={editCompany.settlementMode}
                                         onChange={e => setEditCompany({ ...editCompany, settlementMode: e.target.value as CompanySettlementMode })}
-                                        className="w-full px-2 py-1.5 border rounded-xl text-xs bg-white cursor-pointer"
+                                        className="w-full px-2 py-1.5 border rounded-xl text-xs bg-surface cursor-pointer"
                                       >
                                         <option value="monthly_global">Règlement global mensuel</option>
                                         <option value="per_invoice">Règlement individuel par facture</option>
@@ -1556,35 +1556,35 @@ export default function ModuleAdministration({ state, setState }: Props) {
                                       <button onClick={saveEditCompany} className="px-3 py-1 bg-emerald-600 text-white rounded-lg text-xs font-semibold cursor-pointer">
                                         Enregistrer
                                       </button>
-                                      <button onClick={() => setEditingCompanyId(null)} className="px-3 py-1 bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold cursor-pointer">
+                                      <button onClick={() => setEditingCompanyId(null)} className="px-3 py-1 bg-surface-active text-ink rounded-lg text-xs font-semibold cursor-pointer">
                                         Annuler
                                       </button>
                                     </td>
                                   </>
                                 ) : (
                                   <>
-                                    <td className="p-3.5 font-bold text-slate-900 flex items-center gap-2">
-                                      <Building2 className="w-4 h-4 text-indigo-600" /> {c.name}
+                                    <td className="p-3.5 font-bold text-ink-strong flex items-center gap-2">
+                                      <Building2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" /> {c.name}
                                     </td>
                                     <td className="p-3.5 text-center">
-                                      <span className="px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-800 text-[11px] font-bold">Crédit</span>
+                                      <span className="px-2.5 py-1 rounded-full bg-indigo-100 dark:bg-indigo-500/15 text-indigo-800 dark:text-indigo-300 text-[11px] font-bold">Crédit</span>
                                     </td>
                                     <td className="p-3.5 text-center">
                                       {c.settlementMode === 'monthly_global' ? (
-                                        <span className="px-2.5 py-1 rounded-full bg-blue-100 text-blue-800 text-[11px] font-semibold">
+                                        <span className="px-2.5 py-1 rounded-full bg-blue-100 dark:bg-cyan-500/15 text-blue-800 dark:text-cyan-300 text-[11px] font-semibold">
                                           📅 Global mensuel
                                         </span>
                                       ) : (
-                                        <span className="px-2.5 py-1 rounded-full bg-purple-100 text-purple-800 text-[11px] font-semibold">
+                                        <span className="px-2.5 py-1 rounded-full bg-purple-100 dark:bg-purple-500/15 text-purple-800 dark:text-purple-300 text-[11px] font-semibold">
                                           🧾 Individuel par facture
                                         </span>
                                       )}
                                     </td>
                                     <td className="p-3.5 text-right space-x-1">
-                                      <button onClick={() => startEditCompany(c)} className="text-indigo-600 hover:text-indigo-800 p-1.5 cursor-pointer rounded-lg hover:bg-indigo-50" title="Modifier">
+                                      <button onClick={() => startEditCompany(c)} className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 p-1.5 cursor-pointer rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-500/8" title="Modifier">
                                         <Edit2 className="w-4 h-4" />
                                       </button>
-                                      <button onClick={() => deleteCompany(c.id, c.name)} className="text-rose-600 hover:text-rose-800 p-1.5 cursor-pointer rounded-lg hover:bg-rose-50" title="Supprimer">
+                                      <button onClick={() => deleteCompany(c.id, c.name)} className="text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-300 p-1.5 cursor-pointer rounded-lg hover:bg-rose-50 dark:hover:bg-rose-500/8" title="Supprimer">
                                         <Trash2 className="w-4 h-4" />
                                       </button>
                                     </td>
@@ -1594,7 +1594,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
                             ))}
                             {filteredCompanies.length === 0 && (
                               <tr>
-                                <td colSpan={4} className="p-8 text-center text-slate-400 italic">
+                                <td colSpan={4} className="p-8 text-center text-ink-faint italic">
                                   Aucune société partenaire trouvée.
                                 </td>
                               </tr>
@@ -1610,10 +1610,10 @@ export default function ModuleAdministration({ state, setState }: Props) {
                     <div className="space-y-5">
                       <div className="flex justify-between items-center flex-wrap gap-3">
                         <div>
-                          <h3 className="font-bold text-slate-800 text-xl flex items-center gap-2.5">
-                            <Shield className="w-6 h-6 text-blue-600" /> Journal d'Audit & Historique de Sécurité ({state.auditLogs.length})
+                          <h3 className="font-bold text-ink-strong text-xl flex items-center gap-2.5">
+                            <Shield className="w-6 h-6 text-blue-600 dark:text-cyan-400" /> Journal d'Audit & Historique de Sécurité ({state.auditLogs.length})
                           </h3>
-                          <p className="text-xs text-slate-500 mt-0.5">Traçabilité et journal de sécurité de toutes les opérations effectuées dans le système.</p>
+                          <p className="text-xs text-ink-muted mt-0.5">Traçabilité et journal de sécurité de toutes les opérations effectuées dans le système.</p>
                         </div>
                         <div className="flex items-center gap-2">
                           <button
@@ -1645,9 +1645,9 @@ export default function ModuleAdministration({ state, setState }: Props) {
                       </div>
 
                       {/* Filter Bar */}
-                      <div className="bg-white p-3.5 border border-slate-200 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-xs">
+                      <div className="bg-surface p-3.5 border border-line rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-xs">
                         <div className="relative flex-1 min-w-[240px] max-w-md">
-                          <Search className="absolute left-3.5 top-2.5 w-4 h-4 text-slate-400" />
+                          <Search className="absolute left-3.5 top-2.5 w-4 h-4 text-ink-faint" />
                           <input
                             type="text"
                             value={searchAudit}
@@ -1658,11 +1658,11 @@ export default function ModuleAdministration({ state, setState }: Props) {
                         </div>
 
                         <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-semibold text-slate-500">Catégorie :</span>
+                          <span className="text-xs font-semibold text-ink-muted">Catégorie :</span>
                           <button
                             onClick={() => setAuditCategoryFilter('all')}
                             className={`px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer ${
-                              auditCategoryFilter === 'all' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600'
+                              auditCategoryFilter === 'all' ? 'bg-slate-800 text-white' : 'bg-surface-hover text-ink-secondary'
                             }`}
                           >
                             Toutes
@@ -1670,7 +1670,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
                           <button
                             onClick={() => setAuditCategoryFilter('users')}
                             className={`px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer ${
-                              auditCategoryFilter === 'users' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
+                              auditCategoryFilter === 'users' ? 'bg-blue-600 text-white' : 'bg-surface-hover text-ink-secondary'
                             }`}
                           >
                             Utilisateurs
@@ -1678,7 +1678,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
                           <button
                             onClick={() => setAuditCategoryFilter('config')}
                             className={`px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer ${
-                              auditCategoryFilter === 'config' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
+                              auditCategoryFilter === 'config' ? 'bg-blue-600 text-white' : 'bg-surface-hover text-ink-secondary'
                             }`}
                           >
                             Config & Établissement
@@ -1686,7 +1686,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
                           <button
                             onClick={() => setAuditCategoryFilter('backup')}
                             className={`px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer ${
-                              auditCategoryFilter === 'backup' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
+                              auditCategoryFilter === 'backup' ? 'bg-blue-600 text-white' : 'bg-surface-hover text-ink-secondary'
                             }`}
                           >
                             Sauvegarde / Reset
@@ -1695,9 +1695,9 @@ export default function ModuleAdministration({ state, setState }: Props) {
                       </div>
 
                       {/* Audit Table */}
-                      <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs max-h-[550px] overflow-y-auto">
+                      <div className="border border-line rounded-2xl overflow-hidden bg-surface shadow-xs max-h-[550px] overflow-y-auto">
                         <table className="w-full text-xs text-left">
-                          <thead className="bg-slate-50 border-b sticky top-0 text-slate-600 font-bold">
+                          <thead className="bg-surface-muted border-b sticky top-0 text-ink-secondary font-bold">
                             <tr>
                               <th className="p-3.5">Horodatage</th>
                               <th className="p-3.5">Opérateur</th>
@@ -1705,26 +1705,26 @@ export default function ModuleAdministration({ state, setState }: Props) {
                               <th className="p-3.5">Détails de l'opération</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y border-slate-100">
+                          <tbody className="divide-y border-line-soft">
                             {filteredAuditLogs.map((log) => (
-                              <tr key={log.id} className="hover:bg-slate-50/80 transition">
-                                <td className="p-3.5 font-mono text-slate-500 whitespace-nowrap">
+                              <tr key={log.id} className="hover:bg-surface-muted/80 transition">
+                                <td className="p-3.5 font-mono text-ink-muted whitespace-nowrap">
                                   {new Date(log.timestamp).toLocaleString('fr-FR')}
                                 </td>
-                                <td className="p-3.5 font-bold text-slate-800 whitespace-nowrap">
-                                  {log.userName} <span className="text-slate-400 font-normal">({log.userRole})</span>
+                                <td className="p-3.5 font-bold text-ink-strong whitespace-nowrap">
+                                  {log.userName} <span className="text-ink-faint font-normal">({log.userRole})</span>
                                 </td>
                                 <td className="p-3.5 whitespace-nowrap">
-                                  <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-mono text-[10px] font-bold">
+                                  <span className="px-2 py-0.5 bg-blue-100 dark:bg-cyan-500/15 text-blue-800 dark:text-cyan-300 rounded font-mono text-[10px] font-bold">
                                     {log.action}
                                   </span>
                                 </td>
-                                <td className="p-3.5 text-slate-700">{log.details}</td>
+                                <td className="p-3.5 text-ink">{log.details}</td>
                               </tr>
                             ))}
                             {filteredAuditLogs.length === 0 && (
                               <tr>
-                                <td colSpan={4} className="p-8 text-center text-slate-400 italic">
+                                <td colSpan={4} className="p-8 text-center text-ink-faint italic">
                                   Aucun événement enregistré dans le journal.
                                 </td>
                               </tr>
@@ -1739,24 +1739,24 @@ export default function ModuleAdministration({ state, setState }: Props) {
                   {tab === 'backup' && (
                     <div className="space-y-6 max-w-4xl">
                       <div>
-                        <h3 className="font-bold text-slate-800 text-xl flex items-center gap-2.5">
-                          <Database className="w-6 h-6 text-emerald-600" /> Sauvegarde, Restauration & Maintenance Système
+                        <h3 className="font-bold text-ink-strong text-xl flex items-center gap-2.5">
+                          <Database className="w-6 h-6 text-emerald-600 dark:text-emerald-400" /> Sauvegarde, Restauration & Maintenance Système
                         </h3>
-                        <p className="text-xs text-slate-500 mt-0.5">Exportation intégrale au format JSON, importation sécurisée avec vérification et maintenance opérationnelle.</p>
+                        <p className="text-xs text-ink-muted mt-0.5">Exportation intégrale au format JSON, importation sécurisée avec vérification et maintenance opérationnelle.</p>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        <div className="p-6 border-2 border-emerald-200 rounded-2xl bg-emerald-50/40 space-y-4 shadow-xs">
+                        <div className="p-6 border-2 border-emerald-200 dark:border-emerald-500/25 rounded-2xl bg-emerald-50/40 dark:bg-emerald-500/3 space-y-4 shadow-xs">
                           <div className="flex items-center gap-3">
-                            <div className="p-3 bg-emerald-100 text-emerald-800 rounded-xl">
+                            <div className="p-3 bg-emerald-100 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 rounded-xl">
                               <Download className="w-6 h-6" />
                             </div>
                             <div>
-                              <h4 className="font-bold text-emerald-950 text-base">Sauvegarder la Base (JSON)</h4>
-                              <p className="text-xs text-emerald-700">Téléchargement instantané de toutes les données.</p>
+                              <h4 className="font-bold text-emerald-950 dark:text-emerald-300 text-base">Sauvegarder la Base (JSON)</h4>
+                              <p className="text-xs text-emerald-700 dark:text-emerald-400">Téléchargement instantané de toutes les données.</p>
                             </div>
                           </div>
-                          <p className="text-xs text-emerald-800 leading-relaxed">
+                          <p className="text-xs text-emerald-800 dark:text-emerald-300 leading-relaxed">
                             Exporte un fichier JSON certifié contenant les dossiers patients, consultations, ordonnances, factures, catalogue d'articles et journaux d'audit.
                           </p>
                           <button
@@ -1767,17 +1767,17 @@ export default function ModuleAdministration({ state, setState }: Props) {
                           </button>
                         </div>
 
-                        <div className="p-6 border-2 border-blue-200 rounded-2xl bg-blue-50/40 space-y-4 shadow-xs">
+                        <div className="p-6 border-2 border-blue-200 dark:border-cyan-500/25 rounded-2xl bg-blue-50/40 dark:bg-cyan-500/3 space-y-4 shadow-xs">
                           <div className="flex items-center gap-3">
-                            <div className="p-3 bg-blue-100 text-blue-800 rounded-xl">
+                            <div className="p-3 bg-blue-100 dark:bg-cyan-500/15 text-blue-800 dark:text-cyan-300 rounded-xl">
                               <Upload className="w-6 h-6" />
                             </div>
                             <div>
-                              <h4 className="font-bold text-blue-950 text-base">Restaurer un Fichier JSON</h4>
-                              <p className="text-xs text-blue-700">Chargement et inspection préalable.</p>
+                              <h4 className="font-bold text-blue-950 dark:text-cyan-300 text-base">Restaurer un Fichier JSON</h4>
+                              <p className="text-xs text-blue-700 dark:text-cyan-400">Chargement et inspection préalable.</p>
                             </div>
                           </div>
-                          <p className="text-xs text-blue-800 leading-relaxed">
+                          <p className="text-xs text-blue-800 dark:text-cyan-300 leading-relaxed">
                             Chargez un fichier de sauvegarde JSON antérieur. Le système affichera un rapport de contrôle du contenu avant de valider le remplacement.
                           </p>
                           <input ref={restoreInputRef} type="file" accept="application/json" onChange={handleBackupFileSelect} className="hidden" />
@@ -1791,17 +1791,17 @@ export default function ModuleAdministration({ state, setState }: Props) {
                       </div>
 
                       {/* Reset Danger Zones */}
-                      <div className="p-6 border-2 border-rose-200 rounded-2xl bg-rose-50/60 space-y-4 shadow-xs">
+                      <div className="p-6 border-2 border-rose-200 dark:border-rose-500/25 rounded-2xl bg-rose-50/60 dark:bg-rose-500/5 space-y-4 shadow-xs">
                         <div className="flex items-center gap-3">
-                          <div className="p-2.5 bg-rose-100 text-rose-700 rounded-xl">
+                          <div className="p-2.5 bg-rose-100 dark:bg-rose-500/15 text-rose-700 dark:text-rose-400 rounded-xl">
                             <AlertTriangle className="w-6 h-6" />
                           </div>
                           <div>
-                            <h4 className="font-bold text-rose-950 text-base">Réinitialisation des Données Opérationnelles</h4>
-                            <p className="text-xs text-rose-700">Purger les transactions sans effacer le personnel ni le catalogue.</p>
+                            <h4 className="font-bold text-rose-950 dark:text-rose-300 text-base">Réinitialisation des Données Opérationnelles</h4>
+                            <p className="text-xs text-rose-700 dark:text-rose-400">Purger les transactions sans effacer le personnel ni le catalogue.</p>
                           </div>
                         </div>
-                        <p className="text-xs text-rose-800 leading-relaxed">
+                        <p className="text-xs text-rose-800 dark:text-rose-300 leading-relaxed">
                           Efface l'intégralité des consultations, factures, prescriptions et mouvements de stock. Les comptes d'accès du personnel, les articles du catalogue et les sociétés partenaires sont préservés.
                         </p>
                         <button
@@ -1812,17 +1812,17 @@ export default function ModuleAdministration({ state, setState }: Props) {
                         </button>
                       </div>
 
-                      <div className="p-6 border-2 border-red-300 rounded-2xl bg-gradient-to-br from-red-50 to-rose-100 space-y-4 shadow-xs">
+                      <div className="p-6 border-2 border-red-300 dark:border-red-500/40 rounded-2xl bg-gradient-to-br from-red-50 dark:from-red-950/60 to-rose-100 dark:to-rose-950/60 space-y-4 shadow-xs">
                         <div className="flex items-center gap-3">
-                          <div className="p-2.5 bg-red-200 text-red-900 rounded-xl">
-                            <AlertCircle className="w-6 h-6 text-red-700" />
+                          <div className="p-2.5 bg-red-200 dark:bg-red-500/25 text-red-900 dark:text-red-300 rounded-xl">
+                            <AlertCircle className="w-6 h-6 text-red-700 dark:text-red-400" />
                           </div>
                           <div>
-                            <h4 className="font-bold text-red-950 text-base">Réinitialisation TOTALE de la Base de Données</h4>
-                            <p className="text-xs text-red-700 font-semibold">Remise à zéro complète avec seed initial de démonstration.</p>
+                            <h4 className="font-bold text-red-950 dark:text-red-300 text-base">Réinitialisation TOTALE de la Base de Données</h4>
+                            <p className="text-xs text-red-700 dark:text-red-400 font-semibold">Remise à zéro complète avec seed initial de démonstration.</p>
                           </div>
                         </div>
-                        <p className="text-xs text-red-800 leading-relaxed">
+                        <p className="text-xs text-red-800 dark:text-red-300 leading-relaxed">
                           Supprime définitivement l'ensemble des données personnalisées de l'application et recharge l'état initial.
                         </p>
                         <button
@@ -1839,57 +1839,57 @@ export default function ModuleAdministration({ state, setState }: Props) {
                   {tab === 'system' && (
                     <div className="space-y-6 max-w-3xl">
                       <div>
-                        <h3 className="font-bold text-slate-800 text-xl flex items-center gap-2.5">
-                          <HardDrive className="w-6 h-6 text-slate-700" /> Diagnostics & Santé du Stockage
+                        <h3 className="font-bold text-ink-strong text-xl flex items-center gap-2.5">
+                          <HardDrive className="w-6 h-6 text-ink" /> Diagnostics & Santé du Stockage
                         </h3>
-                        <p className="text-xs text-slate-500 mt-0.5">Statistiques d'utilisation des tables et volume de stockage du navigateur.</p>
+                        <p className="text-xs text-ink-muted mt-0.5">Statistiques d'utilisation des tables et volume de stockage du navigateur.</p>
                       </div>
 
-                      <div className="p-5 border border-slate-200 rounded-2xl bg-white space-y-4 shadow-xs">
-                        <h4 className="font-bold text-sm text-slate-800 border-b pb-2 flex items-center justify-between">
+                      <div className="p-5 border border-line rounded-2xl bg-surface space-y-4 shadow-xs">
+                        <h4 className="font-bold text-sm text-ink-strong border-b pb-2 flex items-center justify-between">
                           <span>Volume & Métriques des Entités</span>
-                          <span className="text-xs font-mono text-emerald-600 font-bold">Système SALFA v2.0</span>
+                          <span className="text-xs font-mono text-emerald-600 dark:text-emerald-400 font-bold">Système SALFA v2.0</span>
                         </h4>
 
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
-                          <div className="p-3 bg-slate-50 border rounded-xl space-y-1">
-                            <span className="text-slate-500 block">Dossiers Patients</span>
-                            <strong className="text-base text-slate-900 font-mono">{state.patients.length}</strong>
+                          <div className="p-3 bg-surface-muted border rounded-xl space-y-1">
+                            <span className="text-ink-muted block">Dossiers Patients</span>
+                            <strong className="text-base text-ink-strong font-mono">{state.patients.length}</strong>
                           </div>
-                          <div className="p-3 bg-slate-50 border rounded-xl space-y-1">
-                            <span className="text-slate-500 block">Consultations</span>
-                            <strong className="text-base text-slate-900 font-mono">{state.consultations.length}</strong>
+                          <div className="p-3 bg-surface-muted border rounded-xl space-y-1">
+                            <span className="text-ink-muted block">Consultations</span>
+                            <strong className="text-base text-ink-strong font-mono">{state.consultations.length}</strong>
                           </div>
-                          <div className="p-3 bg-slate-50 border rounded-xl space-y-1">
-                            <span className="text-slate-500 block">Factures Émises</span>
-                            <strong className="text-base text-slate-900 font-mono">{state.invoices.length}</strong>
+                          <div className="p-3 bg-surface-muted border rounded-xl space-y-1">
+                            <span className="text-ink-muted block">Factures Émises</span>
+                            <strong className="text-base text-ink-strong font-mono">{state.invoices.length}</strong>
                           </div>
-                          <div className="p-3 bg-slate-50 border rounded-xl space-y-1">
-                            <span className="text-slate-500 block">Articles Catalogue</span>
-                            <strong className="text-base text-slate-900 font-mono">{state.articles.length}</strong>
+                          <div className="p-3 bg-surface-muted border rounded-xl space-y-1">
+                            <span className="text-ink-muted block">Articles Catalogue</span>
+                            <strong className="text-base text-ink-strong font-mono">{state.articles.length}</strong>
                           </div>
-                          <div className="p-3 bg-slate-50 border rounded-xl space-y-1">
-                            <span className="text-slate-500 block">Ventes Caisse</span>
-                            <strong className="text-base text-slate-900 font-mono">{state.ventes?.length || 0}</strong>
+                          <div className="p-3 bg-surface-muted border rounded-xl space-y-1">
+                            <span className="text-ink-muted block">Ventes Caisse</span>
+                            <strong className="text-base text-ink-strong font-mono">{state.ventes?.length || 0}</strong>
                           </div>
-                          <div className="p-3 bg-slate-50 border rounded-xl space-y-1">
-                            <span className="text-slate-500 block">Lignes d'Audit</span>
-                            <strong className="text-base text-slate-900 font-mono">{state.auditLogs.length}</strong>
+                          <div className="p-3 bg-surface-muted border rounded-xl space-y-1">
+                            <span className="text-ink-muted block">Lignes d'Audit</span>
+                            <strong className="text-base text-ink-strong font-mono">{state.auditLogs.length}</strong>
                           </div>
-                          <div className="p-3 bg-slate-50 border rounded-xl space-y-1">
-                            <span className="text-slate-500 block">Sociétés / Hôpitaux</span>
-                            <strong className="text-base text-slate-900 font-mono">{state.etablissements?.length || 0}</strong>
+                          <div className="p-3 bg-surface-muted border rounded-xl space-y-1">
+                            <span className="text-ink-muted block">Sociétés / Hôpitaux</span>
+                            <strong className="text-base text-ink-strong font-mono">{state.etablissements?.length || 0}</strong>
                           </div>
                         </div>
 
-                        <div className="pt-2 border-t text-xs text-slate-600 space-y-2">
+                        <div className="pt-2 border-t text-xs text-ink-secondary space-y-2">
                           <div className="flex justify-between py-1">
                             <span>Taille estimée en mémoire LocalStorage :</span>
-                            <strong className="font-mono text-slate-900">{Math.round(JSON.stringify(state).length / 1024)} Ko</strong>
+                            <strong className="font-mono text-ink-strong">{Math.round(JSON.stringify(state).length / 1024)} Ko</strong>
                           </div>
                           <div className="flex justify-between py-1">
                             <span>Moteur de persistence actif :</span>
-                            <strong className="text-emerald-700">HTML5 Web Storage (LocalStorage)</strong>
+                            <strong className="text-emerald-700 dark:text-emerald-400">HTML5 Web Storage (LocalStorage)</strong>
                           </div>
                         </div>
                       </div>

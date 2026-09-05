@@ -105,7 +105,7 @@ export default function SageLineEditor({ lines, onLinesChange, columns, searchPl
   };
 
   return (
-    <div className="w-full bg-[#f4f4f4] border border-slate-300 rounded text-xs select-none">
+    <div className="w-full bg-surface-muted border border-line-strong rounded text-xs select-none">
 
       {/* SEARCH BAR */}
       {showSearch && (
@@ -114,16 +114,16 @@ export default function SageLineEditor({ lines, onLinesChange, columns, searchPl
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-white border border-blue-400 rounded px-2 py-1 text-sm focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500"
+            className="w-full bg-surface border border-blue-400 rounded px-2 py-1 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/25"
             placeholder={searchPlaceholder || '🔍 Tapez pour rechercher un article...'}
           />
           {searchResults.length > 0 && (
-            <div className="absolute top-full left-2 right-2 bg-white border border-slate-300 rounded-b shadow-xl z-30 max-h-40 overflow-y-auto">
+            <div className="absolute top-full left-2 right-2 bg-surface border border-line-strong rounded-b shadow-xl z-30 max-h-40 overflow-y-auto">
               {searchResults.map((r) => (
                 <div key={r.id} onClick={() => handleSearchSelect(r.id)}
-                  className="px-3 py-1.5 hover:bg-blue-50 cursor-pointer flex justify-between border-b border-slate-100">
+                  className="px-3 py-1.5 hover:bg-blue-50 dark:hover:bg-cyan-500/8 cursor-pointer flex justify-between border-b border-line-soft">
                   <span className="font-medium">{r.label}</span>
-                  <span className="font-mono text-blue-600">{formatAr(r.price)}</span>
+                  <span className="font-mono text-blue-600 dark:text-cyan-400">{formatAr(r.price)}</span>
                 </div>
               ))}
             </div>
@@ -132,19 +132,19 @@ export default function SageLineEditor({ lines, onLinesChange, columns, searchPl
       )}
 
       {/* FORM BAR (top edit zone) */}
-      <div className="bg-slate-100 border-b border-slate-300 p-1.5 m-2 mb-0 rounded shadow-inner">
+      <div className="bg-surface-hover border-b border-line-strong p-1.5 m-2 mb-0 rounded shadow-inner">
         <div className="flex flex-wrap items-center gap-1">
           {columns.map(col => (
             <div key={col.key} style={{ width: col.width }} className="flex-shrink-0">
-              <label className="block text-[9px] text-slate-500 mb-0.5 truncate">{col.label}</label>
+              <label className="block text-[9px] text-ink-muted mb-0.5 truncate">{col.label}</label>
               {col.type === 'readonly' ? (
-                <input type="text" readOnly value={form[col.key] != null ? String(form[col.key]) : ''} className="w-full bg-slate-200 border border-slate-300 rounded px-1 py-0.5 text-right font-mono font-bold text-slate-700" />
+                <input type="text" readOnly value={form[col.key] != null ? String(form[col.key]) : ''} className="w-full bg-surface-active border border-line-strong rounded px-1 py-0.5 text-right font-mono font-bold text-ink" />
               ) : (
                 <input
                   type={col.type === 'number' ? 'number' : 'text'}
                   value={form[col.key] != null ? String(form[col.key]) : ''}
                   onChange={(e) => handleFormChange(col.key, col.type === 'number' ? (parseFloat(e.target.value) || 0) : e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 font-mono focus:outline-none focus:border-blue-500 text-slate-800"
+                  className="w-full bg-surface border border-line-strong rounded px-1 py-0.5 font-mono focus:outline-none focus:border-accent text-ink-strong"
                   step={col.type === 'number' ? 'any' : undefined}
                 />
               )}
@@ -152,11 +152,11 @@ export default function SageLineEditor({ lines, onLinesChange, columns, searchPl
           ))}
         </div>
         <div className="flex justify-end gap-1 mt-1.5">
-          <button onClick={handleNew} className="flex items-center gap-1 px-2.5 py-0.5 bg-white hover:bg-slate-50 border border-slate-300 rounded shadow-sm text-slate-700 transition cursor-pointer">
-            <Plus className="h-3 w-3 text-slate-500" /> Nouveau
+          <button onClick={handleNew} className="flex items-center gap-1 px-2.5 py-0.5 bg-surface hover:bg-surface-muted border border-line-strong rounded shadow-sm text-ink transition cursor-pointer">
+            <Plus className="h-3 w-3 text-ink-muted" /> Nouveau
           </button>
-          <button onClick={handleDelete} disabled={!selectedId} className="flex items-center gap-1 px-2.5 py-0.5 bg-white hover:bg-slate-50 border border-slate-300 rounded shadow-sm text-slate-700 disabled:opacity-40 transition cursor-pointer">
-            <Trash2 className="h-3 w-3 text-rose-600" /> Supprimer
+          <button onClick={handleDelete} disabled={!selectedId} className="flex items-center gap-1 px-2.5 py-0.5 bg-surface hover:bg-surface-muted border border-line-strong rounded shadow-sm text-ink disabled:opacity-40 transition cursor-pointer">
+            <Trash2 className="h-3 w-3 text-rose-600 dark:text-rose-400" /> Supprimer
           </button>
           <button onClick={handleSave} disabled={!form.designation} className="flex items-center gap-1 px-2.5 py-0.5 bg-sky-500 hover:bg-sky-600 text-white border border-sky-600 rounded shadow-sm font-medium disabled:opacity-40 transition cursor-pointer">
             <Save className="h-3 w-3" /> Enregistrer
@@ -165,21 +165,21 @@ export default function SageLineEditor({ lines, onLinesChange, columns, searchPl
       </div>
 
       {/* TABLE */}
-      <div className="bg-white border-t border-slate-300 overflow-x-auto m-2 mt-0 rounded-b">
+      <div className="bg-surface border-t border-line-strong overflow-x-auto m-2 mt-0 rounded-b">
         <table className="w-full text-left border-collapse text-[11px]">
-          <thead className="bg-slate-50 border-b border-slate-300 text-slate-600">
-            <tr className="divide-x divide-slate-200">
+          <thead className="bg-surface-muted border-b border-line-strong text-ink-secondary">
+            <tr className="divide-x divide-line">
               {columns.map(col => (
                 <th key={col.key} className="p-1 font-normal truncate" style={{ minWidth: col.width }}>{col.label}</th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-150 font-mono">
+          <tbody className="divide-y divide-line font-mono">
             {lines.map((line) => {
               const isSel = line.id === selectedId;
               return (
                 <tr key={line.id} onClick={() => setSelectedId(line.id)}
-                  className={`cursor-pointer divide-x divide-slate-200 transition-colors ${isSel ? 'bg-blue-500 text-white font-medium' : 'hover:bg-slate-50 text-slate-800'}`}>
+                  className={`cursor-pointer divide-x divide-line transition-colors ${isSel ? 'bg-blue-500 text-white font-medium' : 'hover:bg-surface-muted text-ink-strong'}`}>
                   {columns.map(col => {
                     const val = line[col.key];
                     const isNum = col.type === 'number' || col.type === 'readonly';
@@ -193,7 +193,7 @@ export default function SageLineEditor({ lines, onLinesChange, columns, searchPl
               );
             })}
             {lines.length === 0 && (
-              <tr><td colSpan={columns.length} className="p-4 text-center text-slate-400 font-sans">Aucune ligne</td></tr>
+              <tr><td colSpan={columns.length} className="p-4 text-center text-ink-faint font-sans">Aucune ligne</td></tr>
             )}
           </tbody>
         </table>

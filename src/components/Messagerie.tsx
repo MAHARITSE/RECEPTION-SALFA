@@ -73,7 +73,7 @@ export default function Messagerie({ state, setState, onClose, initialRecipientI
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-2xl bg-white rounded-xl shadow-2xl border border-slate-300 overflow-hidden flex flex-col" style={{ height: '70vh' }}>
+      <div className="w-full max-w-2xl bg-surface rounded-xl shadow-2xl border border-line-strong overflow-hidden flex flex-col" style={{ height: '70vh' }}>
         <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 px-4 py-3 flex justify-between items-center text-white">
           <span className="font-bold flex items-center gap-2"><MessageCircle className="w-5 h-5" /> Messagerie — {senderName}</span>
           <button onClick={onClose} className="hover:bg-white/20 rounded p-1 cursor-pointer"><X className="w-5 h-5" /></button>
@@ -81,15 +81,15 @@ export default function Messagerie({ state, setState, onClose, initialRecipientI
 
         <div className="flex flex-1 overflow-hidden">
           {/* Users list */}
-          <div className="w-56 border-r border-slate-200 overflow-y-auto bg-slate-50 flex-shrink-0">
+          <div className="w-56 border-r border-line overflow-y-auto bg-surface-muted flex-shrink-0">
             {conversations.map((c) => (
               <div key={c.user.id} onClick={() => setSelectedUserId(c.user.id)}
-                className={`p-3 cursor-pointer border-b border-slate-200 transition-colors ${selectedUserId === c.user.id ? 'bg-indigo-100' : 'hover:bg-slate-100'}`}>
+                className={`p-3 cursor-pointer border-b border-line transition-colors ${selectedUserId === c.user.id ? 'bg-indigo-100 dark:bg-indigo-500/15' : 'hover:bg-surface-hover'}`}>
                 <div className="flex items-center justify-between">
                   <span className="font-medium text-sm truncate">{c.user.name}</span>
                   {c.unread > 0 && <span className="bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold flex-shrink-0">{c.unread}</span>}
                 </div>
-                <div className="text-[10px] text-slate-500">{roleLabels[c.user.role] || c.user.role}</div>
+                <div className="text-[10px] text-ink-muted">{roleLabels[c.user.role] || c.user.role}</div>
               </div>
             ))}
           </div>
@@ -97,27 +97,27 @@ export default function Messagerie({ state, setState, onClose, initialRecipientI
           {/* Chat */}
           <div className="flex-1 flex flex-col min-w-0">
             {!selectedUser ? (
-              <div className="flex-1 flex items-center justify-center text-slate-400 p-6 text-center">
+              <div className="flex-1 flex items-center justify-center text-ink-faint p-6 text-center">
                 <div><MessageCircle className="w-12 h-12 mx-auto mb-3 opacity-30" /><p>Sélectionnez un interlocuteur</p><p className="text-xs mt-1">Les messages arrivent même si la personne est hors ligne</p></div>
               </div>
             ) : (
               <>
-                <div className="px-4 py-2 border-b border-slate-200 bg-slate-50 flex-shrink-0">
-                  <span className="font-semibold text-slate-800">{selectedUser.name}</span>
-                  <span className="text-xs text-slate-400 ml-2">({roleLabels[selectedUser.role]})</span>
+                <div className="px-4 py-2 border-b border-line bg-surface-muted flex-shrink-0">
+                  <span className="font-semibold text-ink-strong">{selectedUser.name}</span>
+                  <span className="text-xs text-ink-faint ml-2">({roleLabels[selectedUser.role]})</span>
                 </div>
                 <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                  {selectedConv && selectedConv.messages.length === 0 && <div className="text-center text-slate-400 text-sm py-8">Aucun message</div>}
+                  {selectedConv && selectedConv.messages.length === 0 && <div className="text-center text-ink-faint text-sm py-8">Aucun message</div>}
                   {selectedConv?.messages
                     .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
                     .map((m) => {
                       const isMe = m.fromUserId === senderId;
                       return (
                         <div key={m.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                          <div className={`max-w-[70%] px-3 py-2 rounded-lg text-sm ${isMe ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-800'}`}>
+                          <div className={`max-w-[70%] px-3 py-2 rounded-lg text-sm ${isMe ? 'bg-indigo-500 text-white' : 'bg-surface-hover text-ink-strong'}`}>
                             {!isMe && <div className="text-[10px] font-bold mb-0.5 opacity-70">{m.fromUserName}</div>}
                             <p className="break-words">{m.content}</p>
-                            <div className={`text-[10px] mt-1 flex items-center gap-1 ${isMe ? 'text-indigo-200 justify-end' : 'text-slate-400'}`}>
+                            <div className={`text-[10px] mt-1 flex items-center gap-1 ${isMe ? 'text-indigo-200 justify-end' : 'text-ink-faint'}`}>
                               {new Date(m.timestamp).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
                               {isMe && <Check className={`w-3 h-3 ${m.read ? 'text-green-300' : ''}`} />}
                             </div>
@@ -127,10 +127,10 @@ export default function Messagerie({ state, setState, onClose, initialRecipientI
                     })}
                   <div ref={msgEndRef} />
                 </div>
-                <div className="p-3 border-t border-slate-200 bg-white flex-shrink-0">
+                <div className="p-3 border-t border-line bg-surface flex-shrink-0">
                   <div className="flex gap-2">
                     <input type="text" value={newMsg} onChange={(e) => setNewMsg(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                      className="flex-1 px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-sm" placeholder="Votre message..." />
+                      className="flex-1 px-3 py-2 border border-line-strong rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-sm" placeholder="Votre message..." />
                     <button onClick={handleSend} disabled={!newMsg.trim()} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40 cursor-pointer"><Send className="w-4 h-4" /></button>
                   </div>
                 </div>

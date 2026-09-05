@@ -621,7 +621,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     if (delivered) {
       return {
         label: '💊 Livré',
-        color: 'bg-emerald-100 text-emerald-800',
+        color: 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-300',
         canReturn: false,
         canEdit: false,
         editCancelsPayment: false,
@@ -632,7 +632,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
       if (isPaidViaCompanyCredit(state, c)) {
         return {
           label: '🏢 Crédit Société',
-          color: 'bg-blue-100 text-blue-800',
+          color: 'bg-blue-100 dark:bg-cyan-500/15 text-blue-800 dark:text-cyan-300',
           canReturn: true,
           canEdit: true,
           editCancelsPayment: true,
@@ -641,7 +641,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
       }
       return {
         label: '✅ Payé',
-        color: 'bg-green-100 text-green-800',
+        color: 'bg-green-100 dark:bg-green-500/15 text-green-800 dark:text-green-300',
         canReturn: true,
         canEdit: true,
         editCancelsPayment: true,
@@ -650,7 +650,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     }
     return {
       label: '⏳ Attente',
-      color: 'bg-amber-100 text-amber-800',
+      color: 'bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300',
       canReturn: false,
       canEdit: true,
       editCancelsPayment: false,
@@ -899,7 +899,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     <div className="space-y-3">
       {toastFeedback && (
         <div className="fixed inset-0 z-[9999] pointer-events-none flex items-center justify-center p-4">
-          <div className="pointer-events-auto max-w-md w-full p-4 sm:p-5 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 text-white rounded-2xl shadow-2xl border border-emerald-300/40 flex items-center justify-between gap-4 animate-in fade-in zoom-in-95">
+          <div className="pointer-events-auto max-w-md w-full p-4 sm:p-5 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 text-white rounded-2xl shadow-2xl border border-emerald-300/40 dark:border-emerald-500/16 flex items-center justify-between gap-4 animate-in fade-in zoom-in-95">
             <div className="flex items-center gap-3">
               <div className="p-1.5 bg-white/20 rounded-lg shrink-0">
                 <CheckCircle className="w-6 h-6 text-white" />
@@ -915,18 +915,18 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
       {/* Notification rouge centrée : article bloqué en vente par la pharmacie ou en rupture de stock */}
       <AlerteArticleIndisponible alert={articleAlert} onClose={() => { setArticleAlert(null); setTimeout(() => searchRef.current?.focus(), 50); }} />
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-white rounded-xl p-4 shadow-sm border cursor-pointer hover:border-amber-400" onClick={() => setView('queue')}><div className="flex items-center gap-3"><div className="p-2 bg-amber-100 rounded-lg"><Clock className="w-5 h-5 text-amber-600" /></div><div><div className="text-2xl font-bold">{myWaiting.length}</div><div className="text-sm text-slate-500">En attente</div></div></div></div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border cursor-pointer hover:border-emerald-400" onClick={() => setView('my_consults')}><div className="flex items-center gap-3"><div className="p-2 bg-green-100 rounded-lg"><CheckCircle className="w-5 h-5 text-green-600" /></div><div><div className="text-2xl font-bold">{myTodayConsults.length}</div><div className="text-sm text-slate-500">Mes consultations (auj.)</div></div></div></div>
+        <div className="bg-surface rounded-xl p-4 shadow-sm border cursor-pointer hover:border-amber-400" onClick={() => setView('queue')}><div className="flex items-center gap-3"><div className="p-2 bg-amber-100 dark:bg-amber-500/15 rounded-lg"><Clock className="w-5 h-5 text-amber-600 dark:text-amber-400" /></div><div><div className="text-2xl font-bold">{myWaiting.length}</div><div className="text-sm text-ink-muted">En attente</div></div></div></div>
+        <div className="bg-surface rounded-xl p-4 shadow-sm border cursor-pointer hover:border-emerald-400" onClick={() => setView('my_consults')}><div className="flex items-center gap-3"><div className="p-2 bg-green-100 dark:bg-green-500/15 rounded-lg"><CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" /></div><div><div className="text-2xl font-bold">{myTodayConsults.length}</div><div className="text-sm text-ink-muted">Mes consultations (auj.)</div></div></div></div>
       </div>
 
       {/* MY CONSULTS */}
       {view === 'my_consults' && (
-        <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-          <div className="p-3 border-b bg-emerald-50 flex justify-between"><h3 className="font-semibold text-emerald-800"><FileText className="w-5 h-5 inline" /> Consultations du jour</h3><button onClick={() => setView('queue')} className="px-3 py-1 bg-slate-200 hover:bg-slate-300 rounded text-sm cursor-pointer">← File</button></div>
-          <div className="overflow-auto"><table className="w-full text-sm"><thead className="bg-slate-100 sticky top-0"><tr><th className="p-2 text-left">Heure</th><th className="p-2 text-left">Patient</th><th className="p-2 text-right">Montant</th><th className="p-2 text-center">Statut</th><th className="p-2 text-center">Action</th></tr></thead>
-            <tbody>{myTodayConsults.length === 0 ? <tr><td colSpan={5} className="p-8 text-center text-slate-400">Aucune</td></tr>
+        <div className="bg-surface rounded-xl shadow-sm border overflow-hidden">
+          <div className="p-3 border-b bg-emerald-50 dark:bg-emerald-500/8 flex justify-between"><h3 className="font-semibold text-emerald-800 dark:text-emerald-300"><FileText className="w-5 h-5 inline" /> Consultations du jour</h3><button onClick={() => setView('queue')} className="px-3 py-1 bg-surface-active hover:bg-line-strong rounded text-sm cursor-pointer">← File</button></div>
+          <div className="overflow-auto"><table className="w-full text-sm"><thead className="bg-surface-hover sticky top-0"><tr><th className="p-2 text-left">Heure</th><th className="p-2 text-left">Patient</th><th className="p-2 text-right">Montant</th><th className="p-2 text-center">Statut</th><th className="p-2 text-center">Action</th></tr></thead>
+            <tbody>{myTodayConsults.length === 0 ? <tr><td colSpan={5} className="p-8 text-center text-ink-faint">Aucune</td></tr>
               : myTodayConsults.map((c) => { const pat = state.patients.find((p) => p.id === c.patientId); const st = getConsultStatus(c); const prescriptionIsPaid = isPrescriptionPaid(state, c.id); const prescTotal = c.prescriptions.reduce((s, p) => s + roundTo2(p.unitPrice * p.quantity * (1 - p.discount / 100)), 0); const labTotal = (c.labRequests || []).reduce((s, lr) => s + (lr.price || 0), 0); const echoTotal = (c.echoRequests || []).reduce((s, er) => s + (er.price || 0), 0); const total = prescTotal + labTotal + echoTotal;
-                return (<tr key={c.id} className="border-b hover:bg-slate-50"><td className="p-2 font-mono">{new Date(c.date).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</td><td className="p-2 font-medium">{pat?.lastName} {pat?.firstName} <span className="text-xs text-slate-400">({pat?.dossier})</span></td><td className="p-2 text-right font-mono font-bold">{formatAr(total)}{(prescTotal > 0 && !prescriptionIsPaid) ? <span className="block text-[10px] font-normal text-amber-600">Prescription masquée — paiement requis</span> : (prescriptionIsPaid && prescTotal > 0) || labTotal > 0 || echoTotal > 0 ? <span className="block text-[10px] font-normal text-slate-400">{prescriptionIsPaid && prescTotal > 0 ? `💊${formatAr(prescTotal)} ` : ''}{labTotal > 0 ? `🧪${formatAr(labTotal)} ` : ''}{echoTotal > 0 ? `📡${formatAr(echoTotal)}` : ''}</span> : ''}</td><td className="p-2 text-center"><span className={`px-2 py-1 rounded-full text-xs font-bold ${st.color}`}>{st.label}</span></td><td className="p-2 text-center flex gap-1 justify-center flex-wrap">{st.canEdit && <button onClick={() => reEditConsultation(c.id)} title={st.editTitle} className={`px-2 py-1 text-white rounded text-xs cursor-pointer ${st.editCancelsPayment ? 'bg-rose-600 hover:bg-rose-700' : 'bg-blue-500 hover:bg-blue-600'}`}><Edit2 className="w-3 h-3 inline" /> {st.editCancelsPayment ? 'Mod. (annule)' : 'Mod.'}</button>}{st.canReturn && <button onClick={() => returnToCashier(c.id)} title="Annuler le paiement et renvoyer en caisse" className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs cursor-pointer"><RotateCcw className="w-3 h-3 inline" /> Caisse</button>}{!st.canEdit && !st.canReturn && <span className="text-[10px] text-slate-400" title={st.editTitle}>—</span>}</td></tr>); })}</tbody>
+                return (<tr key={c.id} className="border-b hover:bg-surface-muted"><td className="p-2 font-mono">{new Date(c.date).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</td><td className="p-2 font-medium">{pat?.lastName} {pat?.firstName} <span className="text-xs text-ink-faint">({pat?.dossier})</span></td><td className="p-2 text-right font-mono font-bold">{formatAr(total)}{(prescTotal > 0 && !prescriptionIsPaid) ? <span className="block text-[10px] font-normal text-amber-600 dark:text-amber-400">Prescription masquée — paiement requis</span> : (prescriptionIsPaid && prescTotal > 0) || labTotal > 0 || echoTotal > 0 ? <span className="block text-[10px] font-normal text-ink-faint">{prescriptionIsPaid && prescTotal > 0 ? `💊${formatAr(prescTotal)} ` : ''}{labTotal > 0 ? `🧪${formatAr(labTotal)} ` : ''}{echoTotal > 0 ? `📡${formatAr(echoTotal)}` : ''}</span> : ''}</td><td className="p-2 text-center"><span className={`px-2 py-1 rounded-full text-xs font-bold ${st.color}`}>{st.label}</span></td><td className="p-2 text-center flex gap-1 justify-center flex-wrap">{st.canEdit && <button onClick={() => reEditConsultation(c.id)} title={st.editTitle} className={`px-2 py-1 text-white rounded text-xs cursor-pointer ${st.editCancelsPayment ? 'bg-rose-600 hover:bg-rose-700' : 'bg-blue-500 hover:bg-blue-600'}`}><Edit2 className="w-3 h-3 inline" /> {st.editCancelsPayment ? 'Mod. (annule)' : 'Mod.'}</button>}{st.canReturn && <button onClick={() => returnToCashier(c.id)} title="Annuler le paiement et renvoyer en caisse" className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs cursor-pointer"><RotateCcw className="w-3 h-3 inline" /> Caisse</button>}{!st.canEdit && !st.canReturn && <span className="text-[10px] text-ink-faint" title={st.editTitle}>—</span>}</td></tr>); })}</tbody>
           </table></div>
         </div>
       )}
@@ -935,34 +935,34 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
       {view === 'queue' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="space-y-3">
-            <div className="bg-white rounded-xl shadow-sm border p-3"><div className="relative"><Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" /><input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-9 pr-4 py-2 border rounded-lg outline-none text-sm" placeholder="Rechercher patient..." /></div>
-              {searchQuery.length >= 2 && searchResults.length > 0 && <div className="mt-2 max-h-40 overflow-y-auto border rounded divide-y">{searchResults.map((p) => (<div key={p.id} onClick={() => selectPatient(p.id)} className="p-2 hover:bg-emerald-50 cursor-pointer text-sm">{p.lastName} {p.firstName} ({p.dossier})</div>))}</div>}
+            <div className="bg-surface rounded-xl shadow-sm border p-3"><div className="relative"><Search className="absolute left-3 top-2.5 w-4 h-4 text-ink-faint" /><input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-9 pr-4 py-2 border rounded-lg outline-none text-sm" placeholder="Rechercher patient..." /></div>
+              {searchQuery.length >= 2 && searchResults.length > 0 && <div className="mt-2 max-h-40 overflow-y-auto border rounded divide-y">{searchResults.map((p) => (<div key={p.id} onClick={() => selectPatient(p.id)} className="p-2 hover:bg-emerald-50 dark:hover:bg-emerald-500/8 cursor-pointer text-sm">{p.lastName} {p.firstName} ({p.dossier})</div>))}</div>}
             </div>
-            <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-              <div className="p-3 border-b bg-amber-50 flex items-center justify-between gap-2">
+            <div className="bg-surface rounded-xl shadow-sm border overflow-hidden">
+              <div className="p-3 border-b bg-amber-50 dark:bg-amber-500/8 flex items-center justify-between gap-2">
                 <h3 className="font-semibold text-sm"><Clock className="w-4 h-4 inline text-amber-500" /> File ({myWaiting.length})</h3>
                 {onRefreshQueue && (
                   <button
                     onClick={onRefreshQueue}
-                    className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white border border-amber-300 text-amber-700 text-[11px] font-semibold hover:bg-amber-100 cursor-pointer transition"
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg bg-surface border border-amber-300 dark:border-amber-500/40 text-amber-700 dark:text-amber-400 text-[11px] font-semibold hover:bg-amber-100 dark:hover:bg-amber-500/15 cursor-pointer transition"
                     title="Relire immédiatement les saisies de la réception et des autres postes"
                   ><RefreshCw className="w-3.5 h-3.5" /> Actualiser</button>
                 )}
               </div>
-              <div className="divide-y max-h-[500px] overflow-y-auto">{myWaiting.length === 0 ? <div className="p-6 text-center text-slate-400 text-sm">Aucun</div>
+              <div className="divide-y max-h-[500px] overflow-y-auto">{myWaiting.length === 0 ? <div className="p-6 text-center text-ink-faint text-sm">Aucun</div>
                 : myWaiting.map((p) => {
                   return (
-                    <div key={p.id} onClick={() => selectPatient(p.id)} className="p-3 cursor-pointer hover:bg-emerald-50 flex items-start justify-between gap-2">
+                    <div key={p.id} onClick={() => selectPatient(p.id)} className="p-3 cursor-pointer hover:bg-emerald-50 dark:hover:bg-emerald-500/8 flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <div className="font-medium text-sm">{p.lastName} {p.firstName}</div>
                         </div>
-                        <div className="text-xs text-slate-500">{p.dossier}{p.company ? ` • ${p.company}` : ''}</div>
-                        {p.allergies.length > 0 && <div className="text-xs text-red-600"><AlertTriangle className="w-3 h-3 inline" /> {p.allergies.join(', ')}</div>}
+                        <div className="text-xs text-ink-muted">{p.dossier}{p.company ? ` • ${p.company}` : ''}</div>
+                        {p.allergies.length > 0 && <div className="text-xs text-red-600 dark:text-red-400"><AlertTriangle className="w-3 h-3 inline" /> {p.allergies.join(', ')}</div>}
                       </div>
                       <button
                         onClick={(e) => { e.stopPropagation(); deleteWaitingPatient(p.id); }}
-                        className="shrink-0 p-1.5 rounded-lg text-rose-500 hover:bg-rose-100 hover:text-rose-700 cursor-pointer transition"
+                        className="shrink-0 p-1.5 rounded-lg text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-500/15 hover:text-rose-700 dark:hover:text-rose-400 cursor-pointer transition"
                         title="Retirer la consultation de la file — dossier conservé"
                       ><Trash2 className="w-4 h-4" /></button>
                     </div>
@@ -970,7 +970,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                 })}</div>
             </div>
           </div>
-          <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border p-12 text-center text-slate-400"><Stethoscope className="w-16 h-16 mx-auto mb-4 opacity-30" /><p>Sélectionnez un patient</p></div>
+          <div className="lg:col-span-2 bg-surface rounded-xl shadow-sm border p-12 text-center text-ink-faint"><Stethoscope className="w-16 h-16 mx-auto mb-4 opacity-30" /><p>Sélectionnez un patient</p></div>
         </div>
       )}
 
@@ -978,35 +978,35 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
       {view === 'consultation' && selectedPatient && (
         <div className="space-y-2 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 180px)' }}>
           {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm border p-3.5 space-y-2">
+          <div className="bg-surface rounded-xl shadow-sm border p-3.5 space-y-2">
             <div className="flex flex-wrap justify-between items-start gap-2">
               <div>
                 <h3 className="font-bold text-lg flex items-center gap-2 flex-wrap">
                   <span>{selectedPatient.lastName} {selectedPatient.firstName}</span>
-                  <span className="text-sm font-mono text-blue-600 font-semibold">({selectedPatient.dossier})</span>
+                  <span className="text-sm font-mono text-blue-600 dark:text-cyan-400 font-semibold">({selectedPatient.dossier})</span>
                   <button
                     type="button"
                     onClick={() => setShowMedClientTypeEdit(v => !v)}
-                    className="p-1 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-100 rounded transition cursor-pointer"
+                    className="p-1 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-500/15 rounded transition cursor-pointer"
                     title="Modifier le type de client / société"
                   >
                     <Edit2 className="w-3.5 h-3.5" />
                   </button>
-                  {selectedPatient.company && <span className="px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700 font-medium">{selectedPatient.company}{selectedPatient.subCompany ? ` / ${selectedPatient.subCompany}` : ''}</span>}
+                  {selectedPatient.company && <span className="px-2 py-0.5 rounded text-xs bg-blue-100 dark:bg-cyan-500/15 text-blue-700 dark:text-cyan-400 font-medium">{selectedPatient.company}{selectedPatient.subCompany ? ` / ${selectedPatient.subCompany}` : ''}</span>}
                   {selectedPatient.famille && (
-                    <span className="px-2 py-0.5 rounded text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 font-medium" title="Base de famille">
+                    <span className="px-2 py-0.5 rounded text-xs bg-indigo-50 dark:bg-indigo-500/8 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/25 font-medium" title="Base de famille">
                       👨‍👩‍👧 {selectedPatient.famille} {selectedPatient.lienFamilial ? `(${selectedPatient.lienFamilial})` : ''}
                     </span>
                   )}
                 </h3>
-                <div className="text-xs text-slate-500 flex items-center gap-3 mt-0.5 flex-wrap">
+                <div className="text-xs text-ink-muted flex items-center gap-3 mt-0.5 flex-wrap">
                   <span>Sexe: <strong>{selectedPatient.gender === 'M' ? 'Homme (H)' : 'Femme (F)'}</strong></span>
                   <span>•</span>
                   <span>Âge: <strong>{selectedPatient.age}</strong></span>
                   {selectedPatient.bloodGroup && (
                     <>
                       <span>•</span>
-                      <span className="text-rose-600 font-bold flex items-center gap-1">
+                      <span className="text-rose-600 dark:text-rose-400 font-bold flex items-center gap-1">
                         <Droplets className="w-3.5 h-3.5 inline" /> Groupe: {selectedPatient.bloodGroup}
                       </span>
                     </>
@@ -1027,10 +1027,10 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                 >
                   <Edit2 className="w-3.5 h-3.5" /> Compléter Dossier
                 </button>
-                <button onClick={() => onOpenMedicalRecord && onOpenMedicalRecord(selectedPatient.id)} className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium cursor-pointer transition">
+                <button onClick={() => onOpenMedicalRecord && onOpenMedicalRecord(selectedPatient.id)} className="px-2.5 py-1.5 bg-surface-hover hover:bg-surface-active text-ink rounded-lg text-xs font-medium cursor-pointer transition">
                   <History className="w-3.5 h-3.5 inline mr-1" /> Historique ({patientConsultations.length})
                 </button>
-                <button onClick={handleBackToQueue} className="px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-medium cursor-pointer transition" title="Retour à la file — le patient est remis en attente s'il n'a pas été validé">
+                <button onClick={handleBackToQueue} className="px-2.5 py-1.5 bg-surface-active hover:bg-line-strong text-ink rounded-lg text-xs font-medium cursor-pointer transition" title="Retour à la file — le patient est remis en attente s'il n'a pas été validé">
                   ← Retour
                 </button>
               </div>
@@ -1038,22 +1038,22 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
 
             {/* 🏢 Société / Type client — panneau repliable, ouvert via l'icône stylo du titre */}
             {showMedClientTypeEdit && (
-            <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2">
-              <div className="text-xs font-bold text-indigo-900 flex items-center gap-2">🏢 Société / Type client
-                <button type="button" onClick={() => setShowMedClientTypeEdit(false)} className="ml-auto text-indigo-500 hover:text-indigo-800 cursor-pointer" title="Fermer">✕</button>
+            <div className="rounded-lg border border-indigo-200 dark:border-indigo-500/25 bg-indigo-50 dark:bg-indigo-500/8 p-3 space-y-2">
+              <div className="text-xs font-bold text-indigo-900 dark:text-indigo-300 flex items-center gap-2">🏢 Société / Type client
+                <button type="button" onClick={() => setShowMedClientTypeEdit(false)} className="ml-auto text-indigo-500 hover:text-indigo-800 dark:hover:text-indigo-300 cursor-pointer" title="Fermer">✕</button>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-0.5">Type</label>
-                  <select value={medEditClientType} onChange={e => setMedEditClientType(e.target.value as ClientType)} className="w-full px-2 py-1.5 border rounded bg-white cursor-pointer">
+                  <label className="block font-bold text-ink mb-0.5">Type</label>
+                  <select value={medEditClientType} onChange={e => setMedEditClientType(e.target.value as ClientType)} className="w-full px-2 py-1.5 border rounded bg-surface cursor-pointer">
                     <option value="comptoir">Client Comptoir</option>
                     <option value="societe">Client Société</option>
                   </select>
                 </div>
                 {medEditClientType === 'societe' && (
                   <div>
-                    <label className="block font-bold text-slate-700 mb-0.5">Société</label>
-                    <select value={medEditCompany} onChange={e => setMedEditCompany(e.target.value)} className="w-full px-2 py-1.5 border rounded bg-white cursor-pointer">
+                    <label className="block font-bold text-ink mb-0.5">Société</label>
+                    <select value={medEditCompany} onChange={e => setMedEditCompany(e.target.value)} className="w-full px-2 py-1.5 border rounded bg-surface cursor-pointer">
                       <option value="">— Sélectionner —</option>
                       {state.companies.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
                     </select>
@@ -1063,33 +1063,33 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
               {medEditClientType === 'societe' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                   <div className="flex gap-1">
-                    <input type="text" value={medEditNewCompany} onChange={e => setMedEditNewCompany(e.target.value.toUpperCase())} className="flex-1 px-2 py-1.5 border rounded uppercase bg-white" placeholder="Nouvelle société…" />
+                    <input type="text" value={medEditNewCompany} onChange={e => setMedEditNewCompany(e.target.value.toUpperCase())} className="flex-1 px-2 py-1.5 border rounded uppercase bg-surface" placeholder="Nouvelle société…" />
                     <button type="button" onClick={() => { const name = addMedPartnerCompany(medEditNewCompany); if (name) { setMedEditCompany(name); setMedEditNewCompany(''); }}} className="px-2 py-1.5 bg-indigo-600 text-white rounded font-bold">+</button>
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 mb-0.5">Sous-société</label>
-                    <input type="text" value={medEditSubCompany} onChange={e => setMedEditSubCompany(e.target.value.toUpperCase())} className="w-full px-2 py-1.5 border rounded uppercase bg-white" placeholder="Direction, service…" />
+                    <label className="block font-bold text-ink mb-0.5">Sous-société</label>
+                    <input type="text" value={medEditSubCompany} onChange={e => setMedEditSubCompany(e.target.value.toUpperCase())} className="w-full px-2 py-1.5 border rounded uppercase bg-surface" placeholder="Direction, service…" />
                   </div>
                 </div>
               )}
               <div className="flex items-center gap-2">
                 <button type="button" onClick={saveMedSociete} className="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-800 text-white rounded text-xs font-bold cursor-pointer">Enregistrer type / société</button>
-                <button type="button" onClick={() => setShowMedClientTypeEdit(false)} className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded text-xs font-bold cursor-pointer">Annuler</button>
+                <button type="button" onClick={() => setShowMedClientTypeEdit(false)} className="px-3 py-1.5 bg-surface border border-line-strong hover:bg-surface-hover text-ink rounded text-xs font-bold cursor-pointer">Annuler</button>
               </div>
             </div>
             )}
 
             {/* Badges synthétiques du dossier médical */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pt-2 border-t border-slate-100 text-xs">
-              <div className={`p-2 rounded-lg border ${selectedPatient.allergies.length > 0 ? 'bg-red-50 border-red-200 text-red-800' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pt-2 border-t border-line-soft text-xs">
+              <div className={`p-2 rounded-lg border ${selectedPatient.allergies.length > 0 ? 'bg-red-50 dark:bg-red-500/8 border-red-200 dark:border-red-500/25 text-red-800 dark:text-red-300' : 'bg-surface-muted border-line text-ink-muted'}`}>
                 <span className="font-bold block text-[11px] mb-0.5">⚠️ Allergies :</span>
                 {selectedPatient.allergies.length > 0 ? selectedPatient.allergies.join(', ') : 'Aucune allergie renseignée'}
               </div>
-              <div className={`p-2 rounded-lg border ${selectedPatient.antecedents.length > 0 ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
+              <div className={`p-2 rounded-lg border ${selectedPatient.antecedents.length > 0 ? 'bg-amber-50 dark:bg-amber-500/8 border-amber-200 dark:border-amber-500/25 text-amber-900 dark:text-amber-300' : 'bg-surface-muted border-line text-ink-muted'}`}>
                 <span className="font-bold block text-[11px] mb-0.5">📋 Antécédents :</span>
                 {selectedPatient.antecedents.length > 0 ? selectedPatient.antecedents.join(', ') : 'Aucun antécédent répertorié'}
               </div>
-              <div className={`p-2 rounded-lg border ${selectedPatient.chronicTreatments.length > 0 ? 'bg-blue-50 border-blue-200 text-blue-900' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
+              <div className={`p-2 rounded-lg border ${selectedPatient.chronicTreatments.length > 0 ? 'bg-blue-50 dark:bg-cyan-500/8 border-blue-200 dark:border-cyan-500/25 text-blue-900 dark:text-cyan-300' : 'bg-surface-muted border-line text-ink-muted'}`}>
                 <span className="font-bold block text-[11px] mb-0.5">💊 Traitements chroniques :</span>
                 {selectedPatient.chronicTreatments.length > 0 ? selectedPatient.chronicTreatments.join(', ') : 'Aucun traitement continu'}
               </div>
@@ -1113,25 +1113,25 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
             if (patientLabs.length === 0) return null;
 
             return (
-              <div className="bg-white rounded-xl shadow-sm border border-cyan-200 overflow-hidden">
-                <div className="p-3 bg-cyan-50 border-b border-cyan-100 flex items-center justify-between flex-wrap gap-2">
+              <div className="bg-surface rounded-xl shadow-sm border border-cyan-200 dark:border-cyan-500/25 overflow-hidden">
+                <div className="p-3 bg-cyan-50 dark:bg-cyan-500/8 border-b border-cyan-100 dark:border-cyan-500/25 flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-2">
-                    <FlaskConical className="w-5 h-5 text-cyan-600" />
-                    <h4 className="font-bold text-sm text-cyan-900">
+                    <FlaskConical className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
+                    <h4 className="font-bold text-sm text-cyan-900 dark:text-cyan-300">
                       Résultats & Analyses Laboratoire ({completedLabs.length} disponible{completedLabs.length > 1 ? 's' : ''})
                     </h4>
                     {inProgressLabs.length > 0 && (
-                      <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-bold rounded-full animate-pulse">
+                      <span className="px-2 py-0.5 bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300 text-[10px] font-bold rounded-full animate-pulse">
                         ⏳ {inProgressLabs.length} en cours au labo
                       </span>
                     )}
                   </div>
-                  <span className="text-xs text-slate-500 font-mono">Espace Biologie & Médical</span>
+                  <span className="text-xs text-ink-muted font-mono">Espace Biologie & Médical</span>
                 </div>
 
-                <div className="p-3 space-y-3 max-h-80 overflow-y-auto bg-slate-50/50 divide-y divide-slate-200">
+                <div className="p-3 space-y-3 max-h-80 overflow-y-auto bg-surface-muted/50 divide-y divide-line">
                   {completedLabs.length === 0 ? (
-                    <p className="text-xs text-slate-500 italic py-2 text-center">
+                    <p className="text-xs text-ink-muted italic py-2 text-center">
                       Aucun résultat d'analyse encore disponible. Les demandes sont en cours de traitement au laboratoire.
                     </p>
                   ) : (
@@ -1141,35 +1141,35 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                         <div key={lr.id} className="pt-2 first:pt-0 space-y-2">
                           <div className="flex items-center justify-between flex-wrap gap-2">
                             <div className="flex items-center gap-2">
-                              <span className="font-bold text-slate-800 text-xs">{lr.examType}</span>
-                              <span className="text-[10px] text-slate-400 font-mono">
+                              <span className="font-bold text-ink-strong text-xs">{lr.examType}</span>
+                              <span className="text-[10px] text-ink-faint font-mono">
                                 [{lr.code || 'LAB'}] · Réalisé le {new Date(lr.completedAt || Date.now()).toLocaleString('fr-FR')}
                               </span>
                             </div>
                             <div className="flex items-center gap-2">
                               {hasAbnormal ? (
-                                <span className="px-2 py-0.5 bg-rose-100 text-rose-700 border border-rose-200 rounded-full text-[10px] font-bold flex items-center gap-1">
+                                <span className="px-2 py-0.5 bg-rose-100 dark:bg-rose-500/15 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-500/25 rounded-full text-[10px] font-bold flex items-center gap-1">
                                   <AlertTriangle className="w-3 h-3" /> PATHOLOGIQUE / ALERTE
                                 </span>
                               ) : (
-                                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-full text-[10px] font-bold flex items-center gap-1">
+                                <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/25 rounded-full text-[10px] font-bold flex items-center gap-1">
                                   <CheckCircle2 className="w-3 h-3" /> Résultats Normaux
                                 </span>
                               )}
                               <button
                                 onClick={() => printLabResultTicket(state.ticketSettings, selectedPatient, lr, state.currentUser?.name, labCategoryLabel(lr.category || 'autre'))}
-                                className="px-2 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition shadow-xs"
+                                className="px-2 py-1 bg-surface hover:bg-surface-hover text-ink border border-line-strong rounded text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition shadow-xs"
                                 title="Imprimer le compte-rendu d'analyse"
                               >
-                                <Printer className="w-3 h-3 text-slate-500" /> Imprimer
+                                <Printer className="w-3 h-3 text-ink-muted" /> Imprimer
                               </button>
                             </div>
                           </div>
 
                           {/* Paramètres et valeurs */}
-                          <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+                          <div className="bg-surface rounded-lg border border-line overflow-hidden">
                             <table className="w-full text-xs">
-                              <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
+                              <thead className="bg-surface-hover text-ink-secondary font-semibold border-b border-line">
                                 <tr>
                                   <th className="text-left p-1.5">Paramètre</th>
                                   <th className="text-center p-1.5">Valeur Mesurée</th>
@@ -1177,23 +1177,23 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                                   <th className="text-center p-1.5">Interprétation</th>
                                 </tr>
                               </thead>
-                              <tbody className="divide-y divide-slate-100">
+                              <tbody className="divide-y divide-line-soft">
                                 {(lr.results || []).map((r, idx) => (
-                                  <tr key={idx} className={r.isAbnormal ? 'bg-rose-50/70 font-semibold' : ''}>
-                                    <td className="p-1.5 text-slate-800">{r.parameter}</td>
-                                    <td className={`p-1.5 text-center font-mono font-bold ${r.isAbnormal ? 'text-rose-700' : 'text-emerald-700'}`}>
+                                  <tr key={idx} className={r.isAbnormal ? 'bg-rose-50/70 dark:bg-rose-500/6 font-semibold' : ''}>
+                                    <td className="p-1.5 text-ink-strong">{r.parameter}</td>
+                                    <td className={`p-1.5 text-center font-mono font-bold ${r.isAbnormal ? 'text-rose-700 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400'}`}>
                                       {r.value} {r.unit || ''}
                                     </td>
-                                    <td className="p-1.5 text-center text-slate-500 font-mono text-[11px]">
+                                    <td className="p-1.5 text-center text-ink-muted font-mono text-[11px]">
                                       {r.normalRangeText || (r.normalMin !== undefined && r.normalMax !== undefined && r.normalMin !== r.normalMax ? `${r.normalMin} - ${r.normalMax} ${r.unit || ''}` : '—')}
                                     </td>
                                     <td className="p-1.5 text-center">
                                       {r.isAbnormal ? (
-                                        <span className="text-rose-700 font-bold text-[10px] flex items-center justify-center gap-0.5">
+                                        <span className="text-rose-700 dark:text-rose-400 font-bold text-[10px] flex items-center justify-center gap-0.5">
                                           <AlertTriangle className="w-3 h-3 inline" /> ANORMAL
                                         </span>
                                       ) : (
-                                        <span className="text-emerald-600 text-[10px]">Normal</span>
+                                        <span className="text-emerald-600 dark:text-emerald-400 text-[10px]">Normal</span>
                                       )}
                                     </td>
                                   </tr>
@@ -1204,9 +1204,9 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
 
                           {/* Conclusion du Biologiste */}
                           {lr.labConclusion && (
-                            <div className="p-2.5 bg-cyan-50 border border-cyan-200 rounded-lg text-xs text-cyan-950 flex items-start justify-between gap-2">
+                            <div className="p-2.5 bg-cyan-50 dark:bg-cyan-500/8 border border-cyan-200 dark:border-cyan-500/25 rounded-lg text-xs text-cyan-950 dark:text-cyan-300 flex items-start justify-between gap-2">
                               <div>
-                                <span className="font-bold block text-[11px] text-cyan-900 mb-0.5">💬 Conclusion du Laboratoire :</span>
+                                <span className="font-bold block text-[11px] text-cyan-900 dark:text-cyan-300 mb-0.5">💬 Conclusion du Laboratoire :</span>
                                 <p className="italic">{lr.labConclusion}</p>
                               </div>
                               <button
@@ -1234,39 +1234,39 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
 
           {/* Vitals + Consult */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
-            <div className="bg-white rounded-xl shadow-sm border p-3">
+            <div className="bg-surface rounded-xl shadow-sm border p-3">
               <h4 className="font-semibold mb-1 text-xs"><Heart className="w-3 h-3 text-red-500 inline" /> Constantes</h4>
-              <div className="grid grid-cols-4 gap-1">{[{l:'T°C',k:'temperature' as const},{l:'PAS',k:'bloodPressureSystolic' as const},{l:'PAD',k:'bloodPressureDiastolic' as const},{l:'FC',k:'heartRate' as const},{l:'SpO2',k:'oxygenSaturation' as const},{l:'Poids',k:'weight' as const},{l:'Taille',k:'height' as const}].map(v => (<div key={v.k}><label className="text-[9px] text-slate-500">{v.l}</label><input type="number" step="0.1" value={vitals[v.k]||''} onChange={(e)=>setVitals({...vitals,[v.k]:e.target.value})} className="w-full px-1 py-0.5 border rounded text-xs outline-none" placeholder="—" /></div>))}</div>
+              <div className="grid grid-cols-4 gap-1">{[{l:'T°C',k:'temperature' as const},{l:'PAS',k:'bloodPressureSystolic' as const},{l:'PAD',k:'bloodPressureDiastolic' as const},{l:'FC',k:'heartRate' as const},{l:'SpO2',k:'oxygenSaturation' as const},{l:'Poids',k:'weight' as const},{l:'Taille',k:'height' as const}].map(v => (<div key={v.k}><label className="text-[9px] text-ink-muted">{v.l}</label><input type="number" step="0.1" value={vitals[v.k]||''} onChange={(e)=>setVitals({...vitals,[v.k]:e.target.value})} className="w-full px-1 py-0.5 border rounded text-xs outline-none" placeholder="—" /></div>))}</div>
             </div>
-            <div className="bg-white rounded-xl shadow-sm border p-3">
+            <div className="bg-surface rounded-xl shadow-sm border p-3">
               <h4 className="font-semibold mb-1 text-xs"><FileText className="w-3 h-3 text-emerald-500 inline" /> Consultation</h4>
               <div className="space-y-1">
                 <input type="text" value={consultForm.visitReason} onChange={(e)=>setConsultForm({...consultForm,visitReason:e.target.value})} className="w-full px-2 py-0.5 border rounded text-xs outline-none" placeholder="Motif (optionnel)" />
-                <textarea value={consultForm.diagnosis} onChange={(e)=>setConsultForm({...consultForm,diagnosis:e.target.value})} className="w-full px-2 py-0.5 border border-red-300 rounded text-xs outline-none" rows={2} placeholder="Diagnostic * (obligatoire)" />
+                <textarea value={consultForm.diagnosis} onChange={(e)=>setConsultForm({...consultForm,diagnosis:e.target.value})} className="w-full px-2 py-0.5 border border-red-300 dark:border-red-500/40 rounded text-xs outline-none" rows={2} placeholder="Diagnostic * (obligatoire)" />
                 <textarea value={consultForm.notes} onChange={(e)=>setConsultForm({...consultForm,notes:e.target.value})} className="w-full px-2 py-0.5 border rounded text-xs outline-none" rows={1} placeholder="Notes" />
                 <div className="flex gap-3 text-[10px]">
-                  <label className="cursor-pointer"><input type="checkbox" checked={consultForm.isEmergency} onChange={(e)=>setConsultForm({...consultForm,isEmergency:e.target.checked})} /> <span className="text-red-600">🚨 Urgence</span></label>
+                  <label className="cursor-pointer"><input type="checkbox" checked={consultForm.isEmergency} onChange={(e)=>setConsultForm({...consultForm,isEmergency:e.target.checked})} /> <span className="text-red-600 dark:text-red-400">🚨 Urgence</span></label>
                   <label className="cursor-pointer"><input type="checkbox" checked={consultForm.hospitalizeRequested} onChange={(e)=>setConsultForm({...consultForm,hospitalizeRequested:e.target.checked})} /> Hospit.</label>
-                  <label className="cursor-pointer"><input type="checkbox" checked={consultForm.surgeryRequested} onChange={(e)=>setConsultForm({...consultForm,surgeryRequested:e.target.checked})} /> <span className="text-blue-600">🏥 Bloc</span></label>
+                  <label className="cursor-pointer"><input type="checkbox" checked={consultForm.surgeryRequested} onChange={(e)=>setConsultForm({...consultForm,surgeryRequested:e.target.checked})} /> <span className="text-blue-600 dark:text-cyan-400">🏥 Bloc</span></label>
                 </div>
               </div>
             </div>
           </div>
 
           {/* SAGE-STYLE PRESCRIPTION — no family combo, single search field */}
-          <div className="bg-[#f4f4f4] border border-slate-300 rounded">
+          <div className="bg-surface-muted border border-line-strong rounded">
             {/* Sage form bar */}
-            <div className="bg-slate-100 border-b border-slate-300 p-1.5 m-2 mb-0 rounded shadow-inner">
+            <div className="bg-surface-hover border-b border-line-strong p-1.5 m-2 mb-0 rounded shadow-inner">
               <div className="flex flex-wrap items-end gap-1">
                 <div className="flex-1 min-w-[140px] relative">
-                  <label className="block text-[9px] text-slate-500">Article (tapez + ↑↓ + Entrée)</label>
+                  <label className="block text-[9px] text-ink-muted">Article (tapez + ↑↓ + Entrée)</label>
                   <input ref={searchRef} type="text" value={articleSearch ? articleSearch : lineForm.articleName}
                     onChange={(e) => { setArticleSearch(e.target.value); setArtSearchIdx(0); }}
                     onKeyDown={handleSearchKeyDown}
-                    className="w-full bg-white border border-blue-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500"
+                    className="w-full bg-surface border border-blue-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-accent focus:ring-1 focus:ring-accent/25"
                     placeholder="🔍 Médicament / article hors LAB et ECHO..." />
                   {articleSearch.length >= 1 && filteredArticles.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 rounded-b shadow-xl z-30 max-h-40 overflow-y-auto">
+                    <div className="absolute top-full left-0 right-0 bg-surface border border-line-strong rounded-b shadow-xl z-30 max-h-40 overflow-y-auto">
                       {filteredArticles.map((a, idx) => {
                         const manages = familyManagesStock(a.family, state.familles);
                         const isBlocked = !!a.saleBlocked;
@@ -1278,17 +1278,17 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                           title={isBlocked
                             ? `Bloqué à la vente par la pharmacie${a.saleBlockReason ? ` — ${a.saleBlockReason}` : ''}`
                             : isOut ? 'Rupture de stock pharmacie — non délivrable tant que non réapprovisionné' : undefined}
-                          className={`px-2 py-1 cursor-pointer text-xs flex justify-between border-b border-slate-100 ${isKo ? 'bg-red-50 text-red-700' : idx === artSearchIdx ? 'bg-blue-100' : 'hover:bg-blue-50'}`}>
-                          <span><span className="text-[9px] text-slate-400 mr-1">[{a.family}]</span> {a.name}</span>
+                          className={`px-2 py-1 cursor-pointer text-xs flex justify-between border-b border-line-soft ${isKo ? 'bg-red-50 dark:bg-red-500/8 text-red-700 dark:text-red-400' : idx === artSearchIdx ? 'bg-blue-100 dark:bg-cyan-500/15' : 'hover:bg-blue-50 dark:hover:bg-cyan-500/8'}`}>
+                          <span><span className="text-[9px] text-ink-faint mr-1">[{a.family}]</span> {a.name}</span>
                           <span className="flex items-center gap-2">
                             {isBlocked
                               ? <span className="px-1.5 py-0.5 bg-red-700 text-white rounded text-[9px] font-bold">⛔ BLOQUÉ VENTE</span>
                               : isOut
                                 ? <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-[9px] font-bold">🚨 RUPTURE</span>
                                 : manages
-                                  ? <span className={`font-mono text-[10px] ${isLow ? 'text-amber-600 font-bold' : 'text-slate-400'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>
-                                  : <span className="font-mono text-[10px] text-slate-400" title="Famille non gérée en stock">stock: —</span>}
-                            <span className={`font-mono ${isKo ? 'text-red-400' : 'text-blue-600'}`}>{formatAr(getPrice(a, clientType))}</span>
+                                  ? <span className={`font-mono text-[10px] ${isLow ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-ink-faint'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>
+                                  : <span className="font-mono text-[10px] text-ink-faint" title="Famille non gérée en stock">stock: —</span>}
+                            <span className={`font-mono ${isKo ? 'text-red-400' : 'text-blue-600 dark:text-cyan-400'}`}>{formatAr(getPrice(a, clientType))}</span>
                           </span>
                         </div>
                         );
@@ -1296,24 +1296,24 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                     </div>
                   )}
                 </div>
-                <div className="w-14"><label className="block text-[9px] text-slate-500">Qté</label><input type="number" min={1} value={lineForm.quantity} onChange={(e)=>updateLineForm('quantity',parseFloat(e.target.value)||1)} onKeyDown={(e)=>{ if(e.key==='Enter'){e.preventDefault();handleSaveLine();}}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono outline-none focus:border-blue-500" /></div>
-                <div className="w-28"><label className="block text-[9px] text-slate-500">Posologie</label><input type="text" value={lineForm.posology} onChange={(e)=>updateLineForm('posology',e.target.value)} onKeyDown={(e)=>{ if(e.key==='Enter'){e.preventDefault();handleSaveLine();}}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs outline-none focus:border-blue-500" placeholder="1cp 3x/j" /></div>
-                <div className="w-14"><label className="block text-[9px] text-slate-500">Remise%</label><input type="number" min={0} max={100} value={lineForm.discount} onChange={(e)=>updateLineForm('discount',parseFloat(e.target.value)||0)} onKeyDown={(e)=>{ if(e.key==='Enter'){e.preventDefault();handleSaveLine();}}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono outline-none focus:border-blue-500" /></div>
-                <div className="w-20"><label className="block text-[9px] text-slate-500">P.U.</label><input type="text" readOnly value={formatAr(lineForm.unitPrice)} className="w-full bg-slate-200 border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono" /></div>
-                <div className="w-24"><label className="block text-[9px] text-slate-500">Montant</label><input type="text" readOnly value={formatAr(lineAmount(lineForm))} className="w-full bg-slate-200 border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono font-bold text-slate-700" /></div>
+                <div className="w-14"><label className="block text-[9px] text-ink-muted">Qté</label><input type="number" min={1} value={lineForm.quantity} onChange={(e)=>updateLineForm('quantity',parseFloat(e.target.value)||1)} onKeyDown={(e)=>{ if(e.key==='Enter'){e.preventDefault();handleSaveLine();}}} className="w-full bg-surface border border-line-strong rounded px-1 py-0.5 text-xs text-right font-mono outline-none focus:border-accent" /></div>
+                <div className="w-28"><label className="block text-[9px] text-ink-muted">Posologie</label><input type="text" value={lineForm.posology} onChange={(e)=>updateLineForm('posology',e.target.value)} onKeyDown={(e)=>{ if(e.key==='Enter'){e.preventDefault();handleSaveLine();}}} className="w-full bg-surface border border-line-strong rounded px-1 py-0.5 text-xs outline-none focus:border-accent" placeholder="1cp 3x/j" /></div>
+                <div className="w-14"><label className="block text-[9px] text-ink-muted">Remise%</label><input type="number" min={0} max={100} value={lineForm.discount} onChange={(e)=>updateLineForm('discount',parseFloat(e.target.value)||0)} onKeyDown={(e)=>{ if(e.key==='Enter'){e.preventDefault();handleSaveLine();}}} className="w-full bg-surface border border-line-strong rounded px-1 py-0.5 text-xs text-right font-mono outline-none focus:border-accent" /></div>
+                <div className="w-20"><label className="block text-[9px] text-ink-muted">P.U.</label><input type="text" readOnly value={formatAr(lineForm.unitPrice)} className="w-full bg-surface-active border border-line-strong rounded px-1 py-0.5 text-xs text-right font-mono" /></div>
+                <div className="w-24"><label className="block text-[9px] text-ink-muted">Montant</label><input type="text" readOnly value={formatAr(lineAmount(lineForm))} className="w-full bg-surface-active border border-line-strong rounded px-1 py-0.5 text-xs text-right font-mono font-bold text-ink" /></div>
               </div>
               <div className="flex justify-end gap-1 mt-1">
-                <button onClick={() => { resetLineDraft(); setTimeout(() => searchRef.current?.focus(), 50); }} className="flex items-center gap-1 px-2 py-0.5 bg-white border border-slate-300 rounded shadow-sm text-slate-700 text-[10px] cursor-pointer" title="Effacer la saisie en cours et rechercher un nouveau médicament"><Plus className="h-3 w-3 text-slate-500" /> Nouveau</button>
-                <button onClick={handleDeleteLine} disabled={!selectedLineId} className="flex items-center gap-1 px-2 py-0.5 bg-white border border-slate-300 rounded shadow-sm text-slate-700 text-[10px] disabled:opacity-40 cursor-pointer"><Trash2 className="h-3 w-3 text-rose-600" /> Supprimer</button>
+                <button onClick={() => { resetLineDraft(); setTimeout(() => searchRef.current?.focus(), 50); }} className="flex items-center gap-1 px-2 py-0.5 bg-surface border border-line-strong rounded shadow-sm text-ink text-[10px] cursor-pointer" title="Effacer la saisie en cours et rechercher un nouveau médicament"><Plus className="h-3 w-3 text-ink-muted" /> Nouveau</button>
+                <button onClick={handleDeleteLine} disabled={!selectedLineId} className="flex items-center gap-1 px-2 py-0.5 bg-surface border border-line-strong rounded shadow-sm text-ink text-[10px] disabled:opacity-40 cursor-pointer"><Trash2 className="h-3 w-3 text-rose-600 dark:text-rose-400" /> Supprimer</button>
                 <button onClick={handleSaveLine} disabled={!lineForm.articleName} className="flex items-center gap-1 px-2 py-0.5 bg-sky-500 text-white border border-sky-600 rounded shadow-sm text-[10px] font-medium disabled:opacity-40 cursor-pointer"><Save className="h-3 w-3" /> Enregistrer</button>
               </div>
             </div>
 
             {/* Table */}
-            <div className="bg-white mx-2 mb-2 border-t border-slate-300 overflow-x-auto rounded-b">
+            <div className="bg-surface mx-2 mb-2 border-t border-line-strong overflow-x-auto rounded-b">
               <table className="w-full text-left border-collapse text-[11px]">
-                <thead className="bg-slate-50 border-b border-slate-300 text-slate-600">
-                  <tr className="divide-x divide-slate-200"><th className="p-1 min-w-[130px]">Désignation</th><th className="p-1 text-right w-12">Qté</th><th className="p-1 w-24">Posologie</th><th className="p-1 text-center w-12">Rem%</th><th className="p-1 text-right w-20">P.U.</th><th className="p-1 text-right w-24">Montant</th></tr>
+                <thead className="bg-surface-muted border-b border-line-strong text-ink-secondary">
+                  <tr className="divide-x divide-line"><th className="p-1 min-w-[130px]">Désignation</th><th className="p-1 text-right w-12">Qté</th><th className="p-1 w-24">Posologie</th><th className="p-1 text-center w-12">Rem%</th><th className="p-1 text-right w-20">P.U.</th><th className="p-1 text-right w-24">Montant</th></tr>
                 </thead>
                 <tbody className="divide-y font-mono">
                   {lines.map((l) => {
@@ -1321,14 +1321,14 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                     const art = state.articles.find((a) => a.id === l.articleId || a.name === l.articleName);
                     const av = art ? articleAvailability(art) : null;
                     const lineKo = !!av && (av.blocked || av.outOfStock);
-                    return (<tr key={l.id} onClick={() => { setSelectedLineId(l.id); setIsNewLine(false); }} className={`cursor-pointer divide-x divide-slate-200 transition-colors ${isSel ? 'bg-blue-500 text-white font-medium' : lineKo ? 'bg-red-50 text-red-700 hover:bg-red-100' : 'hover:bg-slate-50 text-slate-800'}`}>
-                      <td className="p-1 font-sans">{l.articleName}{lineKo && <span className={`ml-1.5 px-1 py-0.5 rounded text-[8px] font-bold align-middle ${isSel ? 'bg-white text-red-700' : 'bg-red-600 text-white'}`}>{av!.blocked ? '⛔ BLOQUÉ' : '🚨 RUPTURE'}</span>}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 font-sans">{l.posology || '—'}</td><td className="p-1 text-center">{l.discount > 0 ? `${l.discount}%` : '—'}</td><td className="p-1 text-right">{formatNum(l.unitPrice)}</td><td className="p-1 text-right font-bold">{formatNum(lineAmount(l))}</td>
+                    return (<tr key={l.id} onClick={() => { setSelectedLineId(l.id); setIsNewLine(false); }} className={`cursor-pointer divide-x divide-line transition-colors ${isSel ? 'bg-blue-500 text-white font-medium' : lineKo ? 'bg-red-50 dark:bg-red-500/8 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-500/15' : 'hover:bg-surface-muted text-ink-strong'}`}>
+                      <td className="p-1 font-sans">{l.articleName}{lineKo && <span className={`ml-1.5 px-1 py-0.5 rounded text-[8px] font-bold align-middle ${isSel ? 'bg-surface text-red-700 dark:text-red-400' : 'bg-red-600 text-white'}`}>{av!.blocked ? '⛔ BLOQUÉ' : '🚨 RUPTURE'}</span>}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 font-sans">{l.posology || '—'}</td><td className="p-1 text-center">{l.discount > 0 ? `${l.discount}%` : '—'}</td><td className="p-1 text-right">{formatNum(l.unitPrice)}</td><td className="p-1 text-right font-bold">{formatNum(lineAmount(l))}</td>
                     </tr>);
                   })}
-                  {lines.length === 0 && <tr><td colSpan={6} className="p-3 text-center text-slate-400 font-sans">Ordonnance optionnelle — tapez un article (↑↓ Entrée) ou validez sans médicament</td></tr>}
+                  {lines.length === 0 && <tr><td colSpan={6} className="p-3 text-center text-ink-faint font-sans">Ordonnance optionnelle — tapez un article (↑↓ Entrée) ou validez sans médicament</td></tr>}
                 </tbody>
-                {lines.length > 0 && <tfoot className="bg-emerald-50 border-t-2 border-emerald-300 font-sans">
-                  <tr className="divide-x divide-emerald-200"><td colSpan={4} className="p-1 text-right font-bold">TOTAL:</td><td colSpan={2} className="p-1 text-right font-mono font-bold text-lg text-emerald-800">{formatAr(totalPres)}</td></tr>
+                {lines.length > 0 && <tfoot className="bg-emerald-50 dark:bg-emerald-500/8 border-t-2 border-emerald-300 dark:border-emerald-500/40 font-sans">
+                  <tr className="divide-x divide-emerald-200 dark:divide-emerald-500/25"><td colSpan={4} className="p-1 text-right font-bold">TOTAL:</td><td colSpan={2} className="p-1 text-right font-mono font-bold text-lg text-emerald-800 dark:text-emerald-300">{formatAr(totalPres)}</td></tr>
                 </tfoot>}
               </table>
             </div>
@@ -1337,23 +1337,23 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
           {/* SAISIE DES EXAMENS LABORATOIRE ET ÉCHOGRAPHIE CÔTE À CÔTE */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
             {/* DEMANDES D'ANALYSES — LABORATOIRE (saisies par le médecin) */}
-            <div className="bg-white rounded-xl shadow-sm border p-3.5 flex flex-col justify-between h-full space-y-2">
+            <div className="bg-surface rounded-xl shadow-sm border p-3.5 flex flex-col justify-between h-full space-y-2">
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-bold text-sm flex items-center gap-2 text-slate-800"><FlaskConical className="w-4 h-4 text-cyan-600" /> Demandes d'analyses (Labo)</h4>
-                  <span className="text-[10px] text-slate-400 hidden sm:block">A facturer en caisse</span>
+                  <h4 className="font-bold text-sm flex items-center gap-2 text-ink-strong"><FlaskConical className="w-4 h-4 text-cyan-600 dark:text-cyan-400" /> Demandes d'analyses (Labo)</h4>
+                  <span className="text-[10px] text-ink-faint hidden sm:block">A facturer en caisse</span>
                 </div>
                 <div className="relative mb-2">
-                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-                  <input ref={labSearchRef} type="text" value={labSearch} onChange={(e) => { setLabSearch(e.target.value); setLabSearchIdx(0); }} onKeyDown={handleLabSearchKeyDown} className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-cyan-500 text-sm" placeholder="Rechercher analyse (NFS, Glycémie...) ↑↓ ↵" />
+                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-ink-faint" />
+                  <input ref={labSearchRef} type="text" value={labSearch} onChange={(e) => { setLabSearch(e.target.value); setLabSearchIdx(0); }} onKeyDown={handleLabSearchKeyDown} className="w-full pl-9 pr-3 py-2 border border-line-strong rounded-lg outline-none focus:ring-2 focus:ring-cyan-500 text-sm" placeholder="Rechercher analyse (NFS, Glycémie...) ↑↓ ↵" />
                   {labSearch.length >= 1 && labFiltered.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 rounded-b shadow-xl z-30 max-h-48 overflow-y-auto">
+                    <div className="absolute top-full left-0 right-0 bg-surface border border-line-strong rounded-b shadow-xl z-30 max-h-48 overflow-y-auto">
                       {labFiltered.map((e, idx) => {
                         const already = labDraft.some((d) => d.examId === e.id);
                         return (
-                          <div key={e.id} onClick={() => addLabExam(e.id)} className={`px-3 py-1.5 cursor-pointer text-xs flex justify-between border-b border-slate-100 ${already ? 'opacity-40 bg-slate-50' : idx === labSearchIdx ? 'bg-cyan-100' : 'hover:bg-cyan-50'}`}>
-                            <span><span className="text-[9px] text-slate-400 mr-1">[{e.code}]</span> {e.name} <span className="text-slate-400">· {labCategoryLabel(e.category)}</span></span>
-                            <span className="font-mono text-cyan-600 font-semibold">{formatAr(clientType === 'societe' ? e.priceSociete : clientType === 'externe' ? e.priceExterne : e.priceComptoir)}</span>
+                          <div key={e.id} onClick={() => addLabExam(e.id)} className={`px-3 py-1.5 cursor-pointer text-xs flex justify-between border-b border-line-soft ${already ? 'opacity-40 bg-surface-muted' : idx === labSearchIdx ? 'bg-cyan-100 dark:bg-cyan-500/15' : 'hover:bg-cyan-50 dark:hover:bg-cyan-500/8'}`}>
+                            <span><span className="text-[9px] text-ink-faint mr-1">[{e.code}]</span> {e.name} <span className="text-ink-faint">· {labCategoryLabel(e.category)}</span></span>
+                            <span className="font-mono text-cyan-600 dark:text-cyan-400 font-semibold">{formatAr(clientType === 'societe' ? e.priceSociete : clientType === 'externe' ? e.priceExterne : e.priceComptoir)}</span>
                           </div>
                         );
                       })}
@@ -1363,54 +1363,54 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
               </div>
               <div>
                 {labDraft.length > 0 ? (
-                  <div className="border border-slate-200 rounded-lg divide-y bg-slate-50/40" tabIndex={0} onKeyDown={handleLabDraftKeyDown} onFocus={() => setLabDraftIdx(0)}>
+                  <div className="border border-line rounded-lg divide-y bg-surface-muted/40" tabIndex={0} onKeyDown={handleLabDraftKeyDown} onFocus={() => setLabDraftIdx(0)}>
                     {labDraft.map((d) => {
                       const e = currentLabCatalog.find((x) => x.id === d.examId);
                       if (!e) return null;
                       const isDraftSel = labDraft.indexOf(d) === labDraftIdx;
                       return (
-                        <div key={d.examId} className={`flex items-center justify-between p-2 text-xs ${isDraftSel ? 'bg-cyan-100 border-l-2 border-cyan-500' : ''}`}>
+                        <div key={d.examId} className={`flex items-center justify-between p-2 text-xs ${isDraftSel ? 'bg-cyan-100 dark:bg-cyan-500/15 border-l-2 border-cyan-500' : ''}`}>
                           <div className="mr-2">
-                            <div className="font-bold text-slate-800">{e.name} <span className="text-[10px] text-slate-400 font-normal">[{e.code}]</span></div>
-                            <div className="text-[10px] text-slate-400">{e.sampleType} · {e.durationHours}h</div>
+                            <div className="font-bold text-ink-strong">{e.name} <span className="text-[10px] text-ink-faint font-normal">[{e.code}]</span></div>
+                            <div className="text-[10px] text-ink-faint">{e.sampleType} · {e.durationHours}h</div>
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
-                            <label className="flex items-center gap-1 text-[10px] cursor-pointer"><input type="checkbox" checked={d.urgent} onChange={() => toggleLabUrgent(d.examId)} className="w-3.5 h-3.5" /> <span className="text-red-600 font-semibold">Urgent</span></label>
-                            <span className="font-mono font-bold text-slate-700 w-20 text-right">{formatAr(priceForExam(d.examId, clientType, d.urgent))}</span>
-                            <button onClick={() => removeLabExam(d.examId)} className="text-rose-600 hover:text-rose-800 cursor-pointer p-0.5" title="Retirer"><Trash2 className="w-3.5 h-3.5" /></button>
+                            <label className="flex items-center gap-1 text-[10px] cursor-pointer"><input type="checkbox" checked={d.urgent} onChange={() => toggleLabUrgent(d.examId)} className="w-3.5 h-3.5" /> <span className="text-red-600 dark:text-red-400 font-semibold">Urgent</span></label>
+                            <span className="font-mono font-bold text-ink w-20 text-right">{formatAr(priceForExam(d.examId, clientType, d.urgent))}</span>
+                            <button onClick={() => removeLabExam(d.examId)} className="text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-300 cursor-pointer p-0.5" title="Retirer"><Trash2 className="w-3.5 h-3.5" /></button>
                           </div>
                         </div>
                       );
                     })}
-                    <div className="flex justify-between items-center p-2 bg-cyan-100/70 text-xs font-bold text-cyan-900 rounded-b-lg">
+                    <div className="flex justify-between items-center p-2 bg-cyan-100/70 dark:bg-cyan-500/10 text-xs font-bold text-cyan-900 dark:text-cyan-300 rounded-b-lg">
                       <span>Total analyses</span>
                       <span className="font-mono text-sm">{formatAr(labTotal)}</span>
                     </div>
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-400 text-center py-4 border border-dashed border-slate-200 rounded-lg bg-slate-50/50">Aucune analyse sélectionnée — recherchez ci-dessus.</p>
+                  <p className="text-xs text-ink-faint text-center py-4 border border-dashed border-line rounded-lg bg-surface-muted/50">Aucune analyse sélectionnée — recherchez ci-dessus.</p>
                 )}
               </div>
             </div>
 
             {/* DEMANDES D'ÉCHOGRAPHIE (saisies par le médecin) */}
-            <div className="bg-white rounded-xl shadow-sm border p-3.5 flex flex-col justify-between h-full space-y-2">
+            <div className="bg-surface rounded-xl shadow-sm border p-3.5 flex flex-col justify-between h-full space-y-2">
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-bold text-sm flex items-center gap-2 text-slate-800"><Scan className="w-4 h-4 text-indigo-600" /> Demandes d'échographie</h4>
-                  <span className="text-[10px] text-slate-400 hidden sm:block">A facturer en caisse</span>
+                  <h4 className="font-bold text-sm flex items-center gap-2 text-ink-strong"><Scan className="w-4 h-4 text-indigo-600 dark:text-indigo-400" /> Demandes d'échographie</h4>
+                  <span className="text-[10px] text-ink-faint hidden sm:block">A facturer en caisse</span>
                 </div>
                 <div className="relative mb-2">
-                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-                  <input ref={echoSearchRef} type="text" value={echoSearch} onChange={(e) => { setEchoSearch(e.target.value); setEchoSearchIdx(0); }} onKeyDown={handleEchoSearchKeyDown} className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-sm" placeholder="Rechercher échographie (Abdominale, Pelvienne...) ↑↓ ↵" />
+                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-ink-faint" />
+                  <input ref={echoSearchRef} type="text" value={echoSearch} onChange={(e) => { setEchoSearch(e.target.value); setEchoSearchIdx(0); }} onKeyDown={handleEchoSearchKeyDown} className="w-full pl-9 pr-3 py-2 border border-line-strong rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-sm" placeholder="Rechercher échographie (Abdominale, Pelvienne...) ↑↓ ↵" />
                   {echoSearch.length >= 1 && echoFiltered.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 rounded-b shadow-xl z-30 max-h-48 overflow-y-auto">
+                    <div className="absolute top-full left-0 right-0 bg-surface border border-line-strong rounded-b shadow-xl z-30 max-h-48 overflow-y-auto">
                       {echoFiltered.map((e, idx) => {
                         const already = echoDraft.some((d) => d.examId === e.id);
                         return (
-                          <div key={e.id} onClick={() => addEchoExam(e.id)} className={`px-3 py-1.5 cursor-pointer text-xs flex justify-between border-b border-slate-100 ${already ? 'opacity-40 bg-slate-50' : idx === echoSearchIdx ? 'bg-indigo-100' : 'hover:bg-indigo-50'}`}>
-                            <span><span className="text-[9px] text-slate-400 mr-1">[{e.code}]</span> {e.name}</span>
-                            <span className="font-mono text-indigo-600 font-semibold">{formatAr(clientType === 'societe' ? e.priceSociete : clientType === 'externe' ? e.priceExterne : e.priceComptoir)}</span>
+                          <div key={e.id} onClick={() => addEchoExam(e.id)} className={`px-3 py-1.5 cursor-pointer text-xs flex justify-between border-b border-line-soft ${already ? 'opacity-40 bg-surface-muted' : idx === echoSearchIdx ? 'bg-indigo-100 dark:bg-indigo-500/15' : 'hover:bg-indigo-50 dark:hover:bg-indigo-500/8'}`}>
+                            <span><span className="text-[9px] text-ink-faint mr-1">[{e.code}]</span> {e.name}</span>
+                            <span className="font-mono text-indigo-600 dark:text-indigo-400 font-semibold">{formatAr(clientType === 'societe' ? e.priceSociete : clientType === 'externe' ? e.priceExterne : e.priceComptoir)}</span>
                           </div>
                         );
                       })}
@@ -1420,38 +1420,38 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
               </div>
               <div>
                 {echoDraft.length > 0 ? (
-                  <div className="border border-slate-200 rounded-lg divide-y bg-slate-50/40" tabIndex={0} onKeyDown={handleEchoDraftKeyDown} onFocus={() => setEchoDraftIdx(0)}>
+                  <div className="border border-line rounded-lg divide-y bg-surface-muted/40" tabIndex={0} onKeyDown={handleEchoDraftKeyDown} onFocus={() => setEchoDraftIdx(0)}>
                     {echoDraft.map((d) => {
                       const e = currentEchoCatalog.find((x) => x.id === d.examId);
                       if (!e) return null;
                       const isDraftSel = echoDraft.indexOf(d) === echoDraftIdx;
                       return (
-                        <div key={d.examId} className={`flex items-center justify-between p-2 text-xs ${isDraftSel ? 'bg-indigo-100 border-l-2 border-indigo-500' : ''}`}>
+                        <div key={d.examId} className={`flex items-center justify-between p-2 text-xs ${isDraftSel ? 'bg-indigo-100 dark:bg-indigo-500/15 border-l-2 border-indigo-500' : ''}`}>
                           <div className="flex-1 mr-2">
-                            <div className="font-bold text-slate-800">{e.name} <span className="text-[10px] text-slate-400 font-normal">[{e.code}]</span></div>
+                            <div className="font-bold text-ink-strong">{e.name} <span className="text-[10px] text-ink-faint font-normal">[{e.code}]</span></div>
                             <input
                               type="text"
                               placeholder="Notes / indication clinique..."
                               value={d.notes || ''}
                               onChange={(evt) => updateEchoNotes(d.examId, evt.target.value)}
-                              className="w-full text-[11px] text-slate-600 border-b border-dashed border-slate-200 outline-none focus:border-indigo-500 py-0.5 mt-0.5 bg-transparent"
+                              className="w-full text-[11px] text-ink-secondary border-b border-dashed border-line outline-none focus:border-indigo-500 py-0.5 mt-0.5 bg-transparent"
                             />
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
-                            <label className="flex items-center gap-1 text-[10px] cursor-pointer"><input type="checkbox" checked={d.urgent} onChange={() => toggleEchoUrgent(d.examId)} className="w-3.5 h-3.5" /> <span className="text-red-600 font-semibold">Urgent</span></label>
-                            <span className="font-mono font-bold text-slate-700 w-20 text-right">{formatAr(echoPriceForExam(d.examId, clientType, d.urgent))}</span>
-                            <button onClick={() => removeEchoExam(d.examId)} className="text-rose-600 hover:text-rose-800 cursor-pointer p-0.5" title="Retirer"><Trash2 className="w-3.5 h-3.5" /></button>
+                            <label className="flex items-center gap-1 text-[10px] cursor-pointer"><input type="checkbox" checked={d.urgent} onChange={() => toggleEchoUrgent(d.examId)} className="w-3.5 h-3.5" /> <span className="text-red-600 dark:text-red-400 font-semibold">Urgent</span></label>
+                            <span className="font-mono font-bold text-ink w-20 text-right">{formatAr(echoPriceForExam(d.examId, clientType, d.urgent))}</span>
+                            <button onClick={() => removeEchoExam(d.examId)} className="text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-300 cursor-pointer p-0.5" title="Retirer"><Trash2 className="w-3.5 h-3.5" /></button>
                           </div>
                         </div>
                       );
                     })}
-                    <div className="flex justify-between items-center p-2 bg-indigo-100/70 text-xs font-bold text-indigo-900 rounded-b-lg">
+                    <div className="flex justify-between items-center p-2 bg-indigo-100/70 dark:bg-indigo-500/10 text-xs font-bold text-indigo-900 dark:text-indigo-300 rounded-b-lg">
                       <span>Total échographies</span>
                       <span className="font-mono text-sm">{formatAr(echoTotal)}</span>
                     </div>
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-400 text-center py-4 border border-dashed border-slate-200 rounded-lg bg-slate-50/50">Aucune échographie sélectionnée — recherchez ci-dessus.</p>
+                  <p className="text-xs text-ink-faint text-center py-4 border border-dashed border-line rounded-lg bg-surface-muted/50">Aucune échographie sélectionnée — recherchez ci-dessus.</p>
                 )}
               </div>
             </div>
@@ -1468,7 +1468,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
       {/* MODAL COMPLETION DOSSIER MEDICAL PATIENT (PAR LE MEDECIN) */}
       {showPatientEditModal && selectedPatient && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden animate-in fade-in duration-150">
+          <div className="bg-surface rounded-2xl shadow-2xl border border-line w-full max-w-2xl overflow-hidden animate-in fade-in duration-150">
             <div className="p-4 bg-gradient-to-r from-indigo-700 to-blue-600 text-white flex justify-between items-center">
               <div className="flex items-center gap-2">
                 <Stethoscope className="w-5 h-5 text-indigo-200" />
@@ -1484,17 +1484,17 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
 
             <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto text-sm">
               {/* Section Profil Médical */}
-              <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200 space-y-3">
-                <h4 className="font-bold text-indigo-900 flex items-center gap-1.5 text-xs uppercase tracking-wider">
-                  <Droplets className="w-4 h-4 text-rose-600" /> Profil Médical & Risques Cliniques
+              <div className="bg-surface-muted rounded-xl p-3.5 border border-line space-y-3">
+                <h4 className="font-bold text-indigo-900 dark:text-indigo-300 flex items-center gap-1.5 text-xs uppercase tracking-wider">
+                  <Droplets className="w-4 h-4 text-rose-600 dark:text-rose-400" /> Profil Médical & Risques Cliniques
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Groupe Sanguin</label>
+                    <label className="block text-xs font-semibold text-ink mb-1">Groupe Sanguin</label>
                     <select
                       value={patientEditForm.bloodGroup}
                       onChange={(e) => setPatientEditForm({ ...patientEditForm, bloodGroup: e.target.value })}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-semibold text-rose-700"
+                      className="w-full px-3 py-2 bg-surface border border-line-strong rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-semibold text-rose-700 dark:text-rose-400"
                     >
                       <option value="">-- Non renseigné --</option>
                       <option value="A+">A+</option>
@@ -1508,62 +1508,62 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Allergies (séparées par virgules)</label>
+                    <label className="block text-xs font-semibold text-ink mb-1">Allergies (séparées par virgules)</label>
                     <input
                       type="text"
                       value={patientEditForm.allergiesText}
                       onChange={(e) => setPatientEditForm({ ...patientEditForm, allergiesText: e.target.value })}
                       placeholder="Ex: Pénicilline, Aspirine, Latex..."
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs text-red-700"
+                      className="w-full px-3 py-2 bg-surface border border-line-strong rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs text-red-700 dark:text-red-400"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Antécédents Médicaux / Chirurgicaux (séparés par virgules)</label>
+                  <label className="block text-xs font-semibold text-ink mb-1">Antécédents Médicaux / Chirurgicaux (séparés par virgules)</label>
                   <textarea
                     rows={2}
                     value={patientEditForm.antecedentsText}
                     onChange={(e) => setPatientEditForm({ ...patientEditForm, antecedentsText: e.target.value })}
                     placeholder="Ex: HTA sous Amlodipine, Diabète Type 2, Appendicectomie 2018..."
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
+                    className="w-full px-3 py-2 bg-surface border border-line-strong rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Traitements Chroniques / Longue Durée (séparés par virgules)</label>
+                  <label className="block text-xs font-semibold text-ink mb-1">Traitements Chroniques / Longue Durée (séparés par virgules)</label>
                   <textarea
                     rows={2}
                     value={patientEditForm.chronicTreatmentsText}
                     onChange={(e) => setPatientEditForm({ ...patientEditForm, chronicTreatmentsText: e.target.value })}
                     placeholder="Ex: Metformine 1000mg 2x/j, Levothyrox 75µg..."
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs text-blue-800"
+                    className="w-full px-3 py-2 bg-surface border border-line-strong rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs text-blue-800 dark:text-cyan-300"
                   />
                 </div>
               </div>
 
               {/* Section Base de Famille & Identité */}
-              <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200 space-y-3">
-                <h4 className="font-bold text-slate-800 flex items-center gap-1.5 text-xs uppercase tracking-wider">
-                  <Users className="w-4 h-4 text-indigo-600" /> Base de Famille & Identité Administrative
+              <div className="bg-surface-muted rounded-xl p-3.5 border border-line space-y-3">
+                <h4 className="font-bold text-ink-strong flex items-center gap-1.5 text-xs uppercase tracking-wider">
+                  <Users className="w-4 h-4 text-indigo-600 dark:text-indigo-400" /> Base de Famille & Identité Administrative
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Base de Famille (Nom du Foyer)</label>
+                    <label className="block text-xs font-semibold text-ink mb-1">Base de Famille (Nom du Foyer)</label>
                     <input
                       type="text"
                       value={patientEditForm.famille}
                       onChange={(e) => setPatientEditForm({ ...patientEditForm, famille: e.target.value })}
                       placeholder="Ex: Famille RAKOTO, Famille DUPONT..."
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
+                      className="w-full px-3 py-2 bg-surface border border-line-strong rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Lien Familial dans le Foyer</label>
+                    <label className="block text-xs font-semibold text-ink mb-1">Lien Familial dans le Foyer</label>
                     <select
                       value={patientEditForm.lienFamilial}
                       onChange={(e) => setPatientEditForm({ ...patientEditForm, lienFamilial: e.target.value })}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
+                      className="w-full px-3 py-2 bg-surface border border-line-strong rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
                     >
                       <option value="">-- Sélectionner --</option>
                       <option value="Chef de famille">Chef de famille</option>
@@ -1577,55 +1577,55 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">CIN / N° Sécurité Sociale (SSN)</label>
+                    <label className="block text-xs font-semibold text-ink mb-1">CIN / N° Sécurité Sociale (SSN)</label>
                     <input
                       type="text"
                       value={patientEditForm.ssn}
                       onChange={(e) => setPatientEditForm({ ...patientEditForm, ssn: e.target.value })}
                       placeholder="N° CIN / Sécurité Sociale"
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-mono"
+                      className="w-full px-3 py-2 bg-surface border border-line-strong rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-mono"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Matricule Interne / Société</label>
+                    <label className="block text-xs font-semibold text-ink mb-1">Matricule Interne / Société</label>
                     <input
                       type="text"
                       value={patientEditForm.matricule}
                       onChange={(e) => setPatientEditForm({ ...patientEditForm, matricule: e.target.value })}
                       placeholder="N° Matricule..."
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-mono"
+                      className="w-full px-3 py-2 bg-surface border border-line-strong rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-mono"
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Téléphone / Contact</label>
+                    <label className="block text-xs font-semibold text-ink mb-1">Téléphone / Contact</label>
                     <PhoneInput
                       value={patientEditForm.contact}
                       onChange={(v) => setPatientEditForm({ ...patientEditForm, contact: v })}
                       placeholder="038 34 092 61"
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
+                      className="w-full px-3 py-2 bg-surface border border-line-strong rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Adresse Domicile</label>
+                    <label className="block text-xs font-semibold text-ink mb-1">Adresse Domicile</label>
                     <input
                       type="text"
                       value={patientEditForm.address}
                       onChange={(e) => setPatientEditForm({ ...patientEditForm, address: e.target.value })}
                       placeholder="Adresse complète..."
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
+                      className="w-full px-3 py-2 bg-surface border border-line-strong rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
                     />
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="p-4 bg-slate-100 border-t border-slate-200 flex justify-end gap-2">
+            <div className="p-4 bg-surface-hover border-t border-line flex justify-end gap-2">
               <button
                 onClick={() => setShowPatientEditModal(false)}
-                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold rounded-lg text-xs cursor-pointer transition"
+                className="px-4 py-2 bg-surface-active hover:bg-line-strong text-ink font-semibold rounded-lg text-xs cursor-pointer transition"
               >
                 Annuler
               </button>
@@ -1643,32 +1643,32 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
       {/* MODAL DE CONFIRMATION DE RETRAIT DE LA FILE */}
       {patientToPurge && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-100 overflow-hidden">
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-rose-50/50">
+          <div className="bg-surface rounded-2xl max-w-md w-full shadow-2xl border border-line-soft overflow-hidden">
+            <div className="p-5 border-b border-line-soft flex items-center justify-between bg-rose-50/50 dark:bg-rose-500/4">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-rose-100 text-rose-600 rounded-xl">
+                <div className="p-2.5 bg-rose-100 dark:bg-rose-500/15 text-rose-600 dark:text-rose-400 rounded-xl">
                   <Trash2 className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900 text-base">Retirer de la file d'attente</h3>
-                  <p className="text-xs text-slate-500 font-mono">{patientToPurge.dossier}</p>
+                  <h3 className="font-bold text-ink-strong text-base">Retirer de la file d'attente</h3>
+                  <p className="text-xs text-ink-muted font-mono">{patientToPurge.dossier}</p>
                 </div>
               </div>
               <button
                 onClick={() => setPatientToPurge(null)}
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
+                className="text-ink-faint hover:text-ink-secondary p-1.5 rounded-lg hover:bg-surface-hover cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-5 space-y-4 text-xs text-slate-600">
-              <p className="text-sm font-semibold text-slate-800">
+            <div className="p-5 space-y-4 text-xs text-ink-secondary">
+              <p className="text-sm font-semibold text-ink-strong">
                 Êtes-vous sûr de vouloir retirer <strong>{patientToPurge.lastName} {patientToPurge.firstName}</strong> de votre file de consultation ?
               </p>
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-1 text-amber-900">
+              <div className="p-3 bg-amber-50 dark:bg-amber-500/8 border border-amber-200 dark:border-amber-500/25 rounded-xl space-y-1 text-amber-900 dark:text-amber-300">
                 <p className="font-bold flex items-center gap-1 text-[11px]">
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600" /> Dossier médical intact :
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" /> Dossier médical intact :
                 </p>
                 <p className="text-[11px]">
                   Le dossier du patient, ses antécédents, ses constantes déjà enregistrées et son historique restent intégrés en base de données.
@@ -1676,10 +1676,10 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
               </div>
             </div>
 
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-2">
+            <div className="p-4 bg-surface-muted border-t border-line-soft flex justify-end gap-2">
               <button
                 onClick={() => setPatientToPurge(null)}
-                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold rounded-xl text-xs cursor-pointer transition"
+                className="px-4 py-2 bg-surface-active hover:bg-line-strong text-ink font-semibold rounded-xl text-xs cursor-pointer transition"
               >
                 Annuler
               </button>

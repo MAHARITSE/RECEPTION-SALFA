@@ -32,16 +32,6 @@ const roleLabels: Record<string, string> = {
   admin: 'Administrateur',
 };
 
-const roleColors: Record<string, string> = {
-  doctor: 'bg-emerald-600 hover:bg-emerald-700',
-  cashier: 'bg-amber-600 hover:bg-amber-700',
-  pharmacy: 'bg-purple-600 hover:bg-purple-700',
-  magasinier: 'bg-orange-600 hover:bg-orange-700',
-  laboratory: 'bg-cyan-600 hover:bg-cyan-700',
-  billing: 'bg-indigo-600 hover:bg-indigo-700',
-  admin: 'bg-slate-700 hover:bg-slate-800',
-};
-
 export default function EcranConnexion({ users, onLogin, onBack }: EcranConnexionProps) {
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [password, setPassword] = useState('');
@@ -59,7 +49,7 @@ export default function EcranConnexion({ users, onLogin, onBack }: EcranConnexio
       setError('Veuillez entrer le mot de passe');
       return;
     }
-    
+
     const user = users.find((u) => u.id === selectedUserId);
     if (!user) {
       setError('Utilisateur non trouvé');
@@ -75,47 +65,43 @@ export default function EcranConnexion({ users, onLogin, onBack }: EcranConnexio
     onLogin(user);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleLogin();
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 flex items-center justify-center p-4">
+    <div className="theme-login min-h-screen text-ink flex items-center justify-center px-4 pt-8 pb-24">
       <div className="max-w-md w-full">
-        {/* Back button */}
         <button
+          type="button"
           onClick={onBack}
-          className="mb-6 flex items-center gap-2 text-slate-400 hover:text-white transition-colors cursor-pointer"
+          className="mb-8 flex items-center gap-2 text-ink-muted hover:text-accent transition-colors cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
           Retour à la réception
-
-
         </button>
 
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-400 mb-4 shadow-2xl">
-            <Hospital className="w-8 h-8 text-white" />
+          <div className="theme-brand-mark mb-6">
+            <Hospital className="w-5 h-5 -rotate-45" />
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2">
-            MediCare <span className="text-blue-400">HIS</span>
+          <h1 className="text-2xl font-bold font-mono uppercase tracking-wider text-ink-strong mb-2">
+            MediCare <span className="text-accent">HIS</span>
           </h1>
-          <p className="text-slate-400">Connexion Personnel Médical</p>
+          <p className="text-ink-muted text-sm">Connexion Personnel Médical</p>
         </div>
 
-        <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-700/50 p-6 shadow-2xl">
-          {/* User selection */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              <UserIcon className="w-4 h-4 inline mr-2" />
+        <form
+          onSubmit={(event) => { event.preventDefault(); handleLogin(); }}
+          className="bg-surface rounded-2xl border border-line p-6 shadow-xl shadow-black/5"
+        >
+          <div className="mb-5">
+            <label htmlFor="staff-user" className="block text-sm font-medium text-ink mb-2">
+              <UserIcon className="w-4 h-4 inline mr-2 text-accent" />
               Identifiant
             </label>
             <select
+              id="staff-user"
+              autoComplete="username"
               value={selectedUserId}
               onChange={(e) => { setSelectedUserId(e.target.value); setError(''); }}
-              className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 outline-none"
+              className="w-full px-3 py-3 bg-field border border-line rounded-lg text-ink text-sm focus:ring-2 focus:ring-accent/25 focus:border-accent outline-none"
             >
               <option value="">-- Sélectionner --</option>
               {staffUsers.map((user) => (
@@ -126,58 +112,55 @@ export default function EcranConnexion({ users, onLogin, onBack }: EcranConnexio
             </select>
           </div>
 
-          {/* Password */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              <Lock className="w-4 h-4 inline mr-2" />
+          <div className="mb-5">
+            <label htmlFor="staff-password" className="block text-sm font-medium text-ink mb-2">
+              <Lock className="w-4 h-4 inline mr-2 text-accent" />
               Mot de passe
             </label>
             <input
+              id="staff-password"
               type="password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => { setPassword(e.target.value); setError(''); }}
-              onKeyDown={handleKeyDown}
-              className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 outline-none"
+              aria-invalid={!!error}
+              aria-describedby={error ? 'login-error' : undefined}
+              className="w-full px-4 py-3 bg-field border border-line rounded-lg text-ink focus:ring-2 focus:ring-accent/25 focus:border-accent outline-none"
               placeholder="••••••••"
             />
           </div>
 
-          {/* Error */}
           {error && (
-            <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg flex items-center gap-2 text-red-400 text-sm">
-              <AlertCircle className="w-4 h-4" />
+            <div id="login-error" role="alert" className="mb-4 p-3 bg-red-50 dark:bg-red-500/8 border border-red-200 dark:border-red-500/25 rounded-lg flex items-center gap-2 text-red-700 dark:text-red-400 text-sm">
+              <AlertCircle className="w-4 h-4 shrink-0" />
               {error}
             </div>
           )}
 
-          {/* Login button */}
           <button
-            onClick={handleLogin}
+            type="submit"
             disabled={!selectedUserId || !password}
-            className={`w-full py-3 rounded-lg font-semibold text-white transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
-              selectedUser ? (roleColors[selectedUser.role] || 'bg-blue-600 hover:bg-blue-700') : 'bg-blue-600 hover:bg-blue-700'
-            }`}
+            className="theme-primary-button w-full py-3 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {(selectedUser && roleIcons[selectedUser.role]) || null}
             Se connecter
           </button>
 
-          {/* Help text */}
-          <div className="mt-6 p-3 bg-slate-700/30 rounded-lg">
-            <p className="text-xs text-slate-400 text-center">
-              <strong>Mots de passe par défaut:</strong><br />
-              Médecins: <code className="bg-slate-600 px-1 rounded">doc123</code> • 
-              Caisses (1 & 2): <code className="bg-slate-600 px-1 rounded">caisse123</code><br />
-              Pharmacies (1 & 2): <code className="bg-slate-600 px-1 rounded">pharma123</code> • 
-              Magasin: <code className="bg-slate-600 px-1 rounded">mag123</code><br />
-              Labo: <code className="bg-slate-600 px-1 rounded">labo123</code><br />
-              Facturation: <code className="bg-slate-600 px-1 rounded">fact123</code> • 
-              Admin: <code className="bg-slate-600 px-1 rounded">admin123</code>
+          <div className="mt-6 p-3 bg-surface-muted border border-line rounded-lg">
+            <p className="text-xs text-ink-muted text-center leading-relaxed">
+              <strong>Mots de passe par défaut :</strong><br />
+              Médecins : <code className="bg-surface-active text-ink px-1 rounded">doc123</code> •{' '}
+              Caisses (1 &amp; 2) : <code className="bg-surface-active text-ink px-1 rounded">caisse123</code><br />
+              Pharmacies (1 &amp; 2) : <code className="bg-surface-active text-ink px-1 rounded">pharma123</code> •{' '}
+              Magasin : <code className="bg-surface-active text-ink px-1 rounded">mag123</code><br />
+              Labo : <code className="bg-surface-active text-ink px-1 rounded">labo123</code><br />
+              Facturation : <code className="bg-surface-active text-ink px-1 rounded">fact123</code> •{' '}
+              Admin : <code className="bg-surface-active text-ink px-1 rounded">admin123</code>
             </p>
           </div>
-        </div>
+        </form>
 
-        <p className="text-center text-slate-500 text-xs mt-6">
+        <p className="text-center text-ink-faint text-xs mt-6">
           © 2026 MediCare HIS — Conforme RGPD
         </p>
       </div>
