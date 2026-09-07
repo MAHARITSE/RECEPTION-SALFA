@@ -46,7 +46,7 @@ interface DemandeAchatFormProps {
 
 const THEME_STYLES: Record<string, { header: string; ring: string; row: string; save: string; }> = {
   purple:  { header: 'bg-purple-600',  ring: 'focus:ring-purple-500',  row: 'bg-purple-500',  save: 'bg-purple-500 hover:bg-purple-600 border-purple-600' },
-  blue:    { header: 'bg-blue-600',    ring: 'focus:ring-blue-500',    row: 'bg-blue-500',    save: 'bg-blue-500 hover:bg-blue-600 border-blue-600' },
+  blue:    { header: 'bg-blue-600',    ring: 'focus:ring-accent/25',    row: 'bg-blue-500',    save: 'bg-blue-500 hover:bg-blue-600 border-blue-600' },
   rose:    { header: 'bg-rose-600',    ring: 'focus:ring-rose-500',    row: 'bg-rose-500',    save: 'bg-rose-500 hover:bg-rose-600 border-rose-600' },
   sky:     { header: 'bg-sky-600',     ring: 'focus:ring-sky-500',     row: 'bg-sky-500',     save: 'bg-sky-500 hover:bg-sky-600 border-sky-600' },
   amber:   { header: 'bg-amber-600',   ring: 'focus:ring-amber-500',   row: 'bg-amber-500',   save: 'bg-amber-500 hover:bg-amber-600 border-amber-600' },
@@ -189,11 +189,11 @@ export default function DemandeAchatForm({
   const totalAmount = reqLines.reduce((s, l) => s + (l.amount || 0), 0);
   const totalQty = reqLines.reduce((s, l) => s + l.quantity, 0);
 
-  const headerBg = transferCategoryColor(reqCategory).replace('text-', 'border-').split(' ').find(s => s.startsWith('bg-')) || 'bg-slate-100';
-  const headerText = transferCategoryColor(reqCategory).split(' ').find(s => s.startsWith('text-')) || 'text-slate-800';
+  const headerBg = transferCategoryColor(reqCategory).replace('text-', 'border-').split(' ').find(s => s.startsWith('bg-')) || 'bg-surface-hover';
+  const headerText = transferCategoryColor(reqCategory).split(' ').find(s => s.startsWith('text-')) || 'text-ink-strong';
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-4">
+    <div className="bg-surface rounded-xl shadow-sm border overflow-hidden mt-4">
         {/* Header */}
         <div className={`px-5 py-3 ${styles.header} text-white flex items-center justify-between`}>
           <span className="font-bold flex items-center gap-2">
@@ -220,18 +220,18 @@ export default function DemandeAchatForm({
             {pharmacyMode ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">🏥 Service destinataire</label>
-                  <input readOnly value={targetServiceName} className="w-full px-3 py-1.5 border border-slate-300 rounded-lg bg-slate-100 text-sm text-slate-700 font-medium" />
+                  <label className="block text-xs font-bold text-ink mb-1">🏥 Service destinataire</label>
+                  <input readOnly value={targetServiceName} className="w-full px-3 py-1.5 border border-line-strong rounded-lg bg-surface-hover text-sm text-ink font-medium" />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">📝 Motif / Notes</label>
+                  <label className="block text-xs font-bold text-ink mb-1">📝 Motif / Notes</label>
 
 
                   <input
                     type="text"
                     value={reqGlobalNotes}
                     onChange={e => setReqGlobalNotes(e.target.value)}
-                    className={`w-full px-3 py-1.5 border border-slate-300 rounded-lg outline-none focus:ring-2 ${styles.ring} bg-white text-sm text-slate-800`}
+                    className={`w-full px-3 py-1.5 border border-line-strong rounded-lg outline-none focus:ring-2 ${styles.ring} bg-surface text-sm text-ink-strong`}
                     placeholder="Ex: Stock bas, urgence, patient en attente..."
                   />
                 </div>
@@ -240,11 +240,11 @@ export default function DemandeAchatForm({
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">🏷️ Type d'achat *</label>
+                    <label className="block text-xs font-bold text-ink mb-1">🏷️ Type d'achat *</label>
                     <select
                       value={reqCategory}
                       onChange={e => setReqCategory(e.target.value as TransferCategory)}
-                      className={`w-full px-3 py-1.5 border border-slate-300 rounded-lg outline-none focus:ring-2 ${styles.ring} bg-white text-sm text-slate-800 cursor-pointer`}
+                      className={`w-full px-3 py-1.5 border border-line-strong rounded-lg outline-none focus:ring-2 ${styles.ring} bg-surface text-sm text-ink-strong cursor-pointer`}
                     >
                       {TRANSFER_CATEGORIES.map(c => (
                         <option key={c} value={c}>{transferCategoryLabel(c)}</option>
@@ -252,33 +252,33 @@ export default function DemandeAchatForm({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">👤 Fournisseur *</label>
+                    <label className="block text-xs font-bold text-ink mb-1">👤 Fournisseur *</label>
                     <input
                       type="text"
                       value={reqSupplier}
                       onChange={e => setReqSupplier(e.target.value)}
-                      className={`w-full px-3 py-1.5 border border-slate-300 rounded-lg outline-none focus:ring-2 ${styles.ring} bg-white text-sm text-slate-800`}
+                      className={`w-full px-3 py-1.5 border border-line-strong rounded-lg outline-none focus:ring-2 ${styles.ring} bg-surface text-sm text-ink-strong`}
                       placeholder="Nom du fournisseur..."
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">📄 N° BL / Facture *</label>
+                    <label className="block text-xs font-bold text-ink mb-1">📄 N° BL / Facture *</label>
                     <input
                       type="text"
                       value={reqInvoiceRef}
                       onChange={e => setReqInvoiceRef(e.target.value)}
-                      className={`w-full px-3 py-1.5 border border-slate-300 rounded-lg outline-none focus:ring-2 ${styles.ring} bg-white text-sm text-slate-800`}
+                      className={`w-full px-3 py-1.5 border border-line-strong rounded-lg outline-none focus:ring-2 ${styles.ring} bg-surface text-sm text-ink-strong`}
                       placeholder="Ex: BL-2026-004..."
                     />
                   </div>
                 </div>
                 <div className="mt-2">
-                  <label className="block text-xs font-bold text-slate-700 mb-1">📝 Notes / Motif global</label>
+                  <label className="block text-xs font-bold text-ink mb-1">📝 Notes / Motif global</label>
                   <input
                     type="text"
                     value={reqGlobalNotes}
                     onChange={e => setReqGlobalNotes(e.target.value)}
-                    className={`w-full px-3 py-1.5 border border-slate-300 rounded-lg outline-none focus:ring-2 ${styles.ring} bg-white text-sm text-slate-800`}
+                    className={`w-full px-3 py-1.5 border border-line-strong rounded-lg outline-none focus:ring-2 ${styles.ring} bg-surface text-sm text-ink-strong`}
                     placeholder="Ex: Stock bas, urgence bloc opératoire..."
                   />
                 </div>
@@ -290,7 +290,7 @@ export default function DemandeAchatForm({
           {!pharmacyMode && (
             <div className="flex flex-wrap gap-2">
               {TRANSFER_CATEGORIES.map(c => (
-                <button key={c} onClick={() => setReqCategory(c)} className={`px-3 py-1 rounded-full text-xs font-semibold cursor-pointer border transition ${reqCategory === c ? `${transferCategoryColor(c)} border-transparent shadow` : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                <button key={c} onClick={() => setReqCategory(c)} className={`px-3 py-1 rounded-full text-xs font-semibold cursor-pointer border transition ${reqCategory === c ? `${transferCategoryColor(c)} border-transparent shadow` : 'bg-surface border-line text-ink-secondary hover:bg-surface-muted'}`}>
                   {transferCategoryLabel(c)}
                 </button>
               ))}
@@ -298,11 +298,11 @@ export default function DemandeAchatForm({
           )}
 
           {/* Sage Line Editor */}
-          <div className="bg-[#f4f4f4] border border-slate-300 rounded text-xs select-none p-1">
-            <div className="bg-slate-100 border-b border-slate-300 p-2 m-1.5 mb-0 rounded shadow-inner">
+          <div className="bg-surface-muted border border-line-strong rounded text-xs select-none p-1">
+            <div className="bg-surface-hover border-b border-line-strong p-2 m-1.5 mb-0 rounded shadow-inner">
               <div className="flex flex-wrap items-end gap-1.5 font-sans">
                 <div className="flex-1 min-w-[160px] relative">
-                  <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Article (↑↓ Entrée)</label>
+                  <label className="block text-[10px] font-bold text-ink-muted mb-0.5">Article (↑↓ Entrée)</label>
                   <input
                     ref={reqSearchRef}
                     type="text"
@@ -315,60 +315,60 @@ export default function DemandeAchatForm({
                       }
                     }}
                     onKeyDown={reqArtKeyDown}
-                    className={`w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-slate-500 focus:ring-1 text-slate-800`}
+                    className={`w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-line-control focus:ring-1 text-ink-strong`}
                     placeholder="🔍 Saisir article à demander..."
                   />
                   {reqSearch.length >= 1 && reqFiltered.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 rounded-b shadow-2xl z-40 max-h-40 overflow-y-auto">
+                    <div className="absolute top-full left-0 right-0 bg-surface border border-line-strong rounded-b shadow-2xl z-40 max-h-40 overflow-y-auto">
                       {reqFiltered.map((a, idx) => (
                         <div
                           key={a.id}
                           onClick={() => reqSelectArticle(a.id)}
-                          className={`px-3 py-1.5 cursor-pointer text-xs flex justify-between border-b border-slate-100 ${idx === reqSearchIdx ? `${styles.row} text-white font-medium` : 'hover:bg-slate-50 text-slate-800'}`}
+                          className={`px-3 py-1.5 cursor-pointer text-xs flex justify-between border-b border-line-soft ${idx === reqSearchIdx ? `${styles.row} text-white font-medium` : 'hover:bg-surface-muted text-ink-strong'}`}
                         >
                           <span>[{familyLabel(a.family)}] {a.name}</span>
-                          <span className={`font-mono ${idx === reqSearchIdx ? 'text-white' : 'text-slate-500'}`}>Pharma: {a.stockPharmacie} / Central: {a.stockCentral}</span>
+                          <span className={`font-mono ${idx === reqSearchIdx ? 'text-white' : 'text-ink-muted'}`}>Pharma: {a.stockPharmacie} / Central: {a.stockCentral}</span>
                         </div>
                       ))}
                     </div>
                   )}
                 </div>
 
-                <div className="w-24"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Famille</label><input readOnly value={familyLabel(reqLineForm.family as any) || ''} className="w-full bg-slate-200 border border-slate-300 rounded px-1.5 py-0.5 text-xs text-slate-600 truncate font-sans" /></div>
+                <div className="w-24"><label className="block text-[10px] font-bold text-ink-muted mb-0.5">Famille</label><input readOnly value={familyLabel(reqLineForm.family as any) || ''} className="w-full bg-surface-active border border-line-strong rounded px-1.5 py-0.5 text-xs text-ink-secondary truncate font-sans" /></div>
 
-                <div className="w-20"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Quantité</label>
+                <div className="w-20"><label className="block text-[10px] font-bold text-ink-muted mb-0.5">Quantité</label>
                   <input id="req-qty-input" type="number" min={1} value={reqLineForm.quantity}
                     onChange={e => setReqLineForm(prev => ({ ...prev, quantity: parseFloat(e.target.value) || 1, amount: (parseFloat(e.target.value) || 1) * (prev.purchasePrice || 0) }))}
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); reqSaveLine(); } }}
-                    className="w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-slate-500 text-slate-800" />
+                    className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-line-control text-ink-strong" />
                 </div>
 
-                <div className="w-24"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">P. Achat</label>
+                <div className="w-24"><label className="block text-[10px] font-bold text-ink-muted mb-0.5">P. Achat</label>
                   <input type="number" min={0} value={reqLineForm.purchasePrice}
                     onChange={e => setReqLineForm(prev => ({ ...prev, purchasePrice: parseFloat(e.target.value) || 0, amount: prev.quantity * (parseFloat(e.target.value) || 0) }))}
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); reqSaveLine(); } }}
-                    className="w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-slate-500 text-slate-800" />
+                    className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-line-control text-ink-strong" />
                 </div>
 
-                <div className="w-28"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Péremption</label>
+                <div className="w-28"><label className="block text-[10px] font-bold text-ink-muted mb-0.5">Péremption</label>
                   <input type="date" value={reqLineForm.expiryDate}
                     onChange={e => setReqLineForm(prev => ({ ...prev, expiryDate: e.target.value }))}
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); reqSaveLine(); } }}
-                    className="w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-slate-500 text-slate-800" />
+                    className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-line-control text-ink-strong" />
                 </div>
 
-                <div className="w-28"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Montant</label>
+                <div className="w-28"><label className="block text-[10px] font-bold text-ink-muted mb-0.5">Montant</label>
                   <input readOnly value={formatAr(reqLineForm.quantity * reqLineForm.purchasePrice)}
-                    className="w-full bg-slate-200 border border-slate-300 rounded px-1.5 py-0.5 text-xs text-right font-mono font-bold text-slate-700" />
+                    className="w-full bg-surface-active border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono font-bold text-ink" />
                 </div>
               </div>
 
               <div className="flex justify-end gap-1.5 mt-2">
-                <button onClick={reqLineNew} className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded shadow-sm text-slate-700 transition cursor-pointer text-xs font-medium">
-                  <Plus className="h-3.5 w-3.5 text-slate-500" /> Nouveau
+                <button onClick={reqLineNew} className="flex items-center gap-1 px-2.5 py-1 bg-surface hover:bg-surface-muted border border-line-strong rounded shadow-sm text-ink transition cursor-pointer text-xs font-medium">
+                  <Plus className="h-3.5 w-3.5 text-ink-muted" /> Nouveau
                 </button>
-                <button onClick={reqDeleteLine} disabled={!reqSelLineId} className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded shadow-sm text-slate-700 disabled:opacity-40 transition cursor-pointer text-xs font-medium">
-                  <Trash2 className="h-3.5 w-3.5 text-rose-600" /> Supprimer
+                <button onClick={reqDeleteLine} disabled={!reqSelLineId} className="flex items-center gap-1 px-2.5 py-1 bg-surface hover:bg-surface-muted border border-line-strong rounded shadow-sm text-ink disabled:opacity-40 transition cursor-pointer text-xs font-medium">
+                  <Trash2 className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" /> Supprimer
                 </button>
                 <button onClick={reqSaveLine} disabled={!reqLineForm.articleName} className={`flex items-center gap-1 px-2.5 py-1 text-white border rounded shadow-sm font-semibold disabled:opacity-40 transition cursor-pointer text-xs ${styles.save}`}>
                   <Save className="h-3.5 w-3.5" /> Enregistrer
@@ -377,10 +377,10 @@ export default function DemandeAchatForm({
             </div>
 
             {/* Lignes */}
-            <div className="bg-white mx-1.5 mb-1.5 border-t border-slate-300 overflow-x-auto rounded-b max-h-[260px] overflow-y-auto">
+            <div className="bg-surface mx-1.5 mb-1.5 border-t border-line-strong overflow-x-auto rounded-b max-h-[260px] overflow-y-auto">
               <table className="w-full text-[11px] text-left border-collapse">
-                <thead className="bg-slate-50 border-b border-slate-300 text-slate-600">
-                  <tr className="divide-x divide-slate-200">
+                <thead className="bg-surface-muted border-b border-line-strong text-ink-secondary">
+                  <tr className="divide-x divide-line">
                     <th className="p-1 font-normal w-24">Famille</th>
                     <th className="p-1 font-normal min-w-[140px]">Article</th>
                     <th className="p-1 font-normal text-right w-16">Qté</th>
@@ -391,16 +391,16 @@ export default function DemandeAchatForm({
                     <th className="p-1 font-normal w-6"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-150 font-mono">
+                <tbody className="divide-y divide-line font-mono">
                   {reqLines.map(l => {
                     const isSel = l.id === reqSelLineId;
                     return (
                       <tr
                         key={l.id}
                         onClick={() => { setReqSelLineId(l.id); setReqLineForm(l); setReqLineIsNew(false); setReqSearch(''); }}
-                        className={`cursor-pointer divide-x divide-slate-200 transition-colors ${isSel ? `${styles.row} text-white font-medium` : 'hover:bg-slate-50 text-slate-800'}`}
+                        className={`cursor-pointer divide-x divide-line transition-colors ${isSel ? `${styles.row} text-white font-medium` : 'hover:bg-surface-muted text-ink-strong'}`}
                       >
-                        <td className="p-1 font-sans"><span className={`px-1 rounded text-[10px] ${isSel ? 'bg-white/20 text-white font-medium' : 'bg-slate-200 text-slate-700'}`}>{familyLabel(l.family)}</span></td>
+                        <td className="p-1 font-sans"><span className={`px-1 rounded text-[10px] ${isSel ? 'bg-white/20 text-white font-medium' : 'bg-surface-active text-ink'}`}>{familyLabel(l.family)}</span></td>
                         <td className="p-1 font-sans">{l.articleName}</td>
                         <td className="p-1 text-right">{l.quantity}</td>
                         <td className="p-1 text-right">{formatNum(l.purchasePrice)}</td>
@@ -414,7 +414,7 @@ export default function DemandeAchatForm({
                               setReqLines(reqLines.filter(x => x.id !== l.id));
                               if (reqSelLineId === l.id) reqLineNew();
                             }}
-                            className={`cursor-pointer ${isSel ? 'text-white hover:text-red-200' : 'text-rose-600 hover:text-rose-800'}`}
+                            className={`cursor-pointer ${isSel ? 'text-white hover:text-red-200' : 'text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-300'}`}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -423,17 +423,17 @@ export default function DemandeAchatForm({
                     );
                   })}
                   {reqLines.length === 0 && (
-                    <tr><td colSpan={8} className="p-4 text-center text-slate-400 font-sans">Aucun article. Saisissez un article ci-dessus.</td></tr>
+                    <tr><td colSpan={8} className="p-4 text-center text-ink-faint font-sans">Aucun article. Saisissez un article ci-dessus.</td></tr>
                   )}
                 </tbody>
                 {reqLines.length > 0 && (
-                  <tfoot className="bg-emerald-50 border-t-2 border-emerald-300 text-slate-800 font-sans font-bold">
+                  <tfoot className="bg-emerald-50 dark:bg-emerald-500/8 border-t-2 border-emerald-300 dark:border-emerald-500/40 text-ink-strong font-sans font-bold">
                     <tr>
                       <td colSpan={2} className="p-1.5 text-right text-xs">TOTAUX :</td>
                       <td className="p-1.5 text-right font-mono text-sm">{totalQty}</td>
                       <td colSpan={2} className="p-1.5"></td>
-                      <td className="p-1.5 text-right font-mono text-lg text-emerald-700">{formatAr(totalAmount)}</td>
-                      <td colSpan={2} className="p-1.5 text-right text-xs text-emerald-700">{reqLines.length} ligne(s)</td>
+                      <td className="p-1.5 text-right font-mono text-lg text-emerald-700 dark:text-emerald-400">{formatAr(totalAmount)}</td>
+                      <td colSpan={2} className="p-1.5 text-right text-xs text-emerald-700 dark:text-emerald-400">{reqLines.length} ligne(s)</td>
                     </tr>
                   </tfoot>
                 )}
@@ -442,8 +442,8 @@ export default function DemandeAchatForm({
           </div>
         </div>
 
-        <div className="px-5 py-3 border-t bg-slate-50 flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 border border-slate-300 hover:bg-slate-100 text-slate-600 rounded-lg text-sm font-medium cursor-pointer">Annuler</button>
+        <div className="px-5 py-3 border-t bg-surface-muted flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 border border-line-strong hover:bg-surface-hover text-ink-secondary rounded-lg text-sm font-medium cursor-pointer">Annuler</button>
           <button
             onClick={handleSubmit}
             disabled={reqLines.length === 0}

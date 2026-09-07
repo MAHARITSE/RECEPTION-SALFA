@@ -15,6 +15,7 @@ import {
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText, RefreshCw } from 'lucide-react';
 import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket, printPharmaDeliveryClosingTicket } from '../utils/printTicket';
 import { printSalfaIndividualInvoice } from '../utils/printSalfaInvoice';
+import { getExamReceipts, type ExamReceipts } from '../utils/examReceipts';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
 import ConfirmModal from './ConfirmModal';
 import AlerteArticleIndisponible from './AlerteArticleIndisponible';
@@ -42,6 +43,16 @@ interface Props {
 // du rôle Responsable facturation (ModuleFacturationSocietes).
 type Tab = 'payment' | 'hospit' | 'bloc' | 'closing';
 type HbModal = 'none' | 'add_patient' | 'add_article' | 'edit_client';
+
+type ReceiptKind = 'all' | 'payment' | 'lab' | 'echo';
+interface ReceiptSnapshot {
+  invoice: Invoice;
+  patient?: Patient;
+  cashier?: User;
+  prescriber?: User;
+  exams: ExamReceipts;
+}
+
 
 export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecipient, onRefreshQueue }: Props) {
   // Familles « ne pas gérer en stock » : vente sans contrôle ni décompte de stock
@@ -90,6 +101,55 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   // Facturation : le détail de la facture s'ouvre en fenêtre modale (clic sur la file d'attente)
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const payingRef = useRef(false);
+  const [lastReceipt, setLastReceipt] = useState<ReceiptSnapshot | null>(null);
+
+  const prepareReceipts = (invoices: Invoice[], invoice: Invoice, exams = getExamReceipts(invoices, state.consultations, state.labRequests)): ReceiptSnapshot => {
+    const consultation = state.consultations.find(c => invoices.some(i => i.consultationId === c.id && (!i.patientId || i.patientId === c.patientId)));
+    const prescriber = state.users.find(u => u.id === (exams.prescriberId || consultation?.doctorId)) ||
+      (consultation?.doctorName ? { id: consultation.doctorId, name: consultation.doctorName, role: 'doctor' as const } : undefined);
+    return {
+      invoice, exams, prescriber,
+      patient: state.patients.find(p => p.id === invoice.patientId),
+      cashier: state.users.find(u => u.id === invoice.paidBy) || state.currentUser || undefined,
+    };
+  };
+
+  // Aucun encaissement ni changement d'état métier ici : cette fonction sert
+  // aussi aux duplicatas du dernier paiement et à ceux de la clôture du jour.
+  const printReceipts = (receipt: ReceiptSnapshot, kind: ReceiptKind = 'all') => {
+    const { invoice, patient, cashier, prescriber, exams } = receipt;
+    const ticketPatient = patient || {
+      ...EXT_CLIENT_PATIENT,
+      dossier: invoice.isExternal ? 'CLIENT EXTERNE' : '—',
+      lastName: invoice.clientName || (invoice.isExternal ? 'Client Externe' : 'Patient non renseigné'),
+    };
+    const date = new Date(invoice.paidAt || invoice.createdAt);
+    if (kind === 'all' || kind === 'payment') {
+      openThermalTicket(effectiveTicketSettings, invoice, patient, cashier);
+    }
+    if ((kind === 'all' || kind === 'lab') && exams.labLines.length) {
+      printLabRequestTicket(effectiveTicketSettings, ticketPatient, prescriber, date, exams.labLines);
+    }
+    if ((kind === 'all' || kind === 'echo') && exams.echoLines.length) {
+      printEchoRequestTicket(effectiveTicketSettings, ticketPatient, prescriber, date, exams.echoLines);
+    }
+    // La file partagée attend afterprint avant le document / l'exemplaire suivant.
+  };
+
+  const receiptButtons = (getReceipt: () => ReceiptSnapshot, hasLab: boolean, hasEcho: boolean) => (
+    <div className="flex flex-wrap gap-1.5">
+      {([['payment', 'Reçu', true], ['lab', 'Bon laboratoire', hasLab], ['echo', 'Bon échographie', hasEcho]] as const)
+        .filter(([, , visible]) => visible)
+        .map(([kind, label]) => (
+          <button key={kind} type="button" onClick={() => printReceipts(getReceipt(), kind)}
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-surface border border-line-strong rounded-lg text-xs font-semibold text-ink hover:bg-surface-hover hover:text-accent cursor-pointer"
+            title={`Réimprimer : ${label.toLowerCase()} (sans nouveau paiement)`}>
+            <Printer className="w-3.5 h-3.5" /> {label}
+          </button>
+        ))}
+    </div>
+  );
+
 
   // Rectification modal state
   const [rectificationModal, setRectificationModal] = useState<{
@@ -386,38 +446,9 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
           status: 'paid', paidAt, paidBy: state.currentUser?.id || '', createdAt: paidAt, isExternal: false, creditSociete: isSocieteCredit,
         };
 
-    // Collecter les examens labo / écho à imprimer sur le bon (seulement ceux demandés)
-    const paidLabInvoiceIds = new Set(serviceInvoices.filter(i => i.items.some(it => it.category === 'lab')).map(i => i.id));
-    const paidEchoInvoiceIds = new Set(serviceInvoices.filter(i => i.items.some(it => it.category === 'echo')).map(i => i.id));
-    const patientConsults = state.consultations.filter(c => c.patientId === selPatient.id);
-    const labToPrint: LabRequest[] = state.labRequests.filter(r =>
-      r.patientId === selPatient.id && (r.status === 'pending' || !r.status) && (
-        (r.invoiceId && paidLabInvoiceIds.has(r.invoiceId)) ||
-        unpaidConsults.some(c => c.id === r.consultationId)
-      )
-    );
-    // Échos en attente du patient (via facture écho ou consultation non soldée)
-    const allEchos: EchoRequest[] = patientConsults.flatMap(c =>
-      (c.echoRequests || []).filter(e =>
-        (e.status === 'pending' || !e.status) && (
-          (e.invoiceId && paidEchoInvoiceIds.has(e.invoiceId)) ||
-          unpaidConsults.some(uc => uc.id === c.id) ||
-          paidEchoInvoiceIds.size > 0 && !e.invoiceId
-        )
-      )
-    );
-
-    const doctorUser: User | undefined = (() => {
-      const refConsult = unpaidConsults[0] || patientConsults[patientConsults.length - 1];
-      const docId = refConsult?.doctorId;
-      const docName = refConsult?.doctorName;
-      if (docId) {
-        const u = state.users.find(x => x.id === docId);
-        if (u) return u;
-      }
-      if (docName) return { id: docId || 'DOC', name: docName, role: 'doctor' };
-      return state.currentUser || undefined;
-    })();
+    // Une facture peut rester imprimable sans invoiceId sur les demandes legacy,
+    // ou après réalisation de l'examen. Les lignes facturées sont la référence.
+    const receipt = prepareReceipts(serviceInvoices, printInvoice);
 
     setState(prev => {
       // Factures labo/écho en attente + anciennes factures pharmacie pending du patient
@@ -436,7 +467,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         ],
         // Marquer les lab requests comme payés
         labRequests: prev.labRequests.map(r =>
-          labToPrint.some(l => l.id === r.id) ? { ...r, status: 'paid' as const } : r
+          receipt.exams.pendingLabIds.has(r.id) ? { ...r, status: 'paid' as const } : r
         ),
         // Marquer les analyses ET les échos comme payés sur les consultations.
         // ⚠️ IMPORTANT : le laboratoire affiche les demandes via la copie rattachée à la
@@ -446,11 +477,11 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
           if (c.patientId !== selPatient.id) return c;
           return {
             ...c,
-            labRequests: c.labRequests.map(l =>
-              labToPrint.some(x => x.id === l.id) ? { ...l, status: 'paid' as const } : l
+            labRequests: (c.labRequests || []).map(l =>
+              receipt.exams.pendingLabIds.has(l.id) ? { ...l, status: 'paid' as const } : l
             ),
             echoRequests: (c.echoRequests || []).map(e =>
-              allEchos.some(x => x.id === e.id) ? { ...e, status: 'paid' as const } : e
+              receipt.exams.pendingEchoIds.has(e.id) ? { ...e, status: 'paid' as const } : e
             ),
           };
         }),
@@ -469,21 +500,8 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       return next;
     });
 
-    // 1) Ticket caisse — reçu de paiement (espèces) OU bon de prise en charge crédit société
-    openThermalTicket(effectiveTicketSettings, printInvoice, selPatient, state.currentUser || undefined, undefined, { creditSociete: isSocieteCredit });
-
-    // 2) Bon d'analyse — uniquement les examens demandés — après le ticket
-    if (labToPrint.length > 0 && doctorUser) {
-      setTimeout(() => {
-        printLabRequestTicket(effectiveTicketSettings, selPatient, doctorUser, new Date(), labToPrint);
-      }, 900);
-    }
-    // 3) Bon d'échographie — uniquement les examens demandés
-    if (allEchos.length > 0 && doctorUser) {
-      setTimeout(() => {
-        printEchoRequestTicket(effectiveTicketSettings, selPatient, doctorUser, new Date(), allEchos);
-      }, labToPrint.length > 0 ? 1800 : 900);
-    }
+    setLastReceipt(receipt);
+    printReceipts(receipt);
 
     setSelConsultId(null); setSelPatientId(null); setPaymentModalOpen(false);
     payingRef.current = false;
@@ -769,20 +787,10 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       addAuditLog(next, 'VENTE_EXTERNE', `Client Externe — ${formatAr(extTotal)}${parts ? ` (${parts})` : ''}${medicamentLines.length > 0 ? ' — ordonnance ajoutée à la file d\'attente pharmacie' : ''}`);
       return next;
     });
-    // 1) Reçu de paiement (ticket de caisse)
-    openThermalTicket(effectiveTicketSettings, inv, undefined, state.currentUser || undefined);
-    // 2) Bon d'analyse laboratoire — client externe (imprimé après le reçu)
-    if (newLabRequests.length > 0) {
-      setTimeout(() => {
-        printLabRequestTicket(effectiveTicketSettings, EXT_CLIENT_PATIENT, extDoctor, new Date(), newLabRequests);
-      }, 900);
-    }
-    // 3) Bon d'échographie — client externe
-    if (newEchoRequests.length > 0) {
-      setTimeout(() => {
-        printEchoRequestTicket(effectiveTicketSettings, EXT_CLIENT_PATIENT, extDoctor, new Date(), newEchoRequests);
-      }, newLabRequests.length > 0 ? 1800 : 900);
-    }
+    const receipt = prepareReceipts([inv], inv, getExamReceipts([inv], newConsultations, newLabRequests));
+    receipt.prescriber = extDoctor;
+    setLastReceipt(receipt);
+    printReceipts(receipt);
 
     setExtLines([]); setExtSearch('');
   };
@@ -1081,9 +1089,12 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const myTodayInvoices = todayInvoices.filter(inv => inv.paidBy === currentCashierId);
   const groupedMyTodayInvoices = myTodayInvoices.reduce((acc, inv) => {
     const timeStr = new Date(inv.paidAt || inv.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-    const key = `${inv.patientId || inv.clientName || 'ext'}_${timeStr}`;
+    // Un paiement distinct, notamment externe, ne doit pas être fusionné avec
+    // celui d'un autre client simplement parce qu'il a eu lieu à la même minute.
+    const key = inv.isExternal ? `ext_${inv.id}` : `${inv.patientId || inv.id}_${inv.paidAt || inv.createdAt}`;
     const existing = acc.find(g => g.key === key);
     if (existing) {
+      existing.invoices.push(inv);
       existing.mergedInvoice.patientCharge += inv.patientCharge;
       existing.mergedInvoice.totalAmount += inv.totalAmount;
       if (inv.items) {
@@ -1093,11 +1104,12 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       acc.push({
         key,
         timeStr,
+        invoices: [inv],
         mergedInvoice: { ...inv, items: inv.items ? [...inv.items] : [] }
       });
     }
     return acc;
-  }, [] as { key: string; timeStr: string; mergedInvoice: typeof myTodayInvoices[0] }[]);
+  }, [] as { key: string; timeStr: string; invoices: Invoice[]; mergedInvoice: typeof myTodayInvoices[0] }[]);
   
   const myTodayTotal = myTodayInvoices.reduce((s, inv) => s + inv.patientCharge, 0);
   const myTodayExtTotal = myTodayInvoices.filter(i => i.isExternal).reduce((s, i) => s + i.patientCharge, 0);
@@ -1229,34 +1241,38 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
     if (pharmaClosing) {
       const pc = pharmaClosing;
-      setTimeout(() => {
-        try {
-          // Ticket de clôture : sorties du jour + stock final (sans détail des livraisons)
-          printPharmaDeliveryClosingTicket(effectiveTicketSettings, pc, pc.stockSummary);
-        } catch (e) { console.error('Erreur impression compilation pharma', e); }
-      }, 900);
+      // La file d'impression attend la clôture caisse avant la compilation pharma.
+      printPharmaDeliveryClosingTicket(effectiveTicketSettings, pc, pc.stockSummary);
     }
   };
 
   return (
     <div className="space-y-4 flex flex-col">
-
+      {lastReceipt && (
+        <section aria-label="Dernier encaissement" className="bg-surface border border-line rounded-xl p-3 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="font-semibold text-sm text-ink-strong">Dernier encaissement — réimpression</p>
+            <p className="text-xs text-ink-muted">{lastReceipt.patient ? `${lastReceipt.patient.lastName} ${lastReceipt.patient.firstName}` : lastReceipt.invoice.clientName || 'Client externe'} · {formatAr(lastReceipt.invoice.patientCharge)} · Sans nouveau paiement</p>
+          </div>
+          {receiptButtons(() => lastReceipt, lastReceipt.exams.labLines.length > 0, lastReceipt.exams.echoLines.length > 0)}
+        </section>
+      )}
 
       {/* Tabs */}
-      <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-        <div className="flex items-center justify-between border-b overflow-x-auto bg-slate-50/50 px-2">
+      <div className="bg-surface rounded-xl shadow-sm border overflow-hidden">
+        <div className="flex items-center justify-between border-b overflow-x-auto bg-surface-muted/50 px-2">
           <div className="flex overflow-x-auto">
             {([['payment','📋 Facturation',pendingPatients.length],['hospit','🏨 Hospit.',hbRecords.filter(h=>h.type==='hospit').length],['bloc','🏥 Bloc',hbRecords.filter(h=>h.type==='bloc').length],['closing','🔒 Clôture',0]] as [Tab,string,number][]).map(([k,l,c]) => (
-              <button key={k} onClick={() => switchTab(k)} className={`flex items-center gap-1 px-4 py-3 text-xs font-medium border-b-2 cursor-pointer whitespace-nowrap ${tab===k?'border-amber-500 text-amber-600 bg-amber-50/50':'border-transparent text-slate-500 hover:text-slate-800'}`}>{l}{c > 0 ? ` (${c})` : ''}</button>
+              <button key={k} onClick={() => switchTab(k)} className={`flex items-center gap-1 px-4 py-3 text-xs font-medium border-b-2 cursor-pointer whitespace-nowrap ${tab===k?'border-amber-500 text-amber-600 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-500/4':'border-transparent text-ink-muted hover:text-ink-strong'}`}>{l}{c > 0 ? ` (${c})` : ''}</button>
             ))}
           </div>
           <div className="pr-2">
             <button
               onClick={() => { setTempPrinterSettings(printerSettings); setPrinterModalOpen(true); }}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg text-xs font-semibold text-slate-700 cursor-pointer shadow-xs transition"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-surface border border-line-strong hover:bg-surface-muted rounded-lg text-xs font-semibold text-ink cursor-pointer shadow-xs transition"
               title="Configurer l'imprimante et le format de ticket pour ce caissier"
             >
-              <Printer className="w-4 h-4 text-amber-600" />
+              <Printer className="w-4 h-4 text-amber-600 dark:text-amber-400" />
               <span>Imprimante : {printerSettings.printerName} ({printerSettings.paperWidth}mm)</span>
             </button>
           </div>
@@ -1269,20 +1285,20 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
 
               {/* FILE D'ATTENTE DE PAIEMENT — le clic ouvre la facture en popup modale */}
-              <div className="border rounded-lg overflow-hidden bg-white">
-                <div className="bg-amber-50 border-b border-amber-200 px-3 py-2 flex items-center justify-between gap-2">
-                  <span className="font-bold text-xs text-amber-800 flex items-center gap-1.5"><CreditCard className="w-4 h-4" /> File d'attente de paiement</span>
+              <div className="border rounded-lg overflow-hidden bg-surface">
+                <div className="bg-amber-50 dark:bg-amber-500/8 border-b border-amber-200 dark:border-amber-500/25 px-3 py-2 flex items-center justify-between gap-2">
+                  <span className="font-bold text-xs text-amber-800 dark:text-amber-300 flex items-center gap-1.5"><CreditCard className="w-4 h-4" /> File d'attente de paiement</span>
                   <span className="flex items-center gap-1.5">
                     <button
                       onClick={() => onRefreshQueue?.()}
                       title="Rechercher les nouvelles consultations validées par les médecins"
-                      className="p-1 rounded-lg text-amber-700 hover:bg-amber-200/70 cursor-pointer transition"
+                      className="p-1 rounded-lg text-amber-700 dark:text-amber-400 hover:bg-amber-200/70 dark:hover:bg-amber-500/18 cursor-pointer transition"
                     ><RefreshCw className="w-3.5 h-3.5" /></button>
                     <span className="px-2 py-0.5 rounded-full bg-amber-600 text-white text-[10px] font-bold">{pendingPatients.length}</span>
                   </span>
                 </div>
                 <div className="divide-y max-h-[500px] overflow-y-auto">
-                  {pendingPatients.length === 0 ? <div className="p-6 text-center text-slate-400 text-sm">Aucune facture</div>
+                  {pendingPatients.length === 0 ? <div className="p-6 text-center text-ink-faint text-sm">Aucune facture</div>
                     : pendingPatients.map(p => {
                       const unpaid = getConsults(p.id);
                       const amount = getPendingAmount(p);
@@ -1291,48 +1307,48 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                       const hasLab = svcInvs.some(i => i.items.some(it => it.category === 'lab'));
                       const hasEcho = svcInvs.some(i => i.items.some(it => it.category === 'echo'));
                       const hasConsult = svcInvs.some(i => i.items.some(it => it.category === 'consultation'));
-                      return <div key={p.id} className={`p-3 cursor-pointer hover:bg-amber-50/60 transition ${selPatientId === p.id && paymentModalOpen ? 'bg-amber-50 border-l-4 border-amber-500' : ''}`} onClick={() => openPaymentModal(p.id)} title="Ouvrir la facture en fenêtre modale">
+                      return <div key={p.id} className={`p-3 cursor-pointer hover:bg-amber-50/60 dark:hover:bg-amber-500/5 transition ${selPatientId === p.id && paymentModalOpen ? 'bg-amber-50 dark:bg-amber-500/8 border-l-4 border-amber-500' : ''}`} onClick={() => openPaymentModal(p.id)} title="Ouvrir la facture en fenêtre modale">
                         <div className="flex justify-between items-start gap-2">
-                          <div className="min-w-0"><div className="font-medium text-sm">{p.lastName} {p.firstName}</div><div className="text-xs text-slate-500">{unpaid[0]?.doctorName || 'Analyses laboratoire'}{p.company ? ` — ${p.company}` : ''}</div></div>
+                          <div className="min-w-0"><div className="font-medium text-sm">{p.lastName} {p.firstName}</div><div className="text-xs text-ink-muted">{unpaid[0]?.doctorName || 'Analyses laboratoire'}{p.company ? ` — ${p.company}` : ''}</div></div>
                           <div className="flex items-start gap-1 shrink-0">
-                            <div className={`font-mono font-bold text-sm ${p.clientType === 'societe' ? 'text-blue-700' : 'text-amber-700'}`}>{formatAr(amount)}</div>
+                            <div className={`font-mono font-bold text-sm ${p.clientType === 'societe' ? 'text-blue-700 dark:text-cyan-400' : 'text-amber-700 dark:text-amber-400'}`}>{formatAr(amount)}</div>
                             <button
                               onClick={(e) => { e.stopPropagation(); removePendingPatient(p.id); }}
-                              className="p-1 rounded-lg text-rose-500 hover:bg-rose-100 hover:text-rose-700 cursor-pointer transition"
+                              className="p-1 rounded-lg text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-500/15 hover:text-rose-700 dark:hover:text-rose-400 cursor-pointer transition"
                               title="Retirer de la file caisse — dossier patient conservé"
                             ><Trash2 className="w-4 h-4" /></button>
                           </div>
                         </div>
                         <div className="flex gap-1 mt-1 flex-wrap">
-                          {p.clientType === 'societe' && <span className="px-1 py-0.5 bg-blue-100 text-blue-700 text-[10px] rounded font-semibold" title="Pas d'espèces : la facture est portée au crédit de la société">🏢 Crédit Société</span>}
-                          {hasMeds && <span className="px-1 py-0.5 bg-cyan-100 text-cyan-700 text-[10px] rounded">Médicaments</span>}
-                          {hasLab && <span className="px-1 py-0.5 bg-teal-100 text-teal-700 text-[10px] rounded">Analyses</span>}
-                          {hasEcho && <span className="px-1 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] rounded">Écho</span>}
-                          {hasConsult && <span className="px-1 py-0.5 bg-sky-100 text-sky-700 text-[10px] rounded">Consultation</span>}
-                          {!hasMeds && !hasLab && !hasEcho && !hasConsult && <span className="px-1 py-0.5 bg-slate-100 text-slate-600 text-[10px] rounded">Passage (0 Ar)</span>}
+                          {p.clientType === 'societe' && <span className="px-1 py-0.5 bg-blue-100 dark:bg-cyan-500/15 text-blue-700 dark:text-cyan-400 text-[10px] rounded font-semibold" title="Pas d'espèces : la facture est portée au crédit de la société">🏢 Crédit Société</span>}
+                          {hasMeds && <span className="px-1 py-0.5 bg-cyan-100 dark:bg-cyan-500/15 text-cyan-700 dark:text-cyan-400 text-[10px] rounded">Médicaments</span>}
+                          {hasLab && <span className="px-1 py-0.5 bg-teal-100 dark:bg-teal-500/15 text-teal-700 dark:text-teal-400 text-[10px] rounded">Analyses</span>}
+                          {hasEcho && <span className="px-1 py-0.5 bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400 text-[10px] rounded">Écho</span>}
+                          {hasConsult && <span className="px-1 py-0.5 bg-sky-100 dark:bg-sky-500/15 text-sky-700 dark:text-sky-400 text-[10px] rounded">Consultation</span>}
+                          {!hasMeds && !hasLab && !hasEcho && !hasConsult && <span className="px-1 py-0.5 bg-surface-hover text-ink-secondary text-[10px] rounded">Passage (0 Ar)</span>}
                         </div>
                       </div>;
                     })}
                 </div>
-                {pendingPatients.length > 0 && <div className="px-3 py-1.5 bg-slate-50 border-t text-[10px] text-slate-500 text-center">👆 Cliquez sur un patient pour ouvrir sa facture</div>}
+                {pendingPatients.length > 0 && <div className="px-3 py-1.5 bg-surface-muted border-t text-[10px] text-ink-muted text-center">👆 Cliquez sur un patient pour ouvrir sa facture</div>}
               </div>
 
               {/* VENTE DIRECTE — CLIENT EXTERNE (affichée à la place du détail de facturation) */}
               <div className="lg:col-span-2 space-y-3">
-                <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg"><h3 className="font-bold text-purple-800"><ShoppingCart className="w-5 h-5 inline" /> Vente Directe — Client Externe</h3></div>
-                <div className="bg-[#f4f4f4] border border-slate-300 rounded">
-                  <div className="bg-slate-100 border-b border-slate-300 p-1.5 m-2 mb-0 rounded shadow-inner">
+                <div className="p-3 bg-purple-50 dark:bg-purple-500/8 border border-purple-200 dark:border-purple-500/25 rounded-lg"><h3 className="font-bold text-purple-800 dark:text-purple-300"><ShoppingCart className="w-5 h-5 inline" /> Vente Directe — Client Externe</h3></div>
+                <div className="bg-surface-muted border border-line-strong rounded">
+                  <div className="bg-surface-hover border-b border-line-strong p-1.5 m-2 mb-0 rounded shadow-inner">
                     <div className="flex flex-wrap items-end gap-1">
                       <div className="flex-1 min-w-[140px] relative">
-                        <label className="block text-[9px] text-slate-500">Article (↑↓ Entrée)</label>
-                        <input ref={extSearchRef} type="text" value={extLineForm.articleName && !extSearch ? extLineForm.articleName : extSearch} onChange={e => { setExtSearch(e.target.value); setExtSearchIdx(0); }} onKeyDown={extKeyDown} className="w-full bg-white border border-blue-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-blue-600" placeholder="🔍 Tapez..." />
-                        {extSearch.length >= 1 && extFiltered.length > 0 && <div className="absolute top-full left-0 right-0 bg-white border rounded-b shadow-xl z-30 max-h-36 overflow-y-auto">{extFiltered.map((a, idx) => {
+                        <label className="block text-[9px] text-ink-muted">Article (↑↓ Entrée)</label>
+                        <input ref={extSearchRef} type="text" value={extLineForm.articleName && !extSearch ? extLineForm.articleName : extSearch} onChange={e => { setExtSearch(e.target.value); setExtSearchIdx(0); }} onKeyDown={extKeyDown} className="w-full bg-surface border border-blue-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-accent" placeholder="🔍 Tapez..." />
+                        {extSearch.length >= 1 && extFiltered.length > 0 && <div className="absolute top-full left-0 right-0 bg-surface border rounded-b shadow-xl z-30 max-h-36 overflow-y-auto">{extFiltered.map((a, idx) => {
                           const manages = managesStock(a);
                           const isBlocked = !!a.saleBlocked;
                           const isOut = manages && a.stockPharmacie <= 0;
                           const isLow = manages && !isOut && a.stockPharmacie <= a.minStockPharmacie && !a.alertDisabledPharmacie;
                           const isKo = isBlocked || isOut;
-                          return (<div key={a.id} onClick={() => extSelectArticle(a.id)} title={isBlocked ? `Bloqué à la vente par la pharmacie${a.saleBlockReason ? ` — ${a.saleBlockReason}` : ''}` : isOut ? 'Rupture de stock — vente impossible' : undefined} className={`px-2 py-1 text-xs flex justify-between border-b ${isKo ? 'bg-red-50 text-red-700 cursor-not-allowed' : `cursor-pointer ${idx === extSearchIdx ? 'bg-blue-100' : 'hover:bg-blue-50'}`}`}>
+                          return (<div key={a.id} onClick={() => extSelectArticle(a.id)} title={isBlocked ? `Bloqué à la vente par la pharmacie${a.saleBlockReason ? ` — ${a.saleBlockReason}` : ''}` : isOut ? 'Rupture de stock — vente impossible' : undefined} className={`px-2 py-1 text-xs flex justify-between border-b ${isKo ? 'bg-red-50 dark:bg-red-500/8 text-red-700 dark:text-red-400 cursor-not-allowed' : `cursor-pointer ${idx === extSearchIdx ? 'bg-blue-100 dark:bg-cyan-500/15' : 'hover:bg-blue-50 dark:hover:bg-cyan-500/8'}`}`}>
                             <span className={isKo ? 'line-through decoration-red-400/60' : ''}>[{a.family}] {a.name}</span>
                             <span className="flex items-center gap-2">
                               {isBlocked
@@ -1340,34 +1356,34 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                                 : isOut
                                 ? <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-[9px] font-bold">🚨 RUPTURE — invendable</span>
                                 : manages
-                                  ? <span className={`font-mono text-[10px] ${isLow ? 'text-amber-600 font-bold' : 'text-slate-400'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>
+                                  ? <span className={`font-mono text-[10px] ${isLow ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-ink-faint'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>
                                   : isLabExamArticle(a)
-                                    ? <span className="px-1.5 py-0.5 bg-teal-100 text-teal-700 rounded text-[9px] font-bold" title="Analyse de laboratoire — un bon d'analyse sera imprimé après encaissement">BON LABO</span>
+                                    ? <span className="px-1.5 py-0.5 bg-teal-100 dark:bg-teal-500/15 text-teal-700 dark:text-teal-400 rounded text-[9px] font-bold" title="Analyse de laboratoire — un bon d'analyse sera imprimé après encaissement">BON LABO</span>
                                     : isEchoActArticle(a)
-                                      ? <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[9px] font-bold" title="Échographie — un bon d'échographie sera imprimé après encaissement">BON ÉCHO</span>
-                                      : <span className="font-mono text-[10px] text-slate-400" title="Famille non gérée en stock">stock: —</span>}
-                              <span className={`font-mono ${isKo ? 'text-red-400' : 'text-blue-600'}`}>{formatAr(getPrice(a, 'externe'))}</span>
+                                      ? <span className="px-1.5 py-0.5 bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400 rounded text-[9px] font-bold" title="Échographie — un bon d'échographie sera imprimé après encaissement">BON ÉCHO</span>
+                                      : <span className="font-mono text-[10px] text-ink-faint" title="Famille non gérée en stock">stock: —</span>}
+                              <span className={`font-mono ${isKo ? 'text-red-400' : 'text-blue-600 dark:text-cyan-400'}`}>{formatAr(getPrice(a, 'externe'))}</span>
                             </span>
                           </div>);
                         })}</div>}
                       </div>
-                      <div className="w-14"><label className="block text-[9px] text-slate-500">Qté</label><input type="number" min={1} value={extLineForm.quantity} onChange={e => setExtLineForm({...extLineForm, quantity: parseFloat(e.target.value)||1})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono outline-none" /></div>
-                      <div className="w-14"><label className="block text-[9px] text-slate-500">Rem%</label><input type="number" min={0} max={100} value={extLineForm.discount} onChange={e => setExtLineForm({...extLineForm, discount: parseFloat(e.target.value)||0})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono outline-none" /></div>
-                      <div className="w-20"><label className="block text-[9px] text-slate-500">P.U.</label><input readOnly value={formatAr(extLineForm.unitPrice)} className="w-full bg-slate-200 border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono" /></div>
-                      <div className="w-24"><label className="block text-[9px] text-slate-500">Montant</label><input readOnly value={formatAr(extLineAmt(extLineForm))} className="w-full bg-slate-200 border border-slate-300 rounded px-1 py-0.5 text-xs text-right font-mono font-bold" /></div>
-                      <div className="w-32"><label className="block text-[9px] text-slate-500" title="La date est conservée après chaque validation : plusieurs sorties possibles le même jour">Date sortie 📌</label><input type="date" value={extLineForm.dateSort || ''} onChange={e => setExtLineForm({...extLineForm, dateSort: e.target.value})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-white border border-slate-300 rounded px-1 py-0.5 text-xs font-mono outline-none focus:border-blue-500" title="Date de sortie — conservée après validation de la ligne" /></div>
+                      <div className="w-14"><label className="block text-[9px] text-ink-muted">Qté</label><input type="number" min={1} value={extLineForm.quantity} onChange={e => setExtLineForm({...extLineForm, quantity: parseFloat(e.target.value)||1})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-surface border border-line-strong rounded px-1 py-0.5 text-xs text-right font-mono outline-none" /></div>
+                      <div className="w-14"><label className="block text-[9px] text-ink-muted">Rem%</label><input type="number" min={0} max={100} value={extLineForm.discount} onChange={e => setExtLineForm({...extLineForm, discount: parseFloat(e.target.value)||0})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-surface border border-line-strong rounded px-1 py-0.5 text-xs text-right font-mono outline-none" /></div>
+                      <div className="w-20"><label className="block text-[9px] text-ink-muted">P.U.</label><input readOnly value={formatAr(extLineForm.unitPrice)} className="w-full bg-surface-active border border-line-strong rounded px-1 py-0.5 text-xs text-right font-mono" /></div>
+                      <div className="w-24"><label className="block text-[9px] text-ink-muted">Montant</label><input readOnly value={formatAr(extLineAmt(extLineForm))} className="w-full bg-surface-active border border-line-strong rounded px-1 py-0.5 text-xs text-right font-mono font-bold" /></div>
+                      <div className="w-32"><label className="block text-[9px] text-ink-muted" title="La date est conservée après chaque validation : plusieurs sorties possibles le même jour">Date sortie 📌</label><input type="date" value={extLineForm.dateSort || ''} onChange={e => setExtLineForm({...extLineForm, dateSort: e.target.value})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-surface border border-line-strong rounded px-1 py-0.5 text-xs font-mono outline-none focus:border-accent" title="Date de sortie — conservée après validation de la ligne" /></div>
                     </div>
                     <div className="flex justify-end gap-1 mt-1">
-                      <button onClick={() => { if (extSelLineId) { setExtLines(extLines.filter(l => l.id !== extSelLineId)); setExtSelLineId(null); }}} disabled={!extSelLineId} className="px-2 py-0.5 bg-white border border-slate-300 rounded text-[10px] disabled:opacity-40 cursor-pointer"><Trash2 className="h-3 w-3 text-rose-600 inline" /></button>
+                      <button onClick={() => { if (extSelLineId) { setExtLines(extLines.filter(l => l.id !== extSelLineId)); setExtSelLineId(null); }}} disabled={!extSelLineId} className="px-2 py-0.5 bg-surface border border-line-strong rounded text-[10px] disabled:opacity-40 cursor-pointer"><Trash2 className="h-3 w-3 text-rose-600 dark:text-rose-400 inline" /></button>
                       <button onClick={extSaveLine} disabled={!extLineForm.articleName} className="px-2 py-0.5 bg-sky-500 text-white border border-sky-600 rounded text-[10px] disabled:opacity-40 cursor-pointer"><Save className="h-3 w-3 inline" /> Enreg.</button>
                     </div>
                   </div>
-                  <div className="bg-white mx-2 mb-2 border-t border-slate-300 overflow-x-auto rounded-b">
-                    <table className="w-full text-[11px]"><thead className="bg-slate-50 border-b text-slate-600"><tr className="divide-x divide-slate-200"><th className="p-1 min-w-[130px]">Article</th><th className="p-1 text-right w-12">Qté</th><th className="p-1 text-center w-12">Rem%</th><th className="p-1 text-right w-20">P.U.</th><th className="p-1 text-right w-24">Montant</th><th className="p-1 w-28">Date sortie</th></tr></thead>
-                      <tbody className="divide-y font-mono">{extLines.map(l => (<tr key={l.id} onClick={() => { setExtSelLineId(l.id); setExtLineForm({...l}); setExtIsNew(false); }} className={`cursor-pointer divide-x divide-slate-200 ${l.id === extSelLineId ? 'bg-blue-500 text-white' : 'hover:bg-slate-50'}`}><td className="p-1 font-sans">{l.articleName}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 text-center">{l.discount > 0 ? `${l.discount}%` : '—'}</td><td className="p-1 text-right">{formatNum(l.unitPrice)}</td><td className="p-1 text-right font-bold">{formatNum(extLineAmt(l))}</td><td className="p-1 font-sans text-slate-500">{l.dateSort || '—'}</td></tr>))}
-                        {extLines.length === 0 && <tr><td colSpan={6} className="p-3 text-center text-slate-400 font-sans">Tapez un article</td></tr>}
+                  <div className="bg-surface mx-2 mb-2 border-t border-line-strong overflow-x-auto rounded-b">
+                    <table className="w-full text-[11px]"><thead className="bg-surface-muted border-b text-ink-secondary"><tr className="divide-x divide-line"><th className="p-1 min-w-[130px]">Article</th><th className="p-1 text-right w-12">Qté</th><th className="p-1 text-center w-12">Rem%</th><th className="p-1 text-right w-20">P.U.</th><th className="p-1 text-right w-24">Montant</th><th className="p-1 w-28">Date sortie</th></tr></thead>
+                      <tbody className="divide-y font-mono">{extLines.map(l => (<tr key={l.id} onClick={() => { setExtSelLineId(l.id); setExtLineForm({...l}); setExtIsNew(false); }} className={`cursor-pointer divide-x divide-line ${l.id === extSelLineId ? 'bg-blue-500 text-white' : 'hover:bg-surface-muted'}`}><td className="p-1 font-sans">{l.articleName}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 text-center">{l.discount > 0 ? `${l.discount}%` : '—'}</td><td className="p-1 text-right">{formatNum(l.unitPrice)}</td><td className="p-1 text-right font-bold">{formatNum(extLineAmt(l))}</td><td className="p-1 font-sans text-ink-muted">{l.dateSort || '—'}</td></tr>))}
+                        {extLines.length === 0 && <tr><td colSpan={6} className="p-3 text-center text-ink-faint font-sans">Tapez un article</td></tr>}
                       </tbody>
-                      {extLines.length > 0 && <tfoot className="bg-emerald-50 border-t-2 border-emerald-300"><tr><td colSpan={4} className="p-1 text-right font-bold font-sans">SOUS-TOTAL ARTICLES:</td><td colSpan={2} className="p-1 text-right font-mono font-bold text-lg">{formatAr(extArticlesTotal)}</td></tr></tfoot>}
+                      {extLines.length > 0 && <tfoot className="bg-emerald-50 dark:bg-emerald-500/8 border-t-2 border-emerald-300 dark:border-emerald-500/40"><tr><td colSpan={4} className="p-1 text-right font-bold font-sans">SOUS-TOTAL ARTICLES:</td><td colSpan={2} className="p-1 text-right font-mono font-bold text-lg">{formatAr(extArticlesTotal)}</td></tr></tfoot>}
                     </table>
                   </div>
                 </div>
@@ -1382,10 +1398,10 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
           {/* HOSPIT / BLOC */}
           {(tab === 'hospit' || tab === 'bloc') && (
             <div className="space-y-4">
-              <div className={`p-3 rounded-lg border flex justify-between items-center ${tab === 'hospit' ? 'bg-rose-50 border-rose-200' : 'bg-blue-50 border-blue-200'}`}>
+              <div className={`p-3 rounded-lg border flex justify-between items-center ${tab === 'hospit' ? 'bg-rose-50 dark:bg-rose-500/8 border-rose-200 dark:border-rose-500/25' : 'bg-blue-50 dark:bg-cyan-500/8 border-blue-200 dark:border-cyan-500/25'}`}>
                 <div>
-                  <h3 className="font-bold flex items-center gap-2">{tab === 'hospit' ? <><Building2 className="w-5 h-5 text-rose-600" /> Hospitalisation</> : <><Heart className="w-5 h-5 text-blue-600" /> Bloc Opératoire</>}</h3>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
+                  <h3 className="font-bold flex items-center gap-2">{tab === 'hospit' ? <><Building2 className="w-5 h-5 text-rose-600 dark:text-rose-400" /> Hospitalisation</> : <><Heart className="w-5 h-5 text-blue-600 dark:text-cyan-400" /> Bloc Opératoire</>}</h3>
+                  <p className="text-[11px] text-ink-muted mt-0.5">
                     Liste <strong>partagée</strong> entre la Caisse et la Pharmacie (caisse de garde).
                     Peu importe qui saisit (articles/bloc/hosp) — c'est le <strong>paiement</strong> qui fait foi.
                   </p>
@@ -1394,20 +1410,20 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
               </div>
 
               {/* Records list */}
-              {curHbRecords.length === 0 ? <div className="text-center py-8 text-slate-400">Aucun patient</div>
+              {curHbRecords.length === 0 ? <div className="text-center py-8 text-ink-faint">Aucun patient</div>
                 : curHbRecords.map(record => {
                   const totalFact = record.lines.reduce((s, l) => s + hbLineAmt(l), 0);
                   const totalPaid = record.payments.reduce((s, p) => s + p.amount, 0);
                   const reste = totalFact - totalPaid;
                   return (
-                    <div key={record.id} className="border rounded-lg overflow-hidden border-slate-200">
-                      <div className="p-3 flex justify-between items-center bg-slate-50">
+                    <div key={record.id} className="border rounded-lg overflow-hidden border-line">
+                      <div className="p-3 flex justify-between items-center bg-surface-muted">
                         <div>
                           <div className="font-bold text-sm flex items-center gap-2">{record.patientName}
-                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${record.clientType === 'societe' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>{record.clientType === 'societe' ? `🏢 ${record.company}${record.subCompany ? ` / ${record.subCompany}` : ''}` : '🏪 Comptoir'}</span>
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${record.clientType === 'societe' ? 'bg-blue-100 dark:bg-cyan-500/15 text-blue-700 dark:text-cyan-400' : 'bg-surface-hover text-ink-secondary'}`}>{record.clientType === 'societe' ? `🏢 ${record.company}${record.subCompany ? ` / ${record.subCompany}` : ''}` : '🏪 Comptoir'}</span>
                             <button onClick={() => { setHbSelRecordId(record.id); setHbEditClientType(record.clientType); setHbEditCompany(record.company || ''); setHbEditSubCompany(record.subCompany || ''); setHbEditNewCompany(''); setHbModal('edit_client'); }} className="text-blue-500 cursor-pointer" title="Modifier société"><Edit2 className="w-3 h-3" /></button>
                           </div>
-                          <div className="text-xs text-slate-500 mt-0.5">Facture: <strong>{formatAr(totalFact)}</strong> | Payé: <span className="text-green-600">{formatAr(totalPaid)}</span> | Reste: <span className="text-red-600 font-bold">{formatAr(reste)}</span></div>
+                          <div className="text-xs text-ink-muted mt-0.5">Facture: <strong>{formatAr(totalFact)}</strong> | Payé: <span className="text-green-600 dark:text-green-400">{formatAr(totalPaid)}</span> | Reste: <span className="text-red-600 dark:text-red-400 font-bold">{formatAr(reste)}</span></div>
                         </div>
                         <div className="flex gap-1 items-center flex-wrap" onClick={e => e.stopPropagation()}>
                           <button onClick={() => setHbHistoryId(record.id)} title="Historique des paiements" className="px-2 py-1 bg-slate-600 hover:bg-slate-700 text-white rounded text-xs cursor-pointer transition font-medium">📜 Historique{record.payments.length > 0 ? ` (${record.payments.length})` : ''}</button>
@@ -1437,8 +1453,8 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                   <button onClick={finalizeClosing} className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm cursor-pointer flex items-center gap-2"><Lock className="w-4 h-4" /> Clôturer & imprimer Z</button>
                 )}
               </div>
-              {existingClosing && <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm text-emerald-800 flex justify-between items-center"><span>✓ Caisse clôturée à {new Date(existingClosing.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} — {existingClosing.invoiceCount} facture(s)</span><button onClick={() => printSavedClosing(existingClosing)} className="underline font-semibold cursor-pointer">Réimprimer</button></div>}
-              {!existingClosing && <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">{closeableInvoices.length} facture(s) non clôturée(s) à intégrer au ticket Z.</div>}
+              {existingClosing && <div className="bg-emerald-50 dark:bg-emerald-500/8 border border-emerald-200 dark:border-emerald-500/25 rounded-lg p-3 text-sm text-emerald-800 dark:text-emerald-300 flex justify-between items-center"><span>✓ Caisse clôturée à {new Date(existingClosing.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} — {existingClosing.invoiceCount} facture(s)</span><button onClick={() => printSavedClosing(existingClosing)} className="underline font-semibold cursor-pointer">Réimprimer</button></div>}
+              {!existingClosing && <div className="bg-amber-50 dark:bg-amber-500/8 border border-amber-200 dark:border-amber-500/25 rounded-lg p-3 text-sm text-amber-800 dark:text-amber-300">{closeableInvoices.length} facture(s) non clôturée(s) à intégrer au ticket Z.</div>}
 
               {(() => {
                 const pendingPharma = (state.pharmaDeliveryItems || []).filter((i: any) => !i.closingId);
@@ -1446,18 +1462,18 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                 const totalAmt = pendingPharma.reduce((s: number, d: any) => s + d.quantity * d.unitPrice, 0);
                 if (pendingPharma.length === 0) {
                   return (
-                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm text-emerald-800 flex items-center gap-2">
+                    <div className="bg-emerald-50 dark:bg-emerald-500/8 border border-emerald-200 dark:border-emerald-500/25 rounded-lg p-3 text-sm text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
                       <span>✓ Aucune livraison pharmacie en attente — compilation à jour</span>
                     </div>
                   );
                 }
                 return (
-                  <div className="bg-purple-50 border-2 border-purple-200 rounded-xl p-4 text-sm">
+                  <div className="bg-purple-50 dark:bg-purple-500/8 border-2 border-purple-200 dark:border-purple-500/25 rounded-xl p-4 text-sm">
                     <div className="flex items-center justify-between gap-3 flex-wrap">
                       <div>
-                        <div className="font-bold text-purple-900 flex items-center gap-2">📦 Compilation des livraisons & Clôture de garde — {pendingPharma.length} livraison(s) en attente</div>
-                        <div className="text-xs text-purple-700 mt-1">Ce qui reste dans les livraisons constitue les livraisons effectuées avant la clôture de caisse / garde de la personne responsable de la pharmacie. La clôture de garde va créer ici la compilation définitive et l&apos;imprimer automatiquement.</div>
-                        <div className="text-xs font-mono text-purple-800 mt-1.5">{totalQty} articles · {formatAr(totalAmt)}</div>
+                        <div className="font-bold text-purple-900 dark:text-purple-300 flex items-center gap-2">📦 Compilation des livraisons & Clôture de garde — {pendingPharma.length} livraison(s) en attente</div>
+                        <div className="text-xs text-purple-700 dark:text-purple-400 mt-1">Ce qui reste dans les livraisons constitue les livraisons effectuées avant la clôture de caisse / garde de la personne responsable de la pharmacie. La clôture de garde va créer ici la compilation définitive et l&apos;imprimer automatiquement.</div>
+                        <div className="text-xs font-mono text-purple-800 dark:text-purple-300 mt-1.5">{totalQty} articles · {formatAr(totalAmt)}</div>
                       </div>
                       <div className="px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs font-bold">{pendingPharma.length} à compiler</div>
                     </div>
@@ -1466,18 +1482,18 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
               })()}
 
               {/* Section 1: Versements par famille */}
-              <div className="bg-white border rounded-lg p-4"><h4 className="font-bold text-sm mb-2">1. Versements par famille (ma caisse)</h4><div className="grid grid-cols-3 gap-2"><div className="p-3 bg-green-50 rounded flex justify-between"><span>Consultations</span><span className="font-mono font-bold">{formatAr(myTodayTotal - myTodayExtTotal)}</span></div><div className="p-3 bg-purple-50 rounded flex justify-between"><span>Ventes Ext.</span><span className="font-mono font-bold">{formatAr(myTodayExtTotal)}</span></div><div className="p-3 bg-rose-50 rounded flex justify-between"><span>Hospit/Bloc</span><span className="font-mono font-bold">{formatAr(myTodayPartialTotal)}</span></div></div></div>
+              <div className="bg-surface border rounded-lg p-4"><h4 className="font-bold text-sm mb-2">1. Versements par famille (ma caisse)</h4><div className="grid grid-cols-3 gap-2"><div className="p-3 bg-green-50 dark:bg-green-500/8 rounded flex justify-between"><span>Consultations</span><span className="font-mono font-bold">{formatAr(myTodayTotal - myTodayExtTotal)}</span></div><div className="p-3 bg-purple-50 dark:bg-purple-500/8 rounded flex justify-between"><span>Ventes Ext.</span><span className="font-mono font-bold">{formatAr(myTodayExtTotal)}</span></div><div className="p-3 bg-rose-50 dark:bg-rose-500/8 rounded flex justify-between"><span>Hospit/Bloc</span><span className="font-mono font-bold">{formatAr(myTodayPartialTotal)}</span></div></div></div>
 
               {/* Section 2: Hospitalisation & Bloc */}
               {hbRecords.filter(h => h.payments.some(p => p.paidByUserId === currentCashierId && new Date(p.date).toDateString() === new Date().toDateString())).length > 0 && (
-                <div className="bg-white border rounded-lg p-4"><h4 className="font-bold text-sm mb-2">2. Hospitalisation & Bloc (mes encaissements)</h4>
-                  <table className="w-full text-xs"><thead className="bg-slate-100"><tr><th className="p-2 text-left">Patient</th><th className="p-2">Type</th><th className="p-2 text-right">Facture</th><th className="p-2 text-right">Reçu</th><th className="p-2 text-right">Reste</th><th className="p-2">Caissier</th></tr></thead>
+                <div className="bg-surface border rounded-lg p-4"><h4 className="font-bold text-sm mb-2">2. Hospitalisation & Bloc (mes encaissements)</h4>
+                  <table className="w-full text-xs"><thead className="bg-surface-hover"><tr><th className="p-2 text-left">Patient</th><th className="p-2">Type</th><th className="p-2 text-right">Facture</th><th className="p-2 text-right">Reçu</th><th className="p-2 text-right">Reste</th><th className="p-2">Caissier</th></tr></thead>
                     <tbody>
                       {hbRecords.filter(h => h.payments.some(p => p.paidByUserId === currentCashierId && new Date(p.date).toDateString() === new Date().toDateString())).map(h => {
                         const tf = h.lines.reduce((s,l) => s+hbLineAmt(l),0);
                         const tp = h.payments.filter(p => p.paidByUserId === currentCashierId && new Date(p.date).toDateString() === new Date().toDateString()).reduce((s,p) => s+p.amount,0);
                         const tpAll = h.payments.reduce((s,p) => s+p.amount,0);
-                        return (<tr key={h.id} className="border-b"><td className="p-2">{h.patientName}</td><td className="p-2 text-center"><span className={`px-1 py-0.5 rounded text-[10px] font-bold ${h.type==='hospit'?'bg-rose-100 text-rose-700':'bg-blue-100 text-blue-700'}`}>{h.type==='hospit'?'Hosp.':'Bloc'}</span></td><td className="p-2 text-right font-mono">{formatAr(tf)}</td><td className="p-2 text-right font-mono text-green-600">{formatAr(tp)}</td><td className="p-2 text-right font-mono text-red-600">{formatAr(tf-tpAll)}</td><td className="p-2">{h.payments.filter(p => p.paidByUserId === currentCashierId).map(p => p.paidBy).filter((v,i,a) => a.indexOf(v)===i).join(', ')}</td></tr>);
+                        return (<tr key={h.id} className="border-b"><td className="p-2">{h.patientName}</td><td className="p-2 text-center"><span className={`px-1 py-0.5 rounded text-[10px] font-bold ${h.type==='hospit'?'bg-rose-100 dark:bg-rose-500/15 text-rose-700 dark:text-rose-400':'bg-blue-100 dark:bg-cyan-500/15 text-blue-700 dark:text-cyan-400'}`}>{h.type==='hospit'?'Hosp.':'Bloc'}</span></td><td className="p-2 text-right font-mono">{formatAr(tf)}</td><td className="p-2 text-right font-mono text-green-600 dark:text-green-400">{formatAr(tp)}</td><td className="p-2 text-right font-mono text-red-600 dark:text-red-400">{formatAr(tf-tpAll)}</td><td className="p-2">{h.payments.filter(p => p.paidByUserId === currentCashierId).map(p => p.paidBy).filter((v,i,a) => a.indexOf(v)===i).join(', ')}</td></tr>);
                       })}
                     </tbody>
                   </table>
@@ -1485,11 +1501,11 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
               )}
 
               {/* Section 3: Total Général */}
-              <div className="bg-gradient-to-r from-emerald-50 to-green-50 border-2 border-emerald-300 rounded-lg p-6 text-center"><div className="text-sm text-slate-600">3. TOTAL GÉNÉRAL (ma caisse)</div><div className="text-4xl font-bold font-mono text-emerald-700">{formatAr(myGrandTotal)}</div></div>
+              <div className="bg-gradient-to-r from-emerald-50 dark:from-emerald-950/60 to-green-50 dark:to-green-950/60 border-2 border-emerald-300 dark:border-emerald-500/40 rounded-lg p-6 text-center"><div className="text-sm text-ink-secondary">3. TOTAL GÉNÉRAL (ma caisse)</div><div className="text-4xl font-bold font-mono text-emerald-700 dark:text-emerald-400">{formatAr(myGrandTotal)}</div></div>
 
               {/* Section 4: Liste clients */}
-              <div className="bg-white border rounded-lg p-4"><h4 className="font-bold text-sm mb-2">4. Liste clients (mes encaissements)</h4>
-                <table className="w-full text-xs"><thead className="bg-slate-100"><tr><th className="p-2 text-left">Heure</th><th className="p-2 text-left">Client</th><th className="p-2">Type</th><th className="p-2 text-right">Montant</th><th className="p-2 text-center">Facture A5</th></tr></thead><tbody>
+              <div className="bg-surface border rounded-lg p-4"><h4 className="font-bold text-sm mb-2">4. Liste clients (mes encaissements)</h4>
+                <table className="w-full text-xs"><thead className="bg-surface-hover"><tr><th className="p-2 text-left">Heure</th><th className="p-2 text-left">Client</th><th className="p-2">Type</th><th className="p-2 text-right">Montant</th><th className="p-2 text-center">Reçus / Bons / Facture A5</th></tr></thead><tbody>
                   {groupedMyTodayInvoices.map(group => {
                     const inv = group.mergedInvoice;
                     const pat = inv.patientId ? state.patients.find(p => p.id === inv.patientId) : null;
@@ -1498,9 +1514,10 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                       <tr key={group.key} className="border-b">
                         <td className="p-2 font-mono">{group.timeStr}</td>
                         <td className="p-2">{pat ? `${pat.lastName} ${pat.firstName}` : inv.clientName || 'Ext.'}</td>
-                        <td className="p-2 text-center"><span className={`px-1 py-0.5 rounded text-[10px] font-bold ${inv.isExternal ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>{inv.isExternal ? 'Externe' : 'Consult.'}</span></td>
+                        <td className="p-2 text-center"><span className={`px-1 py-0.5 rounded text-[10px] font-bold ${inv.isExternal ? 'bg-purple-100 dark:bg-purple-500/15 text-purple-700 dark:text-purple-400' : 'bg-green-100 dark:bg-green-500/15 text-green-700 dark:text-green-400'}`}>{inv.isExternal ? 'Externe' : 'Consult.'}</span></td>
                         <td className="p-2 text-right font-mono font-bold">{formatAr(inv.patientCharge)}</td>
-                        <td className="p-2 text-center">
+                        <td className="p-2 text-center space-y-1.5">
+                          {receiptButtons(() => prepareReceipts(group.invoices, inv), inv.items.some(item => item.category === 'lab'), inv.items.some(item => item.category === 'echo'))}
                           <button
                             onClick={() => printSalfaIndividualInvoice(effectiveTicketSettings, inv, pat || undefined, comp)}
                             className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px] font-bold cursor-pointer inline-flex items-center gap-1"
@@ -1512,8 +1529,8 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                       </tr>
                     );
                   })}
-                  {hbRecords.filter(h => h.payments.some(p => p.paidByUserId === currentCashierId && new Date(p.date).toDateString() === new Date().toDateString())).map(h => { const tp = h.payments.filter(p => p.paidByUserId === currentCashierId && new Date(p.date).toDateString() === new Date().toDateString()).reduce((s,p) => s+p.amount,0); return (<tr key={h.id} className="border-b"><td className="p-2 font-mono">{h.payments.filter(p => p.paidByUserId === currentCashierId && new Date(p.date).toDateString() === new Date().toDateString()).map(p => new Date(p.date).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})).join(', ')}</td><td className="p-2">{h.patientName}</td><td className="p-2 text-center"><span className={`px-1 py-0.5 rounded text-[10px] font-bold ${h.type==='hospit'?'bg-rose-100 text-rose-700':'bg-blue-100 text-blue-700'}`}>{h.type==='hospit'?'Hosp.':'Bloc'}</span></td><td className="p-2 text-right font-mono font-bold">{formatAr(tp)}</td><td className="p-2 text-center text-slate-400">—</td></tr>); })}
-                </tbody><tfoot className="bg-emerald-50"><tr><td colSpan={3} className="p-2 text-right font-bold">TOTAL:</td><td className="p-2 text-right font-mono font-bold text-lg">{formatAr(myGrandTotal)}</td><td></td></tr></tfoot></table>
+                  {hbRecords.filter(h => h.payments.some(p => p.paidByUserId === currentCashierId && new Date(p.date).toDateString() === new Date().toDateString())).map(h => { const tp = h.payments.filter(p => p.paidByUserId === currentCashierId && new Date(p.date).toDateString() === new Date().toDateString()).reduce((s,p) => s+p.amount,0); return (<tr key={h.id} className="border-b"><td className="p-2 font-mono">{h.payments.filter(p => p.paidByUserId === currentCashierId && new Date(p.date).toDateString() === new Date().toDateString()).map(p => new Date(p.date).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})).join(', ')}</td><td className="p-2">{h.patientName}</td><td className="p-2 text-center"><span className={`px-1 py-0.5 rounded text-[10px] font-bold ${h.type==='hospit'?'bg-rose-100 dark:bg-rose-500/15 text-rose-700 dark:text-rose-400':'bg-blue-100 dark:bg-cyan-500/15 text-blue-700 dark:text-cyan-400'}`}>{h.type==='hospit'?'Hosp.':'Bloc'}</span></td><td className="p-2 text-right font-mono font-bold">{formatAr(tp)}</td><td className="p-2 text-center text-ink-faint">—</td></tr>); })}
+                </tbody><tfoot className="bg-emerald-50 dark:bg-emerald-500/8"><tr><td colSpan={3} className="p-2 text-right font-bold">TOTAL:</td><td className="p-2 text-right font-mono font-bold text-lg">{formatAr(myGrandTotal)}</td><td></td></tr></tfoot></table>
               </div>
             </div>
           )}
@@ -1523,49 +1540,49 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       {/* === AJOUTER PATIENT — fenêtre modale centrée === */}
       {hbModal === 'add_patient' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" onClick={() => setHbModal('none')}>
-          <div className="w-full max-w-2xl max-h-[calc(100vh-2rem)] overflow-y-auto bg-white rounded-xl shadow-2xl border border-slate-300" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-2xl max-h-[calc(100vh-2rem)] overflow-y-auto bg-surface rounded-xl shadow-2xl border border-line-strong" onClick={(e) => e.stopPropagation()}>
           <div className={`px-4 py-3 flex justify-between items-center text-white sticky top-0 z-10 ${tab === 'hospit' ? 'bg-rose-600' : 'bg-blue-600'}`}><span className="font-bold"><UserPlus className="w-5 h-5 inline" /> Ajouter Patient — {tab === 'hospit' ? 'Hospitalisation' : 'Bloc'}</span><button onClick={() => setHbModal('none')} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button></div>
           <div className="p-4 space-y-3">
             {/* Search existing */}
             <div><label className="block text-sm font-medium mb-1">Rechercher patient existant</label>
-              <input type="text" value={hbPatSearch} onChange={e => setHbPatSearch(e.target.value)} className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" placeholder="🔍 Nom, prénom ou dossier..." autoFocus />
-              {hbPatFiltered.length > 0 && <div className="border rounded-lg mt-1 max-h-40 overflow-y-auto">{hbPatFiltered.map(p => (<div key={p.id} onClick={() => hbSelectPatient(p.id)} className="p-2 hover:bg-blue-50 cursor-pointer text-sm flex justify-between border-b"><span className="font-medium">{p.lastName} {p.firstName}</span><span className="text-slate-400 text-xs">{p.dossier} | {p.clientType === 'societe' ? `🏢 ${p.company}` : '🏪 Comptoir'}</span></div>))}</div>}
+              <input type="text" value={hbPatSearch} onChange={e => setHbPatSearch(e.target.value)} className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-accent/25" placeholder="🔍 Nom, prénom ou dossier..." autoFocus />
+              {hbPatFiltered.length > 0 && <div className="border rounded-lg mt-1 max-h-40 overflow-y-auto">{hbPatFiltered.map(p => (<div key={p.id} onClick={() => hbSelectPatient(p.id)} className="p-2 hover:bg-blue-50 dark:hover:bg-cyan-500/8 cursor-pointer text-sm flex justify-between border-b"><span className="font-medium">{p.lastName} {p.firstName}</span><span className="text-ink-faint text-xs">{p.dossier} | {p.clientType === 'societe' ? `🏢 ${p.company}` : '🏪 Comptoir'}</span></div>))}</div>}
             </div>
             <div className="border-t pt-3">
               <h4 className="font-bold text-sm mb-2">Ou créer un nouveau patient :</h4>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="col-span-2">
-                  <label className="block font-bold text-slate-700 mb-0.5">N° Dossier *</label>
-                  <input type="text" value={hbNewPat.dossier} onChange={e => setHbNewPat({...hbNewPat, dossier: e.target.value.toUpperCase()})} className="w-full px-2 py-1.5 border rounded outline-none uppercase font-mono font-bold bg-white" placeholder="SAISIE MANUELLE — MAJUSCULES" />
-                  <span className="text-[10px] text-slate-500">Clé unique, jamais incrémentée automatiquement.</span>
+                  <label className="block font-bold text-ink mb-0.5">N° Dossier *</label>
+                  <input type="text" value={hbNewPat.dossier} onChange={e => setHbNewPat({...hbNewPat, dossier: e.target.value.toUpperCase()})} className="w-full px-2 py-1.5 border rounded outline-none uppercase font-mono font-bold bg-surface" placeholder="SAISIE MANUELLE — MAJUSCULES" />
+                  <span className="text-[10px] text-ink-muted">Clé unique, jamais incrémentée automatiquement.</span>
                 </div>
                 <div className="col-span-2 flex items-center gap-3 mb-1">
-                  <span className="font-bold text-slate-700">Sexe</span>
-                  <div className="flex border border-slate-400 rounded overflow-hidden">
-                    <button type="button" onClick={() => setHbNewPat({...hbNewPat, gender: 'M'})} className={`px-3 py-1 font-bold cursor-pointer ${hbNewPat.gender === 'M' ? 'bg-blue-500 text-white' : 'bg-white'}`}>M</button>
-                    <button type="button" onClick={() => setHbNewPat({...hbNewPat, gender: 'F'})} className={`px-3 py-1 font-bold border-l border-slate-400 cursor-pointer ${hbNewPat.gender === 'F' ? 'bg-pink-500 text-white' : 'bg-white'}`}>F</button>
+                  <span className="font-bold text-ink">Sexe</span>
+                  <div className="flex border border-line-control rounded overflow-hidden">
+                    <button type="button" onClick={() => setHbNewPat({...hbNewPat, gender: 'M'})} className={`px-3 py-1 font-bold cursor-pointer ${hbNewPat.gender === 'M' ? 'bg-blue-500 text-white' : 'bg-surface'}`}>M</button>
+                    <button type="button" onClick={() => setHbNewPat({...hbNewPat, gender: 'F'})} className={`px-3 py-1 font-bold border-l border-line-control cursor-pointer ${hbNewPat.gender === 'F' ? 'bg-pink-500 text-white' : 'bg-surface'}`}>F</button>
                   </div>
                 </div>
-                <div><label className="block font-bold text-slate-700 mb-0.5">Nom *</label><input type="text" value={hbNewPat.lastName} onChange={e => setHbNewPat({...hbNewPat, lastName: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-white" /></div>
-                <div><label className="block font-bold text-slate-700 mb-0.5">Prénom *</label><input type="text" value={hbNewPat.firstName} onChange={e => setHbNewPat({...hbNewPat, firstName: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-white" /></div>
-                <div><label className="block font-bold text-slate-700 mb-0.5">Date Naissance</label><input type="date" value={hbNewPat.dateOfBirth} onChange={e => setHbNewPat({...hbNewPat, dateOfBirth: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none bg-white" /></div>
-                <div><label className="block font-bold text-slate-700 mb-0.5">Age</label><input type="text" readOnly value={hbNewPat.dateOfBirth ? calculateAge(hbNewPat.dateOfBirth) : '—'} className="w-full px-2 py-1.5 border rounded bg-slate-100" /></div>
-                <div><label className="block font-bold text-slate-700 mb-0.5">Matricule</label><input type="text" value={hbNewPat.matricule} onChange={e => setHbNewPat({...hbNewPat, matricule: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none font-mono bg-white" placeholder="M-0000" /></div>
-                <div><label className="block font-bold text-slate-700 mb-0.5">Téléphone</label><PhoneInput value={hbNewPat.contact} onChange={v => setHbNewPat({...hbNewPat, contact: v})} className="w-full px-2 py-1.5 border rounded outline-none font-mono bg-white" placeholder="038 34 092 61" /></div>
-                <div className="col-span-2"><label className="block font-bold text-slate-700 mb-0.5">Adresse</label><input type="text" value={hbNewPat.address} onChange={e => setHbNewPat({...hbNewPat, address: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-white" /></div>
-                <div><label className="block font-bold text-slate-700 mb-0.5">N° Sécurité Sociale</label><input type="text" value={hbNewPat.ssn} onChange={e => setHbNewPat({...hbNewPat, ssn: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none bg-white" /></div>
-                <div><label className="block font-bold text-slate-700 mb-0.5">Société</label><input type="text" value={hbNewPat.insureName} onChange={e => setHbNewPat({...hbNewPat, insureName: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-white" /></div>
-                <div><label className="block font-bold text-slate-700 mb-0.5">Type Client</label><select value={hbNewPat.clientType} onChange={e => setHbNewPat({...hbNewPat, clientType: e.target.value as ClientType})} className="w-full px-2 py-1.5 border rounded outline-none cursor-pointer bg-white"><option value="comptoir">Client Comptoir</option><option value="societe">Client Société</option></select></div>
-                {hbNewPat.clientType === 'societe' && <div><label className="block font-bold text-slate-700 mb-0.5">Société</label><select value={hbNewPat.company} onChange={e => setHbNewPat({...hbNewPat, company: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none cursor-pointer bg-white"><option value="">— Sélectionner —</option>{state.companies.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}</select></div>}
+                <div><label className="block font-bold text-ink mb-0.5">Nom *</label><input type="text" value={hbNewPat.lastName} onChange={e => setHbNewPat({...hbNewPat, lastName: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" /></div>
+                <div><label className="block font-bold text-ink mb-0.5">Prénom *</label><input type="text" value={hbNewPat.firstName} onChange={e => setHbNewPat({...hbNewPat, firstName: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" /></div>
+                <div><label className="block font-bold text-ink mb-0.5">Date Naissance</label><input type="date" value={hbNewPat.dateOfBirth} onChange={e => setHbNewPat({...hbNewPat, dateOfBirth: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none bg-surface" /></div>
+                <div><label className="block font-bold text-ink mb-0.5">Age</label><input type="text" readOnly value={hbNewPat.dateOfBirth ? calculateAge(hbNewPat.dateOfBirth) : '—'} className="w-full px-2 py-1.5 border rounded bg-surface-hover" /></div>
+                <div><label className="block font-bold text-ink mb-0.5">Matricule</label><input type="text" value={hbNewPat.matricule} onChange={e => setHbNewPat({...hbNewPat, matricule: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none font-mono bg-surface" placeholder="M-0000" /></div>
+                <div><label className="block font-bold text-ink mb-0.5">Téléphone</label><PhoneInput value={hbNewPat.contact} onChange={v => setHbNewPat({...hbNewPat, contact: v})} className="w-full px-2 py-1.5 border rounded outline-none font-mono bg-surface" placeholder="038 34 092 61" /></div>
+                <div className="col-span-2"><label className="block font-bold text-ink mb-0.5">Adresse</label><input type="text" value={hbNewPat.address} onChange={e => setHbNewPat({...hbNewPat, address: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" /></div>
+                <div><label className="block font-bold text-ink mb-0.5">N° Sécurité Sociale</label><input type="text" value={hbNewPat.ssn} onChange={e => setHbNewPat({...hbNewPat, ssn: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none bg-surface" /></div>
+                <div><label className="block font-bold text-ink mb-0.5">Société</label><input type="text" value={hbNewPat.insureName} onChange={e => setHbNewPat({...hbNewPat, insureName: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" /></div>
+                <div><label className="block font-bold text-ink mb-0.5">Type Client</label><select value={hbNewPat.clientType} onChange={e => setHbNewPat({...hbNewPat, clientType: e.target.value as ClientType})} className="w-full px-2 py-1.5 border rounded outline-none cursor-pointer bg-surface"><option value="comptoir">Client Comptoir</option><option value="societe">Client Société</option></select></div>
+                {hbNewPat.clientType === 'societe' && <div><label className="block font-bold text-ink mb-0.5">Société</label><select value={hbNewPat.company} onChange={e => setHbNewPat({...hbNewPat, company: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none cursor-pointer bg-surface"><option value="">— Sélectionner —</option>{state.companies.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}</select></div>}
                 {hbNewPat.clientType === 'societe' && (
                   <div className="col-span-2 space-y-2">
                     <div className="flex gap-2">
-                      <input type="text" value={hbNewCompanyName} onChange={e => setHbNewCompanyName(e.target.value.toUpperCase())} className="flex-1 px-2 py-1.5 border rounded outline-none uppercase bg-white" placeholder="Nouvelle société partenaire…" />
+                      <input type="text" value={hbNewCompanyName} onChange={e => setHbNewCompanyName(e.target.value.toUpperCase())} className="flex-1 px-2 py-1.5 border rounded outline-none uppercase bg-surface" placeholder="Nouvelle société partenaire…" />
                       <button type="button" onClick={() => { const name = addPartnerCompany(hbNewCompanyName); if (name) { setHbNewPat({...hbNewPat, company: name}); setHbNewCompanyName(''); } }} className="px-2 py-1.5 bg-indigo-600 text-white rounded text-xs font-bold cursor-pointer">+ Société</button>
                     </div>
                     <div>
-                      <label className="block font-bold text-slate-700 mb-0.5">Sous-société</label>
-                      <input type="text" value={hbNewPat.subCompany} onChange={e => setHbNewPat({...hbNewPat, subCompany: e.target.value.toUpperCase()})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-white" placeholder="Direction, Service..." />
+                      <label className="block font-bold text-ink mb-0.5">Sous-société</label>
+                      <input type="text" value={hbNewPat.subCompany} onChange={e => setHbNewPat({...hbNewPat, subCompany: e.target.value.toUpperCase()})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" placeholder="Direction, Service..." />
                     </div>
                   </div>
                 )}
@@ -1583,26 +1600,26 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         const recTotal = rec ? rec.lines.reduce((s, l) => s + hbLineAmt(l), 0) : 0;
         return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" onClick={() => { if (rec && blockIfUnsavedDraftLine(hbArtForm, rec.lines, { entityLabel: 'l\'article' })) return; setHbModal('none'); }}>
-          <div className="w-full max-w-5xl max-h-[calc(100vh-2rem)] overflow-y-auto bg-white rounded-xl shadow-2xl border border-slate-300" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-5xl max-h-[calc(100vh-2rem)] overflow-y-auto bg-surface rounded-xl shadow-2xl border border-line-strong" onClick={(e) => e.stopPropagation()}>
             <div className="bg-emerald-600 px-4 py-3 flex justify-between items-center text-white sticky top-0 z-10">
               <span className="font-bold flex items-center gap-1">💊 Prescription (Saisie Sage) — {rec?.patientName} ({rec?.type === 'hospit' ? 'Hospitalisation' : 'Bloc'})</span>
               <button onClick={() => { if (rec && blockIfUnsavedDraftLine(hbArtForm, rec.lines, { entityLabel: 'l\'article' })) return; setHbModal('none'); }} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button>
             </div>
             <div className="p-4 space-y-3">
-              <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2">
-                <div className="text-xs font-bold text-indigo-900">🏢 Changement de société</div>
+              <div className="rounded-lg border border-indigo-200 dark:border-indigo-500/25 bg-indigo-50 dark:bg-indigo-500/8 p-3 space-y-2">
+                <div className="text-xs font-bold text-indigo-900 dark:text-indigo-300">🏢 Changement de société</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                   <div>
-                    <label className="block font-bold text-slate-700 mb-0.5">Type</label>
-                    <select value={hbEditClientType} onChange={e => setHbEditClientType(e.target.value as ClientType)} className="w-full px-2 py-1.5 border rounded bg-white cursor-pointer">
+                    <label className="block font-bold text-ink mb-0.5">Type</label>
+                    <select value={hbEditClientType} onChange={e => setHbEditClientType(e.target.value as ClientType)} className="w-full px-2 py-1.5 border rounded bg-surface cursor-pointer">
                       <option value="comptoir">Client Comptoir</option>
                       <option value="societe">Client Société</option>
                     </select>
                   </div>
                   {hbEditClientType === 'societe' && (
                     <div>
-                      <label className="block font-bold text-slate-700 mb-0.5">Société</label>
-                      <select value={hbEditCompany} onChange={e => setHbEditCompany(e.target.value)} className="w-full px-2 py-1.5 border rounded bg-white cursor-pointer">
+                      <label className="block font-bold text-ink mb-0.5">Société</label>
+                      <select value={hbEditCompany} onChange={e => setHbEditCompany(e.target.value)} className="w-full px-2 py-1.5 border rounded bg-surface cursor-pointer">
                         <option value="">—</option>
                         {state.companies.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
                       </select>
@@ -1612,23 +1629,23 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                 {hbEditClientType === 'societe' && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                     <div className="flex gap-1">
-                      <input type="text" value={hbEditNewCompany} onChange={e => setHbEditNewCompany(e.target.value.toUpperCase())} className="flex-1 px-2 py-1.5 border rounded uppercase bg-white" placeholder="Ajouter une société…" />
+                      <input type="text" value={hbEditNewCompany} onChange={e => setHbEditNewCompany(e.target.value.toUpperCase())} className="flex-1 px-2 py-1.5 border rounded uppercase bg-surface" placeholder="Ajouter une société…" />
                       <button type="button" onClick={() => { const name = addPartnerCompany(hbEditNewCompany); if (name) { setHbEditCompany(name); setHbEditNewCompany(''); } }} className="px-2 py-1.5 bg-indigo-600 text-white rounded font-bold">+</button>
                     </div>
                     <div>
-                      <label className="block font-bold text-slate-700 mb-0.5">Sous-société</label>
-                      <input type="text" value={hbEditSubCompany} onChange={e => setHbEditSubCompany(e.target.value.toUpperCase())} className="w-full px-2 py-1.5 border rounded uppercase bg-white" placeholder="Direction, service…" />
+                      <label className="block font-bold text-ink mb-0.5">Sous-société</label>
+                      <input type="text" value={hbEditSubCompany} onChange={e => setHbEditSubCompany(e.target.value.toUpperCase())} className="w-full px-2 py-1.5 border rounded uppercase bg-surface" placeholder="Direction, service…" />
                     </div>
                   </div>
                 )}
                 <button type="button" onClick={hbSaveClientType} className="px-3 py-1.5 bg-indigo-700 text-white rounded text-xs font-bold">Enregistrer le type / société</button>
               </div>
               {/* Sage-style input bar */}
-              <div className="bg-[#f4f4f4] border border-slate-300 rounded text-xs select-none">
-                <div className="bg-slate-100 border-b border-slate-300 p-2 m-2 mb-0 rounded shadow-inner">
+              <div className="bg-surface-muted border border-line-strong rounded text-xs select-none">
+                <div className="bg-surface-hover border-b border-line-strong p-2 m-2 mb-0 rounded shadow-inner">
                   <div className="flex flex-wrap items-end gap-1.5">
                     <div className="flex-1 min-w-[150px] relative">
-                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Article (↑↓ Entrée)</label>
+                      <label className="block text-[10px] font-bold text-ink-muted mb-0.5">Article (↑↓ Entrée)</label>
                       <input
                         ref={hbArtRef}
                         type="text"
@@ -1641,12 +1658,12 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                           }
                         }}
                         onKeyDown={hbArtKeyDown}
-                        className="w-full bg-white border border-blue-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500 text-slate-800"
+                        className="w-full bg-surface border border-blue-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-accent focus:ring-1 focus:ring-accent/25 text-ink-strong"
                         placeholder="🔍 Saisir article..."
                         autoFocus
                       />
                       {hbArtSearch.length >= 1 && hbArtFiltered.length > 0 && (
-                        <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 rounded-b shadow-2xl z-40 max-h-40 overflow-y-auto">
+                        <div className="absolute top-full left-0 right-0 bg-surface border border-line-strong rounded-b shadow-2xl z-40 max-h-40 overflow-y-auto">
                           {hbArtFiltered.map((a, idx) => {
                             const manages = managesStock(a);
                             const isOut = manages && a.stockPharmacie <= 0;
@@ -1656,16 +1673,16 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                               key={a.id}
                               onClick={() => hbArtSelectArticle(a.id)}
                               title={isOut ? 'Rupture de stock — vente impossible' : undefined}
-                              className={`px-3 py-1.5 text-xs flex justify-between border-b border-slate-100 ${isOut ? 'bg-red-50 text-red-700 cursor-not-allowed' : `cursor-pointer ${idx === hbArtIdx ? 'bg-blue-500 text-white font-medium' : 'hover:bg-slate-50 text-slate-800'}`}`}
+                              className={`px-3 py-1.5 text-xs flex justify-between border-b border-line-soft ${isOut ? 'bg-red-50 dark:bg-red-500/8 text-red-700 dark:text-red-400 cursor-not-allowed' : `cursor-pointer ${idx === hbArtIdx ? 'bg-blue-500 text-white font-medium' : 'hover:bg-surface-muted text-ink-strong'}`}`}
                             >
                               <span className={isOut ? 'line-through decoration-red-400/60' : ''}>[{a.family}] {a.name}</span>
                               <span className="flex items-center gap-2">
                                 {isOut
                                   ? <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-[9px] font-bold">🚨 RUPTURE — invendable</span>
                                   : manages
-                                    ? <span className={`font-mono text-[10px] ${idx === hbArtIdx ? 'text-white/90' : isLow ? 'text-amber-600 font-bold' : 'text-slate-400'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>
-                                    : <span className={`font-mono text-[10px] ${idx === hbArtIdx ? 'text-white/80' : 'text-slate-400'}`} title="Famille non gérée en stock">stock: —</span>}
-                                <span className={`font-mono ${isOut ? 'text-red-400' : idx === hbArtIdx ? 'text-white' : 'text-blue-600 font-medium'}`}>{formatAr(getPrice(a, rec?.clientType || 'comptoir'))}</span>
+                                    ? <span className={`font-mono text-[10px] ${idx === hbArtIdx ? 'text-white/90' : isLow ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-ink-faint'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>
+                                    : <span className={`font-mono text-[10px] ${idx === hbArtIdx ? 'text-white/80' : 'text-ink-faint'}`} title="Famille non gérée en stock">stock: —</span>}
+                                <span className={`font-mono ${isOut ? 'text-red-400' : idx === hbArtIdx ? 'text-white' : 'text-blue-600 dark:text-cyan-400 font-medium'}`}>{formatAr(getPrice(a, rec?.clientType || 'comptoir'))}</span>
                               </span>
                             </div>
                             );
@@ -1674,7 +1691,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                       )}
                     </div>
                     <div className="w-16">
-                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Qté</label>
+                      <label className="block text-[10px] font-bold text-ink-muted mb-0.5">Qté</label>
                       <input
                         id="hb-qty-input"
                         type="number"
@@ -1682,11 +1699,11 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                         value={hbArtForm.quantity}
                         onChange={e => setHbArtForm(prev => ({ ...prev, quantity: parseFloat(e.target.value) || 1 }))}
                         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
-                        className="w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-blue-500 text-slate-800"
+                        className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-accent text-ink-strong"
                       />
                     </div>
                     <div className="w-16">
-                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Rem%</label>
+                      <label className="block text-[10px] font-bold text-ink-muted mb-0.5">Rem%</label>
                       <input
                         type="number"
                         min={0}
@@ -1694,35 +1711,35 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                         value={hbArtForm.discount}
                         onChange={e => setHbArtForm(prev => ({ ...prev, discount: parseFloat(e.target.value) || 0 }))}
                         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
-                        className="w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-blue-500 text-slate-800"
+                        className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-accent text-ink-strong"
                       />
                     </div>
                     <div className="w-24">
-                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">P.U.</label>
+                      <label className="block text-[10px] font-bold text-ink-muted mb-0.5">P.U.</label>
                       <input
                         type="number"
                         value={hbArtForm.unitPrice}
                         onChange={e => setHbArtForm(prev => ({ ...prev, unitPrice: parseFloat(e.target.value) || 0 }))}
                         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
-                        className="w-full bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-blue-500 text-slate-800"
+                        className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-accent text-ink-strong"
                       />
                     </div>
                     <div className="w-28">
-                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Montant</label>
+                      <label className="block text-[10px] font-bold text-ink-muted mb-0.5">Montant</label>
                       <input
                         readOnly
                         value={formatAr(hbLineAmt(hbArtForm))}
-                        className="w-full bg-slate-200 border border-slate-300 rounded px-1.5 py-0.5 text-xs text-right font-mono font-bold text-slate-700"
+                        className="w-full bg-surface-active border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono font-bold text-ink"
                       />
                     </div>
                     <div className="w-36">
-                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5" title="Cette zone n'est pas effacée après validation de la ligne : plusieurs sorties possibles le même jour">Date d'acte / de sortie 📌</label>
+                      <label className="block text-[10px] font-bold text-ink-muted mb-0.5" title="Cette zone n'est pas effacée après validation de la ligne : plusieurs sorties possibles le même jour">Date d'acte / de sortie 📌</label>
                       <input
                         type="date"
                         value={hbArtForm.dateSort || ''}
                         onChange={e => setHbArtForm(prev => ({ ...prev, dateSort: e.target.value }))}
                         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
-                        className="w-full bg-amber-50 border border-amber-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-blue-500 text-slate-800"
+                        className="w-full bg-amber-50 dark:bg-amber-500/8 border border-amber-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-accent text-ink-strong"
                         title="Date de sortie de marchandise ou date de l'acte — conservée après validation de la ligne"
                       />
                     </div>
@@ -1730,16 +1747,16 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                   <div className="flex justify-end gap-1.5 mt-2">
                     <button
                       onClick={hbArtNew}
-                      className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded shadow-sm text-slate-700 transition cursor-pointer text-xs font-medium"
+                      className="flex items-center gap-1 px-2.5 py-1 bg-surface hover:bg-surface-muted border border-line-strong rounded shadow-sm text-ink transition cursor-pointer text-xs font-medium"
                     >
-                      <Plus className="h-3.5 w-3.5 text-slate-500" /> Nouveau
+                      <Plus className="h-3.5 w-3.5 text-ink-muted" /> Nouveau
                     </button>
                     <button
                       onClick={hbArtDelete}
                       disabled={!hbSelLineId}
-                      className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded shadow-sm text-slate-700 disabled:opacity-40 transition cursor-pointer text-xs font-medium"
+                      className="flex items-center gap-1 px-2.5 py-1 bg-surface hover:bg-surface-muted border border-line-strong rounded shadow-sm text-ink disabled:opacity-40 transition cursor-pointer text-xs font-medium"
                     >
-                      <Trash2 className="h-3.5 w-3.5 text-rose-600" /> Supprimer
+                      <Trash2 className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" /> Supprimer
                     </button>
                     <button
                       onClick={hbArtSave}
@@ -1752,10 +1769,10 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                 </div>
 
                 {/* Lines table */}
-                <div className="bg-white mx-2 mb-2 border-t border-slate-300 overflow-x-auto rounded-b max-h-[250px] overflow-y-auto">
+                <div className="bg-surface mx-2 mb-2 border-t border-line-strong overflow-x-auto rounded-b max-h-[250px] overflow-y-auto">
                   <table className="w-full text-[11px] text-left border-collapse">
-                    <thead className="bg-slate-50 border-b border-slate-300 text-slate-600">
-                      <tr className="divide-x divide-slate-200">
+                    <thead className="bg-surface-muted border-b border-line-strong text-ink-secondary">
+                      <tr className="divide-x divide-line">
                         <th className="p-1 font-normal min-w-[150px]">Article</th>
                         <th className="p-1 font-normal text-right w-12">Qté</th>
                         <th className="p-1 font-normal text-center w-12">Rem%</th>
@@ -1765,7 +1782,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                         <th className="p-1 font-normal w-6"></th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-150 font-mono">
+                    <tbody className="divide-y divide-line font-mono">
                       {rec && rec.lines.map(l => {
                         const isSel = l.id === hbSelLineId;
                         return (
@@ -1773,13 +1790,13 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                             setHbSelLineId(l.id);
                             setHbArtForm({ ...l });
                             setHbIsNew(false);
-                          }} className={`cursor-pointer divide-x divide-slate-200 transition-colors ${isSel ? 'bg-blue-500 text-white font-medium' : 'hover:bg-slate-50 text-slate-800'}`}>
+                          }} className={`cursor-pointer divide-x divide-line transition-colors ${isSel ? 'bg-blue-500 text-white font-medium' : 'hover:bg-surface-muted text-ink-strong'}`}>
                             <td className="p-1 font-sans">{l.articleName}</td>
                             <td className="p-1 text-right">{l.quantity}</td>
                             <td className="p-1 text-center">{l.discount ? `${l.discount}%` : '—'}</td>
                             <td className="p-1 text-right">{formatNum(l.unitPrice)}</td>
                             <td className="p-1 text-right font-bold">{formatNum(hbLineAmt(l))}</td>
-                            <td className="p-1 font-sans text-slate-500">{l.dateSort || '—'}</td>
+                            <td className="p-1 font-sans text-ink-muted">{l.dateSort || '—'}</td>
                             <td className="p-1 text-center">
                               <button onClick={(e) => {
                                 e.stopPropagation();
@@ -1787,7 +1804,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                                 if (hbSelLineId === l.id) {
                                   hbArtNew();
                                 }
-                              }} className={`cursor-pointer ${isSel ? 'text-white hover:text-red-200' : 'text-rose-600 hover:text-rose-800'}`}>
+                              }} className={`cursor-pointer ${isSel ? 'text-white hover:text-red-200' : 'text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-300'}`}>
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             </td>
@@ -1795,14 +1812,14 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                         );
                       })}
                       {rec && rec.lines.length === 0 && (
-                        <tr><td colSpan={6} className="p-4 text-center text-slate-400 font-sans">Aucun article enregistré. Tapez ou recherchez un article ci-dessus.</td></tr>
+                        <tr><td colSpan={6} className="p-4 text-center text-ink-faint font-sans">Aucun article enregistré. Tapez ou recherchez un article ci-dessus.</td></tr>
                       )}
                     </tbody>
                     {rec && rec.lines.length > 0 && (
-                      <tfoot className="bg-emerald-50 border-t-2 border-emerald-300 text-slate-800 font-sans">
+                      <tfoot className="bg-emerald-50 dark:bg-emerald-500/8 border-t-2 border-emerald-300 dark:border-emerald-500/40 text-ink-strong font-sans">
                         <tr className="font-bold">
                           <td colSpan={3} className="p-1.5 text-right">TOTAL PATIENT :</td>
-                          <td colSpan={3} className="p-1.5 text-right font-mono text-lg text-emerald-700">{formatAr(recTotal)}</td>
+                          <td colSpan={3} className="p-1.5 text-right font-mono text-lg text-emerald-700 dark:text-emerald-400">{formatAr(recTotal)}</td>
                         </tr>
                       </tfoot>
                     )}
@@ -1820,7 +1837,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       {/* Edit Client Type — fenêtre modale centrée */}
       {hbModal === 'edit_client' && hbSelRecordId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" onClick={() => setHbModal('none')}>
-          <div className="w-full max-w-md bg-white rounded-xl shadow-2xl border border-slate-300 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-md bg-surface rounded-xl shadow-2xl border border-line-strong overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="bg-blue-600 px-4 py-3 flex justify-between items-center text-white"><span className="font-bold"><Edit2 className="w-5 h-5 inline" /> Modifier Type Client</span><button onClick={() => setHbModal('none')} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button></div>
             <div className="p-4 space-y-3">
               <div><label className="block text-sm font-medium mb-1">Type</label><select value={hbEditClientType} onChange={e => setHbEditClientType(e.target.value as ClientType)} className="w-full px-3 py-2 border rounded-lg outline-none cursor-pointer"><option value="comptoir">Client Comptoir</option><option value="societe">Client Société</option></select></div>
@@ -1834,7 +1851,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       {/* Modal Message Rectification Prescription */}
       {rectificationModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-lg bg-white rounded-xl shadow-2xl border border-slate-300 overflow-hidden flex flex-col">
+          <div className="w-full max-w-lg bg-surface rounded-xl shadow-2xl border border-line-strong overflow-hidden flex flex-col">
             <div className="bg-indigo-600 px-4 py-3 flex justify-between items-center text-white">
               <span className="font-bold text-sm flex items-center gap-2">
                 <MessageCircle className="w-4 h-4" /> Message de rectification — {rectificationModal.doctorName}
@@ -1842,25 +1859,25 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
               <button onClick={() => setRectificationModal(null)} className="hover:bg-white/20 rounded p-1 cursor-pointer text-sm">✕</button>
             </div>
             <div className="p-4 space-y-3">
-              <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-lg text-xs text-indigo-900 leading-relaxed">
+              <div className="p-3 bg-indigo-50 dark:bg-indigo-500/8 border border-indigo-100 dark:border-indigo-500/25 rounded-lg text-xs text-indigo-900 dark:text-indigo-300 leading-relaxed">
                 <strong>Destinataire :</strong> {rectificationModal.doctorName}<br />
                 <strong>Concerne :</strong> Prescription du patient <strong>{rectificationModal.patientName}</strong> (Dossier: {rectificationModal.dossier})
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Message au médecin pour rectification d'une prescription déjà faite :</label>
+                <label className="block text-xs font-semibold text-ink mb-1">Message au médecin pour rectification d'une prescription déjà faite :</label>
                 <textarea
                   value={rectificationText}
                   onChange={(e) => setRectificationText(e.target.value)}
                   rows={4}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-sans text-slate-800"
+                  className="w-full px-3 py-2 border border-line-strong rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-sans text-ink-strong"
                   placeholder="Expliquez la rectification à effectuer sur la prescription..."
                   autoFocus
                 />
               </div>
-              <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
+              <div className="flex justify-end gap-2 pt-2 border-t border-line">
                 <button
                   onClick={() => setRectificationModal(null)}
-                  className="px-3.5 py-2 border border-slate-300 rounded-lg text-xs font-medium cursor-pointer hover:bg-slate-50 transition"
+                  className="px-3.5 py-2 border border-line-strong rounded-lg text-xs font-medium cursor-pointer hover:bg-surface-muted transition"
                 >
                   Annuler
                 </button>
@@ -1871,7 +1888,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                       setRectificationModal(null);
                       onOpenMessagingWithRecipient(targetId);
                     }}
-                    className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium cursor-pointer transition"
+                    className="px-3.5 py-2 bg-surface-hover hover:bg-surface-active text-ink rounded-lg text-xs font-medium cursor-pointer transition"
                   >
                     Ouvrir messagerie complète
                   </button>
@@ -1917,29 +1934,29 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         const titleColor = rec.type === 'hospit' ? 'bg-rose-600' : 'bg-blue-600';
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="w-full max-w-md bg-white rounded-xl shadow-2xl border border-slate-300 overflow-hidden flex flex-col">
+            <div className="w-full max-w-md bg-surface rounded-xl shadow-2xl border border-line-strong overflow-hidden flex flex-col">
               <div className={`${titleColor} px-4 py-3 flex justify-between items-center text-white`}>
                 <span className="font-bold text-sm">📜 Historique des paiements — {rec.patientName}</span>
                 <button onClick={() => setHbHistoryId(null)} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button>
               </div>
               <div className="p-4 space-y-3">
                 <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                  <div className="p-2 bg-slate-50 rounded"><div className="text-slate-500">Facture</div><div className="font-mono font-bold text-slate-800">{formatAr(totalFact)}</div></div>
-                  <div className="p-2 bg-green-50 rounded"><div className="text-slate-500">Reçu</div><div className="font-mono font-bold text-green-700">{formatAr(totalPaid)}</div></div>
-                  <div className="p-2 bg-red-50 rounded"><div className="text-slate-500">Reste</div><div className="font-mono font-bold text-red-700">{formatAr(totalFact - totalPaid)}</div></div>
+                  <div className="p-2 bg-surface-muted rounded"><div className="text-ink-muted">Facture</div><div className="font-mono font-bold text-ink-strong">{formatAr(totalFact)}</div></div>
+                  <div className="p-2 bg-green-50 dark:bg-green-500/8 rounded"><div className="text-ink-muted">Reçu</div><div className="font-mono font-bold text-green-700 dark:text-green-400">{formatAr(totalPaid)}</div></div>
+                  <div className="p-2 bg-red-50 dark:bg-red-500/8 rounded"><div className="text-ink-muted">Reste</div><div className="font-mono font-bold text-red-700 dark:text-red-400">{formatAr(totalFact - totalPaid)}</div></div>
                 </div>
                 {rec.payments.length === 0 ? (
-                  <p className="text-center text-slate-400 text-sm py-6">Aucun paiement enregistré pour ce dossier.</p>
+                  <p className="text-center text-ink-faint text-sm py-6">Aucun paiement enregistré pour ce dossier.</p>
                 ) : (
                   <div className="space-y-2 max-h-[55vh] overflow-y-auto">
                     {rec.payments.slice().reverse().map((p, i) => (
-                      <div key={i} className="border rounded-lg p-3 bg-white shadow-sm">
+                      <div key={i} className="border rounded-lg p-3 bg-surface shadow-sm">
                         <div className="flex justify-between items-center">
-                          <span className="font-mono font-bold text-emerald-700">{formatAr(p.amount)}</span>
-                          <span className="text-[10px] text-slate-400">{new Date(p.date).toLocaleString('fr-FR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}</span>
+                          <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400">{formatAr(p.amount)}</span>
+                          <span className="text-[10px] text-ink-faint">{new Date(p.date).toLocaleString('fr-FR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}</span>
                         </div>
-                        <div className="text-xs text-slate-600 mt-1.5 flex items-center gap-1.5">
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${p.receivedBy === 'pharmacie' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                        <div className="text-xs text-ink-secondary mt-1.5 flex items-center gap-1.5">
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${p.receivedBy === 'pharmacie' ? 'bg-blue-100 dark:bg-cyan-500/15 text-blue-700 dark:text-cyan-400' : 'bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400'}`}>
                             {p.receivedBy === 'pharmacie' ? '🏥 Pharmacie' : '💵 Caisse'}
                           </span>
                           <span>Reçu par : <strong>{p.paidBy || '—'}</strong></span>
@@ -1957,7 +1974,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       {/* MODALE — Facture du patient sélectionné dans la file d'attente de paiement */}
       {paymentModalOpen && selPatient && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={closePaymentModal}>
-          <div className="w-full max-w-3xl bg-white rounded-xl shadow-2xl border border-slate-300 overflow-hidden flex flex-col max-h-[92vh]" onClick={e => e.stopPropagation()}>
+          <div className="w-full max-w-3xl bg-surface rounded-xl shadow-2xl border border-line-strong overflow-hidden flex flex-col max-h-[92vh]" onClick={e => e.stopPropagation()}>
             <div className="bg-amber-600 px-4 py-3 flex justify-between items-center text-white shrink-0">
               <span className="font-bold text-sm flex items-center gap-2">
                 <CreditCard className="w-4 h-4" /> Facturation — {selPatient.lastName} {selPatient.firstName}
@@ -1965,35 +1982,35 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
               <button onClick={closePaymentModal} className="hover:bg-white/20 rounded p-1 cursor-pointer text-sm" title="Fermer">✕</button>
             </div>
             <div className="p-4 overflow-y-auto">
-              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl mb-3 space-y-3">
+              <div className="p-4 bg-amber-50 dark:bg-amber-500/8 border border-amber-200 dark:border-amber-500/25 rounded-xl mb-3 space-y-3">
                 <div className="flex justify-between items-start">
                   <div>
-                    <h3 className="font-bold text-base text-slate-800 flex items-center gap-1.5 flex-wrap">
+                    <h3 className="font-bold text-base text-ink-strong flex items-center gap-1.5 flex-wrap">
                       <span>{selPatient.lastName} {selPatient.firstName}</span>
                       <span className="font-mono">({selPatient.dossier})</span>
                       {selPatient.clientType === 'societe'
-                        ? <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">🏢 {selPatient.company || 'Société'}{selPatient.subCompany ? ` / ${selPatient.subCompany}` : ''}</span>
-                        : <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">🏪 Comptoir</span>}
+                        ? <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 dark:bg-cyan-500/15 text-blue-700 dark:text-cyan-400">🏢 {selPatient.company || 'Société'}{selPatient.subCompany ? ` / ${selPatient.subCompany}` : ''}</span>
+                        : <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-surface-hover text-ink-secondary">🏪 Comptoir</span>}
                       <button
                         type="button"
                         onClick={() => setShowPayClientTypeEdit(v => !v)}
-                        className="ml-0.5 p-1 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-100 rounded transition cursor-pointer"
+                        className="ml-0.5 p-1 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-500/15 rounded transition cursor-pointer"
                         title="Modifier le type de client / société"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
                     </h3>
-                    <p className="text-xs text-slate-600 mt-0.5">{selConsult ? `Consultation du ${new Date(selConsult.date).toLocaleDateString('fr-FR')} | Diagnostic: ${selConsult.diagnosis}` : 'Analyses / Services en attente'}</p>
+                    <p className="text-xs text-ink-secondary mt-0.5">{selConsult ? `Consultation du ${new Date(selConsult.date).toLocaleDateString('fr-FR')} | Diagnostic: ${selConsult.diagnosis}` : 'Analyses / Services en attente'}</p>
                   </div>
                 </div>
 
                 {/* AFFICHAGE NOM DU MÉDECIN PRESCRIPTEUR & BOUTON MESSAGE RECTIFICATION */}
-                <div className="pt-2.5 border-t border-amber-200/80 flex flex-wrap items-center justify-between gap-3 bg-white/80 p-3 rounded-lg border border-amber-100">
+                <div className="pt-2.5 border-t border-amber-200/80 dark:border-amber-500/20 flex flex-wrap items-center justify-between gap-3 bg-surface/80 p-3 rounded-lg border border-amber-100 dark:border-amber-500/25">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">🩺</div>
+                    <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400 flex items-center justify-center font-bold text-xs">🩺</div>
                     <div>
-                      <div className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Médecin Prescripteur</div>
-                      <div className="text-sm font-bold text-indigo-900">{selConsult?.doctorName || getConsults(selPatient.id)[0]?.doctorName || 'Médecin non spécifié'}</div>
+                      <div className="text-[10px] text-ink-muted uppercase tracking-wider font-semibold">Médecin Prescripteur</div>
+                      <div className="text-sm font-bold text-indigo-900 dark:text-indigo-300">{selConsult?.doctorName || getConsults(selPatient.id)[0]?.doctorName || 'Médecin non spécifié'}</div>
                     </div>
                   </div>
                   <button
@@ -2020,22 +2037,22 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
               {/* 🏢 Société / Type client — panneau repliable, ouvert via l'icône stylo du titre */}
               {showPayClientTypeEdit && (
-              <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-2">
-                <div className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">🏢 Société / Type client
-                  <button type="button" onClick={() => setShowPayClientTypeEdit(false)} className="ml-auto text-indigo-500 hover:text-indigo-800 cursor-pointer" title="Fermer">✕</button>
+              <div className="rounded-lg border border-indigo-200 dark:border-indigo-500/25 bg-indigo-50 dark:bg-indigo-500/8 p-3 space-y-2">
+                <div className="text-xs font-bold text-indigo-900 dark:text-indigo-300 flex items-center gap-1.5">🏢 Société / Type client
+                  <button type="button" onClick={() => setShowPayClientTypeEdit(false)} className="ml-auto text-indigo-500 hover:text-indigo-800 dark:hover:text-indigo-300 cursor-pointer" title="Fermer">✕</button>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                   <div>
-                    <label className="block font-bold text-slate-700 mb-0.5">Type</label>
-                    <select value={payEditClientType} onChange={e => setPayEditClientType(e.target.value as ClientType)} className="w-full px-2 py-1.5 border rounded bg-white cursor-pointer">
+                    <label className="block font-bold text-ink mb-0.5">Type</label>
+                    <select value={payEditClientType} onChange={e => setPayEditClientType(e.target.value as ClientType)} className="w-full px-2 py-1.5 border rounded bg-surface cursor-pointer">
                       <option value="comptoir">Client Comptoir</option>
                       <option value="societe">Client Société</option>
                     </select>
                   </div>
                   {payEditClientType === 'societe' && (
                     <div>
-                      <label className="block font-bold text-slate-700 mb-0.5">Société</label>
-                      <select value={payEditCompany} onChange={e => setPayEditCompany(e.target.value)} className="w-full px-2 py-1.5 border rounded bg-white cursor-pointer">
+                      <label className="block font-bold text-ink mb-0.5">Société</label>
+                      <select value={payEditCompany} onChange={e => setPayEditCompany(e.target.value)} className="w-full px-2 py-1.5 border rounded bg-surface cursor-pointer">
                         <option value="">— Sélectionner —</option>
                         {state.companies.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
                       </select>
@@ -2045,28 +2062,28 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                 {payEditClientType === 'societe' && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                     <div className="flex gap-1">
-                      <input type="text" value={payEditNewCompany} onChange={e => setPayEditNewCompany(e.target.value.toUpperCase())} className="flex-1 px-2 py-1.5 border rounded uppercase bg-white" placeholder="Nouvelle société…" />
+                      <input type="text" value={payEditNewCompany} onChange={e => setPayEditNewCompany(e.target.value.toUpperCase())} className="flex-1 px-2 py-1.5 border rounded uppercase bg-surface" placeholder="Nouvelle société…" />
                       <button type="button" onClick={() => { const name = addPartnerCompany(payEditNewCompany); if (name) { setPayEditCompany(name); setPayEditNewCompany(''); }}} className="px-2 py-1.5 bg-indigo-600 text-white rounded font-bold">+</button>
                     </div>
                     <div>
-                      <label className="block font-bold text-slate-700 mb-0.5">Sous-société</label>
-                      <input type="text" value={payEditSubCompany} onChange={e => setPayEditSubCompany(e.target.value.toUpperCase())} className="w-full px-2 py-1.5 border rounded uppercase bg-white" placeholder="Direction, service…" />
+                      <label className="block font-bold text-ink mb-0.5">Sous-société</label>
+                      <input type="text" value={payEditSubCompany} onChange={e => setPayEditSubCompany(e.target.value.toUpperCase())} className="w-full px-2 py-1.5 border rounded uppercase bg-surface" placeholder="Direction, service…" />
                     </div>
                   </div>
                 )}
                 <div className="flex items-center gap-2">
                   <button type="button" onClick={paySaveClientType} className="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-800 text-white rounded text-xs font-bold cursor-pointer">Enregistrer type / société</button>
-                  <button type="button" onClick={() => setShowPayClientTypeEdit(false)} className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded text-xs font-bold cursor-pointer">Annuler</button>
+                  <button type="button" onClick={() => setShowPayClientTypeEdit(false)} className="px-3 py-1.5 bg-surface border border-line-strong hover:bg-surface-hover text-ink rounded text-xs font-bold cursor-pointer">Annuler</button>
                 </div>
               </div>
               )}
 
               {/* === LISTE DES PRESCRIPTIONS === */}
               <div className="border rounded-lg overflow-hidden mb-3">
-                <div className="bg-slate-100 px-3 py-2 border-b font-bold text-sm text-slate-700 flex items-center gap-2">📋 Liste des prescriptions</div>
+                <div className="bg-surface-hover px-3 py-2 border-b font-bold text-sm text-ink flex items-center gap-2">📋 Liste des prescriptions</div>
                 <div className="overflow-x-auto max-h-[260px] overflow-y-auto">
                   <table className="w-full text-xs">
-                    <thead className="bg-slate-50 border-b text-slate-600 sticky top-0">
+                    <thead className="bg-surface-muted border-b text-ink-secondary sticky top-0">
                       <tr>
                         <th className="p-2 text-left min-w-[120px]">Article</th>
                         <th className="p-2 text-center w-8">Qté</th>
@@ -2087,7 +2104,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                           unitPrice: p.unitPrice,
                           amount: roundTo2(p.unitPrice * p.quantity * (1 - p.discount / 100)),
                           category: 'Médicament',
-                          categoryColor: 'bg-cyan-100 text-cyan-700',
+                          categoryColor: 'bg-cyan-100 dark:bg-cyan-500/15 text-cyan-700 dark:text-cyan-400',
                           consultId: c.id,
                         })));
                         // Lab + Echo from pending invoices
@@ -2099,13 +2116,13 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                           unitPrice: '',
                           amount: it.amount,
                           category: it.category === 'lab' ? 'Analyse' : it.category === 'echo' ? 'Échographie' : it.category === 'consultation' ? 'Consultation' : 'Service',
-                          categoryColor: it.category === 'lab' ? 'bg-teal-100 text-teal-700' : it.category === 'echo' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-700',
+                          categoryColor: it.category === 'lab' ? 'bg-teal-100 dark:bg-teal-500/15 text-teal-700 dark:text-teal-400' : it.category === 'echo' ? 'bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400' : 'bg-surface-hover text-ink',
                           consultId: i.id,
                         })));
                         const allItems = [...medicationItems, ...serviceItems];
-                        if (allItems.length === 0) return <tr><td colSpan={6} className="p-4 text-center text-slate-400">Aucune prescription</td></tr>;
+                        if (allItems.length === 0) return <tr><td colSpan={6} className="p-4 text-center text-ink-faint">Aucune prescription</td></tr>;
                         return allItems.map((item, idx) => (
-                          <tr key={idx} className="hover:bg-slate-50">
+                          <tr key={idx} className="hover:bg-surface-muted">
                             <td className="p-2 font-sans">{item.description}</td>
                             <td className="p-2 text-center font-mono">{item.quantity || '—'}</td>
                             <td className="p-2 text-center font-mono">{item.discount ? `${item.discount}%` : '—'}</td>
@@ -2116,10 +2133,10 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                         ));
                       })()}
                     </tbody>
-                    <tfoot className="bg-amber-50 border-t-2 border-amber-300">
+                    <tfoot className="bg-amber-50 dark:bg-amber-500/8 border-t-2 border-amber-300 dark:border-amber-500/40">
                       <tr>
                         <td colSpan={4} className="p-2 text-right font-bold font-sans">TOTAL :</td>
-                        <td colSpan={2} className="p-2 text-right font-mono font-bold text-amber-700 text-sm">{formatAr(getPendingAmount(selPatient))}</td>
+                        <td colSpan={2} className="p-2 text-right font-mono font-bold text-amber-700 dark:text-amber-400 text-sm">{formatAr(getPendingAmount(selPatient))}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -2127,9 +2144,9 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
               </div>
 
               {selPatient.clientType === 'societe' && (
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl mb-3 flex items-start gap-2.5">
-                  <Building2 className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
-                  <div className="text-xs text-blue-900 leading-relaxed">
+                <div className="p-3 bg-blue-50 dark:bg-cyan-500/8 border border-blue-200 dark:border-cyan-500/25 rounded-xl mb-3 flex items-start gap-2.5">
+                  <Building2 className="w-5 h-5 text-blue-600 dark:text-cyan-400 shrink-0 mt-0.5" />
+                  <div className="text-xs text-blue-900 dark:text-cyan-300 leading-relaxed">
                     <strong>Client société{selPatient.company ? ` — ${selPatient.company}` : ''}.</strong>{' '}
                     Pas de règlement en espèces : la caisse valide le paiement en{' '}
                     <strong>CRÉDIT SOCIÉTÉ</strong> — le montant est porté au compte de la société et sera
@@ -2137,9 +2154,9 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                   </div>
                 </div>
               )}
-              <div className={`flex justify-between text-xl font-bold border-t-2 pt-2 mb-4 ${selPatient.clientType === 'societe' ? 'text-blue-800' : ''}`}>
+              <div className={`flex justify-between text-xl font-bold border-t-2 pt-2 mb-4 ${selPatient.clientType === 'societe' ? 'text-blue-800 dark:text-cyan-300' : ''}`}>
                 <span>{selPatient.clientType === 'societe' ? 'MONTANT À PORTER EN CRÉDIT SOCIÉTÉ' : 'À PAYER'}</span>
-                <span className={`font-mono ${selPatient.clientType === 'societe' ? 'text-blue-600' : 'text-amber-600'}`}>{formatAr(getPendingAmount(selPatient))}</span>
+                <span className={`font-mono ${selPatient.clientType === 'societe' ? 'text-blue-600 dark:text-cyan-400' : 'text-amber-600 dark:text-amber-400'}`}>{formatAr(getPendingAmount(selPatient))}</span>
               </div>
               {selPatient.clientType === 'societe' ? (
                 <button onClick={handlePayment} className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 cursor-pointer shadow-lg flex items-center justify-center gap-2">
@@ -2170,24 +2187,24 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
       {printerModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-surface rounded-2xl shadow-xl max-w-md w-full overflow-hidden border border-line animate-in fade-in zoom-in-95 duration-150">
             <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
               <div className="flex items-center gap-2 font-bold text-sm">
                 <Printer className="w-5 h-5 text-amber-400" /> Configuration Imprimante & Reçus
               </div>
               <button
                 onClick={() => setPrinterModalOpen(false)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+                className="text-ink-faint hover:text-white p-1 rounded-lg cursor-pointer"
               >
                 ✕
               </button>
             </div>
             <div className="p-5 space-y-4 text-xs">
-              <p className="text-slate-500 leading-relaxed">
+              <p className="text-ink-muted leading-relaxed">
                 Chaque caissier peut configurer sa propre imprimante et son format de ticket thermique (le réglage est mémorisé sur ce poste / navigateur pour votre compte).
               </p>
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Nom / Poste de l'imprimante</label>
+                <label className="block font-semibold text-ink mb-1">Nom / Poste de l'imprimante</label>
                 <input
                   type="text"
                   value={tempPrinterSettings.printerName}
@@ -2198,18 +2215,18 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Format Papier Thermique</label>
+                  <label className="block font-semibold text-ink mb-1">Format Papier Thermique</label>
                   <select
                     value={tempPrinterSettings.paperWidth}
                     onChange={e => setTempPrinterSettings({ ...tempPrinterSettings, paperWidth: Number(e.target.value) })}
-                    className="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium bg-white"
+                    className="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium bg-surface"
                   >
                     <option value={80}>80 mm (Standard POS)</option>
                     <option value={58}>58 mm (Étroit / Portable)</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Nombre d'exemplaires</label>
+                  <label className="block font-semibold text-ink mb-1">Nombre d'exemplaires</label>
                   <input
                     type="number"
                     min={1}
@@ -2221,7 +2238,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                 </div>
               </div>
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Titre du reçu / ticket</label>
+                <label className="block font-semibold text-ink mb-1">Titre du reçu / ticket</label>
                 <input
                   type="text"
                   value={tempPrinterSettings.receiptTitle}
@@ -2231,7 +2248,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                 />
               </div>
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Message de pied de page</label>
+                <label className="block font-semibold text-ink mb-1">Message de pied de page</label>
                 <input
                   type="text"
                   value={tempPrinterSettings.footerMessage}
@@ -2246,17 +2263,17 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                   id="autoPrintCheck"
                   checked={tempPrinterSettings.autoPrint}
                   onChange={e => setTempPrinterSettings({ ...tempPrinterSettings, autoPrint: e.target.checked })}
-                  className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500"
+                  className="w-4 h-4 text-amber-600 dark:text-amber-400 rounded focus:ring-amber-500"
                 />
-                <label htmlFor="autoPrintCheck" className="font-semibold text-slate-700 cursor-pointer">
+                <label htmlFor="autoPrintCheck" className="font-semibold text-ink cursor-pointer">
                   Lancer l'impression silencieuse / automatique (si supporté)
                 </label>
               </div>
             </div>
-            <div className="bg-slate-50 px-5 py-3 border-t flex justify-end gap-2">
+            <div className="bg-surface-muted px-5 py-3 border-t flex justify-end gap-2">
               <button
                 onClick={() => setPrinterModalOpen(false)}
-                className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-100 rounded-xl text-xs font-semibold text-slate-700 cursor-pointer"
+                className="px-4 py-2 bg-surface border border-line-strong hover:bg-surface-hover rounded-xl text-xs font-semibold text-ink cursor-pointer"
               >
                 Annuler
               </button>

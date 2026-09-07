@@ -1,8 +1,9 @@
+import { printDocument } from './printDocument';
 import type { Invoice, Patient, Company, TicketSettings } from '../types';
 
 /** Échappe les caractères HTML réservés */
-const escapeHtml = (value: string) => {
-  return value.replace(/[&<>"']/g, (char) =>
+const escapeHtml = (value: unknown) => {
+  return String(value ?? '').replace(/[&<>"']/g, (char) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char] || char)
   );
 };
@@ -349,15 +350,10 @@ export function printSalfaIndividualInvoice(
     <span>Date de facture : <strong>${dateFacture}</strong></span>
   </div>
 
-  <script>
-    window.onload = function() {
-      try { window.focus(); window.print(); } catch(e){}
-    }
-  </script>
 </body>
 </html>`;
 
-  openPrintIframe(html);
+  printDocument(html, 'Facture individuelle SALFA');
 }
 
 /**
@@ -621,38 +617,8 @@ export function printSalfaCompanyMonthlyInvoice(
     </div>
   </div>
 
-  <script>
-    window.onload = function() {
-      try { window.focus(); window.print(); } catch(e){}
-    }
-  </script>
 </body>
 </html>`;
 
-  openPrintIframe(html);
-}
-
-function openPrintIframe(html: string) {
-  const iframe = document.createElement('iframe');
-  iframe.setAttribute('aria-hidden', 'true');
-  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
-  document.body.appendChild(iframe);
-
-  const win = iframe.contentWindow;
-  const doc = win?.document || iframe.contentDocument;
-  if (!doc || !win) {
-    if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-    return;
-  }
-  doc.open();
-  doc.write(html);
-  doc.close();
-
-  const cleanup = () => {
-    try {
-      if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-    } catch { /* ignore */ }
-  };
-  win.addEventListener?.('afterprint', cleanup);
-  setTimeout(cleanup, 45000);
+  printDocument(html, 'Facture récapitulative société SALFA');
 }

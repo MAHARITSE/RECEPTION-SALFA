@@ -9,3 +9,8 @@ dist/
 .env*
 !.env.example
 
+
+# Tests navigateur et outils locaux
+.arena/
+test-results/
+playwright-report/

@@ -3,10 +3,8 @@ import type { User, Patient, Notification as NotifType } from '../types';
 import {
   Hospital, LogOut, Bell, UserCircle, Stethoscope,
   CreditCard, Pill, FlaskConical, Building2, X,
-  ChevronRight, MessageCircle, FileText, CheckCircle2, AlertTriangle, Info,
-  Sun, Moon
+  ChevronRight, MessageCircle, FileText, CheckCircle2, AlertTriangle, Info
 } from 'lucide-react';
-import { useDarkMode } from './ThemeToggle';
 
 interface MiseEnPageProps {
   user: User;
@@ -92,16 +90,16 @@ export default function MiseEnPage({ user, patients = [], notifications, onLogou
   }, [myNotifs]);
 
   return (
-    <div className={`w-full bg-slate-50 relative ${fullHeight ? 'h-screen flex flex-col overflow-hidden' : 'min-h-screen overflow-auto'}`}>
+    <div className={`w-full bg-canvas text-ink relative ${fullHeight ? 'h-dvh flex flex-col overflow-hidden' : 'min-h-screen overflow-auto'}`}>
       {/* Toast Popup Notification - Centré et colorisé */}
       {activeToast && (
         <div className="fixed inset-0 z-[9999] pointer-events-none flex items-center justify-center p-4">
           <div className={`pointer-events-auto max-w-md w-full p-4 sm:p-5 rounded-2xl shadow-2xl border flex items-start gap-3.5 transition-all animate-in fade-in zoom-in-95 backdrop-blur-md ${
             activeToast.type === 'critical'
-              ? 'bg-gradient-to-r from-rose-600 via-red-600 to-pink-600 border-rose-300 text-white shadow-rose-500/40'
+              ? 'bg-gradient-to-r from-rose-600 via-red-600 to-pink-600 border-rose-300 dark:border-rose-500/40 text-white shadow-rose-500/40'
               : activeToast.type === 'warning'
-              ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-yellow-500 border-amber-200 text-white shadow-amber-500/40'
-              : 'bg-gradient-to-r from-indigo-600 via-purple-600 to-blue-600 border-indigo-300 text-white shadow-indigo-500/40'
+              ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-yellow-500 border-amber-200 dark:border-amber-500/25 text-white shadow-amber-500/40'
+              : 'bg-gradient-to-r from-indigo-600 via-purple-600 to-blue-600 border-indigo-300 dark:border-indigo-500/40 text-white shadow-indigo-500/40'
           }`}>
             <div className="p-2 bg-white/20 backdrop-blur rounded-xl shrink-0 mt-0.5">
               {activeToast.type === 'critical' ? (
@@ -144,31 +142,30 @@ export default function MiseEnPage({ user, patients = [], notifications, onLogou
       )}
 
       {/* Header */}
-      <header className={`${roleBg[user.role]} text-white shadow-lg`}>
-        <div className="w-full max-w-none px-4 sm:px-6 py-2.5 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="p-1.5 bg-white/20 rounded-lg">
-              <Hospital className="w-6 h-6" />
+      <header className="theme-header shrink-0">
+        <div className="w-full max-w-none px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0 max-w-full">
+            <div className="theme-brand-mark mr-1">
+              <Hospital className="w-5 h-5 -rotate-45" />
             </div>
-            <div>
-              <h1 className="font-bold text-lg leading-tight">MediCare HIS</h1>
-              <div className="text-white/90 text-xs flex items-center gap-1.5">
-                {roleIcons[user.role]}
+            <div className="min-w-0">
+              <h1 className="font-bold text-lg leading-tight font-mono uppercase tracking-wider text-ink-strong">MediCare <span className="text-accent">HIS</span></h1>
+              <div className="text-ink-muted text-xs flex flex-wrap items-center gap-1.5 mt-1">
+                <span className={`inline-flex rounded p-0.5 text-white ${roleBg[user.role]}`}>{roleIcons[user.role]}</span>
                 {user.roles && user.roles.length > 1 ? (
                   <select
                     value={user.role}
                     onChange={(e) => onChangeRole?.(e.target.value as import('../types').UserRole)}
-                    className="bg-white/10 hover:bg-white/20 border border-white/20 rounded text-xs px-1 py-0.5 cursor-pointer outline-none transition-colors font-medium text-white appearance-none pr-4 relative"
-                    style={{ backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23FFF%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.2rem top 50%', backgroundSize: '0.45rem auto' }}
+                    className="bg-field hover:bg-surface-hover border border-line rounded text-xs px-1 py-0.5 cursor-pointer outline-none transition-colors font-medium text-ink"
                   >
                     {user.roles.map(r => (
-                      <option key={r} value={r} className="text-slate-800">{roleLabels[r]}</option>
+                      <option key={r} value={r} className="text-ink-strong">{roleLabels[r]}</option>
                     ))}
                   </select>
                 ) : (
                   <span>{roleLabels[user.role]}</span>
                 )}
-                <ChevronRight className="w-3 h-3 text-white/50" />
+                <ChevronRight className="w-3 h-3 text-ink-faint" />
                 <span className="font-semibold">{user.name}</span>
               </div>
             </div>
@@ -180,7 +177,7 @@ export default function MiseEnPage({ user, patients = [], notifications, onLogou
               <div className="relative">
                 <button
                   onClick={() => setShowNotif(!showNotif)}
-                  className="relative p-2 hover:bg-white/20 rounded-lg transition-colors cursor-pointer"
+                  className="relative p-2 hover:bg-surface-hover hover:text-accent rounded-lg transition-colors cursor-pointer"
                   title="Notifications stock"
                 >
                   <Bell className="w-5 h-5" />
@@ -192,22 +189,22 @@ export default function MiseEnPage({ user, patients = [], notifications, onLogou
                 </button>
 
                 {showNotif && (
-                  <div className="absolute right-0 top-12 w-96 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 max-h-96 overflow-y-auto">
-                    <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-                      <h3 className="font-semibold text-slate-800">Notifications Stock</h3>
-                      <button onClick={() => setShowNotif(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                  <div className="absolute right-0 top-12 w-96 max-w-[calc(100vw-2rem)] bg-surface text-ink rounded-xl shadow-2xl border border-line z-50 max-h-96 overflow-y-auto">
+                    <div className="p-4 border-b border-line-soft flex items-center justify-between">
+                      <h3 className="font-semibold text-ink-strong">Notifications Stock</h3>
+                      <button onClick={() => setShowNotif(false)} className="text-ink-faint hover:text-ink-secondary cursor-pointer">
                         <X className="w-4 h-4" />
                       </button>
                     </div>
                     {myNotifs.length === 0 ? (
-                      <div className="p-6 text-center text-slate-400">Aucune notification</div>
+                      <div className="p-6 text-center text-ink-faint">Aucune notification</div>
                     ) : (
                       myNotifs.slice(0, 20).map((n) => (
                         <div
                           key={n.id}
                           onClick={() => onMarkRead(n.id)}
-                          className={`p-3 border-b border-slate-50 cursor-pointer hover:bg-slate-50 transition-colors ${
-                            !n.read ? 'bg-blue-50' : ''
+                          className={`p-3 border-b border-line-soft cursor-pointer hover:bg-surface-muted transition-colors ${
+                            !n.read ? 'bg-blue-50 dark:bg-cyan-500/8' : ''
                           }`}
                         >
                           <div className="flex items-start gap-2">
@@ -217,7 +214,7 @@ export default function MiseEnPage({ user, patients = [], notifications, onLogou
                               }`}
                             />
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm text-slate-700">{n.message}</p>
+                              <p className="text-sm text-ink">{n.message}</p>
                               {/* Demande de déblocage EN ATTENTE : la décision reste possible
                                   ici même si le toast a été fermé — sinon l'article resterait
                                   bloqué sans aucun moyen de le débloquer. */}
@@ -231,13 +228,13 @@ export default function MiseEnPage({ user, patients = [], notifications, onLogou
                                   </button>
                                   <button
                                     onClick={() => onNotificationAction?.(n.id, false)}
-                                    className="px-3 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold cursor-pointer"
+                                    className="px-3 py-1.5 rounded-lg bg-surface-active hover:bg-line-strong text-ink text-xs font-bold cursor-pointer"
                                   >
                                     ❌ Non
                                   </button>
                                 </div>
                               )}
-                              <p className="text-xs text-slate-400 mt-1">
+                              <p className="text-xs text-ink-faint mt-1">
                                 {new Date(n.timestamp).toLocaleString('fr-FR')}
                               </p>
                             </div>
@@ -253,7 +250,7 @@ export default function MiseEnPage({ user, patients = [], notifications, onLogou
             {onOpenMedicalRecord && (
               <button
                 onClick={() => onOpenMedicalRecord()}
-                className="flex items-center gap-2 px-3 py-2 bg-white/20 hover:bg-white/30 backdrop-blur rounded-lg transition font-medium cursor-pointer"
+                className="flex items-center gap-2 px-3 py-2 bg-surface-muted hover:bg-surface-hover border border-line rounded-lg transition font-medium cursor-pointer"
                 title="Dossiers médicaux"
               >
                 <FileText className="w-4 h-4" /> Dossiers
@@ -262,7 +259,7 @@ export default function MiseEnPage({ user, patients = [], notifications, onLogou
             {/* Messagerie */}
             <button
               onClick={onOpenMessaging}
-              className="relative p-2 hover:bg-white/20 rounded-lg transition-colors cursor-pointer"
+              className="relative p-2 hover:bg-surface-hover hover:text-accent rounded-lg transition-colors cursor-pointer"
               title="Messagerie"
             >
               <MessageCircle className="w-5 h-5" />
@@ -275,7 +272,7 @@ export default function MiseEnPage({ user, patients = [], notifications, onLogou
 
             <button
               onClick={onLogout}
-              className="flex items-center gap-2 px-3 py-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-sm cursor-pointer"
+              className="flex items-center gap-2 px-3 py-2 bg-surface-muted hover:bg-surface-hover border border-line rounded-lg transition-colors text-sm cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
               <span className="hidden sm:inline">Déconnexion</span>

@@ -14,6 +14,7 @@ import {
   setSyncBaseline,
   type WampSyncState,
 } from './wamp';
+import PrintFeedback from './components/PrintFeedback';
 import ModuleReception from './components/ModuleReception';
 import EcranConnexion from './components/EcranConnexion';
 import MiseEnPage from './components/MiseEnPage';
@@ -48,7 +49,7 @@ function WampSyncBadge({ wamp }: { wamp: WampSyncState }) {
 
   const time = wamp.lastSavedAt ? new Date(wamp.lastSavedAt).toLocaleTimeString('fr-FR') : null;
 
-  let cls = 'border-slate-300 bg-slate-50/95 text-slate-600';
+  let cls = 'border-line-strong bg-surface-muted/95 text-ink-secondary';
   let icon = '🔄';
   let label = 'Chargement des données MySQL…';
 
@@ -56,15 +57,15 @@ function WampSyncBadge({ wamp }: { wamp: WampSyncState }) {
     icon = '🔄';
     label = 'Chargement des données MySQL…';
   } else if (wamp.error) {
-    cls = 'border-red-300 bg-red-50/95 text-red-700';
+    cls = 'border-red-300 dark:border-red-500/40 bg-red-50/95 dark:bg-red-500/8 text-red-700 dark:text-red-400';
     icon = '⚠️';
     label = 'MySQL injoignable — données en mémoire uniquement';
   } else if (wamp.syncing) {
-    cls = 'border-amber-300 bg-amber-50/95 text-amber-800';
+    cls = 'border-amber-300 dark:border-amber-500/40 bg-amber-50/95 dark:bg-amber-500/8 text-amber-800 dark:text-amber-300';
     icon = '💾';
     label = 'Sauvegarde MySQL…';
   } else if (wamp.usingMysql) {
-    cls = 'border-emerald-300 bg-emerald-50/95 text-emerald-700';
+    cls = 'border-emerald-300 dark:border-emerald-500/40 bg-emerald-50/95 dark:bg-emerald-500/8 text-emerald-700 dark:text-emerald-400';
     icon = '✅';
     label = `MySQL : postes synchronisés${time ? ` (${time})` : ''}`;
   }
@@ -91,8 +92,8 @@ class ModuleErrorBoundary extends Component<{ children: ReactNode; onReset: () =
       return (
         <div className="min-h-[40vh] flex flex-col items-center justify-center gap-4 p-8 text-center">
           <div className="text-5xl">⚠️</div>
-          <h2 className="text-xl font-bold text-red-700">Une erreur est survenue</h2>
-          <p className="text-sm text-slate-600 max-w-md">{this.state.error?.message || 'Erreur inconnue du module.'}</p>
+          <h2 className="text-xl font-bold text-red-700 dark:text-red-400">Une erreur est survenue</h2>
+          <p className="text-sm text-ink-secondary max-w-md">{this.state.error?.message || 'Erreur inconnue du module.'}</p>
           <button
             onClick={() => { this.setState({ hasError: false, error: null }); this.props.onReset(); }}
             className="px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 cursor-pointer"
@@ -116,13 +117,13 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, EBState> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-8 text-center bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900">
+        <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-8 text-center bg-canvas">
           <div className="text-6xl">⚠️</div>
-          <h1 className="text-2xl font-bold text-white">MediCare HIS — Une erreur est survenue</h1>
-          <p className="text-sm text-slate-300 max-w-lg">
+          <h1 className="text-2xl font-bold text-ink-strong">MediCare HIS — Une erreur est survenue</h1>
+          <p className="text-sm text-ink-secondary max-w-lg">
             L'application a rencontré un problème inattendu. Vos données de session n'ont pas été perdues.
             <br />
-            <span className="text-slate-400">{this.state.error?.message || 'Erreur inconnue.'}</span>
+            <span className="text-ink-faint">{this.state.error?.message || 'Erreur inconnue.'}</span>
           </p>
           <div className="flex gap-3 mt-2">
             <button
@@ -517,7 +518,7 @@ function AppInner() {
   /* ─── Vue Dossier Médical ─── */
   if (view === 'medicalRecord') {
     if (state.currentUser.role !== 'doctor' && state.currentUser.role !== 'admin') {
-      return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-red-700 font-semibold">Accès refusé : seuls les médecins et administrateurs peuvent consulter les dossiers médicaux.</div>;
+      return <div className="min-h-screen flex items-center justify-center bg-surface-muted text-red-700 dark:text-red-400 font-semibold">Accès refusé : seuls les médecins et administrateurs peuvent consulter les dossiers médicaux.</div>;
     }
     return (
       <>
@@ -561,8 +562,8 @@ function AppInner() {
         fullHeight={state.currentUser.role === 'admin'}>
         {state.currentUser.role !== 'admin' && (
           <div className="mb-6">
-            <h2 className="text-2xl font-bold text-slate-800">{roleTitles[state.currentUser.role] || 'Module'}</h2>
-            <p className="text-slate-500 text-sm mt-1">
+            <h2 className="text-2xl font-bold text-ink-strong">{roleTitles[state.currentUser.role] || 'Module'}</h2>
+            <p className="text-ink-muted text-sm mt-1">
               Connecté: <strong>{state.currentUser.name}</strong> ({state.currentUser.id}) — {new Date().toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
             </p>
           </div>
@@ -579,9 +580,12 @@ function AppInner() {
 
 export default function App() {
   return (
-    <AppErrorBoundary>
-      <AppInner />
+    <>
+      <AppErrorBoundary>
+        <AppInner />
+      </AppErrorBoundary>
+      <PrintFeedback />
       <FloatingThemeToggle />
-    </AppErrorBoundary>
+    </>
   );
 }

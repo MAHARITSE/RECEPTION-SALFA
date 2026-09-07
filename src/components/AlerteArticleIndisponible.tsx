@@ -65,7 +65,7 @@ export default function AlerteArticleIndisponible({ alert, onClose }: Props) {
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border-2 border-red-500 overflow-hidden animate-in zoom-in-95 duration-150"
+        className="relative w-full max-w-md bg-surface rounded-2xl shadow-2xl border-2 border-red-500 overflow-hidden animate-in zoom-in-95 duration-150"
       >
         {/* Bandeau rouge */}
         <div className="bg-gradient-to-r from-red-600 via-rose-600 to-red-700 p-4 flex items-center gap-3">
@@ -87,10 +87,10 @@ export default function AlerteArticleIndisponible({ alert, onClose }: Props) {
 
         {/* Corps */}
         <div className="p-5 space-y-3 text-center">
-          <p className="text-[15px] font-bold text-red-700 leading-snug break-words">{alert.message}</p>
+          <p className="text-[15px] font-bold text-red-700 dark:text-red-400 leading-snug break-words">{alert.message}</p>
 
           {alert.items && alert.items.length > 0 && (
-            <ul className="text-left text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3 space-y-1 max-h-40 overflow-y-auto">
+            <ul className="text-left text-xs text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-500/8 border border-red-200 dark:border-red-500/25 rounded-xl p-3 space-y-1 max-h-40 overflow-y-auto">
               {alert.items.map((it, i) => (
                 <li key={i} className="font-semibold">• {it}</li>
               ))}
@@ -98,24 +98,24 @@ export default function AlerteArticleIndisponible({ alert, onClose }: Props) {
           )}
 
           {alert.reason && (
-            <p className="text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+            <p className="text-xs font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/8 border border-red-200 dark:border-red-500/25 rounded-xl px-3 py-2">
               Motif : {alert.reason}
             </p>
           )}
 
-          <p className="text-xs text-slate-600 flex items-start gap-2 justify-center text-left">
+          <p className="text-xs text-ink-secondary flex items-start gap-2 justify-center text-left">
             <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-px" />
             <span>{alert.hint || defaultHint}</span>
           </p>
         </div>
 
         {/* Actions */}
-        <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-center gap-3">
+        <div className="p-4 bg-surface-muted border-t border-line-soft flex items-center justify-center gap-3">
           {alert.onForce && (
             <button
               type="button"
               onClick={() => { alert.onForce?.(); onClose(); }}
-              className="px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-semibold text-sm rounded-xl transition cursor-pointer shadow-sm active:scale-95"
+              className="px-4 py-2.5 bg-surface border border-line-strong hover:bg-surface-hover text-ink font-semibold text-sm rounded-xl transition cursor-pointer shadow-sm active:scale-95"
             >
               {alert.forceLabel || 'Continuer quand même'}
             </button>

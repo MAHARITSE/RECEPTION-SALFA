@@ -1,155 +1,279 @@
-@import "tailwindcss";
+/* Ne pas rescanner le bundle compilé de workers/public lors d'un build. */
+@import "tailwindcss" source("./");
+
+/* Tailwind v4 : la préférence choisie dans l'application prime sur celle de l'OS.
+   Les variantes sombres ne s'appliquent pas aux documents imprimés. */
+@custom-variant dark {
+  &:where(.dark, .dark *) {
+    @media screen {
+      @slot;
+    }
+  }
+}
+
+/* Palette partagée, adaptée de MAHARITSE/Email.
+   Utiliser ces tokens pour les surfaces, textes et séparateurs, plutôt que
+   d'inverser globalement bg-white / text-white (boutons, alertes, tickets…). */
+@theme inline {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --color-canvas: var(--ui-canvas);
+  --color-surface: var(--ui-surface);
+  --color-surface-muted: var(--ui-surface-muted);
+  --color-surface-hover: var(--ui-surface-hover);
+  --color-surface-active: var(--ui-surface-active);
+  --color-field: var(--ui-field);
+  --color-ink: var(--ui-ink);
+  --color-ink-strong: var(--ui-ink-strong);
+  --color-ink-secondary: var(--ui-ink-secondary);
+  --color-ink-muted: var(--ui-ink-muted);
+  --color-ink-faint: var(--ui-ink-faint);
+  --color-line: var(--ui-line);
+  --color-line-soft: var(--ui-line-soft);
+  --color-line-strong: var(--ui-line-strong);
+  --color-line-control: var(--ui-line-control);
+  --color-accent: var(--ui-accent);
+  --color-accent-strong: var(--ui-accent-strong);
+  --color-accent-soft: var(--ui-accent-soft);
+  --color-accent-hover: var(--ui-accent-hover);
+  --color-accent-line: var(--ui-accent-line);
+}
 
 @layer base {
+  :root {
+    color-scheme: light;
+    --ui-canvas: #f8fafc;
+    --ui-surface: #ffffff;
+    --ui-surface-muted: #f8fafc;
+    --ui-surface-hover: #f1f5f9;
+    --ui-surface-active: #e2e8f0;
+    --ui-field: #f1f5f9;
+    --ui-ink: #334155;
+    --ui-ink-strong: #0f172a;
+    --ui-ink-secondary: #475569;
+    --ui-ink-muted: #64748b;
+    --ui-ink-faint: #64748b;
+    --ui-line: #e2e8f0;
+    --ui-line-soft: #f1f5f9;
+    --ui-line-strong: #cbd5e1;
+    --ui-line-control: #94a3b8;
+    --ui-accent: #0891b2;
+    --ui-accent-strong: #0e7490;
+    --ui-accent-soft: #ecfeff;
+    --ui-accent-hover: #cffafe;
+    --ui-accent-line: #a5f3fc;
+    --ui-primary-bg: #0891b2;
+    --ui-primary-hover: #0e7490;
+    --ui-primary-text: #ffffff;
+    --ui-primary-line: #0891b2;
+    --ui-toggle-bg: rgb(255 255 255 / 95%);
+    --ui-toggle-line: rgb(203 213 225 / 80%);
+    --ui-toggle-highlight: rgb(6 182 212 / 60%);
+    --ui-toggle-glow: rgb(34 211 238 / 25%);
+    --ui-scrollbar: #cbd5e1;
+    --ui-scrollbar-hover: #94a3b8;
+  }
+
+  @media screen {
+    html.dark {
+      color-scheme: dark;
+      --ui-canvas: #05070a;
+      --ui-surface: #080b10;
+      --ui-surface-muted: #0c1017;
+      --ui-surface-hover: #141c28;
+      --ui-surface-active: #1e293b;
+      --ui-field: #05070a;
+      --ui-ink: #cbd5e1;
+      --ui-ink-strong: #f1f5f9;
+      --ui-ink-secondary: #b0bdd0;
+      --ui-ink-muted: #94a3b8;
+      --ui-ink-faint: #8190a6;
+      --ui-line: #1e293b;
+      --ui-line-soft: #141c28;
+      --ui-line-strong: #334155;
+      --ui-line-control: #475569;
+      --ui-accent: #22d3ee;
+      --ui-accent-strong: #67e8f9;
+      --ui-accent-soft: rgb(6 182 212 / 10%);
+      --ui-accent-hover: rgb(6 182 212 / 20%);
+      --ui-accent-line: rgb(6 182 212 / 35%);
+      --ui-primary-bg: rgb(6 182 212 / 10%);
+      --ui-primary-hover: rgb(6 182 212 / 20%);
+      --ui-primary-text: #22d3ee;
+      --ui-primary-line: rgb(6 182 212 / 40%);
+      --ui-toggle-bg: rgb(12 16 23 / 90%);
+      --ui-toggle-line: rgb(51 65 85 / 80%);
+      --ui-toggle-highlight: rgb(245 158 11 / 60%);
+      --ui-toggle-glow: rgb(245 158 11 / 25%);
+      --ui-scrollbar: #1e293b;
+      --ui-scrollbar-hover: #334155;
+    }
+  }
+
   html {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: var(--font-sans);
+    background-color: var(--ui-canvas);
   }
 
   body {
     @apply antialiased;
+    margin: 0;
+    min-width: 320px;
+    background-color: var(--ui-canvas);
+    color: var(--ui-ink);
   }
 
-  /* Custom scrollbar */
+  #root {
+    min-height: 100dvh;
+  }
+
+  *, ::before, ::after {
+    border-color: var(--ui-line);
+  }
+
+  ::selection {
+    background-color: var(--ui-accent-hover);
+    color: var(--ui-ink-strong);
+  }
+
+  :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), select, textarea) {
+    background-color: var(--ui-field);
+    color: var(--ui-ink);
+  }
+
+  :where(input, textarea)::placeholder {
+    color: var(--ui-ink-faint);
+    opacity: 1;
+  }
+
+  :where(button, a, input, select, textarea):focus-visible {
+    outline: 2px solid var(--ui-accent);
+    outline-offset: 3px;
+  }
+
+  :where(input[type="checkbox"], input[type="radio"], input[type="range"]) {
+    accent-color: var(--ui-accent);
+  }
+
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
 
   ::-webkit-scrollbar-track {
-    @apply bg-transparent;
+    background: var(--ui-surface);
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-slate-300 rounded-full;
+    background: var(--ui-scrollbar);
+    border-radius: 3px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-slate-400;
+    background: var(--ui-scrollbar-hover);
   }
 
-  /* Range input styling */
+  @supports not selector(::-webkit-scrollbar) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: var(--ui-scrollbar) var(--ui-surface);
+    }
+  }
+
   input[type="range"] {
-    @apply w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer;
+    @apply w-full h-2 rounded-lg appearance-none cursor-pointer;
+    background-color: var(--ui-surface-active);
   }
 
   input[type="range"]::-webkit-slider-thumb {
-    @apply appearance-none w-5 h-5 bg-blue-600 rounded-full shadow-lg cursor-pointer;
+    @apply appearance-none w-5 h-5 rounded-full shadow-lg cursor-pointer;
+    background-color: var(--ui-accent);
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    @apply w-5 h-5 rounded-full border-0 cursor-pointer;
+    background-color: var(--ui-accent);
   }
 }
 
-/* Dark Mode Theme Overrides */
-html.dark {
-  color-scheme: dark;
+@layer components {
+  .theme-header {
+    background-color: var(--ui-surface);
+    color: var(--ui-ink);
+    border-bottom: 1px solid var(--ui-line);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 5%);
+  }
+
+  .theme-brand-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    flex-shrink: 0;
+    border-radius: 4px;
+    background: #06b6d4;
+    color: #ffffff;
+    transform: rotate(45deg);
+    box-shadow: 0 0 16px rgb(34 211 238 / 25%);
+  }
+
+  .theme-primary-button {
+    border: 1px solid var(--ui-primary-line);
+    background-color: var(--ui-primary-bg);
+    color: var(--ui-primary-text);
+  }
+
+  .theme-primary-button:hover:not(:disabled) {
+    background-color: var(--ui-primary-hover);
+  }
+
+  .theme-login {
+    background-color: var(--ui-canvas);
+    background-image: radial-gradient(ellipse at top left, var(--ui-accent-soft), transparent 55%);
+  }
+
+  /* Une seule icône indique le thème vers lequel le bouton permet de passer. */
+  .theme-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 1px solid var(--ui-toggle-line);
+    border-radius: 9999px;
+    background: var(--ui-toggle-bg);
+    color: var(--ui-accent-strong);
+    box-shadow: 0 8px 24px -8px rgb(0 0 0 / 35%);
+    backdrop-filter: blur(12px);
+    cursor: pointer;
+  }
+
+  .theme-toggle[data-theme="dark"] {
+    color: #fbbf24;
+  }
+
+  .theme-toggle:hover {
+    border-color: var(--ui-toggle-highlight);
+    box-shadow: 0 0 20px var(--ui-toggle-glow);
+  }
+
+  /* L'aperçu d'un ticket reste une feuille blanche dans les deux thèmes. */
+  .theme-paper {
+    color-scheme: light;
+    background: #ffffff;
+    color: #000000;
+  }
 }
 
-.dark body,
-.dark .bg-slate-50,
-.dark .bg-gray-50,
-.dark .bg-\[\#e8e8e8\],
-.dark .bg-\[\#f5f5f5\],
-.dark .bg-\[\#f0f0f0\] {
-  background-color: #0f172a !important;
-  color: #f8fafc;
+@media (prefers-reduced-motion: no-preference) {
+  body, .theme-header, .theme-login, .theme-toggle {
+    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  }
 }
 
-.dark .bg-white {
-  background-color: #1e293b !important;
-  color: #f8fafc;
-}
-
-.dark .bg-slate-100 {
-  background-color: #334155 !important;
-  color: #f8fafc;
-}
-
-.dark .bg-slate-200 {
-  background-color: #475569 !important;
-  color: #f8fafc;
-}
-
-.dark .bg-\[\#cce5ff\] {
-  background-color: #1e3a8a !important;
-  color: #f8fafc !important;
-}
-
-.dark .bg-blue-50 {
-  background-color: #1e3a8a !important;
-  color: #bfdbfe !important;
-}
-
-.dark .bg-emerald-50 {
-  background-color: #064e3b !important;
-  color: #a7f3d0 !important;
-}
-
-.dark .bg-amber-50 {
-  background-color: #78350f !important;
-  color: #fde68a !important;
-}
-
-.dark .bg-rose-50,
-.dark .bg-red-50 {
-  background-color: #881337 !important;
-  color: #fecdd3 !important;
-}
-
-.dark .bg-indigo-50 {
-  background-color: #312e81 !important;
-  color: #c7d2fe !important;
-}
-
-.dark .bg-purple-50 {
-  background-color: #581c87 !important;
-  color: #e9d5ff !important;
-}
-
-.dark .text-slate-900,
-.dark .text-slate-800,
-.dark .text-slate-700,
-.dark .text-gray-900,
-.dark .text-gray-800,
-.dark .text-gray-700 {
-  color: #f1f5f9 !important;
-}
-
-.dark .text-slate-600,
-.dark .text-slate-500,
-.dark .text-gray-600,
-.dark .text-gray-500 {
-  color: #94a3b8 !important;
-}
-
-.dark .border,
-.dark .border-slate-200,
-.dark .border-slate-300,
-.dark .border-slate-100,
-.dark .border-gray-200,
-.dark .border-gray-300 {
-  border-color: #334155 !important;
-}
-
-.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
-.dark select,
-.dark textarea {
-  background-color: #0f172a !important;
-  color: #f8fafc !important;
-  border-color: #475569 !important;
-}
-
-.dark table thead tr,
-.dark table thead th {
-  background-color: #334155 !important;
-  color: #cbd5e1 !important;
-}
-
-.dark table tbody tr {
-  border-color: #334155 !important;
-}
-
-.dark ::-webkit-scrollbar-thumb {
-  background-color: #475569;
-}
-
-.dark ::-webkit-scrollbar-thumb:hover {
-  background-color: #64748b;
+@media print {
+  #theme-toggle-floating-container {
+    display: none;
+  }
 }

@@ -1,11 +1,13 @@
+import { printDocument } from './printDocument';
+import type { ExamTicketLine } from './examReceipts';
 import type { Invoice, Patient, TicketSettings, User, Prescription, LabRequest, Company, Consultation, PatientJourneyEvent, EchoRequest, HbRecord, PharmaDeliveryClosing, PharmaClosingStockRow } from '../types';
 
 /** Échappe les caractères HTML réservés dans une chaîne.
  *  Décode d'abord les entités HTML déjà présentes pour éviter le
  *  double-encodage (ex. `Groupe Sanguin &amp; Rhésus` → `&amp;amp;`). */
-const escapeHtml = (value: string) => {
+const escapeHtml = (value: unknown) => {
   // Décoder les entités HTML courantes déjà présentes dans la chaîne
-  const decoded = value
+  const decoded = String(value ?? '')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
@@ -36,39 +38,10 @@ interface TicketBase {
   bodyHtml: string; // corps déjà préparé
   footerNote?: string;
   signatureLabel?: string; // ex: "Signature du caissier"
-  /** Si true (défaut) : lance print() sans boîte de dialogue quand le navigateur le permet */
-  silent?: boolean;
-}
-
-/**
- * Script d'impression injecté dans le ticket.
- * - Appelle print() immédiatement (pas de popup de choix d'imprimante côté app).
- * - Si l'API experimental `getAttention` / kiosk n'est pas dispo, le navigateur
- *   peut encore afficher sa boîte native — on minimise le délai et on ferme l'iframe.
- * - Pour une vraie impression silencieuse : configurer l'imprimante par défaut
- *   OS + Chrome/Edge avec --kiosk-printing (documenté en admin).
- */
-function printScript(silent = true) {
-  if (!silent) {
-    return `<script>window.onload=function(){try{window.focus();window.print();}catch(e){}}</script>`;
-  }
-  return `<script>
-(function(){
-  function doPrint(){
-    try {
-      window.focus();
-      // Impression directe — pas de fenêtre de sélection dans l'app
-      window.print();
-    } catch (e) {}
-  }
-  if (document.readyState === 'complete') doPrint();
-  else window.onload = doPrint;
-})();
-</script>`;
 }
 
 function buildTicketHtml(t: TicketBase) {
-  const { settings, title, reference, date = new Date(), extraHeader = [], bodyHtml, footerNote, silent = true } = t;
+  const { settings, title, reference, date = new Date(), extraHeader = [], bodyHtml, footerNote } = t;
   const m = paperMetrics(settings.paperWidth);
   const logo = (settings.showLogo !== false && settings.logoUrl)
     ? `<img class="logo" src="${escapeHtml(settings.logoUrl)}" alt="Logo" />`
@@ -109,49 +82,7 @@ function buildTicketHtml(t: TicketBase) {
     ${bodyHtml}
     <div class="rule-double"></div>
     <footer class="center small">${escapeHtml(footerNote || settings.footerMessage || '')}</footer>
-    ${printScript(silent)}
   </body></html>`;
-}
-
-/**
- * Ouvre un ticket dans un iframe invisible et lance l'impression directement
- * (sans fenêtre de choix d'imprimante côté application).
- * Respecte settings.copies pour réimprimer N fois.
- */
-function openTicketWindow(html: string, _title: string, copies = 1) {
-  const n = Math.max(1, Math.min(5, copies || 1));
-
-  const printOnce = (delayMs: number) => {
-    setTimeout(() => {
-      const iframe = document.createElement('iframe');
-      iframe.setAttribute('aria-hidden', 'true');
-      iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
-      document.body.appendChild(iframe);
-
-      const win = iframe.contentWindow;
-      const doc = win?.document || iframe.contentDocument;
-      if (!doc || !win) {
-        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-        return;
-      }
-      doc.open();
-      doc.write(html);
-      doc.close();
-
-      // Nettoyage après impression (ou timeout de sécurité)
-      const cleanup = () => {
-        try {
-          if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-        } catch { /* ignore */ }
-      };
-      win.addEventListener?.('afterprint', cleanup);
-      setTimeout(cleanup, 45000);
-    }, delayMs);
-  };
-
-  for (let i = 0; i < n; i++) {
-    printOnce(i * 800);
-  }
 }
 
 /** Helper : nombre de copies depuis settings */
@@ -210,9 +141,8 @@ export function printPaymentTicket(
     footerNote: credit
       ? 'Montant porté au crédit de la société — règlement ultérieur par la société.'
       : settings.footerMessage,
-    silent: settings.autoPrint !== false,
   });
-  openTicketWindow(html, credit ? 'Prise en charge crédit société' : 'Reçu de paiement', ticketCopies(settings));
+  printDocument(html, credit ? 'Prise en charge crédit société' : 'Reçu de paiement', ticketCopies(settings));
 }
 
 /* ============================================================
@@ -250,9 +180,8 @@ export function printQueueTicket(
     date,
     bodyHtml,
     footerNote: "Conservez ce ticket — il sera appelé par l'équipe médicale.",
-    silent: settings.autoPrint !== false,
   });
-  openTicketWindow(html, "Ticket file d'attente", ticketCopies(settings));
+  printDocument(html, "Ticket file d'attente", ticketCopies(settings));
 }
 
 /* ============================================================
@@ -297,9 +226,8 @@ export function printPrescriptionTicket(
     date,
     bodyHtml,
     footerNote: 'À présenter à la pharmacie pour délivrance.',
-    silent: settings.autoPrint !== false,
   });
-  openTicketWindow(html, 'Ordonnance', ticketCopies(settings));
+  printDocument(html, 'Ordonnance', ticketCopies(settings));
 }
 
 /* ============================================================
@@ -308,20 +236,20 @@ export function printPrescriptionTicket(
 export function printLabRequestTicket(
   settings: TicketSettings,
   patient: Patient,
-  doctor: User,
+  doctor: User | undefined,
   date: Date,
-  requests: LabRequest[],
+  requests: readonly ExamTicketLine[],
 ) {
   const lines = requests
     .flatMap((r) => [
-      `<tr><td colspan="2" class="bold" style="padding-top:1.5mm">▸ ${escapeHtml(r.examType)}${r.urgent ? ' <span style="color:#b00">[URGENT]</span>' : ''}</td></tr>`,
+      `<tr><td colspan="2" class="bold" style="padding-top:1.5mm">▸ ${escapeHtml(r.examType)}${r.quantity && r.quantity !== 1 ? ` × ${escapeHtml(r.quantity)}` : ''}${r.urgent ? ' <span style="color:#b00">[URGENT]</span>' : ''}</td></tr>`,
     ])
     .join('');
   const bodyHtml = `
     <div><span class="bold">Patient :</span> ${escapeHtml(patient.lastName)} ${escapeHtml(patient.firstName)}</div>
     <div><span class="bold">Dossier :</span> ${escapeHtml(patient.dossier)}</div>
-    <div><span class="bold">Âge / Sexe :</span> ${escapeHtml(patient.age)} / ${patient.gender === 'M' ? 'M' : 'F'}</div>
-    <div><span class="bold">Prescripteur :</span> ${escapeHtml(doctor.name)}</div>
+    <div><span class="bold">Âge / Sexe :</span> ${escapeHtml(patient.age ?? '—')} / ${patient.gender === 'M' ? 'M' : patient.gender === 'F' ? 'F' : '—'}</div>
+    <div><span class="bold">Prescripteur :</span> ${escapeHtml(doctor?.name || 'Non renseigné')}</div>
     <div class="rule"></div>
     <div class="bold heading">EXAMENS DEMANDÉS</div>
     <table>${lines || '<tr><td><i>Aucun examen</i></td></tr>'}</table>
@@ -333,9 +261,8 @@ export function printLabRequestTicket(
     date,
     bodyHtml,
     footerNote: "Présentez ce bon au laboratoire avec votre pièce d'identité.",
-    silent: settings.autoPrint !== false,
   });
-  openTicketWindow(html, "Bon d'analyse", ticketCopies(settings));
+  printDocument(html, "Bon d'analyse", ticketCopies(settings));
 }
 
 
@@ -345,14 +272,14 @@ export function printLabRequestTicket(
 export function printEchoRequestTicket(
   settings: TicketSettings,
   patient: Patient,
-  doctor: User,
+  doctor: User | undefined,
   date: Date,
-  requests: EchoRequest[],
+  requests: readonly ExamTicketLine[],
 ) {
   const lines = requests
     .map(
       (r) => `
-      <tr><td colspan="2" class="bold" style="padding-top:1.5mm">▸ ${escapeHtml(r.examType)}${r.urgent ? ' <span style="color:#b00">[URGENT]</span>' : ''}</td></tr>
+      <tr><td colspan="2" class="bold" style="padding-top:1.5mm">▸ ${escapeHtml(r.examType)}${r.quantity && r.quantity !== 1 ? ` × ${escapeHtml(r.quantity)}` : ''}${r.urgent ? ' <span style="color:#b00">[URGENT]</span>' : ''}</td></tr>
       ${r.notes ? `<tr><td colspan="2" class="small">  ${escapeHtml(r.notes)}</td></tr>` : ''}
       ${r.price != null ? `<tr><td colspan="2" class="small">  Tarif : ${money(r.price)}</td></tr>` : ''}
     `,
@@ -361,8 +288,8 @@ export function printEchoRequestTicket(
   const bodyHtml = `
     <div><span class="bold">Patient :</span> ${escapeHtml(patient.lastName)} ${escapeHtml(patient.firstName)}</div>
     <div><span class="bold">Dossier :</span> ${escapeHtml(patient.dossier)}</div>
-    <div><span class="bold">Âge / Sexe :</span> ${escapeHtml(patient.age)} / ${patient.gender === 'M' ? 'M' : 'F'}</div>
-    <div><span class="bold">Prescripteur :</span> ${escapeHtml(doctor.name)}</div>
+    <div><span class="bold">Âge / Sexe :</span> ${escapeHtml(patient.age ?? '—')} / ${patient.gender === 'M' ? 'M' : patient.gender === 'F' ? 'F' : '—'}</div>
+    <div><span class="bold">Prescripteur :</span> ${escapeHtml(doctor?.name || 'Non renseigné')}</div>
     <div class="rule"></div>
     <div class="bold heading">ÉCHOGRAPHIES DEMANDÉES</div>
     <table>${lines || '<tr><td><i>Aucune échographie</i></td></tr>'}</table>
@@ -374,9 +301,8 @@ export function printEchoRequestTicket(
     date,
     bodyHtml,
     footerNote: "Présentez ce bon au service d'imagerie / échographie.",
-    silent: settings.autoPrint !== false,
   });
-  openTicketWindow(html, "Bon d'échographie", ticketCopies(settings));
+  printDocument(html, "Bon d'échographie", ticketCopies(settings));
 }
 
 /* ============================================================
@@ -415,9 +341,8 @@ export function printDeliveryTicket(
     date,
     bodyHtml,
     footerNote: settings.footerMessage,
-    silent: settings.autoPrint !== false,
   });
-  openTicketWindow(html, 'Bon de délivrance', ticketCopies(settings));
+  printDocument(html, 'Bon de délivrance', ticketCopies(settings));
 }
 
 /* ============================================================
@@ -486,8 +411,8 @@ export function printClosingTicket(
     .ticket-page{width:${width}mm;height:297mm;padding:${width === 58 ? '3mm' : '4mm'};break-after:page;page-break-after:always;overflow:hidden;display:flex;flex-direction:column}
     .ticket-page:last-child{break-after:auto;page-break-after:auto}.center{text-align:center}.bold,.section-title{font-weight:700}.small{font-size:8.5px}.title{font-size:${width === 58 ? '11px' : '12.5px'};font-weight:700}.logo{max-width:${width === 58 ? '30mm' : '45mm'};max-height:16mm;object-fit:contain;margin-bottom:2mm}
     .rule{border-top:1px dashed #000;margin:2.5mm 0}.rule-double{border-top:3px double #000;margin:2.5mm 0}.section-title{margin-top:2.5mm}table{width:100%;border-collapse:collapse}td{padding:.8mm 0;vertical-align:top}.amount{text-align:right;white-space:nowrap;padding-left:1.5mm}.sub-total{font-weight:700}.grand-total{font-size:${width === 58 ? '11.5px' : '13px'};font-weight:700;display:flex;justify-content:space-between}.signature{margin-top:6mm;display:flex;justify-content:space-between;gap:4mm;font-size:8.5px}.signature span{width:48%;border-top:1px solid #000;padding-top:1mm;text-align:center}.continued{margin-top:auto;text-align:center;font-size:8.5px;font-style:italic}.ticket-page footer{margin-top:auto}
-  </style></head><body>${pageHtml}${printScript(settings.autoPrint !== false)}</body></html>`;
-  openTicketWindow(html, 'Clôture de caisse', ticketCopies(settings));
+  </style></head><body>${pageHtml}</body></html>`;
+  printDocument(html, 'Clôture de caisse', ticketCopies(settings));
 }
 
 /* ============================================================
@@ -537,9 +462,9 @@ export function printLabResultTicket(
   </div>
   <p style="font-size:11px;color:#555">Résultats validés par le biologiste le ${new Date(request.completedAt || Date.now()).toLocaleString('fr-FR')}. Ce compte-rendu est établi sous la responsabilité du laboratoire.</p>
   <div class="sig"><div>${escapeHtml(settings.facilityName)}</div><div>${escapeHtml(request.validatedBy || request.completedBy || 'Biologiste')}</div></div>
-  ${printScript(settings.autoPrint !== false)}
+
   </body></html>`;
-  openTicketWindow(html, `Compte-rendu ${request.examType}`, ticketCopies(settings));
+  printDocument(html, `Compte-rendu ${request.examType}`, ticketCopies(settings));
 }
 
 /* ============================================================
@@ -636,9 +561,9 @@ export function printDossierTicket(
   <h2>FACTURATION</h2>
   ${invHtml || '<div>Aucune facture.</div>'}
 
-  ${printScript(settings.autoPrint !== false)}
+
   </body></html>`;
-  openTicketWindow(html, `Dossier ${patient.dossier}`, ticketCopies(settings));
+  printDocument(html, `Dossier ${patient.dossier}`, ticketCopies(settings));
 }
 
 /* ============================================================
@@ -692,9 +617,8 @@ export function printHbPaymentTicket(
     date,
     bodyHtml,
     footerNote: settings.footerMessage,
-    silent: settings.autoPrint !== false,
   });
-  openTicketWindow(html, `Reçu paiement ${typeLabel.toLowerCase()}`, ticketCopies(settings));
+  printDocument(html, `Reçu paiement ${typeLabel.toLowerCase()}`, ticketCopies(settings));
 }
 
 /**
@@ -763,9 +687,8 @@ export function printPharmaDeliveryClosingTicket(
     date,
     bodyHtml,
     footerNote: settings.footerMessage || 'Sorties du jour & stock final',
-    silent: settings.autoPrint !== false,
   });
-  openTicketWindow(html, `Cloture livraisons pharmacie ${closing.closingNumber}`, ticketCopies(settings));
+  printDocument(html, `Cloture livraisons pharmacie ${closing.closingNumber}`, ticketCopies(settings));
 }
 
 /* ============================================================
@@ -841,7 +764,6 @@ export function printPharmaSalesRecapTicket(
     date,
     bodyHtml,
     footerNote: settings.footerMessage || 'Récapitulatif des ventes de garde',
-    silent: settings.autoPrint !== false,
   });
-  openTicketWindow(html, `Recap ventes pharma ${closingNumber}`, ticketCopies(settings));
+  printDocument(html, `Recap ventes pharma ${closingNumber}`, ticketCopies(settings));
 }

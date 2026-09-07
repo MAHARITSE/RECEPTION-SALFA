@@ -45,14 +45,14 @@ export default function ConfirmModal({
   const buttonClass = {
     danger: 'bg-rose-600 hover:bg-rose-700 focus:ring-rose-500 shadow-rose-600/30',
     warning: 'bg-amber-600 hover:bg-amber-700 focus:ring-amber-500 shadow-amber-600/30',
-    info: 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500 shadow-blue-600/30',
+    info: 'bg-blue-600 hover:bg-blue-700 focus:ring-accent/25 shadow-blue-600/30',
     success: 'bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500 shadow-emerald-600/30',
   }[type];
 
   return (
     <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div 
-        className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200"
+        className="relative w-full max-w-md bg-surface rounded-2xl shadow-2xl overflow-hidden border border-line animate-in zoom-in-95 duration-200"
         role="dialog"
         aria-modal="true"
       >
@@ -79,24 +79,24 @@ export default function ConfirmModal({
         </div>
 
         {/* Content body */}
-        <div className="p-6 text-slate-800 space-y-3">
-          <p className="text-base font-semibold leading-relaxed text-slate-800">
+        <div className="p-6 text-ink-strong space-y-3">
+          <p className="text-base font-semibold leading-relaxed text-ink-strong">
             {message}
           </p>
           {subText && (
-            <p className="text-xs text-slate-500 leading-normal bg-slate-50 p-3 rounded-xl border border-slate-200/80">
+            <p className="text-xs text-ink-muted leading-normal bg-surface-muted p-3 rounded-xl border border-line/80">
               {subText}
             </p>
           )}
         </div>
 
         {/* Footer actions */}
-        <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
+        <div className="p-4 bg-surface-muted border-t border-line-soft flex items-center justify-end gap-3">
           {showCancel && (
             <button
               type="button"
               onClick={onCancel}
-              className="px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-semibold text-sm rounded-xl transition cursor-pointer shadow-sm active:scale-95"
+              className="px-4 py-2.5 bg-surface border border-line-strong hover:bg-surface-hover text-ink font-semibold text-sm rounded-xl transition cursor-pointer shadow-sm active:scale-95"
             >
               {cancelText}
             </button>

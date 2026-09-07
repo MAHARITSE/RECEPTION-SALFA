@@ -900,7 +900,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
     <div className="space-y-4">
       {toast && (
         <div className="fixed inset-0 z-[9999] pointer-events-none flex items-center justify-center p-4">
-          <div className="pointer-events-auto bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white border border-blue-300/40 px-6 py-4 rounded-2xl shadow-2xl animate-in fade-in zoom-in-95 font-semibold text-sm flex items-center gap-3">
+          <div className="pointer-events-auto bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white border border-blue-300/40 dark:border-cyan-500/16 px-6 py-4 rounded-2xl shadow-2xl animate-in fade-in zoom-in-95 font-semibold text-sm flex items-center gap-3">
             <div className="p-1.5 bg-white/20 rounded-lg">
               <Check className="w-5 h-5 text-white" />
             </div>
@@ -926,15 +926,15 @@ export default function ModuleMagasinier({ state, setState }: Props) {
         const currentList = magBannerFilter === 'central' ? lowStockCentral : lowStockPharmacie;
 
         return (
-          <div className="bg-amber-50 dark:bg-amber-950/40 border-l-4 border-amber-500 rounded-xl p-4 shadow-sm transition-all text-slate-800 dark:text-slate-100">
+          <div className="bg-amber-50 dark:bg-amber-500/8 border-l-4 border-amber-500 rounded-xl p-4 shadow-sm transition-all text-ink-strong">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 rounded-lg shrink-0">
+                <div className="p-2 bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 rounded-lg shrink-0">
                   <ShieldAlert className="w-5 h-5 animate-pulse text-amber-600 dark:text-amber-400" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h4 className="font-bold text-sm text-amber-900 dark:text-amber-200">
+                    <h4 className="font-bold text-sm text-amber-900 dark:text-amber-300">
                       Alerte Stock Minimum : {lowStockCentral.length} article(s) Dépôt Central / {lowStockPharmacie.length} Pharmacie
                     </h4>
                     {rupturesCentral.length > 0 && (
@@ -953,7 +953,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+                  <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
                     Articles ayant atteint ou franchi le seuil d'alerte configuré. Anticipez les commandes fournisseurs ou les approvisionnements.
                   </p>
                 </div>
@@ -962,7 +962,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setMagBannerExpanded(!magBannerExpanded)}
-                  className="px-3 py-1.5 bg-amber-200/80 hover:bg-amber-300 dark:bg-amber-900 dark:hover:bg-amber-800 text-amber-900 dark:text-amber-100 rounded-lg text-xs font-semibold cursor-pointer transition flex items-center gap-1"
+                  className="px-3 py-1.5 bg-amber-200/80 dark:bg-amber-500/20 hover:bg-amber-300 dark:hover:bg-amber-500/35 text-amber-900 dark:text-amber-300 rounded-lg text-xs font-semibold cursor-pointer transition flex items-center gap-1"
                 >
                   {magBannerExpanded ? 'Masquer la liste' : 'Voir le détail des alertes'}
                 </button>
@@ -970,14 +970,14 @@ export default function ModuleMagasinier({ state, setState }: Props) {
             </div>
 
             {magBannerExpanded && (
-              <div className="mt-4 pt-3 border-t border-amber-200 dark:border-amber-800/60 space-y-3">
+              <div className="mt-4 pt-3 border-t border-amber-200 dark:border-amber-500/25 space-y-3">
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setMagBannerFilter('central')}
                     className={`px-3 py-1 rounded-md text-xs font-semibold cursor-pointer transition ${
                       magBannerFilter === 'central'
                         ? 'bg-amber-600 text-white shadow-sm'
-                        : 'bg-amber-200/50 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200 hover:bg-amber-200'
+                        : 'bg-amber-200/50 dark:bg-amber-500/12 text-amber-900 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-500/25'
                     }`}
                   >
                     📦 Stock Central ({lowStockCentral.length})
@@ -987,7 +987,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                     className={`px-3 py-1 rounded-md text-xs font-semibold cursor-pointer transition ${
                       magBannerFilter === 'pharmacie'
                         ? 'bg-purple-600 text-white shadow-sm'
-                        : 'bg-amber-200/50 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200 hover:bg-amber-200'
+                        : 'bg-amber-200/50 dark:bg-amber-500/12 text-amber-900 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-500/25'
                     }`}
                   >
                     💊 Stock Pharmacie ({lowStockPharmacie.length})
@@ -997,7 +997,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-left">
                     <thead>
-                      <tr className="text-amber-900 dark:text-amber-300 border-b border-amber-200 dark:border-amber-800/60">
+                      <tr className="text-amber-900 dark:text-amber-300 border-b border-amber-200 dark:border-amber-500/25">
                         <th className="py-2 px-2 font-semibold">Article</th>
                         <th className="py-2 px-2 font-semibold">Famille</th>
                         <th className="py-2 px-2 font-semibold text-center">Stock Central</th>
@@ -1008,48 +1008,48 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                         <th className="py-2 px-2 font-semibold text-right">Action</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-amber-200/50 dark:divide-amber-800/40">
+                    <tbody className="divide-y divide-amber-200/50 dark:divide-amber-500/12">
                       {currentList.map((a) => {
                         const isCentralOut = a.stockCentral <= 0;
                         const isPharmaOut = a.stockPharmacie <= 0;
                         return (
-                          <tr key={a.id} className="hover:bg-amber-100/50 dark:hover:bg-amber-900/40">
-                            <td className="py-2 px-2 font-bold text-slate-800 dark:text-slate-100">{a.name}</td>
+                          <tr key={a.id} className="hover:bg-amber-100/50 dark:hover:bg-amber-500/8">
+                            <td className="py-2 px-2 font-bold text-ink-strong">{a.name}</td>
                             <td className="py-2 px-2">
-                              <span className="px-2 py-0.5 bg-amber-200/60 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 rounded font-mono text-[10px]">
+                              <span className="px-2 py-0.5 bg-amber-200/60 dark:bg-amber-500/15 text-amber-900 dark:text-amber-300 rounded font-mono text-[10px]">
                                 {labelForFamily(a.family)}
                               </span>
                             </td>
-                            <td className={`py-2 px-2 text-center font-mono font-bold ${isCentralOut ? 'text-red-600 dark:text-red-400 font-extrabold' : 'text-slate-800 dark:text-slate-200'}`}>
+                            <td className={`py-2 px-2 text-center font-mono font-bold ${isCentralOut ? 'text-red-600 dark:text-red-400 font-extrabold' : 'text-ink-strong'}`}>
                               {a.stockCentral} {a.unit}
                             </td>
-                            <td className="py-2 px-2 text-center font-mono text-slate-500 dark:text-slate-400">
+                            <td className="py-2 px-2 text-center font-mono text-ink-muted">
                               {a.minStockCentral} {a.unit}
                             </td>
-                            <td className={`py-2 px-2 text-center font-mono font-bold ${isPharmaOut ? 'text-red-600 dark:text-red-400 font-extrabold' : 'text-purple-700 dark:text-purple-300'}`}>
+                            <td className={`py-2 px-2 text-center font-mono font-bold ${isPharmaOut ? 'text-red-600 dark:text-red-400 font-extrabold' : 'text-purple-700 dark:text-purple-400'}`}>
                               {a.stockPharmacie} {a.unit}
                             </td>
-                            <td className="py-2 px-2 text-center font-mono text-slate-500 dark:text-slate-400">
+                            <td className="py-2 px-2 text-center font-mono text-ink-muted">
                               {a.minStockPharmacie} {a.unit}
                             </td>
                             <td className="py-2 px-2 text-center">
                               {magBannerFilter === 'central' ? (
                                 isCentralOut ? (
-                                  <span className="px-2 py-0.5 rounded bg-red-100 dark:bg-red-900/60 text-red-700 dark:text-red-300 font-bold text-[10px]">
+                                  <span className="px-2 py-0.5 rounded bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-400 font-bold text-[10px]">
                                     RUPTURE CENTRAL
                                   </span>
                                 ) : (
-                                  <span className="px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 font-semibold text-[10px]">
+                                  <span className="px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300 font-semibold text-[10px]">
                                     STOCK BAS CENTRAL
                                   </span>
                                 )
                               ) : (
                                 isPharmaOut ? (
-                                  <span className="px-2 py-0.5 rounded bg-red-100 dark:bg-red-900/60 text-red-700 dark:text-red-300 font-bold text-[10px]">
+                                  <span className="px-2 py-0.5 rounded bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-400 font-bold text-[10px]">
                                     RUPTURE PHARMA
                                   </span>
                                 ) : (
-                                  <span className="px-2 py-0.5 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-200 font-semibold text-[10px]">
+                                  <span className="px-2 py-0.5 rounded bg-purple-100 dark:bg-purple-500/15 text-purple-800 dark:text-purple-300 font-semibold text-[10px]">
                                     STOCK BAS PHARMA
                                   </span>
                                 )
@@ -1076,8 +1076,8 @@ export default function ModuleMagasinier({ state, setState }: Props) {
       })()}
 
       {/* Main Module Wrapper */}
-      <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-        <div className="flex border-b overflow-x-auto bg-slate-50">
+      <div className="bg-surface rounded-xl shadow-sm border overflow-hidden">
+        <div className="flex border-b overflow-x-auto bg-surface-muted">
           {[
             { key: 'stock' as Tab, l: '📦 Stock Central & Emplacements', icon: WarehouseIcon },
             { key: 'articles' as Tab, l: `🏷️ Catalogue & Articles (${state.articles.length})` },
@@ -1093,7 +1093,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
               key={t.key}
               onClick={() => setTab(t.key)}
               className={`px-4 py-3 text-xs font-semibold border-b-2 cursor-pointer whitespace-nowrap transition ${
-                tab === t.key ? 'border-blue-600 text-blue-700 bg-white shadow-sm' : 'border-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+                tab === t.key ? 'border-blue-600 text-blue-700 dark:text-cyan-400 bg-surface shadow-sm' : 'border-transparent text-ink-muted hover:bg-surface-hover hover:text-ink-strong'
               }`}
             >
               {t.l}
@@ -1108,26 +1108,26 @@ export default function ModuleMagasinier({ state, setState }: Props) {
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                 <div className="flex items-center gap-2 flex-1 max-w-md">
                   <div className="relative w-full">
-                    <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                    <Search className="absolute left-3 top-2.5 w-4 h-4 text-ink-faint" />
                     <input type="text" value={searchStock} onChange={(e) => setSearchStock(e.target.value)} className="w-full pl-9 pr-3 py-1.5 border rounded-lg text-sm outline-none" placeholder="Filtrer par nom, code-barres..." />
                   </div>
                 </div>
                 <div className="flex items-center gap-1 flex-wrap">
-                  <Filter className="w-4 h-4 text-slate-400 mr-1" />
-                  <button onClick={() => setFamilyStockFilter('all')} className={`px-2.5 py-1 rounded text-xs cursor-pointer ${familyStockFilter === 'all' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600'}`}>Tous</button>
+                  <Filter className="w-4 h-4 text-ink-faint mr-1" />
+                  <button onClick={() => setFamilyStockFilter('all')} className={`px-2.5 py-1 rounded text-xs cursor-pointer ${familyStockFilter === 'all' ? 'bg-slate-800 text-white' : 'bg-surface-hover text-ink-secondary'}`}>Tous</button>
                   {articleFamilies.map(fam => { const f = fam.code; return (
-                    <button key={f} onClick={() => setFamilyStockFilter(f)} className={`px-2.5 py-1 rounded text-xs cursor-pointer ${familyStockFilter === f ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600'}`}>{labelForFamily(f)}</button>
+                    <button key={f} onClick={() => setFamilyStockFilter(f)} className={`px-2.5 py-1 rounded text-xs cursor-pointer ${familyStockFilter === f ? 'bg-slate-800 text-white' : 'bg-surface-hover text-ink-secondary'}`}>{labelForFamily(f)}</button>
                   ); })}
                 </div>
               </div>
 
-              <div className="border rounded-xl overflow-hidden shadow-sm bg-white">
+              <div className="border rounded-xl overflow-hidden shadow-sm bg-surface">
                 <table className="w-full text-xs text-left">
-                  <thead className="bg-slate-50 border-b">
+                  <thead className="bg-surface-muted border-b">
                     <tr>
                       <th className="p-2.5">Famille</th>
                       <th className="p-2.5">Article</th>
-                      <th className="p-2.5 text-center bg-sky-50 font-bold text-sky-900">Stock Dépôt Central</th>
+                      <th className="p-2.5 text-center bg-sky-50 dark:bg-sky-500/8 font-bold text-sky-900 dark:text-sky-300">Stock Dépôt Central</th>
                       <th className="p-2.5 text-center">Stock Pharmacie</th>
                       {activeServices.filter((s) => s.kind === 'service').map((s) => (
                         <th key={s.id} className="p-2.5 text-center">{s.name}</th>
@@ -1145,18 +1145,18 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                       const out = managesStock && !alertMuted && a.stockCentral <= 0;
                       const low = managesStock && !alertMuted && a.stockCentral <= a.minStockCentral && a.stockCentral > 0;
                       return (
-                        <tr key={a.id} className={`border-b hover:bg-slate-50/80 ${out ? 'bg-rose-50/50' : low ? 'bg-amber-50/50' : ''}`}>
-                          <td className="p-2.5"><span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-[10px] font-semibold">{labelForFamily(a.family)}</span></td>
-                          <td className="p-2.5 font-medium text-slate-900">
+                        <tr key={a.id} className={`border-b hover:bg-surface-muted/80 ${out ? 'bg-rose-50/50 dark:bg-rose-500/4' : low ? 'bg-amber-50/50 dark:bg-amber-500/4' : ''}`}>
+                          <td className="p-2.5"><span className="px-2 py-0.5 bg-surface-hover text-ink rounded text-[10px] font-semibold">{labelForFamily(a.family)}</span></td>
+                          <td className="p-2.5 font-medium text-ink-strong">
                             {a.name}
-                            {a.saleBlocked && <span className="ml-2 px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded text-[9px] font-bold">Vente Bloquée</span>}
+                            {a.saleBlocked && <span className="ml-2 px-1.5 py-0.5 bg-rose-100 dark:bg-rose-500/15 text-rose-700 dark:text-rose-400 rounded text-[9px] font-bold">Vente Bloquée</span>}
                           </td>
-                          <td className="p-2.5 text-center font-mono font-bold text-sm bg-sky-50/30">{managesStock ? `${a.stockCentral} ${a.unit}` : '—'}</td>
-                          <td className="p-2.5 text-center font-mono text-slate-700">{managesStock ? a.stockPharmacie : '—'}</td>
+                          <td className="p-2.5 text-center font-mono font-bold text-sm bg-sky-50/30 dark:bg-sky-500/2">{managesStock ? `${a.stockCentral} ${a.unit}` : '—'}</td>
+                          <td className="p-2.5 text-center font-mono text-ink">{managesStock ? a.stockPharmacie : '—'}</td>
                           {activeServices.filter((s) => s.kind === 'service').map((s) => (
-                            <td key={s.id} className="p-2.5 text-center font-mono text-slate-500">{managesStock ? (a.serviceStocks?.[s.id] ?? 0) : '—'}</td>
+                            <td key={s.id} className="p-2.5 text-center font-mono text-ink-muted">{managesStock ? (a.serviceStocks?.[s.id] ?? 0) : '—'}</td>
                           ))}
-                          <td className="p-2.5 text-right font-mono text-slate-600">{formatAr(a.purchasePrice)}</td>
+                          <td className="p-2.5 text-right font-mono text-ink-secondary">{formatAr(a.purchasePrice)}</td>
                           <td className="p-2.5 text-center">
                             {managesStock ? (
                               <input
@@ -1164,32 +1164,32 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                                 min={0}
                                 value={a.minStockCentral}
                                 onChange={(e) => updateCentralAlertThreshold(a.id, parseFloat(e.target.value) || 0)}
-                                className="w-16 px-1.5 py-1 border border-slate-300 rounded text-center font-mono text-xs outline-none focus:border-blue-500 bg-white"
+                                className="w-16 px-1.5 py-1 border border-line-strong rounded text-center font-mono text-xs outline-none focus:border-accent bg-surface"
                                 title="Stock d'alerte : en dessous, l'article est signalé « stock bas »"
                               />
                             ) : (
-                              <span className="text-slate-400" title="Famille non gérée en stock">—</span>
+                              <span className="text-ink-faint" title="Famille non gérée en stock">—</span>
                             )}
                           </td>
                           <td className="p-2.5 text-center">
                             {managesStock ? (
                               <button
                                 onClick={() => toggleCentralAlert(a.id, a.name)}
-                                className={`p-1.5 rounded-lg cursor-pointer ${alertMuted ? 'bg-slate-200 text-slate-500 hover:bg-slate-300' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}
+                                className={`p-1.5 rounded-lg cursor-pointer ${alertMuted ? 'bg-surface-active text-ink-muted hover:bg-line-strong' : 'bg-blue-100 dark:bg-cyan-500/15 text-blue-700 dark:text-cyan-400 hover:bg-blue-200 dark:hover:bg-cyan-500/25'}`}
                                 title={alertMuted ? 'Alerte désactivée — cliquez pour réactiver' : 'Alerte activée — cliquez pour désactiver'}
                               >
                                 {alertMuted ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
                               </button>
                             ) : (
-                              <span className="text-slate-400" title="Famille non gérée en stock">—</span>
+                              <span className="text-ink-faint" title="Famille non gérée en stock">—</span>
                             )}
                           </td>
                           <td className="p-2.5 text-center">
-                            {!managesStock ? <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[10px] rounded-full font-bold" title="Cette famille ne gère pas le stock">NON GÉRÉ</span>
-                              : alertMuted ? <span className="px-2 py-0.5 bg-slate-200 text-slate-600 text-[10px] rounded-full font-bold" title="Alerte désactivée pour cet article">🔕 ALERTE OFF</span>
-                              : out ? <span className="px-2 py-0.5 bg-rose-100 text-rose-800 text-[10px] rounded-full font-bold">RUPTURE</span>
-                              : low ? <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] rounded-full font-bold">STOCK BAS</span>
-                              : <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] rounded-full font-bold">OK</span>}
+                            {!managesStock ? <span className="px-2 py-0.5 bg-surface-hover text-ink-muted text-[10px] rounded-full font-bold" title="Cette famille ne gère pas le stock">NON GÉRÉ</span>
+                              : alertMuted ? <span className="px-2 py-0.5 bg-surface-active text-ink-secondary text-[10px] rounded-full font-bold" title="Alerte désactivée pour cet article">🔕 ALERTE OFF</span>
+                              : out ? <span className="px-2 py-0.5 bg-rose-100 dark:bg-rose-500/15 text-rose-800 dark:text-rose-300 text-[10px] rounded-full font-bold">RUPTURE</span>
+                              : low ? <span className="px-2 py-0.5 bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300 text-[10px] rounded-full font-bold">STOCK BAS</span>
+                              : <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 text-[10px] rounded-full font-bold">OK</span>}
                           </td>
                         </tr>
                       );
@@ -1206,15 +1206,15 @@ export default function ModuleMagasinier({ state, setState }: Props) {
               <div className="flex justify-between items-center flex-wrap gap-2">
                 <div className="flex items-center gap-2 flex-1 max-w-2xl">
                   <div className="relative flex-1">
-                    <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                    <Search className="absolute left-3 top-2.5 w-4 h-4 text-ink-faint" />
                     <input type="text" value={searchArticle} onChange={(e) => setSearchArticle(e.target.value)} className="w-full pl-9 pr-3 py-1.5 border rounded-lg text-sm outline-none" placeholder="Rechercher un article (médicaments, analyses LABO, examens ECHO...)..." />
                   </div>
                   <div className="flex items-center gap-1">
-                    <Filter className="w-4 h-4 text-slate-400" />
+                    <Filter className="w-4 h-4 text-ink-faint" />
                     <select
                       value={familyCatalogFilter}
                       onChange={(e) => setFamilyCatalogFilter(e.target.value)}
-                      className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white outline-none cursor-pointer font-medium text-slate-700"
+                      className="px-2.5 py-1.5 border border-line-strong rounded-lg text-xs bg-surface outline-none cursor-pointer font-medium text-ink"
                     >
                       <option value="all">Toutes les familles ({state.articles.length})</option>
                       {articleFamilies.map(f => {
@@ -1229,17 +1229,17 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                 </button>
               </div>
 
-              <div className="border rounded-xl overflow-hidden bg-white shadow-sm">
+              <div className="border rounded-xl overflow-hidden bg-surface shadow-sm">
                 <table className="w-full text-xs text-left">
-                  <thead className="bg-slate-50 border-b">
+                  <thead className="bg-surface-muted border-b">
                     <tr>
                       <th className="p-2.5">Famille</th>
                       <th className="p-2.5">Code / Nom Article</th>
                       <th className="p-2.5">Unité</th>
                       <th className="p-2.5 text-right">Prix d'Achat</th>
-                      <th className="p-2.5 text-right text-blue-700">Prix Comptoir</th>
-                      <th className="p-2.5 text-right text-indigo-700">Prix Société</th>
-                      <th className="p-2.5 text-right text-purple-700">Prix Externe</th>
+                      <th className="p-2.5 text-right text-blue-700 dark:text-cyan-400">Prix Comptoir</th>
+                      <th className="p-2.5 text-right text-indigo-700 dark:text-indigo-400">Prix Société</th>
+                      <th className="p-2.5 text-right text-purple-700 dark:text-purple-400">Prix Externe</th>
                       <th className="p-2.5 text-center" title="Stock d'alerte Central / Pharmacie">Stock alerte C/P</th>
                       <th className="p-2.5 text-right">Actions</th>
                     </tr>
@@ -1247,43 +1247,43 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                   <tbody>
                     {filteredCatalogArticles.map((a) => {
                       const famCode = normalizeFamilyCode(a.family);
-                      const badgeClass = famCode === 'LABO' ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                        : famCode === 'ECHO' ? 'bg-amber-100 text-amber-800 border-amber-300'
-                        : famCode === 'HOSP' ? 'bg-orange-100 text-orange-800 border-orange-300'
-                        : famCode === 'MEDIC' ? 'bg-blue-100 text-blue-800 border-blue-300'
-                        : famCode === 'DENT' ? 'bg-purple-100 text-purple-800 border-purple-300'
-                        : 'bg-slate-100 text-slate-700 border-slate-300';
+                      const badgeClass = famCode === 'LABO' ? 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-500/40'
+                        : famCode === 'ECHO' ? 'bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-500/40'
+                        : famCode === 'HOSP' ? 'bg-orange-100 dark:bg-orange-500/15 text-orange-800 dark:text-orange-300 border-orange-300 dark:border-orange-500/40'
+                        : famCode === 'MEDIC' ? 'bg-blue-100 dark:bg-cyan-500/15 text-blue-800 dark:text-cyan-300 border-blue-300 dark:border-cyan-500/40'
+                        : famCode === 'DENT' ? 'bg-purple-100 dark:bg-purple-500/15 text-purple-800 dark:text-purple-300 border-purple-300 dark:border-purple-500/40'
+                        : 'bg-surface-hover text-ink border-line-strong';
 
                       return (
-                        <tr key={a.id} className="border-b hover:bg-slate-50">
+                        <tr key={a.id} className="border-b hover:bg-surface-muted">
                           <td className="p-2.5">
                             <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${badgeClass}`}>
                               {labelForFamily(a.family)}
                             </span>
                           </td>
-                          <td className="p-2.5 font-semibold text-slate-900">
+                          <td className="p-2.5 font-semibold text-ink-strong">
                             {a.name}
                             {(a.code || a.barcode) && (
-                              <span className="block text-[10px] font-mono text-slate-400">
+                              <span className="block text-[10px] font-mono text-ink-faint">
                                 {a.code ? `Code: ${a.code}` : ''} {a.barcode ? `• Barcode: ${a.barcode}` : ''}
                               </span>
                             )}
                           </td>
-                          <td className="p-2.5 text-slate-500">{a.unit}</td>
-                          <td className="p-2.5 text-right font-mono text-slate-600">{formatAr(a.purchasePrice)}</td>
-                          <td className="p-2.5 text-right font-mono font-bold text-blue-700">{formatAr(a.priceComptoir)}</td>
-                          <td className="p-2.5 text-right font-mono text-indigo-700">{formatAr(a.priceSociete)}</td>
-                          <td className="p-2.5 text-right font-mono text-purple-700">{formatAr(a.priceExterne)}</td>
-                          <td className="p-2.5 text-center font-mono text-slate-500">
-                            {!managesStockForFamily(a.family) ? <span className="text-slate-400 italic" title="Famille non gérée en stock">Non géré</span>
-                              : a.alertDisabledCentral && a.alertDisabledPharmacie ? <span className="text-slate-400 italic">Off</span>
+                          <td className="p-2.5 text-ink-muted">{a.unit}</td>
+                          <td className="p-2.5 text-right font-mono text-ink-secondary">{formatAr(a.purchasePrice)}</td>
+                          <td className="p-2.5 text-right font-mono font-bold text-blue-700 dark:text-cyan-400">{formatAr(a.priceComptoir)}</td>
+                          <td className="p-2.5 text-right font-mono text-indigo-700 dark:text-indigo-400">{formatAr(a.priceSociete)}</td>
+                          <td className="p-2.5 text-right font-mono text-purple-700 dark:text-purple-400">{formatAr(a.priceExterne)}</td>
+                          <td className="p-2.5 text-center font-mono text-ink-muted">
+                            {!managesStockForFamily(a.family) ? <span className="text-ink-faint italic" title="Famille non gérée en stock">Non géré</span>
+                              : a.alertDisabledCentral && a.alertDisabledPharmacie ? <span className="text-ink-faint italic">Off</span>
                               : `${a.minStockCentral} / ${a.minStockPharmacie}`}
                           </td>
                           <td className="p-2.5 text-right">
-                            <button onClick={() => openEditArticleModal(a)} className="p-1 text-blue-600 hover:bg-blue-50 rounded cursor-pointer mr-1" title="Modifier fiche">
+                            <button onClick={() => openEditArticleModal(a)} className="p-1 text-blue-600 dark:text-cyan-400 hover:bg-blue-50 dark:hover:bg-cyan-500/8 rounded cursor-pointer mr-1" title="Modifier fiche">
                               <Edit2 className="w-4 h-4" />
                             </button>
-                            <button onClick={() => deleteArticle(a.id, a.name)} className="p-1 text-rose-600 hover:bg-rose-50 rounded cursor-pointer" title="Supprimer">
+                            <button onClick={() => deleteArticle(a.id, a.name)} className="p-1 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/8 rounded cursor-pointer" title="Supprimer">
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </td>
@@ -1297,7 +1297,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
               {/* Modal Article Form */}
               {showArticleModal && (
                 <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden">
+                  <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden">
                     <div className="bg-blue-700 text-white px-6 py-4 flex justify-between items-center">
                       <h3 className="font-bold text-base flex items-center gap-2">
                         <Package className="w-5 h-5" /> {editingArtId ? 'Modifier l\'article' : 'Créer un nouvel article'}
@@ -1308,77 +1308,77 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                     <div className="p-6 space-y-4 max-h-[80vh] overflow-y-auto text-xs">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="sm:col-span-2">
-                          <label className="font-bold block text-slate-700 mb-1">Désignation / Nom de l'article *</label>
+                          <label className="font-bold block text-ink mb-1">Désignation / Nom de l'article *</label>
                           <input type="text" value={artForm.name} onChange={e => setArtForm({ ...artForm, name: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm outline-none" placeholder="Ex: Paracétamol 500mg" />
                         </div>
                         <div>
-                          <label className="font-bold block text-slate-700 mb-1">Famille d'articles *</label>
-                          <select value={artForm.family} onChange={e => setArtForm({ ...artForm, family: e.target.value as ArticleFamily })} className="w-full px-3 py-2 border rounded-lg text-sm bg-white outline-none cursor-pointer">
+                          <label className="font-bold block text-ink mb-1">Famille d'articles *</label>
+                          <select value={artForm.family} onChange={e => setArtForm({ ...artForm, family: e.target.value as ArticleFamily })} className="w-full px-3 py-2 border rounded-lg text-sm bg-surface outline-none cursor-pointer">
                             {articleFamilies.map(f => <option key={f.code} value={f.code}>{f.name}</option>)}
                           </select>
                         </div>
                         <div>
-                          <label className="font-bold block text-slate-700 mb-1">Unité de conditionnement *</label>
+                          <label className="font-bold block text-ink mb-1">Unité de conditionnement *</label>
                           <input type="text" value={artForm.unit} onChange={e => setArtForm({ ...artForm, unit: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm outline-none" placeholder="comprimé, flacon, boîte..." />
                         </div>
                         <div className="sm:col-span-2">
-                          <label className="font-bold block text-slate-700 mb-1">Code-barres / EAN (optionnel)</label>
+                          <label className="font-bold block text-ink mb-1">Code-barres / EAN (optionnel)</label>
                           <input type="text" value={artForm.barcode} onChange={e => setArtForm({ ...artForm, barcode: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm outline-none font-mono" placeholder="370001234567..." />
                         </div>
                       </div>
 
-                      <div className="p-3 bg-slate-50 border rounded-xl space-y-3">
-                        <h4 className="font-bold text-slate-800 text-xs flex items-center gap-1.5"><DollarSign className="w-4 h-4 text-emerald-600" /> Grille tarifaire & Prix d'achat</h4>
+                      <div className="p-3 bg-surface-muted border rounded-xl space-y-3">
+                        <h4 className="font-bold text-ink-strong text-xs flex items-center gap-1.5"><DollarSign className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Grille tarifaire & Prix d'achat</h4>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                           <div>
-                            <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Prix d'Achat</label>
+                            <label className="block text-[11px] font-semibold text-ink-secondary mb-0.5">Prix d'Achat</label>
                             <input type="number" min={0} value={artForm.purchasePrice} onChange={e => setArtForm({ ...artForm, purchasePrice: parseFloat(e.target.value) || 0 })} className="w-full px-2 py-1.5 border rounded font-mono text-sm" />
                           </div>
                           <div>
-                            <label className="block text-[11px] font-semibold text-blue-700 mb-0.5">Prix Comptoir</label>
+                            <label className="block text-[11px] font-semibold text-blue-700 dark:text-cyan-400 mb-0.5">Prix Comptoir</label>
                             <input type="number" min={0} value={artForm.priceComptoir} onChange={e => setArtForm({ ...artForm, priceComptoir: parseFloat(e.target.value) || 0 })} className="w-full px-2 py-1.5 border rounded font-mono text-sm" />
                           </div>
                           <div>
-                            <label className="block text-[11px] font-semibold text-indigo-700 mb-0.5">Prix Société</label>
+                            <label className="block text-[11px] font-semibold text-indigo-700 dark:text-indigo-400 mb-0.5">Prix Société</label>
                             <input type="number" min={0} value={artForm.priceSociete} onChange={e => setArtForm({ ...artForm, priceSociete: parseFloat(e.target.value) || 0 })} className="w-full px-2 py-1.5 border rounded font-mono text-sm" />
                           </div>
                           <div>
-                            <label className="block text-[11px] font-semibold text-purple-700 mb-0.5">Prix Externe</label>
+                            <label className="block text-[11px] font-semibold text-purple-700 dark:text-purple-400 mb-0.5">Prix Externe</label>
                             <input type="number" min={0} value={artForm.priceExterne} onChange={e => setArtForm({ ...artForm, priceExterne: parseFloat(e.target.value) || 0 })} className="w-full px-2 py-1.5 border rounded font-mono text-sm" />
                           </div>
                         </div>
                       </div>
 
-                      <div className={`p-3 rounded-xl space-y-3 ${managesStockForFamily(artForm.family) ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50 border border-slate-200'}`}>
-                        <h4 className={`font-bold text-xs flex items-center gap-1.5 ${managesStockForFamily(artForm.family) ? 'text-amber-900' : 'text-slate-600'}`}>
+                      <div className={`p-3 rounded-xl space-y-3 ${managesStockForFamily(artForm.family) ? 'bg-amber-50 dark:bg-amber-500/8 border border-amber-200 dark:border-amber-500/25' : 'bg-surface-muted border border-line'}`}>
+                        <h4 className={`font-bold text-xs flex items-center gap-1.5 ${managesStockForFamily(artForm.family) ? 'text-amber-900 dark:text-amber-300' : 'text-ink-secondary'}`}>
                           {managesStockForFamily(artForm.family)
-                            ? <><Bell className="w-4 h-4 text-amber-600" /> Stocks d'alerte & notifications</>
-                            : <><ShieldAlert className="w-4 h-4 text-slate-500" /> Stock non géré pour cette famille</>}
+                            ? <><Bell className="w-4 h-4 text-amber-600 dark:text-amber-400" /> Stocks d'alerte & notifications</>
+                            : <><ShieldAlert className="w-4 h-4 text-ink-muted" /> Stock non géré pour cette famille</>}
                         </h4>
                         {managesStockForFamily(artForm.family) ? (
                           <>
                             <div className="grid grid-cols-2 gap-3">
                               <div>
-                                <label className="font-bold block text-slate-700 mb-1">Stock d'alerte Dépôt Central</label>
-                                <input type="number" min={0} value={artForm.minStockCentral} onChange={e => setArtForm({ ...artForm, minStockCentral: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg text-sm bg-white" />
-                                <label className="mt-1.5 flex items-center gap-2 text-[11px] text-slate-600 cursor-pointer">
-                                  <input type="checkbox" checked={artForm.alertDisabledCentral} onChange={e => setArtForm({ ...artForm, alertDisabledCentral: e.target.checked })} className="w-3.5 h-3.5 rounded text-amber-600" />
+                                <label className="font-bold block text-ink mb-1">Stock d'alerte Dépôt Central</label>
+                                <input type="number" min={0} value={artForm.minStockCentral} onChange={e => setArtForm({ ...artForm, minStockCentral: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg text-sm bg-surface" />
+                                <label className="mt-1.5 flex items-center gap-2 text-[11px] text-ink-secondary cursor-pointer">
+                                  <input type="checkbox" checked={artForm.alertDisabledCentral} onChange={e => setArtForm({ ...artForm, alertDisabledCentral: e.target.checked })} className="w-3.5 h-3.5 rounded text-amber-600 dark:text-amber-400" />
                                   🔕 Désactiver l'alerte (central)
                                 </label>
                               </div>
                               <div>
-                                <label className="font-bold block text-slate-700 mb-1">Stock d'alerte Pharmacie</label>
-                                <input type="number" min={0} value={artForm.minStockPharmacie} onChange={e => setArtForm({ ...artForm, minStockPharmacie: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg text-sm bg-white" />
-                                <label className="mt-1.5 flex items-center gap-2 text-[11px] text-slate-600 cursor-pointer">
-                                  <input type="checkbox" checked={artForm.alertDisabledPharmacie} onChange={e => setArtForm({ ...artForm, alertDisabledPharmacie: e.target.checked })} className="w-3.5 h-3.5 rounded text-amber-600" />
+                                <label className="font-bold block text-ink mb-1">Stock d'alerte Pharmacie</label>
+                                <input type="number" min={0} value={artForm.minStockPharmacie} onChange={e => setArtForm({ ...artForm, minStockPharmacie: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg text-sm bg-surface" />
+                                <label className="mt-1.5 flex items-center gap-2 text-[11px] text-ink-secondary cursor-pointer">
+                                  <input type="checkbox" checked={artForm.alertDisabledPharmacie} onChange={e => setArtForm({ ...artForm, alertDisabledPharmacie: e.target.checked })} className="w-3.5 h-3.5 rounded text-amber-600 dark:text-amber-400" />
                                   🔕 Désactiver l'alerte (pharmacie)
                                 </label>
                               </div>
                             </div>
-                            <p className="text-[10px] text-amber-800">En dessous du stock d'alerte, l'article est signalé « stock bas ». L'alerte peut être désactivée par article et par dépôt — la vente reste bloquée en cas de rupture même si l'alerte est off.</p>
+                            <p className="text-[10px] text-amber-800 dark:text-amber-300">En dessous du stock d'alerte, l'article est signalé « stock bas ». L'alerte peut être désactivée par article et par dépôt — la vente reste bloquée en cas de rupture même si l'alerte est off.</p>
                           </>
                         ) : (
-                          <p className="text-[11px] text-slate-500 leading-snug">
+                          <p className="text-[11px] text-ink-muted leading-snug">
                             La famille <strong>{labelForFamily(artForm.family)}</strong> est configurée « ne pas gérer en stock ».
                             Cet article ne sera ni suivi ni alerté en stock, et restera vendable sans condition de stock.
                             L'option se modifie dans l'onglet <strong>Familles</strong>.
@@ -1386,13 +1386,13 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                         )}
                       </div>
 
-                      <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl space-y-2">
-                        <label className="flex items-center gap-2 font-bold text-rose-800 cursor-pointer">
-                          <input type="checkbox" checked={artForm.saleBlocked} onChange={e => setArtForm({ ...artForm, saleBlocked: e.target.checked })} className="w-4 h-4 rounded text-rose-600" />
+                      <div className="p-3 bg-rose-50 dark:bg-rose-500/8 border border-rose-200 dark:border-rose-500/25 rounded-xl space-y-2">
+                        <label className="flex items-center gap-2 font-bold text-rose-800 dark:text-rose-300 cursor-pointer">
+                          <input type="checkbox" checked={artForm.saleBlocked} onChange={e => setArtForm({ ...artForm, saleBlocked: e.target.checked })} className="w-4 h-4 rounded text-rose-600 dark:text-rose-400" />
                           Bloquer la vente en pharmacie
                         </label>
                         {artForm.saleBlocked && (
-                          <input type="text" value={artForm.saleBlockReason} onChange={e => setArtForm({ ...artForm, saleBlockReason: e.target.value })} className="w-full px-3 py-1.5 border border-rose-300 rounded text-xs" placeholder="Motif du blocage (ex: réservé, rupture forcée...)" />
+                          <input type="text" value={artForm.saleBlockReason} onChange={e => setArtForm({ ...artForm, saleBlockReason: e.target.value })} className="w-full px-3 py-1.5 border border-rose-300 dark:border-rose-500/40 rounded text-xs" placeholder="Motif du blocage (ex: réservé, rupture forcée...)" />
                         )}
                       </div>
 
@@ -1411,10 +1411,10 @@ export default function ModuleMagasinier({ state, setState }: Props) {
             <div className="space-y-4">
               <div className="flex justify-between items-center flex-wrap gap-2">
                 <div>
-                  <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
-                    <Tag className="w-5 h-5 text-purple-600" /> Gestion des familles & catégories d'articles
+                  <h3 className="font-bold text-ink-strong text-lg flex items-center gap-2">
+                    <Tag className="w-5 h-5 text-purple-600 dark:text-purple-400" /> Gestion des familles & catégories d'articles
                   </h3>
-                  <p className="text-sm text-slate-500">Classification dynamique par couleur et code court.</p>
+                  <p className="text-sm text-ink-muted">Classification dynamique par couleur et code court.</p>
                 </div>
                 <button onClick={openNewFamilleModal} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2 cursor-pointer text-xs font-semibold shadow">
                   <Plus className="w-4 h-4" /> Nouvelle famille
@@ -1426,25 +1426,25 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                   const count = state.articles.filter(a => normalizeFamilyCode(a.family) === normalizeFamilyCode(f.code)).length;
                   const managesStock = f.manageStock !== false;
                   return (
-                    <div key={f.id} className="bg-white border rounded-xl shadow-sm overflow-hidden p-4 space-y-3">
+                    <div key={f.id} className="bg-surface border rounded-xl shadow-sm overflow-hidden p-4 space-y-3">
                       <div className="flex items-center justify-between">
                         <span className="px-2 py-0.5 rounded text-xs font-bold text-white font-mono" style={{ backgroundColor: f.color }}>{f.code}</span>
                         <div className="flex gap-1">
-                          <button onClick={() => openEditFamilleModal(f)} className="p-1 hover:bg-slate-100 rounded text-slate-600 cursor-pointer"><Edit2 className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => deleteFamille(f)} className="p-1 hover:bg-rose-50 rounded text-rose-600 cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => openEditFamilleModal(f)} className="p-1 hover:bg-surface-hover rounded text-ink-secondary cursor-pointer"><Edit2 className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => deleteFamille(f)} className="p-1 hover:bg-rose-50 dark:hover:bg-rose-500/8 rounded text-rose-600 dark:text-rose-400 cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button>
                         </div>
                       </div>
                       <div>
-                        <div className="font-bold text-base text-slate-800">{f.name}</div>
-                        <div className="text-xs text-slate-500 mt-1">{count} article(s) relié(s)</div>
+                        <div className="font-bold text-base text-ink-strong">{f.name}</div>
+                        <div className="text-xs text-ink-muted mt-1">{count} article(s) relié(s)</div>
                       </div>
                       <div>
                         {managesStock ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-full text-[10px] font-bold">
+                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-50 dark:bg-emerald-500/8 border border-emerald-200 dark:border-emerald-500/25 text-emerald-700 dark:text-emerald-400 rounded-full text-[10px] font-bold">
                             <Package className="w-3 h-3" /> GÉRÉE EN STOCK
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 border border-slate-200 text-slate-600 rounded-full text-[10px] font-bold">
+                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-surface-hover border border-line text-ink-secondary rounded-full text-[10px] font-bold">
                             <ShieldAlert className="w-3 h-3" /> NON GÉRÉE EN STOCK
                           </span>
                         )}
@@ -1456,7 +1456,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
 
               {showFamModal && (
                 <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+                  <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
                     <div className="bg-purple-700 text-white px-5 py-3.5 flex justify-between items-center">
                       <h3 className="font-bold text-sm flex items-center gap-2"><Tag className="w-4 h-4" /> {editingFamId ? 'Modifier la famille' : 'Nouvelle famille'}</h3>
                       <button onClick={() => setShowFamModal(false)} className="cursor-pointer text-white/80 hover:text-white"><X className="w-4 h-4" /></button>
@@ -1484,18 +1484,18 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                           <button
                             type="button"
                             onClick={() => setFamForm({ ...famForm, manageStock: true })}
-                            className={`p-2.5 rounded-lg border-2 text-left cursor-pointer transition ${famForm.manageStock ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 hover:border-slate-300'}`}
+                            className={`p-2.5 rounded-lg border-2 text-left cursor-pointer transition ${famForm.manageStock ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-500/8' : 'border-line hover:border-line-strong'}`}
                           >
-                            <div className="flex items-center gap-1.5 font-bold text-emerald-700"><Package className="w-3.5 h-3.5" /> Gérer en stock</div>
-                            <div className="text-[10px] text-slate-500 mt-1 leading-snug">Mouvements, alertes stock bas / rupture et contrôles de vente appliqués aux articles.</div>
+                            <div className="flex items-center gap-1.5 font-bold text-emerald-700 dark:text-emerald-400"><Package className="w-3.5 h-3.5" /> Gérer en stock</div>
+                            <div className="text-[10px] text-ink-muted mt-1 leading-snug">Mouvements, alertes stock bas / rupture et contrôles de vente appliqués aux articles.</div>
                           </button>
                           <button
                             type="button"
                             onClick={() => setFamForm({ ...famForm, manageStock: false })}
-                            className={`p-2.5 rounded-lg border-2 text-left cursor-pointer transition ${!famForm.manageStock ? 'border-slate-500 bg-slate-100' : 'border-slate-200 hover:border-slate-300'}`}
+                            className={`p-2.5 rounded-lg border-2 text-left cursor-pointer transition ${!famForm.manageStock ? 'border-line-control bg-surface-hover' : 'border-line hover:border-line-strong'}`}
                           >
-                            <div className="flex items-center gap-1.5 font-bold text-slate-700"><ShieldAlert className="w-3.5 h-3.5" /> Ne pas gérer en stock</div>
-                            <div className="text-[10px] text-slate-500 mt-1 leading-snug">Aucun suivi de stock : les articles restent vendables sans stock ni alerte (ex. actes, services).</div>
+                            <div className="flex items-center gap-1.5 font-bold text-ink"><ShieldAlert className="w-3.5 h-3.5" /> Ne pas gérer en stock</div>
+                            <div className="text-[10px] text-ink-muted mt-1 leading-snug">Aucun suivi de stock : les articles restent vendables sans stock ni alerte (ex. actes, services).</div>
                           </button>
                         </div>
                       </div>
@@ -1514,7 +1514,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
             <div className="space-y-4">
               <div className="flex justify-between items-center flex-wrap gap-2">
                 <div className="relative flex-1 max-w-md">
-                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-ink-faint" />
                   <input type="text" value={searchSup} onChange={(e) => setSearchSup(e.target.value)} className="w-full pl-9 pr-3 py-1.5 border rounded-lg text-sm outline-none" placeholder="Rechercher un fournisseur..." />
                 </div>
                 <button onClick={openNewSupModal} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2 cursor-pointer text-xs font-semibold shadow">
@@ -1526,27 +1526,27 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                 {filteredSuppliers.map((f) => {
                   const countAchats = state.stockEntries.filter(e => e.supplier.toLowerCase() === f.name.toLowerCase()).length;
                   return (
-                    <div key={f.id} className="bg-white border rounded-xl shadow-sm p-4 space-y-2">
+                    <div key={f.id} className="bg-surface border rounded-xl shadow-sm p-4 space-y-2">
                       <div className="flex justify-between items-start gap-2">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
+                          <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400 flex items-center justify-center font-bold">
                             <Truck className="w-5 h-5" />
                           </div>
                           <div>
-                            <div className="font-bold text-sm text-slate-800">{f.name}</div>
-                            <div className="text-[11px] text-slate-500">{countAchats} bon(s) de réception d'achat</div>
+                            <div className="font-bold text-sm text-ink-strong">{f.name}</div>
+                            <div className="text-[11px] text-ink-muted">{countAchats} bon(s) de réception d'achat</div>
                           </div>
                         </div>
                         <div className="flex gap-1">
-                          <button onClick={() => openEditSupModal(f)} className="p-1 hover:bg-slate-100 rounded text-slate-600 cursor-pointer"><Edit2 className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => deleteSupplier(f)} className="p-1 hover:bg-rose-50 rounded text-rose-600 cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => openEditSupModal(f)} className="p-1 hover:bg-surface-hover rounded text-ink-secondary cursor-pointer"><Edit2 className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => deleteSupplier(f)} className="p-1 hover:bg-rose-50 dark:hover:bg-rose-500/8 rounded text-rose-600 dark:text-rose-400 cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button>
                         </div>
                       </div>
-                      <div className="text-xs space-y-1 pt-2 text-slate-600 border-t">
+                      <div className="text-xs space-y-1 pt-2 text-ink-secondary border-t">
                         <div>📞 Tél: {f.phone || '—'}</div>
                         <div>✉️ Email: {f.email || '—'}</div>
                         <div>📍 Adresse: {f.address || '—'}</div>
-                        <div className="flex gap-4 text-[11px] text-slate-500 pt-1">
+                        <div className="flex gap-4 text-[11px] text-ink-muted pt-1">
                           <span>NIF: {f.nif || '—'}</span>
                           <span>STAT: {f.stat || '—'}</span>
                         </div>
@@ -1558,7 +1558,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
 
               {showSupModal && (
                 <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+                  <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
                     <div className="bg-indigo-700 text-white px-5 py-3.5 flex justify-between items-center">
                       <h3 className="font-bold text-sm flex items-center gap-2"><Truck className="w-4 h-4" /> {editingSupId ? 'Modifier le fournisseur' : 'Nouveau fournisseur'}</h3>
                       <button onClick={() => setShowSupModal(false)} className="cursor-pointer text-white/80 hover:text-white"><X className="w-4 h-4" /></button>
@@ -1605,31 +1605,31 @@ export default function ModuleMagasinier({ state, setState }: Props) {
           {/* ===== APPROVISIONNEMENT & ACHATS ===== */}
           {tab === 'appro' && (
             <div className="space-y-4">
-              <div className="p-4 bg-sky-50 border border-sky-200 rounded-xl space-y-3">
-                <h4 className="font-bold text-sky-900 flex items-center gap-2">
+              <div className="p-4 bg-sky-50 dark:bg-sky-500/8 border border-sky-200 dark:border-sky-500/25 rounded-xl space-y-3">
+                <h4 className="font-bold text-sky-900 dark:text-sky-300 flex items-center gap-2">
                   <PackagePlus className="w-5 h-5" /> Entrée d'Achat Fournisseur → Dépôt Central
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">👤 Sélectionner le Fournisseur *</label>
-                    <select value={selectedSupplierId} onChange={(e) => setSelectedSupplierId(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm bg-white cursor-pointer">
+                    <label className="block text-xs font-bold text-ink mb-1">👤 Sélectionner le Fournisseur *</label>
+                    <select value={selectedSupplierId} onChange={(e) => setSelectedSupplierId(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm bg-surface cursor-pointer">
                       <option value="">— Choisir dans la base fournisseurs —</option>
                       {fournisseurs.map(f => <option key={f.id} value={f.id}>{f.name} {f.phone ? `(${f.phone})` : ''}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">📄 N° BL / Bon de Livraison / Facture *</label>
-                    <input type="text" value={invoiceRef} onChange={(e) => setInvoiceRef(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none bg-white font-mono" placeholder="BL-2026-001..." />
+                    <label className="block text-xs font-bold text-ink mb-1">📄 N° BL / Bon de Livraison / Facture *</label>
+                    <input type="text" value={invoiceRef} onChange={(e) => setInvoiceRef(e.target.value)} className="w-full px-3 py-2 border border-line-strong rounded-lg text-sm outline-none bg-surface font-mono" placeholder="BL-2026-001..." />
                   </div>
                 </div>
               </div>
 
               {/* Grid Achat */}
-              <div className="bg-[#f4f4f4] border border-slate-300 rounded text-xs p-2">
-                <div className="bg-slate-100 border-b border-slate-300 p-2 mb-2 rounded shadow-inner">
+              <div className="bg-surface-muted border border-line-strong rounded text-xs p-2">
+                <div className="bg-surface-hover border-b border-line-strong p-2 mb-2 rounded shadow-inner">
                   <div className="flex flex-wrap items-end gap-2">
                     <div className="flex-1 min-w-[200px] relative">
-                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Article à ajouter (Tapez le nom...)</label>
+                      <label className="block text-[10px] font-bold text-ink-muted mb-0.5">Article à ajouter (Tapez le nom...)</label>
                       <input
                         ref={purchaseSearchRef}
                         type="text"
@@ -1640,13 +1640,13 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                           if (purchaseForm.articleName && e.target.value !== purchaseForm.articleName) setPurchaseForm((prev) => ({ ...prev, articleName: '', articleId: '' }));
                         }}
                         onKeyDown={purchaseArtKeyDown}
-                        className="w-full bg-white border border-sky-400 rounded px-2 py-1 text-xs outline-none text-slate-800"
+                        className="w-full bg-surface border border-sky-400 rounded px-2 py-1 text-xs outline-none text-ink-strong"
                         placeholder="🔍 Recherche article catalogue..."
                       />
                       {purchaseSearch.length >= 1 && purchaseFiltered.length > 0 && (
-                        <div className="absolute top-full left-0 right-0 bg-white border border-slate-300 rounded-b shadow-2xl z-40 max-h-40 overflow-y-auto">
+                        <div className="absolute top-full left-0 right-0 bg-surface border border-line-strong rounded-b shadow-2xl z-40 max-h-40 overflow-y-auto">
                           {purchaseFiltered.map((a, idx) => (
-                            <div key={a.id} onClick={() => purchaseSelectArticle(a.id)} className={`px-3 py-1.5 cursor-pointer text-xs flex justify-between border-b ${idx === purchaseSearchIdx ? 'bg-sky-600 text-white font-medium' : 'hover:bg-slate-50 text-slate-800'}`}>
+                            <div key={a.id} onClick={() => purchaseSelectArticle(a.id)} className={`px-3 py-1.5 cursor-pointer text-xs flex justify-between border-b ${idx === purchaseSearchIdx ? 'bg-sky-600 text-white font-medium' : 'hover:bg-surface-muted text-ink-strong'}`}>
                               <span>[{labelForFamily(a.family)}] {a.name}</span>
                               <span className="font-mono text-[11px]">Stock: {a.stockCentral}</span>
                             </div>
@@ -1654,14 +1654,14 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                         </div>
                       )}
                     </div>
-                    <div className="w-24"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Famille</label><input readOnly value={labelForFamily(purchaseForm.family) || ''} className="w-full bg-slate-200 border border-slate-300 rounded px-2 py-1 text-xs text-slate-600 truncate" /></div>
-                    <div className="w-20"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Quantité</label><input id="purchase-qty-input" type="number" min={1} value={purchaseForm.quantity} onChange={(e) => setPurchaseForm((prev) => ({ ...prev, quantity: parseFloat(e.target.value) || 1 }))} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); purchaseSaveLine(); } }} className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs text-right font-mono" /></div>
-                    <div className="w-24"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Prix d'Achat Unitaire</label><input type="number" min={0} value={purchaseForm.purchasePrice} onChange={(e) => setPurchaseForm((prev) => ({ ...prev, purchasePrice: parseFloat(e.target.value) || 0 }))} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); purchaseSaveLine(); } }} className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs text-right font-mono" /></div>
-                    <div className="w-28"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Date Péremption</label><input type="date" value={purchaseForm.expiryDate} onChange={(e) => setPurchaseForm((prev) => ({ ...prev, expiryDate: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); purchaseSaveLine(); } }} className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs font-mono" /></div>
-                    <div className="w-28"><label className="block text-[10px] font-bold text-slate-500 mb-0.5">Total Ligne</label><input readOnly value={formatAr(purchaseForm.quantity * purchaseForm.purchasePrice)} className="w-full bg-slate-200 border border-slate-300 rounded px-2 py-1 text-xs text-right font-mono font-bold" /></div>
+                    <div className="w-24"><label className="block text-[10px] font-bold text-ink-muted mb-0.5">Famille</label><input readOnly value={labelForFamily(purchaseForm.family) || ''} className="w-full bg-surface-active border border-line-strong rounded px-2 py-1 text-xs text-ink-secondary truncate" /></div>
+                    <div className="w-20"><label className="block text-[10px] font-bold text-ink-muted mb-0.5">Quantité</label><input id="purchase-qty-input" type="number" min={1} value={purchaseForm.quantity} onChange={(e) => setPurchaseForm((prev) => ({ ...prev, quantity: parseFloat(e.target.value) || 1 }))} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); purchaseSaveLine(); } }} className="w-full bg-surface border border-line-strong rounded px-2 py-1 text-xs text-right font-mono" /></div>
+                    <div className="w-24"><label className="block text-[10px] font-bold text-ink-muted mb-0.5">Prix d'Achat Unitaire</label><input type="number" min={0} value={purchaseForm.purchasePrice} onChange={(e) => setPurchaseForm((prev) => ({ ...prev, purchasePrice: parseFloat(e.target.value) || 0 }))} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); purchaseSaveLine(); } }} className="w-full bg-surface border border-line-strong rounded px-2 py-1 text-xs text-right font-mono" /></div>
+                    <div className="w-28"><label className="block text-[10px] font-bold text-ink-muted mb-0.5">Date Péremption</label><input type="date" value={purchaseForm.expiryDate} onChange={(e) => setPurchaseForm((prev) => ({ ...prev, expiryDate: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); purchaseSaveLine(); } }} className="w-full bg-surface border border-line-strong rounded px-2 py-1 text-xs font-mono" /></div>
+                    <div className="w-28"><label className="block text-[10px] font-bold text-ink-muted mb-0.5">Total Ligne</label><input readOnly value={formatAr(purchaseForm.quantity * purchaseForm.purchasePrice)} className="w-full bg-surface-active border border-line-strong rounded px-2 py-1 text-xs text-right font-mono font-bold" /></div>
                   </div>
                   <div className="flex justify-end gap-1.5 mt-2">
-                    <button onClick={purchaseNew} className="px-2.5 py-1 bg-white border rounded text-xs font-semibold cursor-pointer">Effacer</button>
+                    <button onClick={purchaseNew} className="px-2.5 py-1 bg-surface border rounded text-xs font-semibold cursor-pointer">Effacer</button>
                     <button onClick={purchaseSaveLine} disabled={!purchaseForm.articleName} className="px-3 py-1 bg-sky-600 hover:bg-sky-700 text-white rounded text-xs font-bold cursor-pointer disabled:opacity-40">
                       Ajouter au bon
                     </button>
@@ -1669,9 +1669,9 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                 </div>
 
                 {/* Lines Table */}
-                <div className="bg-white border rounded overflow-x-auto">
+                <div className="bg-surface border rounded overflow-x-auto">
                   <table className="w-full text-xs text-left">
-                    <thead className="bg-slate-100 border-b">
+                    <thead className="bg-surface-hover border-b">
                       <tr>
                         <th className="p-1.5">Famille</th>
                         <th className="p-1.5">Article</th>
@@ -1684,23 +1684,23 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                     </thead>
                     <tbody className="divide-y font-mono">
                       {purchaseLines.map((l) => (
-                        <tr key={l.id} className="hover:bg-slate-50">
+                        <tr key={l.id} className="hover:bg-surface-muted">
                           <td className="p-1.5 font-sans">{labelForFamily(l.family)}</td>
                           <td className="p-1.5 font-sans font-medium">{l.articleName}</td>
                           <td className="p-1.5 text-right">{l.quantity}</td>
                           <td className="p-1.5 text-right">{formatNum(l.purchasePrice)} Ar</td>
                           <td className="p-1.5 text-center">{l.expiryDate ? new Date(l.expiryDate).toLocaleDateString('fr-FR') : '—'}</td>
-                          <td className="p-1.5 text-right font-bold text-emerald-700">{formatAr(l.amount)}</td>
-                          <td className="p-1.5 text-center"><button onClick={() => setPurchaseLines(purchaseLines.filter(x => x.id !== l.id))} className="text-rose-600 cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button></td>
+                          <td className="p-1.5 text-right font-bold text-emerald-700 dark:text-emerald-400">{formatAr(l.amount)}</td>
+                          <td className="p-1.5 text-center"><button onClick={() => setPurchaseLines(purchaseLines.filter(x => x.id !== l.id))} className="text-rose-600 dark:text-rose-400 cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button></td>
                         </tr>
                       ))}
-                      {purchaseLines.length === 0 && <tr><td colSpan={7} className="p-4 text-center text-slate-400 font-sans">Aucun article dans ce bon de réception.</td></tr>}
+                      {purchaseLines.length === 0 && <tr><td colSpan={7} className="p-4 text-center text-ink-faint font-sans">Aucun article dans ce bon de réception.</td></tr>}
                     </tbody>
                     {purchaseLines.length > 0 && (
-                      <tfoot className="bg-emerald-50 font-bold font-sans">
+                      <tfoot className="bg-emerald-50 dark:bg-emerald-500/8 font-bold font-sans">
                         <tr>
                           <td colSpan={5} className="p-2 text-right text-xs">TOTAL ACHAT → CENTRAL :</td>
-                          <td colSpan={2} className="p-2 font-mono text-base text-emerald-800 text-right">{formatAr(purchaseLines.reduce((s, l) => s + l.amount, 0))}</td>
+                          <td colSpan={2} className="p-2 font-mono text-base text-emerald-800 dark:text-emerald-300 text-right">{formatAr(purchaseLines.reduce((s, l) => s + l.amount, 0))}</td>
                         </tr>
                       </tfoot>
                     )}
@@ -1716,10 +1716,10 @@ export default function ModuleMagasinier({ state, setState }: Props) {
 
               {/* Historique des réceptions */}
               <div className="border-t pt-4">
-                <h5 className="font-bold text-sm text-slate-800 mb-2">📜 Historique des bons de réception fournisseur</h5>
-                <div className="border rounded-xl overflow-hidden bg-white shadow-sm">
+                <h5 className="font-bold text-sm text-ink-strong mb-2">📜 Historique des bons de réception fournisseur</h5>
+                <div className="border rounded-xl overflow-hidden bg-surface shadow-sm">
                   <table className="w-full text-xs text-left">
-                    <thead className="bg-slate-50 border-b">
+                    <thead className="bg-surface-muted border-b">
                       <tr>
                         <th className="p-2">Date / Heure</th>
                         <th className="p-2">Article</th>
@@ -1731,11 +1731,11 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                     </thead>
                     <tbody>
                       {entriesFiltered.slice(-20).reverse().map((e) => (
-                        <tr key={e.id} className="border-b hover:bg-slate-50">
-                          <td className="p-2 text-slate-500 font-mono">{new Date(e.date).toLocaleString('fr-FR')}</td>
+                        <tr key={e.id} className="border-b hover:bg-surface-muted">
+                          <td className="p-2 text-ink-muted font-mono">{new Date(e.date).toLocaleString('fr-FR')}</td>
                           <td className="p-2 font-medium">{e.articleName}</td>
                           <td className="p-2 text-center font-mono font-bold">{e.quantity}</td>
-                          <td className="p-2 text-right font-mono font-bold text-blue-600">{formatAr(e.purchasePrice)}</td>
+                          <td className="p-2 text-right font-mono font-bold text-blue-600 dark:text-cyan-400">{formatAr(e.purchasePrice)}</td>
                           <td className="p-2">{e.supplier}</td>
                           <td className="p-2 font-mono">{e.invoiceRef}</td>
                         </tr>
@@ -1751,13 +1751,13 @@ export default function ModuleMagasinier({ state, setState }: Props) {
           {tab === 'requests' && (
             <div className="space-y-4">
               <div className="flex items-center gap-2 flex-wrap mb-2">
-                <Filter className="w-4 h-4 text-slate-400" />
-                <button onClick={() => setReqFilter('all')} className={`px-2.5 py-1 rounded text-xs cursor-pointer ${reqFilter === 'all' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600'}`}>Toutes ({state.stockTransfers.filter(t => t.status === 'requested').length})</button>
-                <button onClick={() => setReqFilter('pharmacy')} className={`px-2.5 py-1 rounded text-xs cursor-pointer ${reqFilter === 'pharmacy' ? 'bg-purple-700 text-white' : 'bg-purple-50 text-purple-700'}`}>💊 Pharmacie ({pharmacyPending})</button>
+                <Filter className="w-4 h-4 text-ink-faint" />
+                <button onClick={() => setReqFilter('all')} className={`px-2.5 py-1 rounded text-xs cursor-pointer ${reqFilter === 'all' ? 'bg-slate-800 text-white' : 'bg-surface-hover text-ink-secondary'}`}>Toutes ({state.stockTransfers.filter(t => t.status === 'requested').length})</button>
+                <button onClick={() => setReqFilter('pharmacy')} className={`px-2.5 py-1 rounded text-xs cursor-pointer ${reqFilter === 'pharmacy' ? 'bg-purple-700 text-white' : 'bg-purple-50 dark:bg-purple-500/8 text-purple-700 dark:text-purple-400'}`}>💊 Pharmacie ({pharmacyPending})</button>
               </div>
 
               {pendingRequests.length === 0 ? (
-                <div className="text-center py-12 text-slate-400 font-medium"><PackageCheck className="w-12 h-12 mx-auto mb-2 opacity-40" />Aucune demande en attente</div>
+                <div className="text-center py-12 text-ink-faint font-medium"><PackageCheck className="w-12 h-12 mx-auto mb-2 opacity-40" />Aucune demande en attente</div>
               ) : (
                 <div className="space-y-2">
                   {pendingRequests.map((tr) => {
@@ -1765,18 +1765,18 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                     const requester = state.users.find((u) => u.id === tr.requestedBy);
                     const canTransfer = art && art.stockCentral >= tr.quantity;
                     return (
-                      <div key={tr.id} className="border rounded-xl p-4 flex items-center justify-between gap-3 bg-white shadow-sm flex-wrap">
+                      <div key={tr.id} className="border rounded-xl p-4 flex items-center justify-between gap-3 bg-surface shadow-sm flex-wrap">
                         <div>
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800">{tr.targetServiceName || 'Pharmacie'}</span>
-                            <span className="font-bold text-sm text-slate-900">{tr.articleName} × {tr.quantity}</span>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 dark:bg-purple-500/15 text-purple-800 dark:text-purple-300">{tr.targetServiceName || 'Pharmacie'}</span>
+                            <span className="font-bold text-sm text-ink-strong">{tr.articleName} × {tr.quantity}</span>
                           </div>
-                          <div className="text-xs text-slate-500">
-                            Demandé par <strong>{requester?.name || 'Service'}</strong> · Stock central disponible: <strong className={canTransfer ? 'text-emerald-600' : 'text-rose-600'}>{art?.stockCentral || 0}</strong>
+                          <div className="text-xs text-ink-muted">
+                            Demandé par <strong>{requester?.name || 'Service'}</strong> · Stock central disponible: <strong className={canTransfer ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>{art?.stockCentral || 0}</strong>
                           </div>
                         </div>
                         <div className="flex gap-2">
-                          <button onClick={() => cancelRequest(tr.id)} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold cursor-pointer"><X className="w-4 h-4" /></button>
+                          <button onClick={() => cancelRequest(tr.id)} className="px-3 py-1.5 bg-surface-hover hover:bg-surface-active text-ink rounded-lg text-xs font-bold cursor-pointer"><X className="w-4 h-4" /></button>
                           <button onClick={() => fulfillRequest(tr.id)} disabled={!canTransfer} className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold cursor-pointer disabled:opacity-40 flex items-center gap-1.5 shadow">
                             <Truck className="w-4 h-4" /> Transférer
                           </button>
@@ -1793,12 +1793,12 @@ export default function ModuleMagasinier({ state, setState }: Props) {
           {tab === 'inventory' && (
             <div className="space-y-4">
               {!activeInv ? (
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-3">
-                  <h4 className="font-bold text-amber-900 flex items-center gap-2"><ClipboardList className="w-5 h-5" /> Démarrer un inventaire physique</h4>
+                <div className="p-4 bg-amber-50 dark:bg-amber-500/8 border border-amber-200 dark:border-amber-500/25 rounded-xl space-y-3">
+                  <h4 className="font-bold text-amber-900 dark:text-amber-300 flex items-center gap-2"><ClipboardList className="w-5 h-5" /> Démarrer un inventaire physique</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <label className="block text-xs font-bold mb-1">Emplacement à compter</label>
-                      <select value={invLocation} onChange={(e) => setInvLocation(e.target.value)} className="w-full px-3 py-1.5 border rounded-lg text-xs bg-white cursor-pointer">
+                      <select value={invLocation} onChange={(e) => setInvLocation(e.target.value)} className="w-full px-3 py-1.5 border rounded-lg text-xs bg-surface cursor-pointer">
                         {locationOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
                     </div>
@@ -1813,19 +1813,19 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <div className="p-3 bg-amber-100 border border-amber-300 rounded-xl flex justify-between items-center flex-wrap gap-2">
+                  <div className="p-3 bg-amber-100 dark:bg-amber-500/15 border border-amber-300 dark:border-amber-500/40 rounded-xl flex justify-between items-center flex-wrap gap-2">
                     <div>
-                      <div className="font-bold text-amber-900">Comptage en cours — {activeInv.locationLabel}</div>
-                      <div className="text-xs text-amber-800">Laissez vide si le stock réel est identique au théorique.</div>
+                      <div className="font-bold text-amber-900 dark:text-amber-300">Comptage en cours — {activeInv.locationLabel}</div>
+                      <div className="text-xs text-amber-800 dark:text-amber-300">Laissez vide si le stock réel est identique au théorique.</div>
                     </div>
                     <button onClick={completeInventory} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold cursor-pointer flex items-center gap-1 shadow">
                       <Check className="w-4 h-4" /> Valider & Réajuster les stocks
                     </button>
                   </div>
 
-                  <div className="border rounded-xl overflow-hidden bg-white shadow-sm max-h-[450px] overflow-y-auto">
+                  <div className="border rounded-xl overflow-hidden bg-surface shadow-sm max-h-[450px] overflow-y-auto">
                     <table className="w-full text-xs text-left">
-                      <thead className="bg-slate-50 border-b sticky top-0">
+                      <thead className="bg-surface-muted border-b sticky top-0">
                         <tr>
                           <th className="p-2.5">Article</th>
                           <th className="p-2.5 text-center">Théorique</th>
@@ -1839,13 +1839,13 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                           const counted = raw === undefined || raw === '' ? null : parseFloat(raw);
                           const diff = counted === null || !Number.isFinite(counted) ? 0 : counted - l.theoreticalQty;
                           return (
-                            <tr key={l.articleId} className={`border-b ${diff !== 0 && counted !== null ? 'bg-amber-50' : ''}`}>
+                            <tr key={l.articleId} className={`border-b ${diff !== 0 && counted !== null ? 'bg-amber-50 dark:bg-amber-500/8' : ''}`}>
                               <td className="p-2.5 font-medium">{l.articleName}</td>
                               <td className="p-2.5 text-center font-mono">{l.theoreticalQty}</td>
                               <td className="p-2.5 text-center">
                                 <input type="number" min={0} value={raw ?? ''} onChange={(e) => setInvCounts({ ...invCounts, [l.articleId]: e.target.value })} className="w-20 px-2 py-1 border rounded font-mono text-center" placeholder={String(l.theoreticalQty)} />
                               </td>
-                              <td className={`p-2.5 text-center font-mono font-bold ${diff > 0 ? 'text-emerald-600' : diff < 0 ? 'text-rose-600' : 'text-slate-400'}`}>
+                              <td className={`p-2.5 text-center font-mono font-bold ${diff > 0 ? 'text-emerald-600 dark:text-emerald-400' : diff < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-ink-faint'}`}>
                                 {counted === null ? '0' : (diff > 0 ? `+${diff}` : diff)}
                               </td>
                             </tr>
@@ -1863,18 +1863,18 @@ export default function ModuleMagasinier({ state, setState }: Props) {
           {tab === 'movements' && (
             <div className="space-y-4">
               <div className="flex gap-2 border-b pb-2">
-                <button onClick={() => setMovSub('transfer')} className={`px-3 py-1.5 rounded text-xs font-bold cursor-pointer ${movSub === 'transfer' ? 'bg-blue-600 text-white' : 'bg-slate-100'}`}>↔ Dispersion manuelle</button>
-                <button onClick={() => setMovSub('exit')} className={`px-3 py-1.5 rounded text-xs font-bold cursor-pointer ${movSub === 'exit' ? 'bg-rose-600 text-white' : 'bg-slate-100'}`}>↑ Sortie de stock (perte/casse)</button>
-                <button onClick={() => setMovSub('history')} className={`px-3 py-1.5 rounded text-xs font-bold cursor-pointer ${movSub === 'history' ? 'bg-slate-800 text-white' : 'bg-slate-100'}`}>📜 Historique global</button>
+                <button onClick={() => setMovSub('transfer')} className={`px-3 py-1.5 rounded text-xs font-bold cursor-pointer ${movSub === 'transfer' ? 'bg-blue-600 text-white' : 'bg-surface-hover'}`}>↔ Dispersion manuelle</button>
+                <button onClick={() => setMovSub('exit')} className={`px-3 py-1.5 rounded text-xs font-bold cursor-pointer ${movSub === 'exit' ? 'bg-rose-600 text-white' : 'bg-surface-hover'}`}>↑ Sortie de stock (perte/casse)</button>
+                <button onClick={() => setMovSub('history')} className={`px-3 py-1.5 rounded text-xs font-bold cursor-pointer ${movSub === 'history' ? 'bg-slate-800 text-white' : 'bg-surface-hover'}`}>📜 Historique global</button>
               </div>
 
               {movSub === 'transfer' && (
-                <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-3 max-w-xl">
-                  <h4 className="font-bold text-blue-900 text-sm">Transfert Dépôt Central → Service</h4>
+                <div className="p-4 bg-blue-50 dark:bg-cyan-500/8 border border-blue-200 dark:border-cyan-500/25 rounded-xl space-y-3 max-w-xl">
+                  <h4 className="font-bold text-blue-900 dark:text-cyan-300 text-sm">Transfert Dépôt Central → Service</h4>
                   <div className="space-y-2 text-xs">
                     <div>
                       <label className="font-bold block mb-1">Article à transférer</label>
-                      <select value={dispArticleId} onChange={(e) => setDispArticleId(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-white">
+                      <select value={dispArticleId} onChange={(e) => setDispArticleId(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-surface">
                         <option value="">— Sélectionner article —</option>
                         {state.articles.filter((a) => managesStockForFamily(a.family)).map((a) => <option key={a.id} value={a.id}>{a.name} (central: {a.stockCentral})</option>)}
                       </select>
@@ -1886,7 +1886,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                       </div>
                       <div>
                         <label className="font-bold block mb-1">Service destinataire</label>
-                        <select value={dispServiceId} onChange={(e) => setDispServiceId(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-white">
+                        <select value={dispServiceId} onChange={(e) => setDispServiceId(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-surface">
                           {activeServices.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                         </select>
                       </div>
@@ -1901,12 +1901,12 @@ export default function ModuleMagasinier({ state, setState }: Props) {
               )}
 
               {movSub === 'exit' && (
-                <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-3 max-w-xl">
-                  <h4 className="font-bold text-rose-900 text-sm">Sortie exceptionnelle de stock</h4>
+                <div className="p-4 bg-rose-50 dark:bg-rose-500/8 border border-rose-200 dark:border-rose-500/25 rounded-xl space-y-3 max-w-xl">
+                  <h4 className="font-bold text-rose-900 dark:text-rose-300 text-sm">Sortie exceptionnelle de stock</h4>
                   <div className="space-y-2 text-xs">
                     <div>
                       <label className="font-bold block mb-1">Article concerné</label>
-                      <select value={exitArticleId} onChange={(e) => setExitArticleId(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-white">
+                      <select value={exitArticleId} onChange={(e) => setExitArticleId(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-surface">
                         <option value="">— Sélectionner article —</option>
                         {state.articles.filter((a) => managesStockForFamily(a.family)).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                       </select>
@@ -1914,7 +1914,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="font-bold block mb-1">Depuis</label>
-                        <select value={exitFrom} onChange={(e) => setExitFrom(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-white">
+                        <select value={exitFrom} onChange={(e) => setExitFrom(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-surface">
                           {locationOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                         </select>
                       </div>
@@ -1933,9 +1933,9 @@ export default function ModuleMagasinier({ state, setState }: Props) {
               )}
 
               {movSub === 'history' && (
-                <div className="border rounded-xl overflow-hidden bg-white shadow-sm max-h-[500px] overflow-y-auto">
+                <div className="border rounded-xl overflow-hidden bg-surface shadow-sm max-h-[500px] overflow-y-auto">
                   <table className="w-full text-xs text-left">
-                    <thead className="bg-slate-50 border-b sticky top-0">
+                    <thead className="bg-surface-muted border-b sticky top-0">
                       <tr>
                         <th className="p-2.5">Date</th>
                         <th className="p-2.5">Type</th>
@@ -1948,14 +1948,14 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                     </thead>
                     <tbody>
                       {movFiltered.map((m) => (
-                        <tr key={m.id} className="border-b hover:bg-slate-50">
-                          <td className="p-2.5 font-mono text-slate-500">{new Date(m.date).toLocaleString('fr-FR')}</td>
+                        <tr key={m.id} className="border-b hover:bg-surface-muted">
+                          <td className="p-2.5 font-mono text-ink-muted">{new Date(m.date).toLocaleString('fr-FR')}</td>
                           <td className="p-2.5">
                             <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                              m.type === 'entry' ? 'bg-emerald-100 text-emerald-800'
-                                : m.type === 'exit' ? 'bg-rose-100 text-rose-800'
-                                : m.type === 'transfer' ? 'bg-blue-100 text-blue-800'
-                                : 'bg-amber-100 text-amber-800'
+                              m.type === 'entry' ? 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-300'
+                                : m.type === 'exit' ? 'bg-rose-100 dark:bg-rose-500/15 text-rose-800 dark:text-rose-300'
+                                : m.type === 'transfer' ? 'bg-blue-100 dark:bg-cyan-500/15 text-blue-800 dark:text-cyan-300'
+                                : 'bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300'
                             }`}>
                               {m.type === 'entry' ? 'Entrée' : m.type === 'exit' ? 'Sortie' : m.type === 'transfer' ? 'Transfert' : 'Inventaire'}
                             </span>
@@ -1964,7 +1964,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                           <td className="p-2.5 text-center font-mono font-bold">{m.quantity}</td>
                           <td className="p-2.5">{m.fromLocation === 'external' ? 'Fournisseur' : locationLabel(m.fromLocation, services)}</td>
                           <td className="p-2.5">{m.toLocation === 'external' ? '—' : locationLabel(m.toLocation, services)}</td>
-                          <td className="p-2.5 text-slate-600">{m.reason || m.ref || '—'}</td>
+                          <td className="p-2.5 text-ink-secondary">{m.reason || m.ref || '—'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1977,8 +1977,8 @@ export default function ModuleMagasinier({ state, setState }: Props) {
           {/* ===== SERVICES DESTINATAIRES ===== */}
           {tab === 'services' && (
             <div className="space-y-4">
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-                <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2"><Settings2 className="w-4 h-4" /> Ajouter un service destinataire</h4>
+              <div className="p-4 bg-surface-muted border border-line rounded-xl space-y-3">
+                <h4 className="font-bold text-ink-strong text-sm flex items-center gap-2"><Settings2 className="w-4 h-4" /> Ajouter un service destinataire</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                   <div>
                     <label className="block text-xs font-bold mb-1">Code *</label>
@@ -1990,7 +1990,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                   </div>
                   <div>
                     <label className="block text-xs font-bold mb-1">Couleur</label>
-                    <select value={newSvc.color} onChange={(e) => setNewSvc({ ...newSvc, color: e.target.value })} className="w-full px-3 py-1.5 border rounded-lg text-xs bg-white cursor-pointer">
+                    <select value={newSvc.color} onChange={(e) => setNewSvc({ ...newSvc, color: e.target.value })} className="w-full px-3 py-1.5 border rounded-lg text-xs bg-surface cursor-pointer">
                       {SERVICE_COLORS.map((c) => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
@@ -2000,9 +2000,9 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                 </button>
               </div>
 
-              <div className="border rounded-xl overflow-hidden bg-white shadow-sm">
+              <div className="border rounded-xl overflow-hidden bg-surface shadow-sm">
                 <table className="w-full text-xs text-left">
-                  <thead className="bg-slate-50 border-b">
+                  <thead className="bg-surface-muted border-b">
                     <tr>
                       <th className="p-3">Code</th>
                       <th className="p-3">Nom du service</th>
@@ -2017,16 +2017,16 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                         <td className="p-3 font-mono font-bold">{s.code}</td>
                         <td className="p-3 font-medium">{s.name}</td>
                         <td className="p-3 text-center">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${s.kind === 'pharmacie' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-700'}`}>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${s.kind === 'pharmacie' ? 'bg-purple-100 dark:bg-purple-500/15 text-purple-700 dark:text-purple-400' : 'bg-surface-hover text-ink'}`}>
                             {s.kind === 'pharmacie' ? 'Pharmacie' : 'Service'}
                           </span>
                         </td>
                         <td className="p-3 text-center">
-                          {s.active ? <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full font-bold">Actif</span> : <span className="px-2 py-0.5 bg-slate-200 text-slate-600 rounded-full font-bold">Inactif</span>}
+                          {s.active ? <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 rounded-full font-bold">Actif</span> : <span className="px-2 py-0.5 bg-surface-active text-ink-secondary rounded-full font-bold">Inactif</span>}
                         </td>
                         <td className="p-3 text-right">
                           {s.kind !== 'pharmacie' && (
-                            <button onClick={() => toggleService(s.id)} className="px-2 py-1 border rounded text-xs cursor-pointer hover:bg-slate-50">
+                            <button onClick={() => toggleService(s.id)} className="px-2 py-1 border rounded text-xs cursor-pointer hover:bg-surface-muted">
                               {s.active ? 'Désactiver' : 'Activer'}
                             </button>
                           )}

@@ -54,6 +54,59 @@ Application complète de gestion clinique et hospitalière (HIS — Hospital Inf
 
 ---
 
+## 🎨 Thèmes clair et sombre
+
+L'apparence reprend les thèmes du projet [MAHARITSE/Email](https://github.com/MAHARITSE/Email) :
+
+| | Clair | Sombre |
+|---|---|---|
+| Fond principal | `#f8fafc` | `#05070a` |
+| En-têtes et panneaux | `#ffffff` | `#080b10` |
+| Texte principal | `#334155` | `#cbd5e1` |
+| Accent | Cyan `#0891b2` | Cyan `#22d3ee` |
+
+- Le bouton en bas à droite affiche uniquement l'icône de l'action : **soleil en mode sombre** pour passer au clair, **lune en mode clair** pour passer au sombre. Il est disponible sur la réception, la connexion et les modules métier.
+- Le mode sombre est choisi par défaut, comme dans Email. Un choix déjà enregistré sous **`salfa_theme`** est conservé, indépendamment du thème du système.
+- Le choix est synchronisé entre les onglets et appliqué avant le démarrage de React pour éviter un flash clair. Si le stockage est bloqué, la bascule fonctionne toujours pour la session courante.
+- Les alertes médicales gardent leurs couleurs. Les aperçus de tickets restent blancs ; les styles sombres et le sélecteur ne sont pas imprimés.
+- Cette préférence d'affichage ne modifie ni les données métier ni la session de connexion.
+
+**Maintenance :** `src/context/ThemeContext.tsx` centralise l'état ; `src/index.css` définit la palette. Pour les nouveaux composants, utiliser les classes adaptatives `bg-canvas`, `bg-surface`, `bg-field`, `text-ink`, `text-ink-muted`, `border-line`, etc. Les variantes `dark:` sont pilotées par la classe du document, pas par le système d'exploitation. Éviter les surcharges globales `!important` sur les couleurs : elles cassent notamment les alertes, les survols et l'impression.
+
+### Vérifier les thèmes
+
+```bash
+npm install
+npx playwright install --with-deps chromium  # une seule fois
+npm run lint
+npm run test:theme                          # démarre Vite si nécessaire
+npm run build
+```
+
+Les tests navigateur couvrent le premier affichage, la mémorisation, le clavier, le stockage indisponible, la synchronisation entre onglets, les formulaires, les tableaux, les rôles métier, la messagerie, l'impression et les écrans de 320 à 768 px. Chaque test utilise un navigateur isolé, sans toucher aux données d'un utilisateur existant.
+
+> Le fichier de démonstration `src/data/localData.json` contenait des conflits de fusion bloquant la compilation. Ils ont été résolus en conservant la version amont complète de juin–août 2026, conforme au jeu décrit ci-dessous, sans régénération ni réinitialisation d'une base utilisateur.
+
+---
+
+## 🖨️ Reçus laboratoire et échographie
+
+- À l'encaissement, le reçu de caisse, le bon laboratoire et le bon d'échographie sont imprimés **l'un après l'autre**. Validez ou fermez chaque fenêtre d'impression pour passer au document suivant. Les exemplaires configurés suivent la même file.
+- Les bons reprennent les examens **facturés**, même lorsque leur demande ancienne n'a plus de lien direct avec la facture ou que l'examen est déjà terminé. Les autres examens du dossier ne sont pas ajoutés et l'avancement médical n'est pas rétrogradé.
+- Pour récupérer un bon : **Caisse → Dernier encaissement — réimpression**, ou **Clôture → Reçus / Bons / Facture A5** pour les encaissements du jour affichés dans cette table. Les boutons **Bon laboratoire** et **Bon échographie** ne créent aucun nouveau paiement.
+- Si le navigateur bloque le lancement, un avertissement reste visible dans l'application. Autorisez l'impression ; dans un aperçu intégré, utilisez **Ouvrir dans un nouvel onglet**, puis reconnectez-vous si nécessaire et réimprimez depuis la clôture. **N'encaissez pas une deuxième fois.**
+- Le navigateur choisit l'imprimante et affiche sa boîte native. Une impression réellement silencieuse nécessite la configuration du poste (par exemple un navigateur en mode kiosk). L'application ne peut pas confirmer la sortie physique du papier.
+
+**Maintenance :** `src/utils/printDocument.ts` centralise la file d'impression ; `src/utils/examReceipts.ts` reconstruit les lignes de bons sans modifier les données métier. Ne pas remettre de temporisations fixes entre documents ni supprimer un cadre tant que sa boîte d'impression est ouverte.
+
+```bash
+npm run test:printing  # Chromium / Playwright installé comme indiqué ci-dessus
+```
+
+Les tests utilisent des données et un navigateur isolés : encaissements patient et externe, laboratoire seul / écho seule, anciennes demandes, quantités, exemplaires, réimpressions, blocage navigateur et coexistence avec les factures SALFA A5. La boîte native est simulée : une vérification sur l'imprimante du poste reste nécessaire.
+
+---
+
 ## 📂 Structure du projet — 2 parties distinctes
 
 Le projet est divisé en **deux parties indépendantes**, chacune prête à déployer
