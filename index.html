@@ -7,21 +7,14 @@
     <meta name="theme-color" content="#f8fafc" />
     <title>MediCare HIS — Système de Gestion Hospitalière</title>
     <script>
-      // Appliquer le thème avant le premier affichage, sans flash.
-      // Garder salfa_theme / light alignés avec src/context/ThemeContext.tsx.
+      // Démarrage toujours en thème CLAIR (sans tenir compte d'une préférence
+      // stockée). Garder aligné avec src/context/ThemeContext.tsx.
       (function() {
-        var theme = 'light';
-        try {
-          var saved = localStorage.getItem('salfa_theme');
-          if (saved === 'light' || saved === 'dark') theme = saved;
-        } catch (e) {}
         var root = document.documentElement;
-        root.classList.toggle('dark', theme === 'dark');
-        root.classList.toggle('light', theme === 'light');
-        root.dataset.theme = theme;
-        document.querySelector('meta[name="theme-color"]').setAttribute(
-          'content', theme === 'dark' ? '#05070a' : '#f8fafc'
-        );
+        root.classList.remove('dark');
+        root.classList.add('light');
+        root.dataset.theme = 'light';
+        document.querySelector('meta[name="theme-color"]').setAttribute('content', '#f8fafc');
       })();
     </script>
     <script>

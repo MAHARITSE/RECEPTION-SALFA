@@ -2,7 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 
 export type Theme = 'dark' | 'light';
 export const THEME_STORAGE_KEY = 'salfa_theme';
-// Thème par défaut à l'ouverture : clair.
+// L'application démarre toujours en thème CLAIR (voir index.html). Le choix
+// fait en cours de session via la bascule n'est pas conservé au redémarrage.
 export const DEFAULT_THEME: Theme = 'light';
 
 interface ThemeContextValue {
@@ -19,13 +20,7 @@ function isTheme(value: unknown): value is Theme {
 }
 
 function readSavedTheme(): Theme {
-  try {
-    const saved = window.localStorage.getItem(THEME_STORAGE_KEY);
-    if (isTheme(saved)) return saved;
-  } catch {
-    // Le thème reste utilisable lorsque le stockage du navigateur est bloqué.
-  }
-  // Même valeur que le script d'initialisation dans index.html et le projet Email.
+  // Démarrage toujours en clair : on ignore toute préférence stockée.
   return DEFAULT_THEME;
 }
 
