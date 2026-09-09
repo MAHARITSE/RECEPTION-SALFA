@@ -5,6 +5,9 @@ import {
   addAuditLog, billingStatusClasses, billingStatusLabel,
   formatAr, formatNum, getCompanyInvoicesForMonth, addJourneyEvent, safeInvoiceItemDescriptions, familyLabel,
   isLabFamily, isEchoFamily, isHospFamily,
+  companyIsAssurance, companyTypeLabel,
+  invoiceAssuranceStatut, invoicePaidAmount, invoiceAssuranceReste,
+  invoiceAssuranceARembourser, invoiceAssuranceRejete,
 } from '../store';
 import type { CompanyBillingAccount, CompanySettlementMode, Invoice, InvoiceItem } from '../types';
 import {
@@ -16,6 +19,7 @@ import {
 } from 'lucide-react';
 import { printSalfaCompanyMonthlyInvoice, printSalfaIndividualInvoice } from '../utils/printSalfaInvoice';
 import SuiviAssurance from './SuiviAssurance';
+import ModuleFacturationAccueil from './ModuleFacturationAccueil';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
 
@@ -26,7 +30,7 @@ interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction
  *                 pour être traité individuellement, A5 en bonne et due forme).
  *  - 'societe'  → Facture Société : regroupement mensuel de toutes les personnes d'une société.
  */
-type Tab = 'client' | 'societe' | 'historique_paiements';
+type Tab = 'accueil' | 'client' | 'societe' | 'historique_paiements';
 
 const monthLabel = (month: string) =>
   new Date(`${month}-01T00:00:00`).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
@@ -53,9 +57,11 @@ const invoiceDesignation = (inv: Invoice, state: AppState, separator = ', ') => 
 };
 
 export default function ModuleFacturationSocietes({ state, setState }: Props) {
-  const [tab, setTab] = useState<Tab>('client');
+  const [tab, setTab] = useState<Tab>('accueil');
   // Vue ASSURANCES : suivi individuel des prestations des sociétés de type assurance.
   const [assuranceMode, setAssuranceMode] = useState(false);
+  // Société à ouvrir automatiquement dans le suivi des assurances (accueil « par société »).
+  const [assuranceInitialCompany, setAssuranceInitialCompany] = useState<string | undefined>(undefined);
   const [filterCompany, setFilterCompany] = useState<string>('all');
   const [filterMonth, setFilterMonth] = useState<string>(currentMonth());
   const [filterStatus, setFilterStatus] = useState<'all' | 'impaye' | 'partiel' | 'payee'>('all');
@@ -1017,20 +1023,38 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
   /* ======================= RENDU DES ONGLETS ======================= */
 
   const TABS: [Tab, React.ReactNode][] = [
+    ['accueil', <span className="flex items-center gap-1.5"><Sparkles className="w-4 h-4 text-violet-600 dark:text-violet-400" /> Accueil <span className="hidden sm:inline font-semibold text-ink-faint">(par société)</span></span>],
     ['client', <span className="flex items-center gap-1.5"><Receipt className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Facture Client <span className="hidden sm:inline font-semibold text-ink-faint">(A5 individuel)</span></span>],
     ['societe', <span className="flex items-center gap-1.5"><Building2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" /> Facture Société <span className="hidden sm:inline font-semibold text-ink-faint">(Regroupement mensuel)</span></span>],
   ];
+
+  // ===== Vue d'ACCUEIL (par société) — nouvelle entrée « GitHub-like » du module =====
+  if (tab === 'accueil') {
+    return (
+      <ModuleFacturationAccueil
+        state={state}
+        filterCompany={filterCompany}
+        setFilterCompany={setFilterCompany}
+        filterMonth={filterMonth}
+        setFilterMonth={setFilterMonth}
+        onGoClient={() => setTab('client')}
+        onGoSociete={() => setTab('societe')}
+        onOpenAssurance={(name) => { setAssuranceInitialCompany(name); setAssuranceMode(true); }}
+        onOpenHisto={() => setTab('historique_paiements')}
+      />
+    );
+  }
 
   // ===== Vue dédiée : SUIVI DES ASSURANCES (le Payeur global garde son écran ci-dessous) =====
   if (assuranceMode) {
     return (
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center gap-3 p-3 bg-surface border border-line rounded-xl shadow-xs">
+        <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-surface border border-line rounded-xl shadow-xs">
           <button
-            onClick={() => setAssuranceMode(false)}
+            onClick={() => { setAssuranceMode(false); setAssuranceInitialCompany(undefined); setTab('accueil'); }}
             className="px-3 py-1.5 bg-surface-hover hover:bg-surface-active text-ink rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1.5"
           >
-            <ArrowLeft className="w-4 h-4" /> Retour : factures société / payeurs globaux
+            <ArrowLeft className="w-4 h-4" /> Retour à l'accueil
           </button>
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-1 rounded-full bg-sky-100 dark:bg-sky-500/15 text-sky-800 dark:text-sky-300 text-[11px] font-bold flex items-center gap-1">
@@ -1038,7 +1062,12 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
             </span>
           </div>
         </div>
-        <SuiviAssurance state={state} setState={setState} />
+        <SuiviAssurance
+          state={state}
+          setState={setState}
+          initialCompanyName={assuranceInitialCompany}
+          onConsumeInitial={() => setAssuranceInitialCompany(undefined)}
+        />
       </div>
     );
   }

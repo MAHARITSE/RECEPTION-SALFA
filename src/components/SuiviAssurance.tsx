@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { AppState } from '../store';
 import {
   addAuditLog, formatAr,
@@ -17,6 +17,10 @@ import {
 interface Props {
   state: AppState;
   setState: React.Dispatch<React.SetStateAction<AppState>>;
+  /** Société à ouvrir automatiquement à l'arrivée (accueil « par société »). */
+  initialCompanyName?: string;
+  /** Rappelé après consommation de `initialCompanyName` (pour éviter une réouverture). */
+  onConsumeInitial?: () => void;
 }
 
 const monthLabel = (month: string) =>
@@ -41,7 +45,7 @@ const STATUT_BLOCKS: [string, string, string][] = [
   ['rejetee', 'Rejetées', 'bg-slate-200 dark:bg-slate-500/20 text-slate-700 dark:text-slate-300'],
 ];
 
-export default function SuiviAssurance({ state, setState }: Props) {
+export default function SuiviAssurance({ state, setState, initialCompanyName, onConsumeInitial }: Props) {
   const assuranceCompanies = useMemo(() => state.companies.filter((c) => companyIsAssurance(c)), [state]);
 
   const allRows: Row[] = useMemo(() => {
@@ -64,6 +68,15 @@ export default function SuiviAssurance({ state, setState }: Props) {
   const [search, setSearch] = useState('');
 
   // Modal d'action sur une facture (suivi détaillé).
+  // Ouverture automatique depuis l'accueil « par société ».
+  useEffect(() => {
+    if (!initialCompanyName) return;
+    const c = assuranceCompanies.find((x) => x.name === initialCompanyName);
+    if (c) setActiveCompany(c);
+    onConsumeInitial?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialCompanyName]);
+
   const [open, setOpen] = useState<Row | null>(null);
   const [dateEnvoi, setDateEnvoi] = useState(today());
   const [aRembourser, setARembourser] = useState('');
