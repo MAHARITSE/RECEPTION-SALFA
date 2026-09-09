@@ -2,8 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 
 export type Theme = 'dark' | 'light';
 export const THEME_STORAGE_KEY = 'salfa_theme';
-// L'application démarre toujours en thème CLAIR (voir index.html). Le choix
-// fait en cours de session via la bascule n'est pas conservé au redémarrage.
+// Thème par défaut (clair) appliqué uniquement si aucune préférence n'a été
+// enregistrée dans le navigateur. Sinon, la dernière préférence est reprise.
 export const DEFAULT_THEME: Theme = 'light';
 
 interface ThemeContextValue {
@@ -20,7 +20,13 @@ function isTheme(value: unknown): value is Theme {
 }
 
 function readSavedTheme(): Theme {
-  // Démarrage toujours en clair : on ignore toute préférence stockée.
+  try {
+    const saved = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (isTheme(saved)) return saved;
+  } catch {
+    // Le thème reste utilisable lorsque le stockage du navigateur est bloqué.
+  }
+  // Clair par défaut lorsqu'aucune préférence n'a encore été enregistrée.
   return DEFAULT_THEME;
 }
 
