@@ -39,6 +39,19 @@
 }
 
 @layer base {
+  /* Placeholder de la zone d'édition d'en-tête de facture (contenteditable) */
+  [contenteditable][data-placeholder]:empty::before {
+    content: attr(data-placeholder);
+    color: var(--ui-ink-faint);
+    opacity: 0.75;
+    font-style: italic;
+    pointer-events: none;
+    display: inline-block;
+  }
+  [contenteditable]:focus {
+    outline: none;
+  }
+
   :root {
     color-scheme: light;
     --ui-canvas: #f8fafc;

@@ -12,6 +12,7 @@ import ModuleLaboratoire from './ModuleLaboratoire';
 import ModuleFacturationSocietes from './ModuleFacturationSocietes';
 import ModuleDossierMedical from './ModuleDossierMedical';
 import TableEtablissements from './TableEtablissements';
+import EnTeteFactureEditor from './EnTeteFactureEditor';
 import {
   Trash2, Plus, X, Check, Download, Upload,
   Eye, Settings as SettingsIcon, Users, Building2,
@@ -27,7 +28,7 @@ interface Props {
   setState: React.Dispatch<React.SetStateAction<AppState>>;
 }
 
-type Tab = 'dashboard' | 'etablissements' | 'tickets' | 'users' | 'companies' | 'audit' | 'backup' | 'system';
+type Tab = 'dashboard' | 'etablissements' | 'tickets' | 'invoiceHeader' | 'users' | 'companies' | 'audit' | 'backup' | 'system';
 type AppModuleKey = 'reception' | 'doctor' | 'medicalRecords' | 'cashier' | 'pharmacy' | 'magasinier' | 'laboratory' | 'billing';
 
 const roleLabels: Record<string, string> = {
@@ -46,6 +47,7 @@ const TABS: { key: Tab; label: string; icon: any; desc: string }[] = [
   { key: 'dashboard', label: 'Tableau de bord', icon: LayoutDashboard, desc: 'Vue d\'ensemble & supervision générale' },
   { key: 'etablissements', label: 'Société / Hôpital', icon: Landmark, desc: 'Identification, coordonnées, agrément, logo et en-tête des documents' },
   { key: 'tickets', label: 'Tickets POS & Format', icon: Printer, desc: 'Format 58/80mm, options & aperçu direct' },
+  { key: 'invoiceHeader', label: 'En-tête Facture', icon: FileText, desc: 'En-tête des factures A4/A5 (texte & images) — hors tickets POS' },
   { key: 'users', label: 'Personnel & Accès', icon: Users, desc: 'Comptes utilisateurs, rôles & sécurisation' },
   { key: 'companies', label: 'Sociétés & Conventions', icon: CreditCard, desc: 'Entreprises & modes de règlement' },
   { key: 'audit', label: 'Journal d\'audit', icon: Shield, desc: 'Traçabilité complète des événements' },
@@ -1289,6 +1291,15 @@ export default function ModuleAdministration({ state, setState }: Props) {
                         </div>
                       </div>
                     </div>
+                  )}
+
+                  {/* ===== TAB 3-bis: EN-TÊTE DES FACTURES (A4/A5) ===== */}
+                  {tab === 'invoiceHeader' && (
+                    <EnTeteFactureEditor
+                      settings={state.ticketSettings}
+                      updateTicket={updateTicket}
+                      showToast={showToast}
+                    />
                   )}
 
                   {/* ===== TAB 4: USERS & ACCESS ===== */}

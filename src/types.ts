@@ -16,6 +16,15 @@ export interface TicketSettings {
   showLogo: boolean;
   /** Logo additionnel affiché uniquement sur les factures A4/A5 */
   secondLogoUrl?: string;
+  /**
+   * En-tête des FACTURES (A4/A5) — distinct de l'en-tête du ticket POS.
+   * `customInvoiceHeader=true` remplace l'en-tête par défaut par le contenu
+   * libre `invoiceHeaderHtml` (texte enrichi + images), uniquement sur les
+   * factures / relevés société imprimés.
+   */
+  customInvoiceHeader?: boolean;
+  /** Contenu HTML libre (texte + <img>) de l'en-tête des factures personnalisé. */
+  invoiceHeaderHtml?: string;
   showBarcode: boolean;
   showSignature: boolean;
   copies: number; // nombre d'exemplaires à imprimer

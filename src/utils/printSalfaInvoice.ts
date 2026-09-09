@@ -8,6 +8,49 @@ const escapeHtml = (value: unknown) => {
   );
 };
 
+/** CSS des règles appliquées à l'en-tête de FACTURE personnalisé (texte + images).
+ *  Les images insérées via l'éditeur sont des blocs `.entete-fig` ; une image portant
+ *  la classe `.entete-bg` est positionnée en ABSOLU derrière le texte (filigrane). */
+const INVOICE_HEADER_CSS = `
+.header.header-custom { display: block; }
+.header.header-custom .header-custom-inner {
+  text-align: center; font-size: 11px; line-height: 1.45; color: #000;
+  position: relative; z-index: 1;
+}
+.header.header-custom .header-custom-inner img {
+  max-width: 92%; max-height: 70px; width: auto; height: auto; display: inline-block;
+}
+.header.header-custom .header-custom-inner img.invoice-header-logo-lg { max-height: 120px; }
+.header.header-custom .header-custom-inner strong,
+.header.header-custom .header-custom-inner b { font-weight: bold; }
+/* Images normales insérées dans l'éditeur */
+.header.header-custom .header-custom-inner [data-entete-fig] { position: relative; }
+.header.header-custom .header-custom-inner [data-entete-fig] img {
+  max-width: 150px; max-height: 100px; height: auto;
+}
+/* Image d'arrière-plan (filigrane) — reste derrière le texte à l'impression.
+   Le z-index négatif (inline) + .header-custom-inner position:relative/z-index la
+   maintiennent sous le texte mais au-dessus du fond du document. */
+.header.header-custom .header-custom-inner [data-entete-fig].entete-bg {
+  position: absolute !important;
+}
+.header.header-custom .header-custom-inner [data-entete-fig].entete-bg img {
+  max-width: 100%; max-height: 170px; width: auto; height: auto; opacity: 0.25;
+}
+.header.header-custom .header-custom-inner [data-entete-fig].entete-sel { outline: none; }
+`;
+
+/**
+ * Retourne l'en-tête de facture personnalisé s'il est activé et non vide,
+ * sinon `null` (le document utilisera alors son en-tête par défaut intégré).
+ */
+function customInvoiceHeaderMarkup(settings: TicketSettings): string | null {
+  if (!settings.customInvoiceHeader) return null;
+  const html = (settings.invoiceHeaderHtml || '').trim();
+  if (!html) return null;
+  return `<div class="header header-custom"><div class="header-custom-inner">${html}</div></div>`;
+}
+
 /** Convertit un nombre en toutes lettres en français pour le montant en Ariary */
 export function numberToFrenchWords(n: number): string {
   if (isNaN(n) || n === 0) return 'zéro Ariary';
@@ -119,6 +162,35 @@ export function printSalfaIndividualInvoice(
   const netAPayer = invoice.patientCharge;
 
   const montantLettres = numberToFrenchWords(netAPayer);
+
+  const customHeader = customInvoiceHeaderMarkup(settings);
+  const headerMarkup = customHeader ?? `  <div class="header">
+    <div class="logo-container">
+      <svg width="50" height="50" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="46" fill="#15803d"/>
+        <polygon points="50,12 61,35 85,35 66,50 73,73 50,58 27,73 34,50 15,35 39,35" fill="#ffffff"/>
+        <circle cx="50" cy="48" r="14" fill="#dc2626"/>
+        <path d="M50 40 L50 56 M42 48 L58 48" stroke="#ffffff" stroke-width="4"/>
+      </svg>
+    </div>
+    <div class="header-text">
+      <div class="title-lg">FIANGONANA LOTERANA MALAGASY</div>
+      <div class="sub">(EGLISE LUTHERIENNE MALGACHE - MALAGASY LUTHERAN CHURCH)</div>
+      <div class="title-lg" style="margin-top:3px;">SAMPAN'ASA LOTERANA MOMBA NY FAHASALAMANA</div>
+      <div class="sub">DEPARTEMENT DE SANTE - HEALTH DEPARTMENT</div>
+      <div class="title-lg" style="margin-top:3px;">DISPENSAIRE TANAMBAO - TOBY BETELA TOLIARA</div>
+      <div class="sub">NIF: 5000767080 &nbsp; STAT: 851 125 120 120 001 36</div>
+      <div class="sub">E-mail: salfa.tulear@gmail.com</div>
+    </div>
+    ${settings.secondLogoUrl ? `<div class="logo-container"><img src="${escapeHtml(settings.secondLogoUrl)}" alt="Logo Société" /></div>` : `<div class="logo-container">
+      <svg width="50" height="50" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="45" fill="#003399"/>
+        <path d="M50 15 L50 85 M15 50 L85 50" stroke="#ffffff" stroke-width="12"/>
+        <path d="M50 35 C40 30 35 45 50 60 C65 45 60 30 50 35 Z" fill="#cc0000"/>
+        <text x="50" y="92" text-anchor="middle" fill="#ffffff" font-size="12" font-weight="bold">SALFA</text>
+      </svg>
+    </div>`}
+  </div>`;
 
   const rowsHtml = items.map((item, idx) => {
     const qty = (item as any).quantity ?? 1;
@@ -261,36 +333,11 @@ export function printSalfaIndividualInvoice(
       justify-content: space-between;
       font-size: 10px;
     }
+    ${INVOICE_HEADER_CSS}
   </style>
 </head>
 <body>
-  <div class="header">
-    <div class="logo-container">
-      <svg width="50" height="50" viewBox="0 0 100 100">
-        <circle cx="50" cy="50" r="46" fill="#15803d"/>
-        <polygon points="50,12 61,35 85,35 66,50 73,73 50,58 27,73 34,50 15,35 39,35" fill="#ffffff"/>
-        <circle cx="50" cy="48" r="14" fill="#dc2626"/>
-        <path d="M50 40 L50 56 M42 48 L58 48" stroke="#ffffff" stroke-width="4"/>
-      </svg>
-    </div>
-    <div class="header-text">
-      <div class="title-lg">FIANGONANA LOTERANA MALAGASY</div>
-      <div class="sub">(EGLISE LUTHERIENNE MALGACHE - MALAGASY LUTHERAN CHURCH)</div>
-      <div class="title-lg" style="margin-top:3px;">SAMPAN'ASA LOTERANA MOMBA NY FAHASALAMANA</div>
-      <div class="sub">DEPARTEMENT DE SANTE - HEALTH DEPARTMENT</div>
-      <div class="title-lg" style="margin-top:3px;">DISPENSAIRE TANAMBAO - TOBY BETELA TOLIARA</div>
-      <div class="sub">NIF: 5000767080 &nbsp; STAT: 851 125 120 120 001 36</div>
-      <div class="sub">E-mail: salfa.tulear@gmail.com</div>
-    </div>
-    ${settings.secondLogoUrl ? `<div class="logo-container"><img src="${escapeHtml(settings.secondLogoUrl)}" alt="Logo Société" /></div>` : `<div class="logo-container">
-      <svg width="50" height="50" viewBox="0 0 100 100">
-        <circle cx="50" cy="50" r="45" fill="#003399"/>
-        <path d="M50 15 L50 85 M15 50 L85 50" stroke="#ffffff" stroke-width="12"/>
-        <path d="M50 35 C40 30 35 45 50 60 C65 45 60 30 50 35 Z" fill="#cc0000"/>
-        <text x="50" y="92" text-anchor="middle" fill="#ffffff" font-size="12" font-weight="bold">SALFA</text>
-      </svg>
-    </div>`}
-  </div>
+  ${headerMarkup}
 
   <div class="doc-title">FACTURE &nbsp; ${invNumber}</div>
 
@@ -429,6 +476,35 @@ export function printSalfaCompanyMonthlyInvoice(
 
   const montantLettres = numberToFrenchWords(totalNetGlobal);
 
+  const customHeader = customInvoiceHeaderMarkup(settings);
+  const headerMarkup = customHeader ?? `  <div class="header">
+    <div class="logo-container">
+      <svg width="60" height="60" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="46" fill="#15803d"/>
+        <polygon points="50,12 61,35 85,35 66,50 73,73 50,58 27,73 34,50 15,35 39,35" fill="#ffffff"/>
+        <circle cx="50" cy="48" r="14" fill="#dc2626"/>
+        <path d="M50 40 L50 56 M42 48 L58 48" stroke="#ffffff" stroke-width="4"/>
+      </svg>
+    </div>
+    <div class="header-text">
+      <div class="title-lg">FIANGONANA LOTERANA MALAGASY</div>
+      <div class="sub">(EGLISE LUTHERIENNE MALGACHE - MALAGASY LUTHERAN CHURCH)</div>
+      <div class="sub" style="font-weight:bold;">SYNODAM-PARITANY FIHERENANA TOLIARA</div>
+      <div class="title-lg" style="margin-top:3px;">SAMPAN'ASA LOTERANA MOMBA NY FAHASALAMANA (SALFA)</div>
+      <div class="sub">DEPARTEMENT DE SANTE - HEALTH DEPARTMENT</div>
+      <div class="title-lg" style="margin-top:3px;">HOPITALY LOTERANA TOLIARY TANAMBAO - BP : 99 Tél : 038 34 092 61-034 50 670 90</div>
+      <div class="sub">NIF: 5000767080 &nbsp; STAT: 851 125 120 120 001FIANGONANA LOTERANA MALAGASY</div>
+    </div>
+    ${settings.secondLogoUrl ? `<div class="logo-container"><img src="${escapeHtml(settings.secondLogoUrl)}" alt="Logo Société" /></div>` : `<div class="logo-container">
+      <svg width="60" height="60" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="45" fill="#003399"/>
+        <path d="M50 15 L50 85 M15 50 L85 50" stroke="#ffffff" stroke-width="12"/>
+        <path d="M50 35 C40 30 35 45 50 60 C65 45 60 30 50 35 Z" fill="#cc0000"/>
+        <text x="50" y="92" text-anchor="middle" fill="#ffffff" font-size="12" font-weight="bold">SALFA</text>
+      </svg>
+    </div>`}
+  </div>`;
+
   const html = `<!doctype html>
 <html lang="fr">
 <head>
@@ -542,36 +618,11 @@ export function printSalfaCompanyMonthlyInvoice(
       font-weight: bold;
       margin-top: 10px;
     }
+    ${INVOICE_HEADER_CSS}
   </style>
 </head>
 <body>
-  <div class="header">
-    <div class="logo-container">
-      <svg width="60" height="60" viewBox="0 0 100 100">
-        <circle cx="50" cy="50" r="46" fill="#15803d"/>
-        <polygon points="50,12 61,35 85,35 66,50 73,73 50,58 27,73 34,50 15,35 39,35" fill="#ffffff"/>
-        <circle cx="50" cy="48" r="14" fill="#dc2626"/>
-        <path d="M50 40 L50 56 M42 48 L58 48" stroke="#ffffff" stroke-width="4"/>
-      </svg>
-    </div>
-    <div class="header-text">
-      <div class="title-lg">FIANGONANA LOTERANA MALAGASY</div>
-      <div class="sub">(EGLISE LUTHERIENNE MALGACHE - MALAGASY LUTHERAN CHURCH)</div>
-      <div class="sub" style="font-weight:bold;">SYNODAM-PARITANY FIHERENANA TOLIARA</div>
-      <div class="title-lg" style="margin-top:3px;">SAMPAN'ASA LOTERANA MOMBA NY FAHASALAMANA (SALFA)</div>
-      <div class="sub">DEPARTEMENT DE SANTE - HEALTH DEPARTMENT</div>
-      <div class="title-lg" style="margin-top:3px;">HOPITALY LOTERANA TOLIARY TANAMBAO - BP : 99 Tél : 038 34 092 61-034 50 670 90</div>
-      <div class="sub">NIF: 5000767080 &nbsp; STAT: 851 125 120 120 001FIANGONANA LOTERANA MALAGASY</div>
-    </div>
-    ${settings.secondLogoUrl ? `<div class="logo-container"><img src="${escapeHtml(settings.secondLogoUrl)}" alt="Logo Société" /></div>` : `<div class="logo-container">
-      <svg width="60" height="60" viewBox="0 0 100 100">
-        <circle cx="50" cy="50" r="45" fill="#003399"/>
-        <path d="M50 15 L50 85 M15 50 L85 50" stroke="#ffffff" stroke-width="12"/>
-        <path d="M50 35 C40 30 35 45 50 60 C65 45 60 30 50 35 Z" fill="#cc0000"/>
-        <text x="50" y="92" text-anchor="middle" fill="#ffffff" font-size="12" font-weight="bold">SALFA</text>
-      </svg>
-    </div>`}
-  </div>
+  ${headerMarkup}
 
   <div class="title-block">
     <div class="doit-title">Doit : ${company.name.toUpperCase()}</div>
