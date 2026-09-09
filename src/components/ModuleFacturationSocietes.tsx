@@ -5,6 +5,9 @@ import {
   addAuditLog, billingStatusClasses, billingStatusLabel,
   formatAr, formatNum, getCompanyInvoicesForMonth, addJourneyEvent, safeInvoiceItemDescriptions, familyLabel,
   isLabFamily, isEchoFamily, isHospFamily,
+  companyIsAssurance, companyTypeLabel,
+  invoiceAssuranceStatut, invoicePaidAmount, invoiceAssuranceReste,
+  invoiceAssuranceARembourser, invoiceAssuranceRejete,
 } from '../store';
 import type { CompanyBillingAccount, CompanySettlementMode, Invoice, InvoiceItem } from '../types';
 import {
@@ -12,8 +15,11 @@ import {
   Printer, Receipt, Search, Trash2, Wallet, X, FileText, BadgeCheck,
   Hash, User as UserIcon, Edit2, Plus, Users, ShoppingBag, Store, Save,
   History, Sparkles, Layers, ListPlus, RotateCcw, FileSpreadsheet, Copy, Filter, Zap, Table, CheckCircle2,
+  Shield, ArrowLeft,
 } from 'lucide-react';
 import { printSalfaCompanyMonthlyInvoice, printSalfaIndividualInvoice } from '../utils/printSalfaInvoice';
+import SuiviAssurance from './SuiviAssurance';
+import ModuleFacturationAccueil from './ModuleFacturationAccueil';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
 
@@ -24,7 +30,7 @@ interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction
  *                 pour être traité individuellement, A5 en bonne et due forme).
  *  - 'societe'  → Facture Société : regroupement mensuel de toutes les personnes d'une société.
  */
-type Tab = 'client' | 'societe' | 'historique_paiements';
+type Tab = 'accueil' | 'client' | 'societe' | 'historique_paiements';
 
 const monthLabel = (month: string) =>
   new Date(`${month}-01T00:00:00`).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
@@ -51,7 +57,11 @@ const invoiceDesignation = (inv: Invoice, state: AppState, separator = ', ') => 
 };
 
 export default function ModuleFacturationSocietes({ state, setState }: Props) {
-  const [tab, setTab] = useState<Tab>('client');
+  const [tab, setTab] = useState<Tab>('accueil');
+  // Vue ASSURANCES : suivi individuel des prestations des sociétés de type assurance.
+  const [assuranceMode, setAssuranceMode] = useState(false);
+  // Société à ouvrir automatiquement dans le suivi des assurances (accueil « par société »).
+  const [assuranceInitialCompany, setAssuranceInitialCompany] = useState<string | undefined>(undefined);
   const [filterCompany, setFilterCompany] = useState<string>('all');
   const [filterMonth, setFilterMonth] = useState<string>(currentMonth());
   const [filterStatus, setFilterStatus] = useState<'all' | 'impaye' | 'partiel' | 'payee'>('all');
@@ -653,6 +663,61 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
     setPayingAccount(null);
   };
 
+  /** SAISIE SIMPLE d'un règlement global (depuis l'Accueil, espace d'une société) :
+   *  société + montant → solde TOUTES les factures du mois en une seule action. */
+  const simpleGlobalSettle = (o: { company: string; amount: number; method: string; reference: string; observation: string; date: string }) => {
+    const month = filterMonth;
+    const mInvoices = allCompanyInvoices
+      .filter(x => x.companyName === o.company && x.inv.createdAt.startsWith(month))
+      .map(x => x.inv);
+    if (!mInvoices.length) { alert(`Aucune facture trouvée pour ${o.company} en ${monthLabel(month)}.`); return; }
+    const existing = state.companyBillingAccounts.find(a => a.company === o.company && a.month === month);
+    const invIds = existing?.invoiceIds?.length ? existing.invoiceIds : mInvoices.map(i => i.id);
+    const total = existing ? existing.totalAmount : mInvoices.reduce((s, i) => s + i.totalAmount, 0);
+    const paidPrev = existing?.paidAmount || 0;
+    const balance = Math.max(0, total - paidPrev);
+    if (balance <= 0) { alert(`${o.company} — ${monthLabel(month)} est déjà soldé.`); return; }
+    if (!o.date) { alert('Date du règlement requise.'); return; }
+    if (!o.amount || o.amount <= 0) { alert('Montant du règlement invalide.'); return; }
+    if (o.amount < balance - 0.001) {
+      alert(`Le montant saisi (${formatAr(o.amount)}) est inférieur au solde du mois (${formatAr(balance)}). Le règlement global solde la totalité du mois.`);
+      return;
+    }
+    const iso = new Date(`${o.date}T12:00:00`).toISOString();
+    const effective = balance; // solde du mois
+    setState(prev => {
+      const next = { ...prev };
+      const payId = uuidv4();
+      next.invoices = next.invoices.map(inv =>
+        invIds.includes(inv.id) && inv.status !== 'paid'
+          ? { ...inv, status: 'paid' as const, paidAt: iso, paidBy: prev.currentUser?.id }
+          : inv
+      );
+      const payment = {
+        id: payId, amount: effective, date: iso, method: o.method,
+        reference: o.reference.trim() || undefined, observation: o.observation.trim() || undefined,
+        invoiceIds: invIds,
+        receivedBy: prev.currentUser?.name, receivedByUserId: prev.currentUser?.id,
+      };
+      const finalized: CompanyBillingAccount = {
+        ...(existing || { id: uuidv4(), company: o.company, month, invoiceIds: invIds, totalAmount: total, paidAmount: 0, status: 'open' as const, createdAt: new Date().toISOString(), payments: [] }),
+        invoiceIds: invIds, totalAmount: total,
+        paidAmount: total, status: 'paid' as const,
+        finalSettlementAmount: effective, finalSettlementDate: iso,
+        finalSettlementMethod: o.method, finalSettlementReference: o.reference.trim() || undefined,
+        finalSettlementObservation: o.observation.trim() || undefined,
+        settledBy: prev.currentUser?.id, settledByName: prev.currentUser?.name,
+        payments: [...(existing?.payments || []), payment],
+      };
+      next.companyBillingAccounts = existing
+        ? next.companyBillingAccounts.map(a => (a.id === existing.id ? finalized : a))
+        : [...next.companyBillingAccounts, finalized];
+      addAuditLog(next, 'RELEVE_MENSUEL_SOLDE', `${o.company} — ${monthLabel(month)} — ${formatAr(effective)} (${o.method})`);
+      return next;
+    });
+    alert(`Règlement enregistré : ${o.company} — ${monthLabel(month)} — ${formatAr(effective)}.`);
+  };
+
   /** Règlement individuel */
   const openIndividualSettle = (ids: string[]) => {
     if (!ids.length) return;
@@ -1013,12 +1078,73 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
   /* ======================= RENDU DES ONGLETS ======================= */
 
   const TABS: [Tab, React.ReactNode][] = [
+    ['accueil', <span className="flex items-center gap-1.5"><Sparkles className="w-4 h-4 text-violet-600 dark:text-violet-400" /> Accueil <span className="hidden sm:inline font-semibold text-ink-faint">(par société)</span></span>],
     ['client', <span className="flex items-center gap-1.5"><Receipt className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Facture Client <span className="hidden sm:inline font-semibold text-ink-faint">(A5 individuel)</span></span>],
     ['societe', <span className="flex items-center gap-1.5"><Building2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" /> Facture Société <span className="hidden sm:inline font-semibold text-ink-faint">(Regroupement mensuel)</span></span>],
   ];
 
+  // ===== Vue d'ACCUEIL (par société) — nouvelle entrée « GitHub-like » du module =====
+  if (tab === 'accueil') {
+    return (
+      <ModuleFacturationAccueil
+        state={state}
+        filterCompany={filterCompany}
+        setFilterCompany={setFilterCompany}
+        filterMonth={filterMonth}
+        setFilterMonth={setFilterMonth}
+        onGoClient={() => setTab('client')}
+        onGoSociete={() => setTab('societe')}
+        onOpenAssurance={(name) => { setAssuranceInitialCompany(name); setAssuranceMode(true); }}
+        onOpenHisto={() => setTab('historique_paiements')}
+        paymentMethods={paymentMethods}
+        onSimpleSettleGlobal={simpleGlobalSettle}
+      />
+    );
+  }
+
+  // ===== Vue dédiée : SUIVI DES ASSURANCES (le Payeur global garde son écran ci-dessous) =====
+  if (assuranceMode) {
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-surface border border-line rounded-xl shadow-xs">
+          <button
+            onClick={() => { setAssuranceMode(false); setAssuranceInitialCompany(undefined); setTab('accueil'); }}
+            className="px-3 py-1.5 bg-surface-hover hover:bg-surface-active text-ink rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1.5"
+          >
+            <ArrowLeft className="w-4 h-4" /> Retour à l'accueil
+          </button>
+          <div className="flex items-center gap-2">
+            <span className="px-2.5 py-1 rounded-full bg-sky-100 dark:bg-sky-500/15 text-sky-800 dark:text-sky-300 text-[11px] font-bold flex items-center gap-1">
+              <Shield className="w-3.5 h-3.5" /> Assurances — suivi par adhérent / facture
+            </span>
+          </div>
+        </div>
+        <SuiviAssurance
+          state={state}
+          setState={setState}
+          initialCompanyName={assuranceInitialCompany}
+          onConsumeInitial={() => setAssuranceInitialCompany(undefined)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
+      {/* ===== Commutateur : Suivi des Assurances (dédié) ===== */}
+      <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-gradient-to-r from-indigo-50 dark:from-indigo-950/50 to-sky-50 dark:to-sky-950/40 border border-indigo-200 dark:border-indigo-500/20 rounded-xl">
+        <span className="text-xs font-bold text-indigo-900 dark:text-indigo-300 flex items-center gap-1.5">
+          <Building2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+          Facturation des payeurs globaux (relevé mensuel global + paiement individuel)
+        </span>
+        <button
+          onClick={() => setAssuranceMode(true)}
+          className="px-3.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition flex items-center gap-1.5 bg-sky-600 hover:bg-sky-700 text-white shadow-sm"
+        >
+          <Shield className="w-4 h-4" /> Suivi des Assurances <span className="hidden sm:inline font-semibold opacity-80">(par adhérent / facture)</span>
+        </button>
+      </div>
+
       {/* ===== BARRE DE FILTRES GLOBALE ET COMPACTE ===== */}
       <div className="bg-surface rounded-xl shadow-sm border p-3">
         <div className="flex flex-wrap items-center gap-3">

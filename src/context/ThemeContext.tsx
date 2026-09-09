@@ -2,7 +2,9 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 
 export type Theme = 'dark' | 'light';
 export const THEME_STORAGE_KEY = 'salfa_theme';
-export const DEFAULT_THEME: Theme = 'dark';
+// Thème par défaut (clair) appliqué uniquement si aucune préférence n'a été
+// enregistrée dans le navigateur. Sinon, la dernière préférence est reprise.
+export const DEFAULT_THEME: Theme = 'light';
 
 interface ThemeContextValue {
   theme: Theme;
@@ -24,7 +26,7 @@ function readSavedTheme(): Theme {
   } catch {
     // Le thème reste utilisable lorsque le stockage du navigateur est bloqué.
   }
-  // Même valeur que le script d'initialisation dans index.html et le projet Email.
+  // Clair par défaut lorsqu'aucune préférence n'a encore été enregistrée.
   return DEFAULT_THEME;
 }
 

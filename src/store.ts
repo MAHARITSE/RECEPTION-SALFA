@@ -6,6 +6,7 @@ import type {
   LabExamCatalog, LabCategory, LabRequest, PatientJourneyEvent, JourneyDepartment,
   WarehouseService, StockMovement, InventorySession, StockLocation,
   MovementHeader, MovementLine, MovementType, Vente, VenteLine, VentePayment, VenteType, CompanyBillingAccount,
+  CompanyType, AssuranceSuivi, AssuranceSuiviStatut,
   TicketSettings, Etablissement, EtablissementType,
 } from './types';
 import localSeedData from './data/localData.json';
@@ -1207,7 +1208,10 @@ function normalizeInvoiceItemCategories(state: AppState): AppState {
  */
 export function prepareLoadedState(state: AppState): AppState {
   const normalized = ensureEtablissements(
-    normalizeFamilyBases(ensureConsultationArrays(normalizeInvoiceItemCategories(state)))
+    normalizeFamilyBases(ensureConsultationArrays(normalizeInvoiceItemCategories({
+      ...state,
+      companies: normalizeCompanies(state.companies || []),
+    })))
   );
   const { state: unified, changed, addedLab, addedEcho, addedHosp } = ensureUnifiedArticles(normalized);
   if (changed) {
@@ -1260,6 +1264,172 @@ export function billingStatusClasses(status: CompanyBillingAccount['status']): s
   return status === 'paid' ? 'bg-emerald-100 text-emerald-700'
     : status === 'partial' ? 'bg-amber-100 text-amber-700'
     : 'bg-rose-100 text-rose-700';
+}
+
+/* ====== SOCIÉTÉS : ASSURANCE vs PAYEUR GLOBAL ====== */
+
+/** Type effectif d'une société (par défaut : Payeur global). */
+export function companyTypeOf(c?: Partial<Company> | null): CompanyType {
+  return c?.type === 'assurance' ? 'assurance' : 'payeur';
+}
+
+export function companyIsAssurance(c?: Partial<Company> | null): boolean {
+  return companyTypeOf(c) === 'assurance';
+}
+
+export function companyTypeLabel(c?: Partial<Company> | null): string {
+  return companyIsAssurance(c) ? 'Assurance' : 'Payeur global';
+}
+
+/** Type classes Tailwind du badge de type de société. */
+export function companyTypeBadge(c?: Partial<Company> | null): string {
+  return companyIsAssurance(c)
+    ? 'bg-sky-100 dark:bg-sky-500/15 text-sky-800 dark:text-sky-300'
+    : 'bg-indigo-100 dark:bg-indigo-500/15 text-indigo-800 dark:text-indigo-300';
+}
+
+/** Garantit que chaque société a un type ('payeur' par défaut) et un taux de couverture. */
+export function normalizeCompanies(companies: Company[] = []): Company[] {
+  return companies.map((c) => ({
+    ...c,
+    type: companyTypeOf(c),
+    tauxCouverture: c.tauxCouverture,
+  }));
+}
+
+/** Règle l'ajout / la mise à jour d'une société (unicité, type, taux). */
+export function upsertCompany(state: AppState, data: Partial<Company> & { name: string }): { company: Company; created: boolean } {
+  const name = data.name.trim().toUpperCase();
+  const existing = (state.companies || []).find((c) => c.id === data.id) ||
+    (state.companies || []).find((c) => c.name.toUpperCase() === name);
+  const company: Company = {
+    id: existing?.id || `comp-${Date.now()}`,
+    name: existing?.name || name,
+    paymentMode: 'Crédit',
+    settlementMode: data.settlementMode || existing?.settlementMode || 'monthly_global',
+    type: data.type || companyTypeOf(existing) || 'payeur',
+    tauxCouverture: data.tauxCouverture ?? existing?.tauxCouverture,
+    notes: data.notes ?? existing?.notes,
+    createdAt: existing?.createdAt || new Date().toISOString(),
+  };
+  if (existing && existing.id) {
+    state.companies = (state.companies || []).map((c) => (c.id === company.id ? company : c));
+    return { company, created: false };
+  }
+  state.companies = [...(state.companies || []), company];
+  return { company, created: true };
+}
+
+/* ---- Suivi ASSURANCE (statuts dérivés d'une facture) ---- */
+
+/** Libellé français d'un statut de suivi assurance. */
+export function assuranceStatutLabel(s?: AssuranceSuiviStatut): string {
+  const map: Record<AssuranceSuiviStatut, string> = {
+    a_envoyer: 'À envoyer',
+    envoyee: 'Envoyée',
+    partielle: 'Partiellement réglée',
+    reglee: 'Réglée',
+    rejetee: 'Rejetée',
+  };
+  return s ? map[s] : 'À envoyer';
+}
+
+export function assuranceStatutBadge(s?: AssuranceSuiviStatut): string {
+  switch (s) {
+    case 'envoyee': return 'bg-blue-100 dark:bg-cyan-500/15 text-blue-800 dark:text-cyan-300';
+    case 'partielle': return 'bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300';
+    case 'reglee': return 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-300';
+    case 'rejetee': return 'bg-rose-100 dark:bg-rose-500/15 text-rose-800 dark:text-rose-300';
+    default: return 'bg-slate-200 dark:bg-slate-500/20 text-slate-700 dark:text-slate-300';
+  }
+}
+
+/** Montant total déjà payé sur une facture via les comptes de facturation société. */
+export function invoicePaidAmount(state: AppState, invoice: Invoice): number {
+  // Une facture marquée « paid » (validée en caisse ou soldée via un relevé) est
+  // réglée en totalité : elle n'attend plus rien de l'assurance.
+  if (invoice.status === 'paid') return invoice.totalAmount;
+  return (state.companyBillingAccounts || []).reduce((sum, a) => {
+    return sum + (a.payments || []).filter((p) => p.invoiceIds?.includes(invoice.id)).reduce((s, p) => s + p.amount, 0);
+  }, 0);
+}
+
+/** Montant brut de la facture (prestation). */
+export function invoiceAssuranceBrut(invoice: Invoice): number {
+  return invoice.totalAmount || 0;
+}
+
+/**
+ * Montant NET à rembourser par l'assurance (= montant réclamé, hors quote-part).
+ * Par défaut = montant brut de la facture (le crédit est intégralement à la
+ * charge de l'assurance). Correspond au `montantARembourser` du module suivi.
+ */
+export function invoiceAssuranceARembourser(invoice: Invoice): number {
+  const suivi = invoice.assuranceSuivi;
+  if (suivi?.montantARembourser != null && suivi.montantARembourser > 0) return suivi.montantARembourser;
+  return invoiceAssuranceBrut(invoice);
+}
+
+/** Quote-part / ticket modérateur non réclamé à l'assurance (brut − net). */
+export function invoiceAssuranceTicketModerateur(invoice: Invoice): number {
+  return Math.max(0, invoiceAssuranceBrut(invoice) - invoiceAssuranceARembourser(invoice));
+}
+
+/** Montant cumulé exclu / rejeté par l'assurance. */
+export function invoiceAssuranceRejete(invoice: Invoice): number {
+  return invoice.assuranceSuivi?.montantRejete || 0;
+}
+
+/**
+ * Reste à recouvrer auprès de l'assurance, fidèle au module suivi de référence :
+ *   reste = montant à rembourser − déjà payé − exclu/rejeté
+ */
+export function invoiceAssuranceReste(state: AppState, invoice: Invoice): number {
+  const remb = invoiceAssuranceARembourser(invoice);
+  const paid = invoicePaidAmount(state, invoice);
+  const rejete = invoiceAssuranceRejete(invoice);
+  return Math.max(0, remb - paid - rejete);
+}
+
+/**
+ * Statut de suivi d'une facture assurance, dérivé des règlements et rejets
+ * (même logique que le module suivi de référence) :
+ *  - tout le montant exclu et rien payé             → rejetée
+ *  - montant à rembourser atteint (payé ± exclu)    → réglée
+ *  - un début de règlement reçu                     → partiellement réglée
+ *  - transmise (bordereau d'envoi)                  → envoyée (en attente)
+ *  - sinon                                          → à envoyer
+ */
+export function invoiceAssuranceStatut(state: AppState, invoice: Invoice): AssuranceSuiviStatut {
+  const suivi = invoice.assuranceSuivi;
+  if (invoice.status === 'paid') return 'reglee';
+  const remb = invoiceAssuranceARembourser(invoice);
+  const paid = invoicePaidAmount(state, invoice);
+  const rejete = invoiceAssuranceRejete(invoice);
+  const reste = Math.max(0, remb - paid - rejete);
+  const isExcluded = rejete >= remb && remb > 0 && paid <= 0;
+  const isFullyPaid = (paid >= remb && remb > 0) || (reste <= 0 && paid > 0);
+  if (isExcluded) return 'rejetee';
+  if (isFullyPaid) return 'reglee';
+  if (paid > 0) return 'partielle';
+  if (suivi?.dateEnvoi) return 'envoyee';
+  return 'a_envoyer';
+}
+
+/** Net à rembourser attendu de l'assurance (alias : montant réclamé). */
+export function invoiceAssuranceAttendu(invoice: Invoice): number {
+  return invoiceAssuranceARembourser(invoice);
+}
+
+/** Factures d'un mois appartenant à une société de type ASSURANCE. */
+export function assuranceInvoicesForMonth(state: AppState, companyName: string, month: string): Invoice[] {
+  return (state.invoices || []).filter((inv) => {
+    if (inv.isExternal || inv.clientType !== 'societe') return false;
+    if (!inv.createdAt.startsWith(month)) return false;
+    const patient = inv.patientId ? (state.patients || []).find((p) => p.id === inv.patientId) : undefined;
+    const cName = patient?.company || inv.clientName;
+    return cName === companyName;
+  });
 }
 
 /** Factures d'un mois rattachées à une société (via le dossier patient). */

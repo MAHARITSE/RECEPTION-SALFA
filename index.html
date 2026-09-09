@@ -4,13 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="MediCare HIS — Système d'Information Hospitalier (réception, consultation, caisse, pharmacie, magasin, laboratoire, facturation sociétés)." />
-    <meta name="theme-color" content="#05070a" />
+    <meta name="theme-color" content="#f8fafc" />
     <title>MediCare HIS — Système de Gestion Hospitalière</title>
     <script>
-      // Appliquer le thème avant le premier affichage, sans flash clair.
-      // Garder salfa_theme / dark alignés avec src/context/ThemeContext.tsx.
+      // Reprendre la dernière préférence enregistrée dans le navigateur
+      // (clair par défaut si aucune préférence n'est stockée).
+      // Garder salfa_theme / light alignés avec src/context/ThemeContext.tsx.
       (function() {
-        var theme = 'dark';
+        var theme = 'light';
         try {
           var saved = localStorage.getItem('salfa_theme');
           if (saved === 'light' || saved === 'dark') theme = saved;
