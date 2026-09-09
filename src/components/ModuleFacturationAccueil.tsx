@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { AppState } from '../store';
 import {
   formatAr,
@@ -9,11 +9,12 @@ import {
 import type { Company, Invoice } from '../types';
 import {
   Building2, Shield, ArrowLeft, Receipt, Users, History,
-  Calendar, Wallet, Sparkles, ChevronRight, HandCoins,
+  Calendar, Wallet, Sparkles, ChevronRight, HandCoins, BadgeCheck, Check, X,
 } from 'lucide-react';
 
 const monthLabel = (month: string) =>
   new Date(`${month}-01T00:00:00`).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+const today = () => new Date().toISOString().slice(0, 10);
 
 interface Props {
   state: AppState;
@@ -25,6 +26,8 @@ interface Props {
   onGoSociete: () => void;
   onOpenAssurance: (companyName: string) => void;
   onOpenHisto: () => void;
+  paymentMethods?: string[];
+  onSimpleSettleGlobal?: (o: { company: string; amount: number; method: string; reference: string; observation: string; date: string }) => void;
 }
 
 type R = { inv: Invoice; patient?: { lastName?: string; firstName?: string; dossier?: string; company?: string }; company?: Company; companyName: string };
@@ -32,7 +35,10 @@ type R = { inv: Invoice; patient?: { lastName?: string; firstName?: string; doss
 export default function ModuleFacturationAccueil({
   state, filterCompany, setFilterCompany, filterMonth, setFilterMonth,
   onGoClient, onGoSociete, onOpenAssurance, onOpenHisto,
+  paymentMethods, onSimpleSettleGlobal,
 }: Props) {
+  const methods = (paymentMethods && paymentMethods.length) ? paymentMethods : ['Virement', 'Chèque', 'Mobile Money', 'Espèces'];
+  const canSettle = !!onSimpleSettleGlobal;
   const allRows: R[] = useMemo(() => {
     const out: R[] = [];
     for (const inv of state.invoices) {
@@ -216,6 +222,19 @@ export default function ModuleFacturationAccueil({
             </div>
           </button>
         </div>
+
+        {/* Saisie simple d'un règlement global (payeur) */}
+        {!isAssur && selectedPayeur && canSettle && (
+          <SimpleGlobalReglement
+            company={c.name}
+            balance={selectedPayeur.balance}
+            total={selectedPayeur.total}
+            paid={selectedPayeur.paid}
+            month={filterMonth}
+            methods={methods}
+            onSettle={(o) => onSimpleSettleGlobal!(o)}
+          />
+        )}
       </div>
     );
   }
@@ -322,6 +341,122 @@ export default function ModuleFacturationAccueil({
           <Users className="w-10 h-10 text-ink-faint mx-auto" />
           <p className="font-bold text-ink">Aucune prestation de société pour {monthLabel(filterMonth)}.</p>
           <p className="text-xs text-ink-muted">Choisissez un autre mois ou ouvrez l'onglet « Facture Société ».</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Saisie SIMPLE d'un règlement global : société (fixe) + montant → solde le mois. */
+function SimpleGlobalReglement({
+  company, balance, total, paid, month,
+  methods, onSettle,
+}: {
+  company: string;
+  balance: number;
+  total: number;
+  paid: number;
+  month: string;
+  methods: string[];
+  onSettle: (o: { company: string; amount: number; method: string; reference: string; observation: string; date: string }) => void;
+}) {
+  const [amount, setAmount] = useState<string>(balance > 0 ? balance.toFixed(2) : '');
+  const [method, setMethod] = useState<string>(methods.includes('Virement') ? 'Virement' : methods[0]);
+  const [reference, setReference] = useState('');
+  const [observation, setObservation] = useState('');
+  const [date, setDate] = useState(today());
+  const [show, setShow] = useState(false);
+
+  // Réinitialise le formulaire quand la société / le mois / le solde change.
+  useEffect(() => {
+    setAmount(balance > 0 ? balance.toFixed(2) : '');
+    setMethod(methods.includes('Virement') ? 'Virement' : methods[0]);
+    setReference('');
+    setObservation('');
+    setDate(today());
+  }, [company, month, balance, methods]);
+
+  const settled = balance <= 0 && total > 0;
+
+  const submit = () => {
+    const v = Number(amount);
+    if (onSettle) onSettle({ company, amount: v, method, reference, observation, date });
+  };
+
+  return (
+    <div className="p-5 bg-surface border border-indigo-200 dark:border-indigo-500/25 rounded-2xl shadow-xs">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300"><HandCoins className="w-5 h-5" /></div>
+          <div>
+            <div className="font-bold text-ink-strong text-sm flex items-center gap-2">
+              Règlement simple du mois <BadgeCheck className="w-4 h-4 text-indigo-500" />
+            </div>
+            <p className="text-[11px] text-ink-muted">
+              {settled
+                ? 'Ce mois est déjà soldé.'
+                : `Société + montant → solde toutes les factures de ${monthLabel(month)}.`}
+              {!settled && balance > 0 && ` Solde à régler : ${formatAr(balance)}.`}
+            </p>
+          </div>
+        </div>
+        {!settled && (
+          <button onClick={() => setShow(!show)}
+            className="px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 shrink-0">
+            {show ? 'Fermer' : 'Régler le mois'}
+          </button>
+        )}
+      </div>
+
+      {settled && (
+        <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 rounded-lg px-3 py-2">
+          <Check className="w-4 h-4" /> Relevé de {monthLabel(month)} soldé — aucun solde restant.
+        </div>
+      )}
+
+      {show && !settled && (
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <span className="text-[11px] font-semibold text-ink-muted uppercase">Montant reçu (solde)</span>
+            <div className="relative mt-1">
+              <span className="absolute left-2.5 top-2 text-xs text-ink-faint font-semibold">Ar</span>
+              <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 border rounded-lg text-xs bg-surface outline-none font-medium" />
+            </div>
+            <p className="text-[10px] text-ink-faint mt-1">Total facturé : {formatAr(total)} · déjà réglé : {formatAr(paid)}</p>
+          </div>
+          <div>
+            <span className="text-[11px] font-semibold text-ink-muted uppercase">Date du règlement</span>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
+              className="w-full mt-1 px-3 py-1.5 border rounded-lg text-xs bg-surface outline-none font-medium" />
+          </div>
+          <div>
+            <span className="text-[11px] font-semibold text-ink-muted uppercase">Mode de paiement</span>
+            <select value={method} onChange={(e) => setMethod(e.target.value)}
+              className="w-full mt-1 px-3 py-1.5 border rounded-lg text-xs bg-surface outline-none cursor-pointer font-medium">
+              {methods.map((m) => (<option key={m} value={m}>{m}</option>))}
+            </select>
+          </div>
+          <div>
+            <span className="text-[11px] font-semibold text-ink-muted uppercase">Référence <span className="normal-case font-normal">(facultatif)</span></span>
+            <input type="text" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="N° bordereau / chèque…"
+              className="w-full mt-1 px-3 py-1.5 border rounded-lg text-xs bg-surface outline-none font-medium" />
+          </div>
+          <div className="sm:col-span-2">
+            <span className="text-[11px] font-semibold text-ink-muted uppercase">Observation <span className="normal-case font-normal">(facultatif)</span></span>
+            <input type="text" value={observation} onChange={(e) => setObservation(e.target.value)} placeholder="Commentaire interne…"
+              className="w-full mt-1 px-3 py-1.5 border rounded-lg text-xs bg-surface outline-none font-medium" />
+          </div>
+          <div className="sm:col-span-2 flex items-center gap-3 pt-1">
+            <button onClick={submit}
+              className="px-4 py-2 rounded-lg text-xs font-bold cursor-pointer bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm flex items-center gap-1.5">
+              <Check className="w-4 h-4" /> Enregistrer le règlement global ({formatAr(Math.max(0, Number(amount) || 0))})
+            </button>
+            <button onClick={() => setShow(false)}
+              className="px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer text-ink-muted hover:bg-surface-hover flex items-center gap-1.5">
+              <X className="w-3.5 h-3.5" /> Annuler
+            </button>
+          </div>
         </div>
       )}
     </div>

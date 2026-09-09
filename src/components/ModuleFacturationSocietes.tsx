@@ -663,6 +663,61 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
     setPayingAccount(null);
   };
 
+  /** SAISIE SIMPLE d'un règlement global (depuis l'Accueil, espace d'une société) :
+   *  société + montant → solde TOUTES les factures du mois en une seule action. */
+  const simpleGlobalSettle = (o: { company: string; amount: number; method: string; reference: string; observation: string; date: string }) => {
+    const month = filterMonth;
+    const mInvoices = allCompanyInvoices
+      .filter(x => x.companyName === o.company && x.inv.createdAt.startsWith(month))
+      .map(x => x.inv);
+    if (!mInvoices.length) { alert(`Aucune facture trouvée pour ${o.company} en ${monthLabel(month)}.`); return; }
+    const existing = state.companyBillingAccounts.find(a => a.company === o.company && a.month === month);
+    const invIds = existing?.invoiceIds?.length ? existing.invoiceIds : mInvoices.map(i => i.id);
+    const total = existing ? existing.totalAmount : mInvoices.reduce((s, i) => s + i.totalAmount, 0);
+    const paidPrev = existing?.paidAmount || 0;
+    const balance = Math.max(0, total - paidPrev);
+    if (balance <= 0) { alert(`${o.company} — ${monthLabel(month)} est déjà soldé.`); return; }
+    if (!o.date) { alert('Date du règlement requise.'); return; }
+    if (!o.amount || o.amount <= 0) { alert('Montant du règlement invalide.'); return; }
+    if (o.amount < balance - 0.001) {
+      alert(`Le montant saisi (${formatAr(o.amount)}) est inférieur au solde du mois (${formatAr(balance)}). Le règlement global solde la totalité du mois.`);
+      return;
+    }
+    const iso = new Date(`${o.date}T12:00:00`).toISOString();
+    const effective = balance; // solde du mois
+    setState(prev => {
+      const next = { ...prev };
+      const payId = uuidv4();
+      next.invoices = next.invoices.map(inv =>
+        invIds.includes(inv.id) && inv.status !== 'paid'
+          ? { ...inv, status: 'paid' as const, paidAt: iso, paidBy: prev.currentUser?.id }
+          : inv
+      );
+      const payment = {
+        id: payId, amount: effective, date: iso, method: o.method,
+        reference: o.reference.trim() || undefined, observation: o.observation.trim() || undefined,
+        invoiceIds: invIds,
+        receivedBy: prev.currentUser?.name, receivedByUserId: prev.currentUser?.id,
+      };
+      const finalized: CompanyBillingAccount = {
+        ...(existing || { id: uuidv4(), company: o.company, month, invoiceIds: invIds, totalAmount: total, paidAmount: 0, status: 'open' as const, createdAt: new Date().toISOString(), payments: [] }),
+        invoiceIds: invIds, totalAmount: total,
+        paidAmount: total, status: 'paid' as const,
+        finalSettlementAmount: effective, finalSettlementDate: iso,
+        finalSettlementMethod: o.method, finalSettlementReference: o.reference.trim() || undefined,
+        finalSettlementObservation: o.observation.trim() || undefined,
+        settledBy: prev.currentUser?.id, settledByName: prev.currentUser?.name,
+        payments: [...(existing?.payments || []), payment],
+      };
+      next.companyBillingAccounts = existing
+        ? next.companyBillingAccounts.map(a => (a.id === existing.id ? finalized : a))
+        : [...next.companyBillingAccounts, finalized];
+      addAuditLog(next, 'RELEVE_MENSUEL_SOLDE', `${o.company} — ${monthLabel(month)} — ${formatAr(effective)} (${o.method})`);
+      return next;
+    });
+    alert(`Règlement enregistré : ${o.company} — ${monthLabel(month)} — ${formatAr(effective)}.`);
+  };
+
   /** Règlement individuel */
   const openIndividualSettle = (ids: string[]) => {
     if (!ids.length) return;
@@ -1041,6 +1096,8 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
         onGoSociete={() => setTab('societe')}
         onOpenAssurance={(name) => { setAssuranceInitialCompany(name); setAssuranceMode(true); }}
         onOpenHisto={() => setTab('historique_paiements')}
+        paymentMethods={paymentMethods}
+        onSimpleSettleGlobal={simpleGlobalSettle}
       />
     );
   }
