@@ -2,7 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 
 export type Theme = 'dark' | 'light';
 export const THEME_STORAGE_KEY = 'salfa_theme';
-export const DEFAULT_THEME: Theme = 'dark';
+// Thème par défaut à l'ouverture : clair.
+export const DEFAULT_THEME: Theme = 'light';
 
 interface ThemeContextValue {
   theme: Theme;
