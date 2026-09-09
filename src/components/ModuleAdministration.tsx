@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import type { UserRole, TicketSettings, Company, CompanySettlementMode, User } from '../types';
-import { formatAr, addAuditLog, ensureEtablissements, migrateLegacyToVentes, createInitialState, familyManagesStock, prepareLoadedState } from '../store';
+import { formatAr, addAuditLog, ensureEtablissements, migrateLegacyToVentes, createInitialState, familyManagesStock, prepareLoadedState, companyTypeLabel, companyTypeBadge } from '../store';
 import { IS_WAMP_BUILD } from '../wamp';
 import type { AppState } from '../store';
 import ModuleReception from './ModuleReception';
@@ -120,6 +120,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
   const [userRoleFilter, setUserRoleFilter] = useState<string>('all');
 
   const [searchCompany, setSearchCompany] = useState('');
+  const [companyTypeFilter, setCompanyTypeFilter] = useState<string>('all');
   const [companySettlementFilter, setCompanySettlementFilter] = useState<string>('all');
 
   const [searchAudit, setSearchAudit] = useState('');
@@ -127,9 +128,9 @@ export default function ModuleAdministration({ state, setState }: Props) {
 
   // Sociétés / Clients conventionnés
   const [addCompany, setAddCompany] = useState(false);
-  const [newCompany, setNewCompany] = useState({ name: '', settlementMode: 'monthly_global' as CompanySettlementMode });
+  const [newCompany, setNewCompany] = useState({ name: '', settlementMode: 'monthly_global' as CompanySettlementMode, type: 'payeur' as 'payeur' | 'assurance', tauxCouverture: '' });
   const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null);
-  const [editCompany, setEditCompany] = useState<{ name: string; settlementMode: CompanySettlementMode }>({ name: '', settlementMode: 'monthly_global' });
+  const [editCompany, setEditCompany] = useState<{ name: string; settlementMode: CompanySettlementMode; type: 'payeur' | 'assurance'; tauxCouverture: string }>({ name: '', settlementMode: 'monthly_global', type: 'payeur', tauxCouverture: '' });
 
   // Aperçu Ticket
   const [showPreview, setShowPreview] = useState(false);
@@ -308,26 +309,35 @@ export default function ModuleAdministration({ state, setState }: Props) {
     const name = newCompany.name.trim().toUpperCase();
     if (!name) { showToast('⚠️ Veuillez saisir le nom de la société'); return; }
     if (state.companies.some(c => c.name === name)) { showToast('⚠️ Cette société existe déjà'); return; }
+    const isAssurance = newCompany.type === 'assurance';
+    const taux = Number(newCompany.tauxCouverture);
     const company: Company = {
       id: `comp-${Date.now()}`,
       name,
       paymentMode: 'Crédit',
       settlementMode: newCompany.settlementMode,
+      type: newCompany.type,
+      tauxCouverture: isAssurance && !isNaN(taux) && taux > 0 ? taux : undefined,
       createdAt: new Date().toISOString(),
     };
     setState((prev) => {
       const next = { ...prev, companies: [...prev.companies, company] };
-      addAuditLog(next, 'AJOUT_SOCIETE_PARTENAIRE', `${name} (${newCompany.settlementMode === 'monthly_global' ? 'Global mensuel' : 'Individuel par facture'})`);
+      addAuditLog(next, 'AJOUT_SOCIETE_PARTENAIRE', `${name} (${newCompany.type === 'assurance' ? 'Assurance' : 'Payeur global'}${company.tauxCouverture ? ` — ${company.tauxCouverture}%` : ''})`);
       return next;
     });
-    setNewCompany({ name: '', settlementMode: 'monthly_global' });
+    setNewCompany({ name: '', settlementMode: 'monthly_global', type: 'payeur', tauxCouverture: '' });
     setAddCompany(false);
-    showToast('Société partenaire enregistrée');
+    showToast(isAssurance ? 'Assurance enregistrée — suivi disponible dans Facturation sociétés' : 'Payeur global enregistré');
   };
 
   const startEditCompany = (c: Company) => {
     setEditingCompanyId(c.id);
-    setEditCompany({ name: c.name, settlementMode: c.settlementMode });
+    setEditCompany({
+      name: c.name,
+      settlementMode: c.settlementMode,
+      type: (c.type === 'assurance' ? 'assurance' : 'payeur'),
+      tauxCouverture: c.tauxCouverture ? String(c.tauxCouverture) : '',
+    });
   };
 
   const saveEditCompany = () => {
@@ -335,9 +345,20 @@ export default function ModuleAdministration({ state, setState }: Props) {
     const name = editCompany.name.trim().toUpperCase();
     if (!name) { showToast('⚠️ Nom invalide'); return; }
     if (state.companies.some(c => c.name === name && c.id !== editingCompanyId)) { showToast('⚠️ Une autre société porte déjà ce nom'); return; }
+    const isAssurance = editCompany.type === 'assurance';
+    const taux = Number(editCompany.tauxCouverture);
     setState((prev) => {
-      const next = { ...prev, companies: prev.companies.map(c => c.id === editingCompanyId ? { ...c, name, settlementMode: editCompany.settlementMode } : c) };
-      addAuditLog(next, 'MODIFICATION_SOCIETE_PARTENAIRE', `${name} — ${editCompany.settlementMode === 'monthly_global' ? 'Global mensuel' : 'Individuel par facture'}`);
+      const next = {
+        ...prev,
+        companies: prev.companies.map(c => c.id === editingCompanyId ? {
+          ...c,
+          name,
+          settlementMode: editCompany.settlementMode,
+          type: editCompany.type,
+          tauxCouverture: isAssurance && !isNaN(taux) && taux > 0 ? taux : undefined,
+        } : c),
+      };
+      addAuditLog(next, 'MODIFICATION_SOCIETE_PARTENAIRE', `${name} — ${editCompany.type === 'assurance' ? 'Assurance' : 'Payeur global'}${isAssurance && !isNaN(taux) && taux > 0 ? ` — ${taux}%` : ''}`);
       return next;
     });
     setEditingCompanyId(null);
@@ -569,8 +590,9 @@ export default function ModuleAdministration({ state, setState }: Props) {
 
   const filteredCompanies = state.companies.filter((c) => {
     const matchesSearch = c.name.toLowerCase().includes(searchCompany.toLowerCase());
+    const matchesType = companyTypeFilter === 'all' || (c.type || 'payeur') === companyTypeFilter;
     const matchesSettlement = companySettlementFilter === 'all' || c.settlementMode === companySettlementFilter;
-    return matchesSearch && matchesSettlement;
+    return matchesSearch && matchesType && matchesSettlement;
   });
 
   const filteredAuditLogs = state.auditLogs.filter((log) => {
@@ -1436,40 +1458,76 @@ export default function ModuleAdministration({ state, setState }: Props) {
                           <h3 className="font-bold text-ink-strong text-xl flex items-center gap-2.5">
                             <Building2 className="w-6 h-6 text-indigo-600 dark:text-indigo-400" /> Sociétés Partenaires & Clients Conventionnés
                           </h3>
-                          <p className="text-xs text-ink-muted mt-0.5">Raison sociale des entreprises partenaires et sous-modes de règlement (Global mensuel / Individuel par facture).</p>
+                          <p className="text-xs text-ink-muted mt-0.5">Les partenaires sont répartis en deux types — <strong>Payeur global</strong> (réglé via relevé global mensuel) et <strong>Assurance</strong> (suivi par facture, remboursement &amp; relances).</p>
                         </div>
-                        <button
-                          onClick={() => setAddCompany(true)}
-                          className="px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 flex items-center gap-2 cursor-pointer text-xs font-bold shadow-md"
-                        >
-                          <Plus className="w-4 h-4" /> Nouvelle société partenaire
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <span className="px-2.5 py-1 rounded-full bg-indigo-100 dark:bg-indigo-500/15 text-indigo-800 dark:text-indigo-300 text-[11px] font-bold">{state.companies.filter(c => companyTypeLabel(c) === 'Payeur global').length} payeur(s)</span>
+                          <span className="px-2.5 py-1 rounded-full bg-sky-100 dark:bg-sky-500/15 text-sky-800 dark:text-sky-300 text-[11px] font-bold">{state.companies.filter(c => companyTypeLabel(c) === 'Assurance').length} assurance(s)</span>
+                          <button
+                            onClick={() => setAddCompany(true)}
+                            className="px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 flex items-center gap-2 cursor-pointer text-xs font-bold shadow-md"
+                          >
+                            <Plus className="w-4 h-4" /> Nouvelle société partenaire
+                          </button>
+                        </div>
                       </div>
 
                       {/* Add company form */}
                       {addCompany && (
                         <div className="p-4 bg-indigo-50/70 dark:bg-indigo-500/6 border border-indigo-200 dark:border-indigo-500/25 rounded-2xl space-y-3 animate-in fade-in">
                           <h4 className="font-bold text-sm text-indigo-950 dark:text-indigo-300">Enregistrer une entreprise partenaire</h4>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <input
                               type="text"
                               value={newCompany.name}
                               onChange={(e) => setNewCompany({ ...newCompany, name: e.target.value })}
-                              className="md:col-span-2 px-3.5 py-2 border rounded-xl text-sm uppercase bg-surface outline-none"
+                              className="px-3.5 py-2 border rounded-xl text-sm uppercase bg-surface outline-none"
                               placeholder="Nom de la société (ex: ORANGE MADAGASCAR, JIRAMA)"
                             />
-                            <select
-                              value={newCompany.settlementMode}
-                              onChange={(e) => setNewCompany({ ...newCompany, settlementMode: e.target.value as CompanySettlementMode })}
-                              className="px-3.5 py-2 border rounded-xl text-sm bg-surface outline-none cursor-pointer"
-                            >
-                              <option value="monthly_global">Règlement global mensuel</option>
-                              <option value="per_invoice">Règlement individuel par facture</option>
-                            </select>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="text-[10px] font-bold text-ink-muted uppercase tracking-wider mb-1 block">Type de partenaire</label>
+                                <select
+                                  value={newCompany.type}
+                                  onChange={(e) => setNewCompany({ ...newCompany, type: e.target.value as 'payeur' | 'assurance' })}
+                                  className="w-full px-3 py-2 border rounded-xl text-sm bg-surface outline-none cursor-pointer"
+                                >
+                                  <option value="payeur">Payeur global</option>
+                                  <option value="assurance">Assurance</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-bold text-ink-muted uppercase tracking-wider mb-1 block">Sous-mode de règlement</label>
+                                <select
+                                  value={newCompany.settlementMode}
+                                  onChange={(e) => setNewCompany({ ...newCompany, settlementMode: e.target.value as CompanySettlementMode })}
+                                  className="w-full px-3 py-2 border rounded-xl text-sm bg-surface outline-none cursor-pointer"
+                                >
+                                  <option value="monthly_global">Règlement global mensuel</option>
+                                  <option value="per_invoice">Règlement individuel par facture</option>
+                                </select>
+                              </div>
+                            </div>
                           </div>
+                          {newCompany.type === 'assurance' && (
+                            <div className="flex items-center gap-3 bg-sky-50/60 dark:bg-sky-500/8 border border-sky-200 dark:border-sky-500/20 rounded-xl px-3 py-2.5">
+                              <span className="text-xs text-sky-900 dark:text-sky-300 font-semibold">Taux de couverture pris en charge :</span>
+                              <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                value={newCompany.tauxCouverture}
+                                onChange={(e) => setNewCompany({ ...newCompany, tauxCouverture: e.target.value })}
+                                className="w-24 px-3 py-1.5 border rounded-lg text-sm outline-none text-right"
+                                placeholder="100"
+                              />
+                              <span className="text-xs font-bold text-sky-800 dark:text-sky-300">%</span>
+                              <span className="text-[10px] text-sky-600 dark:text-sky-400 italic">% remboursé à l'assuré (facture payée par l'assurance).</span>
+                            </div>
+                          )}
                           <div className="flex justify-end gap-2">
                             <button
-                              onClick={() => { setAddCompany(false); setNewCompany({ name: '', settlementMode: 'monthly_global' }); }}
+                              onClick={() => { setAddCompany(false); setNewCompany({ name: '', settlementMode: 'monthly_global', type: 'payeur', tauxCouverture: '' }); }}
                               className="px-3.5 py-2 bg-surface-active text-ink rounded-xl cursor-pointer font-semibold text-xs"
                             >
                               Annuler
@@ -1497,15 +1555,40 @@ export default function ModuleAdministration({ state, setState }: Props) {
                           />
                         </div>
 
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-semibold text-ink-muted">Sous-mode :</span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs font-semibold text-ink-muted">Type :</span>
+                          <button
+                            onClick={() => setCompanyTypeFilter('all')}
+                            className={`px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer ${
+                              companyTypeFilter === 'all' ? 'bg-slate-800 text-white' : 'bg-surface-hover text-ink-secondary'
+                            }`}
+                          >
+                            Tous ({state.companies.length})
+                          </button>
+                          <button
+                            onClick={() => setCompanyTypeFilter('payeur')}
+                            className={`px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer ${
+                              companyTypeFilter === 'payeur' ? 'bg-indigo-600 text-white' : 'bg-surface-hover text-ink-secondary'
+                            }`}
+                          >
+                            💳 Payeur global
+                          </button>
+                          <button
+                            onClick={() => setCompanyTypeFilter('assurance')}
+                            className={`px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer ${
+                              companyTypeFilter === 'assurance' ? 'bg-sky-600 text-white' : 'bg-surface-hover text-ink-secondary'
+                            }`}
+                          >
+                            🛡️ Assurance (suivi)
+                          </button>
+                          <span className="text-xs font-semibold text-ink-muted ml-2">Sous-mode :</span>
                           <button
                             onClick={() => setCompanySettlementFilter('all')}
                             className={`px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer ${
                               companySettlementFilter === 'all' ? 'bg-slate-800 text-white' : 'bg-surface-hover text-ink-secondary'
                             }`}
                           >
-                            Toutes ({state.companies.length})
+                            Tous
                           </button>
                           <button
                             onClick={() => setCompanySettlementFilter('monthly_global')}
@@ -1532,7 +1615,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
                           <thead className="bg-surface-muted border-b text-ink-secondary font-bold">
                             <tr>
                               <th className="p-3.5">Nom de la société partenaire</th>
-                              <th className="p-3.5 text-center">Mode Général</th>
+                              <th className="p-3.5 text-center">Type</th>
                               <th className="p-3.5 text-center">Sous-mode de Règlement</th>
                               <th className="p-3.5 text-right">Actions</th>
                             </tr>
@@ -1550,8 +1633,31 @@ export default function ModuleAdministration({ state, setState }: Props) {
                                         className="w-full px-3 py-1.5 border rounded-xl text-xs font-bold uppercase outline-none"
                                       />
                                     </td>
-                                    <td className="p-2.5 text-center">
-                                      <span className="px-2.5 py-1 rounded-full bg-indigo-100 dark:bg-indigo-500/15 text-indigo-800 dark:text-indigo-300 text-[11px] font-bold">Crédit</span>
+                                    <td className="p-2.5">
+                                      <div className="space-y-1.5">
+                                        <select
+                                          value={editCompany.type}
+                                          onChange={e => setEditCompany({ ...editCompany, type: e.target.value as 'payeur' | 'assurance' })}
+                                          className="w-full px-2 py-1.5 border rounded-xl text-xs bg-surface cursor-pointer"
+                                        >
+                                          <option value="payeur">Payeur global</option>
+                                          <option value="assurance">Assurance</option>
+                                        </select>
+                                        {editCompany.type === 'assurance' && (
+                                          <div className="flex items-center gap-1 text-[11px]">
+                                            <span className="text-ink-muted">Couverture :</span>
+                                            <input
+                                              type="number"
+                                              min={0}
+                                              max={100}
+                                              value={editCompany.tauxCouverture}
+                                              onChange={e => setEditCompany({ ...editCompany, tauxCouverture: e.target.value })}
+                                              className="w-14 px-2 py-1 border rounded-lg text-xs outline-none text-right"
+                                            />
+                                            <span className="text-ink-muted">%</span>
+                                          </div>
+                                        )}
+                                      </div>
                                     </td>
                                     <td className="p-2.5">
                                       <select
@@ -1575,10 +1681,15 @@ export default function ModuleAdministration({ state, setState }: Props) {
                                 ) : (
                                   <>
                                     <td className="p-3.5 font-bold text-ink-strong flex items-center gap-2">
-                                      <Building2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" /> {c.name}
+                                      <Building2 className={`w-4 h-4 ${c.type === 'assurance' ? 'text-sky-600 dark:text-sky-400' : 'text-indigo-600 dark:text-indigo-400'}`} /> {c.name}
                                     </td>
                                     <td className="p-3.5 text-center">
-                                      <span className="px-2.5 py-1 rounded-full bg-indigo-100 dark:bg-indigo-500/15 text-indigo-800 dark:text-indigo-300 text-[11px] font-bold">Crédit</span>
+                                      <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold inline-flex flex-col items-center ${companyTypeBadge(c)}`}>
+                                        {companyTypeLabel(c)}
+                                        {c.type === 'assurance' && c.tauxCouverture ? (
+                                          <span className="text-[10px] font-semibold opacity-80">{c.tauxCouverture}% couvert</span>
+                                        ) : null}
+                                      </span>
                                     </td>
                                     <td className="p-3.5 text-center">
                                       {c.settlementMode === 'monthly_global' ? (

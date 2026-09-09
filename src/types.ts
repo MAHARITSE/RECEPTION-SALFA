@@ -223,6 +223,12 @@ export interface Invoice {
   creditSociete?: boolean;
   /** Identifiant de la clôture Z ayant intégré cette facture. */
   closingId?: string;
+  /**
+   * Suivi ASSURANCE (uniquement pour une facture d'un patient affilié à une
+   * société de type 'assurance') : transmissions, règlements et rejets suivis
+   * dans le module de suivi des assurances.
+   */
+  assuranceSuivi?: AssuranceSuivi;
 }
 
 /** Instantané de clôture de caisse. Les montants sont figés pour permettre la réimpression. */
@@ -491,8 +497,52 @@ export interface Company {
   paymentMode: 'Crédit';
   /** Sous-mode : règlement global mensuel ou individuel par facture */
   settlementMode: CompanySettlementMode;
+  /**
+   * Nature du tiers-payant :
+   *  - 'payeur'    : PAYEUR GLOBAL — reçoit le relevé mensuel consolidé et en
+   *                  paie la totalité en une fois (comportement historique).
+   *  - 'assurance' : ASSURANCE — les prestations/factures de chaque adhérent
+   *                  sont envoyées individuellement et suivies (suivi : envoyée,
+   *                  partiellement réglée, réglée, rejetée/exclue).
+   */
+  type?: CompanyType;
+  /** Taux de couverture par défaut (% pris en charge) pour les assurances. */
+  tauxCouverture?: number;
   notes?: string;
   createdAt?: string;
+}
+
+/** Un tiers-payant est soit un Payeur global, soit une Assurance. */
+export type CompanyType = 'payeur' | 'assurance';
+
+/** Suivi d'une facture / prestation envoyée à une ASSURANCE. */
+export type AssuranceSuiviStatut =
+  | 'a_envoyer'   // créée, pas encore transmise
+  | 'envoyee'     // transmise à l'assurance, en attente de règlement
+  | 'partielle'   // l'assurance a réglé une partie
+  | 'reglee'      // l'assurance a réglé la totalité attendue
+  | 'rejetee';    // tout ou partie exclue / rejetée par l'assurance
+
+export interface AssuranceSuivi {
+  /** Date d'envoi/transmission de la facture à l'assurance. */
+  dateEnvoi?: string;
+  /** N° de bordereau de transmission (envoi) à l'assurance. */
+  numeroBordereau?: string;
+  /**
+   * Montant NET à rembourser par l'assurance = montant réclamé.
+   * Par défaut = total de la facture (le crédit est intégralement à la charge
+   * de l'assurance) ; peut être réduit si une quote-part (ticket modérateur)
+   * est portée ailleurs. Équivalent de `montantARembourser` du module suivi.
+   */
+  montantARembourser?: number;
+  /** Montant cumulé exclu / rejeté par l'assurance. */
+  montantRejete?: number;
+  /** Motif du rejet / de l'exclusion. */
+  motifRejet?: string;
+  /** Dernière date de règlement partiel / total de l'assurance. */
+  dateDernierReglement?: string;
+  /** Note interne de suivi / relances. */
+  note?: string;
 }
 
 /** Compte de facturation mensuel d'une société. Il consolide les factures du mois

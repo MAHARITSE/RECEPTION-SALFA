@@ -12,8 +12,10 @@ import {
   Printer, Receipt, Search, Trash2, Wallet, X, FileText, BadgeCheck,
   Hash, User as UserIcon, Edit2, Plus, Users, ShoppingBag, Store, Save,
   History, Sparkles, Layers, ListPlus, RotateCcw, FileSpreadsheet, Copy, Filter, Zap, Table, CheckCircle2,
+  Shield, ArrowLeft,
 } from 'lucide-react';
 import { printSalfaCompanyMonthlyInvoice, printSalfaIndividualInvoice } from '../utils/printSalfaInvoice';
+import SuiviAssurance from './SuiviAssurance';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
 
@@ -52,6 +54,8 @@ const invoiceDesignation = (inv: Invoice, state: AppState, separator = ', ') => 
 
 export default function ModuleFacturationSocietes({ state, setState }: Props) {
   const [tab, setTab] = useState<Tab>('client');
+  // Vue ASSURANCES : suivi individuel des prestations des sociétés de type assurance.
+  const [assuranceMode, setAssuranceMode] = useState(false);
   const [filterCompany, setFilterCompany] = useState<string>('all');
   const [filterMonth, setFilterMonth] = useState<string>(currentMonth());
   const [filterStatus, setFilterStatus] = useState<'all' | 'impaye' | 'partiel' | 'payee'>('all');
@@ -1017,8 +1021,44 @@ export default function ModuleFacturationSocietes({ state, setState }: Props) {
     ['societe', <span className="flex items-center gap-1.5"><Building2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" /> Facture Société <span className="hidden sm:inline font-semibold text-ink-faint">(Regroupement mensuel)</span></span>],
   ];
 
+  // ===== Vue dédiée : SUIVI DES ASSURANCES (le Payeur global garde son écran ci-dessous) =====
+  if (assuranceMode) {
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center gap-3 p-3 bg-surface border border-line rounded-xl shadow-xs">
+          <button
+            onClick={() => setAssuranceMode(false)}
+            className="px-3 py-1.5 bg-surface-hover hover:bg-surface-active text-ink rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1.5"
+          >
+            <ArrowLeft className="w-4 h-4" /> Retour : factures société / payeurs globaux
+          </button>
+          <div className="flex items-center gap-2">
+            <span className="px-2.5 py-1 rounded-full bg-sky-100 dark:bg-sky-500/15 text-sky-800 dark:text-sky-300 text-[11px] font-bold flex items-center gap-1">
+              <Shield className="w-3.5 h-3.5" /> Assurances — suivi par adhérent / facture
+            </span>
+          </div>
+        </div>
+        <SuiviAssurance state={state} setState={setState} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
+      {/* ===== Commutateur : Suivi des Assurances (dédié) ===== */}
+      <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-gradient-to-r from-indigo-50 dark:from-indigo-950/50 to-sky-50 dark:to-sky-950/40 border border-indigo-200 dark:border-indigo-500/20 rounded-xl">
+        <span className="text-xs font-bold text-indigo-900 dark:text-indigo-300 flex items-center gap-1.5">
+          <Building2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+          Facturation des payeurs globaux (relevé mensuel global + paiement individuel)
+        </span>
+        <button
+          onClick={() => setAssuranceMode(true)}
+          className="px-3.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition flex items-center gap-1.5 bg-sky-600 hover:bg-sky-700 text-white shadow-sm"
+        >
+          <Shield className="w-4 h-4" /> Suivi des Assurances <span className="hidden sm:inline font-semibold opacity-80">(par adhérent / facture)</span>
+        </button>
+      </div>
+
       {/* ===== BARRE DE FILTRES GLOBALE ET COMPACTE ===== */}
       <div className="bg-surface rounded-xl shadow-sm border p-3">
         <div className="flex flex-wrap items-center gap-3">
