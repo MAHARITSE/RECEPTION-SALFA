@@ -23,10 +23,14 @@ Application complète de gestion clinique et hospitalière (HIS — Hospital Inf
    - Reçus et factures au format d'impression standard et tickets 80x80mm.
    - Clôture de caisse de garde avec récapitulatif comptable.
 
-4. **🏢 Facturation Sociétés (Prise en charge & Crédits)**
-   - Gestion des entreprises conventionnées (modes `global mensuel` et `individuel par facture`).
-   - Suivi des relevés de factures et comptes clients.
-   - Bouton de suppression et réinitialisation globale des données de facturation sociétés avec journalisation d'audit (`SUPPRESSION_TOTALE_FACTURATION_SOCIETES`).
+4. **🛡️ Suivi assurance — nouveau module**
+   - Intégré depuis `MAHARITSE/suivi_assurance` : prestations, règlements, rejets, sociétés, assurés, actes et rapports.
+   - Imports Excel/CSV, exports PDF/Excel, sauvegarde commune JSON et saisie manuelle.
+   - Facturation Sociétés / Comptoir / Externes : vues mensuelle et détaillée distinctes, impression individuelle et numéro mensuel figé à la première impression. Émission atomique disponible en mode navigateur ; intégration serveur WAMP encore requise (voir [documentation](docs/SUIVI_ASSURANCE.md)).
+   - Remplace les anciens écrans Facturation sociétés / Suivi assurance ; **la Caisse et l'historique sont conservés**.
+   - Accès par le rôle **Responsable assurance** (identifiant technique `billing` conservé) ou le raccourci Administration.
+   - Même base que Réception : sociétés, patients, familles et factures Caisse partagés. Les factures apparaissent automatiquement ; les règlements d’assurance mettent à jour leur suivi sans doubler les encaissements Caisse.
+   - **WAMP : même API Réception ; mise à jour nécessaire pour les écritures assurance.** Voir [l'intégration et les limites de reprise](docs/SUIVI_ASSURANCE.md).
 
 5. **💊 Pharmacie & Délivrance**
    - Validation et délivrance des ordonnances médicales.
@@ -202,3 +206,24 @@ soldés + mois impayés) pour alimenter le module Facturation Société.
 - [`CONSTITUTION_BASE_DONNEES.md`](./CONSTITUTION_BASE_DONNEES.md) : Dictionnaire complet des tables et helpers du store React.
 - [`docs/SCHEMA_BASE_DONNEES.md`](./docs/SCHEMA_BASE_DONNEES.md) : Schéma relationnel et principes d'intégrité des données.
 - [`prompt.md`](./prompt.md) : Prompt de référence décrivant les spécifications métier et les rôles utilisateurs.
+
+## Mots de passe et gestionnaires du navigateur
+
+Les champs de connexion, de création/modification de compte et de réinitialisation demandent `autocomplete="off"`. Des indications d’exclusion sont également fournies aux extensions de gestion de mots de passe. Le mot de passe de connexion saisi est vidé au changement de compte et après authentification ; le masquage natif et la validation avec Entrée sont conservés.
+
+**Limite :** ces attributs sont des indications, pas une interdiction imposable par le site. Chrome, Edge, Firefox ou une extension peuvent les ignorer. Pour garantir l’absence de proposition d’enregistrement sur un poste, désactiver l’option de proposition d’enregistrement dans le gestionnaire de mots de passe du navigateur, ou choisir « Jamais pour ce site » si cette option est proposée. Les mots de passe déjà enregistrés doivent être retirés du gestionnaire par l’utilisateur ou l’administrateur du poste.
+
+Ce réglage ne modifie pas les comptes ni leur stockage métier dans la base de l’application. Les tests vérifient les attributs rendus et les parcours de connexion/administration, pas les fenêtres natives du gestionnaire de mots de passe :
+
+```bash
+npx playwright test tests/credentials.spec.ts
+```
+
+
+### En-tête des factures et formats
+
+**Administration → En-tête Facture** configure le texte et les images des factures, le choix de police et la taille de toute la zone d’en-tête (6–36 pt, boutons A− / A+). Cliquer sur **Enregistrer l’en-tête de facture** applique ces réglages aux impressions et réimpressions. Ils sont conservés dans la base commune et les sauvegardes.
+
+- Facture société : **A4 portrait**.
+- Facture individuelle : **A5 portrait**.
+- Les tickets POS et la police du corps des factures ne sont pas modifiés.

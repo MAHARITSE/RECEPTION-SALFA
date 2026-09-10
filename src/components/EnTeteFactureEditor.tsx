@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { TicketSettings } from '../types';
+import { INVOICE_HEADER_FONTS, MIN_HEADER_FONT_SIZE, MAX_HEADER_FONT_SIZE, headerTypography, sanitizeInvoiceHeader, INVOICE_HEADER_STYLE, escapeHeaderText } from '../utils/invoiceHeader';
 import {
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight,
   Image as ImageIcon, Save, RotateCcw, Check, Eye, Info, Type, Eraser, Printer,
@@ -25,7 +26,7 @@ const figId = () => 'fig-' + Date.now().toString(36) + Math.random().toString(36
 function figHtml(dataUrl: string): string {
   return `<div ${FIG_TAG} data-id="${figId()}" contenteditable="false" class="entete-fig"
     style="display:block;margin:4px auto;text-align:center;position:relative;user-select:none;">
-      <img src="${dataUrl}" alt="image" draggable="false"
+      <img src="${escapeHeaderText(dataUrl)}" alt="image" draggable="false"
         style="max-width:140px;height:auto;max-height:90px;display:inline-block;vertical-align:middle;border-radius:4px;" />
     </div>`;
 }
@@ -63,6 +64,10 @@ export default function EnTeteFactureEditor({ settings, updateTicket, showToast 
   const rangeRef = useRef<Range | null>(null);
 
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [fontFamily, setFontFamily] = useState(headerTypography(settings).font);
+  const [fontSize, setFontSize] = useState(headerTypography(settings).size);
+  const typography = headerTypography({ invoiceHeaderFontFamily: fontFamily, invoiceHeaderFontSize: fontSize });
+  const typographyStyle = { '--invoice-header-font': `'${typography.font}'`, '--invoice-header-size': `${typography.size}pt` } as React.CSSProperties;
   const [editorKey, setEditorKey] = useState(0);
   // Image actuellement sélectionnée (par data-id) → permet d'afficher la barre d'outils image.
   const [selId, setSelId] = useState<string | null>(null);
@@ -79,7 +84,7 @@ export default function EnTeteFactureEditor({ settings, updateTicket, showToast 
   useEffect(() => {
     if (!editorRef.current) return;
     const seed = hasCustom ? settings.invoiceHeaderHtml || '' : starter;
-    editorRef.current.innerHTML = seed || starter;
+    editorRef.current.innerHTML = sanitizeInvoiceHeader(seed || starter);
     setSelId(null);
   }, [editorKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -259,9 +264,9 @@ export default function EnTeteFactureEditor({ settings, updateTicket, showToast 
 
   /* ---- Boutons généraux ---- */
   const save = () => {
-    const html = current()?.innerHTML?.trim() || '';
+    const html = sanitizeInvoiceHeader(current()?.innerHTML?.trim() || '');
     if (!html) { showToast('⚠️ L\'en-tête est vide. Saisissez du texte ou insérez une image.'); return; }
-    updateTicket({ customInvoiceHeader: true, invoiceHeaderHtml: html });
+    updateTicket({ customInvoiceHeader: true, invoiceHeaderHtml: html, invoiceHeaderFontFamily: typography.font, invoiceHeaderFontSize: typography.size });
     showToast('✅ En-tête de facture personnalisé enregistré');
   };
 
@@ -271,9 +276,10 @@ export default function EnTeteFactureEditor({ settings, updateTicket, showToast 
   };
 
   const loadStarter = () => {
-    if (editorRef.current) editorRef.current.innerHTML = starter;
+    if (editorRef.current) editorRef.current.innerHTML = sanitizeInvoiceHeader(starter);
     setSelId(null);
-    setEditorKey((k) => k + 1);
+    rangeRef.current = null;
+    setVer(v => v + 1);
     showToast('Modèle chargé dans la zone d\'édition');
   };
 
@@ -282,9 +288,10 @@ export default function EnTeteFactureEditor({ settings, updateTicket, showToast 
     setSelId(null);
     editorRef.current?.focus();
     refreshSelection();
+    setVer(v => v + 1);
   };
 
-  const previewContent = current()?.innerHTML || '';
+  const previewContent = sanitizeInvoiceHeader(current()?.innerHTML || '');
 
   const sel = selectedFig();
   const selIsBg = isBg(sel);
@@ -294,6 +301,7 @@ export default function EnTeteFactureEditor({ settings, updateTicket, showToast 
 
   return (
     <div className="space-y-6 max-w-5xl">
+      <style>{INVOICE_HEADER_STYLE}</style>
       {/* En-tête de la section */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -302,7 +310,7 @@ export default function EnTeteFactureEditor({ settings, updateTicket, showToast 
           </h3>
           <p className="text-xs text-ink-muted mt-0.5 max-w-2xl">
             Personnalisez l'en-tête <strong className="text-ink">uniquement des FACTURES</strong> imprimées (facture
-            individuelle et relevé société). Le <strong className="text-ink">ticket POS (58/80 mm) n'est pas concerné</strong> :
+            individuelle A5 et facture société A4, y compris dans le module Facturation). Le <strong className="text-ink">ticket POS (58/80 mm) n'est pas concerné</strong> :
             il conserve son propre en-tête réglé dans « Tickets POS &amp; Format ». Texte libre modifiable + images
             <strong> déplaçables</strong> et pouvant être mises en <strong>arrière-plan</strong>.
           </p>
@@ -361,6 +369,20 @@ export default function EnTeteFactureEditor({ settings, updateTicket, showToast 
             <input ref={imgInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageFile} />
           </div>
 
+          <div className="px-3 py-2 border-b border-line flex flex-wrap items-center gap-2 bg-surface-muted/50">
+            <label className="text-xs text-ink">Police de l’en-tête
+              <select aria-label="Police de l’en-tête" value={fontFamily} onChange={e => setFontFamily(e.target.value as typeof fontFamily)} className="ml-2 rounded border border-line bg-field px-2 py-1">
+                {INVOICE_HEADER_FONTS.map(font => <option key={font} value={font}>{font}</option>)}
+              </select>
+            </label>
+            <button type="button" aria-label="Diminuer la taille de police de l’en-tête" disabled={typography.size <= MIN_HEADER_FONT_SIZE} onClick={() => setFontSize(Math.max(MIN_HEADER_FONT_SIZE, typography.size - 1))} className={toolbarBtn}>A−</button>
+            <label className="text-xs text-ink">Taille (pt)
+              <input aria-label="Taille de police de l’en-tête" type="number" min={MIN_HEADER_FONT_SIZE} max={MAX_HEADER_FONT_SIZE} step={1} value={fontSize} onChange={e => setFontSize(e.target.value === '' ? 10 : Number(e.target.value))} onBlur={() => setFontSize(typography.size)} className="ml-1 w-16 rounded border border-line bg-field px-2 py-1" />
+            </label>
+            <button type="button" aria-label="Augmenter la taille de police de l’en-tête" disabled={typography.size >= MAX_HEADER_FONT_SIZE} onClick={() => setFontSize(Math.min(MAX_HEADER_FONT_SIZE, typography.size + 1))} className={toolbarBtn}>A+</button>
+            <p className="basis-full text-[11px] text-ink-muted">Ces réglages s’appliquent à toute la zone de texte de l’en-tête, pas au corps de la facture. Enregistrez pour les appliquer aux impressions et réimpressions.</p>
+          </div>
+
           {/* Barre image : visible quand une image est sélectionnée */}
           {sel && (
             <div className="px-3 py-2 border-b border-indigo-200 dark:border-indigo-500/25 bg-indigo-50/60 dark:bg-indigo-500/8 flex flex-wrap items-center gap-1.5">
@@ -411,16 +433,25 @@ export default function EnTeteFactureEditor({ settings, updateTicket, showToast 
             key={editorKey}
             ref={editorRef}
             contentEditable
+            role="textbox"
+            aria-label="Texte de l’en-tête des factures"
+            aria-multiline="true"
             suppressContentEditableWarning
             onSelect={rememberRange}
             onKeyUp={(e) => { rememberRange(); setVer((v) => v + 1); if (e.key === 'Escape') { setSelId(null); refreshSelection(); } }}
             onInput={() => setVer((v) => v + 1)}
+            onPaste={event => {
+              event.preventDefault();
+              const html = event.clipboardData.getData('text/html') || escapeHeaderText(event.clipboardData.getData('text/plain')).replace(/\n/g, '<br>');
+              document.execCommand('insertHTML', false, sanitizeInvoiceHeader(html));
+              rememberRange(); setVer(v => v + 1);
+            }}
             onMouseUp={rememberRange}
             onClick={handleEditorClick}
             onPointerDown={startBgDrag}
             data-placeholder="Saisissez ici le texte de l'en-tête de votre facture…"
-            className="relative z-10 min-h-[240px] px-4 py-4 outline-none text-[13px] leading-relaxed text-ink-strong"
-            style={{ position: 'relative', zIndex: 1 }}
+            className="invoice-header-content relative z-10 min-h-[240px] px-4 py-4 outline-none leading-relaxed text-ink-strong"
+            style={{ ...typographyStyle, position: 'relative', zIndex: 1 }}
             spellCheck
           />
 
@@ -467,7 +498,7 @@ export default function EnTeteFactureEditor({ settings, updateTicket, showToast 
                 <Eye className="w-3.5 h-3.5" /> Aperçu de l'en-tête de facture
               </div>
               <div className="min-h-[150px] border-b-2 border-black pb-3 relative" style={{ fontFamily: 'Arial, Helvetica, sans-serif', position: 'relative' }}>
-                <div className="text-center relative z-10" dangerouslySetInnerHTML={{ __html: previewContent || '<span class="text-ink-faint" style="color:#999;">Aucun contenu — saisissez ou chargez un modèle.</span>' }} />
+                <div className="invoice-header-content text-center relative z-10" style={typographyStyle} data-testid="invoice-header-preview" dangerouslySetInnerHTML={{ __html: previewContent || '<span class="text-ink-faint" style="color:#999;">Aucun contenu — saisissez ou chargez un modèle.</span>' }} />
               </div>
               <div className="pt-2 text-[10px] text-ink-muted text-center flex items-center justify-center gap-1">
                 <Maximize2 className="w-3 h-3" /> Format d'impression A5 / A4 — l'image d'arrière-plan apparaît derrière le texte
@@ -498,18 +529,18 @@ export default function EnTeteFactureEditor({ settings, updateTicket, showToast 
 /** Construit un modèle d'en-tête prêt à éditer (texte libre + logo image facultatif). */
 function buildStarterHtml(s: TicketSettings): string {
   const lines: string[] = [];
-  const mainName = s.facilityName || 'NOM DE L\'ÉTABLISSEMENT';
+  const mainName = escapeHeaderText(s.facilityName || 'NOM DE L\'ÉTABLISSEMENT');
   if (s.logoUrl && s.logoUrl.length > 5) {
     lines.push(figHtml(s.logoUrl));
   } else if (s.secondLogoUrl && s.secondLogoUrl.length > 5) {
     lines.push(figHtml(s.secondLogoUrl));
   }
-  if (s.email || s.website) lines.push(`<div style="font-size:10px;">${[s.email, s.website].filter(Boolean).join(' · ')}</div>`);
+  if (s.email || s.website) lines.push(`<div style="font-size:10px;">${[s.email, s.website].filter(Boolean).map(escapeHeaderText).join(' · ')}</div>`);
   return `<div style="text-align:center;">${lines.join('')}
   <div><strong>${mainName}</strong></div>
-  ${s.address ? `<div style="font-size:11px;">${s.address}</div>` : ''}
-  ${s.phone ? `<div style="font-size:11px;">Tél. : ${s.phone}</div>` : ''}
-  ${s.nif ? `<div style="font-size:11px;">NIF : ${s.nif}</div>` : ''}
+  ${s.address ? `<div style="font-size:11px;">${escapeHeaderText(s.address)}</div>` : ''}
+  ${s.phone ? `<div style="font-size:11px;">Tél. : ${escapeHeaderText(s.phone)}</div>` : ''}
+  ${s.nif ? `<div style="font-size:11px;">NIF : ${escapeHeaderText(s.nif)}</div>` : ''}
 </div>`;
 }
 

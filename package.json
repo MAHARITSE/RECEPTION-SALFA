@@ -10,17 +10,24 @@
     "preview": "vite preview --host 0.0.0.0 --port 3000",
     "lint": "tsc --noEmit",
     "test:theme": "playwright test tests/theme.spec.ts",
-    "test:printing": "playwright test tests/printing.spec.ts"
+    "test:printing": "playwright test tests/printing.spec.ts",
+    "test:assurance": "playwright test tests/assurance*.spec.ts",
+    "test:monthly-billing": "playwright test tests/monthly-billing.spec.ts"
   },
   "dependencies": {
     "@types/uuid": "^10.0.0",
     "clsx": "2.1.1",
+    "dompurify": "^3.4.15",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "lucide-react": "^1.21.0",
     "motion": "^13.1.1",
     "react": "19.2.6",
     "react-dom": "19.2.6",
+    "recharts": "^3.10.1",
     "tailwind-merge": "3.4.0",
-    "uuid": "^14.0.0"
+    "uuid": "^14.0.0",
+    "xlsx": "npm:@e965/xlsx@0.20.3"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",

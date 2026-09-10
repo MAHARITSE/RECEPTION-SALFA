@@ -1,4 +1,5 @@
 import { printDocument } from './printDocument';
+import { INVOICE_HEADER_STYLE, invoiceHeaderMarkup } from './invoiceHeader';
 import type { Invoice, Patient, Company, TicketSettings } from '../types';
 
 /** Échappe les caractères HTML réservés */
@@ -48,7 +49,7 @@ function customInvoiceHeaderMarkup(settings: TicketSettings): string | null {
   if (!settings.customInvoiceHeader) return null;
   const html = (settings.invoiceHeaderHtml || '').trim();
   if (!html) return null;
-  return `<div class="header header-custom"><div class="header-custom-inner">${html}</div></div>`;
+  return invoiceHeaderMarkup(settings);
 }
 
 /** Convertit un nombre en toutes lettres en français pour le montant en Ariary */
@@ -334,6 +335,7 @@ export function printSalfaIndividualInvoice(
       font-size: 10px;
     }
     ${INVOICE_HEADER_CSS}
+    ${INVOICE_HEADER_STYLE}
   </style>
 </head>
 <body>
@@ -619,6 +621,7 @@ export function printSalfaCompanyMonthlyInvoice(
       margin-top: 10px;
     }
     ${INVOICE_HEADER_CSS}
+    ${INVOICE_HEADER_STYLE}
   </style>
 </head>
 <body>

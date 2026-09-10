@@ -32,6 +32,7 @@ const API_URL = 'api/index.php';
 
 /** Collections « liste » persistées dans MySQL (clé = nom de dataset). */
 const LIST_DATASETS: (keyof AppState)[] = [
+  'assuranceSocietes', 'assurancePersonnes', 'assuranceFamilles', 'assurancePrestations', 'assurancePaiements',
   'patients', 'consultations', 'invoices', 'ventes', 'venteLines', 'ventePayments',
   'labRequests', 'journey', 'pharmaDeliveryItems', 'stockEntries', 'stockTransfers',
   'stockMovements', 'movementHeaders', 'movementLines', 'companyBillingAccounts',
@@ -79,6 +80,8 @@ export function setSyncBaseline(state: AppState | null): void {
 function buildDatasets(state: AppState): Record<string, unknown> {
   const datasets: Record<string, unknown> = {};
   for (const key of LIST_DATASETS) {
+    // Older PHP deployments must keep accepting the original Caisse payload.
+    if (key.startsWith('assurance') && !state.assuranceStorageSupported) continue;
     datasets[key] = (state as unknown as Record<string, unknown>)[key] ?? [];
   }
   datasets.ticketSettings = state.ticketSettings;
@@ -92,11 +95,12 @@ function buildDatasets(state: AppState): Record<string, unknown> {
  *  Aucune donnée JSON de démonstration : seul MySQL (et les valeurs par défaut
  *  codées en dur ci-dessous) alimente l'état. */
 function reconstructState(datasets: Record<string, unknown>): AppState {
-  const state: Record<string, unknown> = { currentUser: null };
+  const state: Record<string, unknown> = { currentUser: null, assuranceStorageSupported: ['assuranceSocietes', 'assurancePersonnes', 'assuranceFamilles', 'assurancePrestations', 'assurancePaiements'].every(key => Array.isArray(datasets[key])) };
   for (const key of LIST_DATASETS) {
     const value = datasets[key];
     state[key] = Array.isArray(value) ? value : [];
   }
+  state.monthlyInvoices = Array.isArray(datasets.monthlyInvoices) ? datasets.monthlyInvoices : [];
   state.ticketSettings = (datasets.ticketSettings as TicketSettings | undefined)
     ?? JSON.parse(JSON.stringify(DEFAULT_TICKET_SETTINGS));
   for (const key of COUNTER_KEYS) {
@@ -204,6 +208,9 @@ export async function syncStateWithMysql(state: AppState): Promise<SyncResult> {
     const remote = reconstructState(data.datasets as Record<string, unknown>);
     const merged = mergeStates(lastConfirmedState, state, remote);
     const deletions = collectDeletions(lastConfirmedState, state);
+    if (!merged.assuranceStorageSupported) {
+      for (const key of Object.keys(deletions)) if (key.startsWith('assurance')) delete deletions[key];
+    }
 
     const saveRes = await fetch(`${API_URL}?action=sync_all`, {
       method: 'POST',

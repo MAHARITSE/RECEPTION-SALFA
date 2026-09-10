@@ -9,6 +9,8 @@ export type PatientStatus = 'registered' | 'waiting_consultation' | 'in_consulta
 export interface User { id: string; name: string; role: UserRole; roles?: UserRole[]; password?: string; }
 
 export interface TicketSettings {
+  /** En-tête du suivi assurance dans la sauvegarde et la base communes. */
+  assuranceHeader?: import('./modules/assurance/types').EnteteConfig;
   facilityName: string; address: string; phone: string; nif: string;
   email?: string; website?: string;
   logoUrl: string; receiptTitle: string; footerMessage: string;
@@ -25,6 +27,9 @@ export interface TicketSettings {
   customInvoiceHeader?: boolean;
   /** Contenu HTML libre (texte + <img>) de l'en-tête des factures personnalisé. */
   invoiceHeaderHtml?: string;
+  /** Typography of the invoice header text zone only; size in points. */
+  invoiceHeaderFontFamily?: string;
+  invoiceHeaderFontSize?: number;
   showBarcode: boolean;
   showSignature: boolean;
   copies: number; // nombre d'exemplaires à imprimer
@@ -524,6 +529,10 @@ export type AssuranceSuiviStatut =
   | 'rejetee';    // tout ou partie exclue / rejetée par l'assurance
 
 export interface AssuranceSuivi {
+  /** Solde des règlements partagé avec le nouveau suivi assurance. */
+  montantRegle?: number;
+  /** Rejet historique figé pour éviter son double comptage. */
+  legacyMontantRejete?: number;
   /** Date d'envoi/transmission de la facture à l'assurance. */
   dateEnvoi?: string;
   /** N° de bordereau de transmission (envoi) à l'assurance. */

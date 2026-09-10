@@ -290,3 +290,7 @@
     display: none;
   }
 }
+
+/* Navigation du module suivi assurance importé. */
+.assurance-module .scrollbar-none { scrollbar-width: none; }
+.assurance-module .scrollbar-none::-webkit-scrollbar { display: none; }

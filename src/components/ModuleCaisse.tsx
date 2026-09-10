@@ -40,7 +40,7 @@ interface Props {
   onRefreshQueue?: () => void;
 }
 // L'ancien onglet « Comptes sociétés » a été déplacé vers le module dédié
-// du rôle Responsable facturation (ModuleFacturationSocietes).
+// du rôle Responsable assurance (ModuleSuiviAssurance).
 type Tab = 'payment' | 'hospit' | 'bloc' | 'closing';
 type HbModal = 'none' | 'add_patient' | 'add_article' | 'edit_client';
 
@@ -2150,7 +2150,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                     <strong>Client société{selPatient.company ? ` — ${selPatient.company}` : ''}.</strong>{' '}
                     Pas de règlement en espèces : la caisse valide le paiement en{' '}
                     <strong>CRÉDIT SOCIÉTÉ</strong> — le montant est porté au compte de la société et sera
-                    réglé ultérieurement via le module « Facturation sociétés ».
+                    réglé ultérieurement via le module « Suivi assurance ».
                   </div>
                 </div>
               )}

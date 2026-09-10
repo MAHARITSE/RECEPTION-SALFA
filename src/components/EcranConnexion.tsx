@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { User } from '../types';
+import { credentialAutofillOptOut, passwordInputOptOut } from '../utils/credentialAutofill';
 import {
   Stethoscope, CreditCard, Pill,
   FlaskConical, Building2, Hospital, ArrowLeft,
@@ -28,7 +29,7 @@ const roleLabels: Record<string, string> = {
   pharmacy: 'Pharmacie',
   magasinier: 'Magasinier',
   laboratory: 'Laboratoire',
-  billing: 'Responsable facturation',
+  billing: 'Responsable assurance',
   admin: 'Administrateur',
 };
 
@@ -62,6 +63,7 @@ export default function EcranConnexion({ users, onLogin, onBack }: EcranConnexio
     }
 
     setError('');
+    setPassword('');
     onLogin(user);
   };
 
@@ -88,6 +90,7 @@ export default function EcranConnexion({ users, onLogin, onBack }: EcranConnexio
         </div>
 
         <form
+          {...credentialAutofillOptOut}
           onSubmit={(event) => { event.preventDefault(); handleLogin(); }}
           className="bg-surface rounded-2xl border border-line p-6 shadow-xl shadow-black/5"
         >
@@ -98,9 +101,9 @@ export default function EcranConnexion({ users, onLogin, onBack }: EcranConnexio
             </label>
             <select
               id="staff-user"
-              autoComplete="username"
+              {...credentialAutofillOptOut}
               value={selectedUserId}
-              onChange={(e) => { setSelectedUserId(e.target.value); setError(''); }}
+              onChange={(e) => { setSelectedUserId(e.target.value); setPassword(''); setError(''); }}
               className="w-full px-3 py-3 bg-field border border-line rounded-lg text-ink text-sm focus:ring-2 focus:ring-accent/25 focus:border-accent outline-none"
             >
               <option value="">-- Sélectionner --</option>
@@ -120,7 +123,7 @@ export default function EcranConnexion({ users, onLogin, onBack }: EcranConnexio
             <input
               id="staff-password"
               type="password"
-              autoComplete="current-password"
+              {...passwordInputOptOut}
               value={password}
               onChange={(e) => { setPassword(e.target.value); setError(''); }}
               aria-invalid={!!error}
@@ -154,7 +157,7 @@ export default function EcranConnexion({ users, onLogin, onBack }: EcranConnexio
               Pharmacies (1 &amp; 2) : <code className="bg-surface-active text-ink px-1 rounded">pharma123</code> •{' '}
               Magasin : <code className="bg-surface-active text-ink px-1 rounded">mag123</code><br />
               Labo : <code className="bg-surface-active text-ink px-1 rounded">labo123</code><br />
-              Facturation : <code className="bg-surface-active text-ink px-1 rounded">fact123</code> •{' '}
+              Assurance : <code className="bg-surface-active text-ink px-1 rounded">fact123</code> •{' '}
               Admin : <code className="bg-surface-active text-ink px-1 rounded">admin123</code>
             </p>
           </div>

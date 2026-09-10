@@ -180,6 +180,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
 
   const saveArticle = () => {
     if (!artForm.name.trim() || !artForm.unit.trim()) { alert('Nom et unité requis'); return; }
+    if (!artForm.family?.trim() || !getArticleFamilyCatalog(familles).some(f => f.code === artForm.family)) { alert('Une famille valide est obligatoire pour chaque article.'); return; }
     if (editingArtId) {
       setState(prev => {
         const next = {
