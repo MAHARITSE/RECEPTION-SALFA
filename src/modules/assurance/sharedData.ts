@@ -1,6 +1,7 @@
 import type { AppState } from '../../store';
 import type { Company, Patient, Invoice } from '../../types';
 import type { Societe, Personne, Famille, Prestation, Paiement, LignePaiement } from './types';
+import { societeDiminutive } from '../../utils/factureNumber';
 import { reconcilePrestationsWithPaiements } from './utils/reconcile';
 
 const key = (value?: string) => (value || '').trim().normalize('NFKC').toUpperCase();
@@ -15,7 +16,9 @@ export type SharedTable = 'assuranceSocietes' | 'assurancePersonnes' | 'assuranc
 export function sharedSocietes(state: AppState): Societe[] {
   const rows = state.companies.map(company => {
     const extra = state.assuranceSocietes?.find(s => s.id === company.id || key(s.nom) === key(company.name));
-    return { ...extra, sharedCompany: true, id: company.id, nom: company.name, code: extra?.code || company.name,
+    // Sans code enregistré, le diminutif est déduit du nom (ex: « Bureau des Services Administratifs » → BSA) ;
+    // il sera enregistré dans la société dès la première facture émise à la caisse.
+    return { ...extra, sharedCompany: true, id: company.id, nom: company.name, code: extra?.code || societeDiminutive(company.name),
       tauxCouvertureDefaut: company.tauxCouverture ?? extra?.tauxCouvertureDefaut ?? 100 };
   });
   // Old standalone entries remain visible until their first save/migration.
@@ -74,7 +77,7 @@ function caissePrestations(state: AppState): Prestation[] {
         libelle: item.description, totalPrestation: item.amount, ticketModerateur: lineMod,
         montantARembourser: Math.max(0, item.amount - lineMod), totalPaye: 0 };
     });
-    return [{ id, sourceInvoiceId: invoice.id, numeroFacture: vente?.numeroFacture || invoice.id,
+    return [{ id, sourceInvoiceId: invoice.id, numeroFacture: invoice.numeroFacture || vente?.numeroFacture || invoice.id,
       date: invoice.createdAt.slice(0, 10), dateCreation: invoice.createdAt,
       societeId: company.id, societeNom: company.nom, personneId: invoice.patientId || '',
       nomAgent: patient ? `${patient.lastName} ${patient.firstName}`.trim() : invoice.clientName,

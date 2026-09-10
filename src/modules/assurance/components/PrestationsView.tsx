@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Printer,
   Plus, 
@@ -37,6 +37,7 @@ import {
 import { Prestation, LignePrestation, Paiement, Societe, Personne, Famille } from '../types';
 import { formatMoney, formatDate, generateId, getCurrentTimestamp } from '../utils/formatters';
 import { maskNom } from '../utils/inputMasks';
+import { buildSocieteFactureNumber, collectExistingFactureNumbers, SOCIETE_FACTURE_RE } from '../../../utils/factureNumber';
 import { calculateRecouvrementData, generateRecouvrementPdf, generateSelectedPrestationsPdf } from '../utils/recouvrementPdf';
 import { SalfaImportModal } from './SalfaImportModal';
 import { FacturesGroupedTable } from './prestations/FacturesGroupedTable';
@@ -1166,15 +1167,28 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
     setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const handleOpenCreate = () => {
+  /** Numérotation officielle société : FA-MM/CODE/YY-NNN (mois des prescriptions,
+   *  code / diminutif de la société, ordre d'établissement). */
+  const nextAutoNumero = (societeId: string, dateSoins: string): string => {
+    const soc = societes.find(s => s.id === societeId);
+    const parsed = dateSoins ? new Date(`${dateSoins}T12:00:00`) : new Date();
+    return buildSocieteFactureNumber(
+      collectExistingFactureNumbers({ assurancePrestations: prestations }),
+      soc?.code || '',
+      Number.isFinite(parsed.getTime()) ? parsed : new Date(),
+    );
+  };
+
+  const initNewPrestationForm = () => {
     const defaultSoc = societes.find(s => s.id === selectedSocieteId) || societes[0];
     const defaultTaux = defaultSoc?.tauxCouvertureDefaut ?? 80;
     const initialMontant = 0;
     const initialParticipation = Math.round(initialMontant * (1 - defaultTaux / 100));
+    const dateSoins = new Date().toISOString().split('T')[0];
 
     setFormData({
-      numeroFacture: `FACT-${new Date().getFullYear()}-${String(prestations.length + 1).padStart(3, '0')}`,
-      date: new Date().toISOString().split('T')[0],
+      numeroFacture: nextAutoNumero(defaultSoc?.id || '', dateSoins),
+      date: dateSoins,
       societeId: defaultSoc?.id || '',
       sousSociete: 'Département Principal',
       personneId: personnes.find(p => p.societeId === defaultSoc?.id)?.id || '',
@@ -1195,8 +1209,19 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
       ]
     });
     setEditingPrestation(null);
+  };
+
+  const handleOpenCreate = () => {
+    initNewPrestationForm();
     setIsCreateModalOpen(true);
   };
+
+  // Ouverture du formulaire depuis l'extérieur (Vue d'ensemble → « Nouvelle facture ») :
+  // un numéro officiel FA-MM/CODE/YY-NNN est proposé automatiquement.
+  useEffect(() => {
+    if (isCreateModalOpen && !editingPrestation) initNewPrestationForm();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCreateModalOpen]);
 
   const handleOpenEdit = (p: Prestation) => {
     setEditingPrestation(p);
@@ -2735,8 +2760,9 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
                     value={formData.numeroFacture || ''}
                     onChange={(e) => setFormData(prev => ({ ...prev, numeroFacture: e.target.value }))}
                     className="w-full p-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                    placeholder="Ex: FACT-2025-001"
+                    placeholder="Ex: FA-07/BSA/26-014"
                   />
+                  <p className="mt-1 text-[10px] text-ink-faint">Format société : FA-mois/Code/année-ordre (ex: FA-07/BSA/26-014)</p>
                 </div>
 
                 <div>
@@ -2745,7 +2771,17 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
                     type="date"
                     required
                     value={formData.date || ''}
-                    onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
+                    onChange={(e) => {
+                      const date = e.target.value;
+                      setFormData(prev => {
+                        // Le mois des prescriptions fait partie du numéro : il est recalculé
+                        // tant que le numéro proposé n'a pas été modifié à la main.
+                        const autoNumero = SOCIETE_FACTURE_RE.test((prev.numeroFacture || '').trim().toUpperCase())
+                          ? nextAutoNumero(prev.societeId || '', date)
+                          : prev.numeroFacture;
+                        return { ...prev, date, numeroFacture: autoNumero };
+                      });
+                    }}
                     className="w-full p-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   />
                 </div>
@@ -2756,7 +2792,14 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
                     value={formData.societeId || ''}
                     onChange={(e) => {
                       const newSocId = e.target.value;
-                      setFormData(prev => ({ ...prev, societeId: newSocId, personneId: personnes.find(p => p.societeId === newSocId)?.id || '' }));
+                      setFormData(prev => {
+                        // Le code société fait partie du numéro : il est recalculé
+                        // tant que le numéro proposé n'a pas été modifié à la main.
+                        const autoNumero = SOCIETE_FACTURE_RE.test((prev.numeroFacture || '').trim().toUpperCase())
+                          ? nextAutoNumero(newSocId, prev.date || '')
+                          : prev.numeroFacture;
+                        return { ...prev, societeId: newSocId, numeroFacture: autoNumero, personneId: personnes.find(p => p.societeId === newSocId)?.id || '' };
+                      });
                       recalcFormTotals(formData.lignes || [], newSocId);
                     }}
                     className="w-full p-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"

@@ -6,7 +6,7 @@ import * as XLSX from 'xlsx';
 export function downloadPrestationsExcelTemplate() {
   const sampleData = [
     {
-      'Numero_Facture': 'FACT-SALFA-2024-001',
+      'Numero_Facture': 'FA-10/MCI/24-001',
       'Date_Soins': '2024-10-15',
       'Nom_Agent': 'RABE Jean (CONSERVATION INTERNATIONALE)',
       'Matricule': 'MCI-0452',
@@ -19,7 +19,7 @@ export function downloadPrestationsExcelTemplate() {
       'Observations': 'Facture mensuelle soins ambulatoires',
     },
     {
-      'Numero_Facture': 'FACT-SALFA-2024-002',
+      'Numero_Facture': 'FA-10/MCI/24-002',
       'Date_Soins': '2024-10-16',
       'Nom_Agent': 'RASOA Marie (CONSERVATION INTERNATIONALE)',
       'Matricule': 'MCI-0118',
@@ -32,7 +32,7 @@ export function downloadPrestationsExcelTemplate() {
       'Observations': 'Suivi médical périodique',
     },
     {
-      'Numero_Facture': 'FACT-SALFA-2024-003',
+      'Numero_Facture': 'FA-10/MCI/24-003',
       'Date_Soins': '2024-10-18',
       'Nom_Agent': 'ANDRY Patrick (CONSERVATION INTERNATIONALE)',
       'Matricule': 'MCI-0882',
@@ -50,8 +50,8 @@ export function downloadPrestationsExcelTemplate() {
     {
       'Colonne': 'Numero_Facture',
       'Obligatoire': 'Oui',
-      'Description': 'Numéro unique de la facture ou du bon de prescription émis par SALFA',
-      'Exemple': 'FACT-SALFA-2024-001'
+      'Description': 'Numéro unique de la facture ou du bon de prescription émis par SALFA (format société FA-mois/Code/année-ordre)',
+      'Exemple': 'FA-10/MCI/24-001'
     },
     {
       'Colonne': 'Date_Soins',
@@ -157,7 +157,7 @@ export function downloadDecomptesExcelTemplate() {
       'Date_Soins': '2024-10-15',
       'Nom_Agent': 'RABE Jean',
       'Matricule': 'BSA-0452',
-      'Numero_Facture_Prescription': 'FACT-SALFA-2024-001',
+      'Numero_Facture_Prescription': 'FA-10/MCI/24-001',
       'Code_Acte': 'CONS',
       'Libelle_Acte': 'Consultation Médecine Générale',
       'Montant_Reclame_Brut': 40000,
@@ -172,7 +172,7 @@ export function downloadDecomptesExcelTemplate() {
       'Date_Soins': '2024-10-15',
       'Nom_Agent': 'RABE Jean',
       'Matricule': 'BSA-0452',
-      'Numero_Facture_Prescription': 'FACT-SALFA-2024-001',
+      'Numero_Facture_Prescription': 'FA-10/MCI/24-001',
       'Code_Acte': 'PHAR',
       'Libelle_Acte': 'Produits Pharmaceutiques',
       'Montant_Reclame_Brut': 65000,
@@ -187,7 +187,7 @@ export function downloadDecomptesExcelTemplate() {
       'Date_Soins': '2024-10-18',
       'Nom_Agent': 'ANDRY Patrick',
       'Matricule': 'MCI-0882',
-      'Numero_Facture_Prescription': 'FACT-SALFA-2024-003',
+      'Numero_Facture_Prescription': 'FA-10/MCI/24-003',
       'Code_Acte': 'DENT',
       'Libelle_Acte': 'Soins Dentaires',
       'Montant_Reclame_Brut': 95000,
@@ -232,8 +232,8 @@ export function downloadDecomptesExcelTemplate() {
     {
       'Colonne': 'Numero_Facture_Prescription',
       'Obligatoire': 'Recommandé',
-      'Description': 'N° Facture SALFA de la prescription rattachée (ex: FACT-SALFA-2024-001)',
-      'Exemple': 'FACT-SALFA-2024-001'
+      'Description': 'N° Facture SALFA de la prescription rattachée (ex: FA-10/MCI/24-001)',
+      'Exemple': 'FA-10/MCI/24-001'
     },
     {
       'Colonne': 'Code_Acte',

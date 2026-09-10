@@ -135,7 +135,8 @@ export function printPaymentTicket(
   const html = buildTicketHtml({
     settings,
     title: credit ? 'PRISE EN CHARGE — CRÉDIT SOCIÉTÉ' : (settings.receiptTitle || 'REÇU DE PAIEMENT'),
-    reference: invoice.id.slice(0, 8).toUpperCase(),
+    // Numéro de facture officiel (ex: 26FA0427102 ou FA-07/BSA/26-014) sinon référence technique.
+    reference: invoice.numeroFacture || invoice.id.slice(0, 8).toUpperCase(),
     date,
     bodyHtml,
     footerNote: credit
@@ -613,7 +614,8 @@ export function printHbPaymentTicket(
   const html = buildTicketHtml({
     settings,
     title: `REÇU DE PAIEMENT — ${typeLabel}`,
-    reference: record.id.slice(0, 8).toUpperCase(),
+    // Numéro de facture officiel du dossier (ex: 26FA0427102) sinon référence technique.
+    reference: record.numeroFacture || record.id.slice(0, 8).toUpperCase(),
     date,
     bodyHtml,
     footerNote: settings.footerMessage,

@@ -155,7 +155,8 @@ export function printSalfaIndividualInvoice(
 
   const priseEnCharge = company?.name || patient?.company || (invoice.isExternal ? 'PAYANT DIRECT' : 'PAYANT DIRECT');
 
-  const invNumber = (invoice as any).invoiceNumber || invoice.id.slice(0, 10).toUpperCase();
+  // Numéro de facture officiel (26FA0427102 / FA-07/BSA/26-014) ; historique : invoiceNumber, puis id tronqué.
+  const invNumber = invoice.numeroFacture || (invoice as any).invoiceNumber || invoice.id.slice(0, 10).toUpperCase();
 
   const items = invoice.items || [];
   const totalBrut = invoice.totalAmount;

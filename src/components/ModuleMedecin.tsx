@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Consultation, VitalSigns, Prescription, LabRequest, ClientType, Invoice, EchoRequest, PatientStatus, Patient, Article } from '../types';
 import type { AppState } from '../store';
+import type { Societe } from '../modules/assurance/types';
+import { allocateFactureNumber, applySocieteUpsert, collectExistingFactureNumbers } from '../store';
 import {
   addAuditLog, addNotification, formatAr, formatNum, roundTo2, getPrice, addJourneyEvent,
   labCategoryLabel, purgePatientFromQueue, isPrescriptionPaid, isMedicationEntryFamily,
@@ -793,6 +795,20 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     // Ordonnance NON obligatoire : diagnostic seul, analyses et/ou échographies suffisent
     const ct = clientType;
     const consultId = uuidv4();
+    // Numérotation officielle des factures labo / écho créées en attente :
+    // FA-MM/CODE/YY-NNN pour les sociétés, AAFAMMJJ + ordre du jour sinon.
+    const factureNumbers = collectExistingFactureNumbers(state);
+    const factureUpserts: Societe[] = [];
+    const allocNumero = (): string => {
+      const allocated = allocateFactureNumber(state, {
+        clientType: ct, company: selectedPatient?.company, invoiceDate: new Date().toISOString(), numbers: factureNumbers,
+      });
+      if (allocated.societeUpsert) factureUpserts.push(allocated.societeUpsert);
+      factureNumbers.push(allocated.numeroFacture);
+      return allocated.numeroFacture;
+    };
+    const labNumeroFacture = labDraft.length > 0 ? allocNumero() : undefined;
+    const echoNumeroFacture = echoDraft.length > 0 ? allocNumero() : undefined;
     // ---- Analyses labo -> facture en attente (bon imprimé à la CAISSE après paiement) ----
     const labInvoiceId = labDraft.length > 0 ? uuidv4() : null;
     const newLabRequests: LabRequest[] = labDraft.map((d) => {
@@ -839,23 +855,21 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     const grandTotal = totalPres + labTotal + echoTotal;
 
     setState((prev) => {
+      // Codes société générés pour la numérotation → enregistrés dans les sociétés.
+      const withCodes = factureUpserts.reduce((s, u) => applySocieteUpsert(s, u), prev);
       let next: AppState = {
-        ...prev,
-        consultations: [...prev.consultations, consultation],
-        patients: prev.patients.map((p) => p.id === selectedPatientId
+        ...withCodes,
+        consultations: [...withCodes.consultations, consultation],
+        patients: withCodes.patients.map((p) => p.id === selectedPatientId
           ? { ...p, status: nextStatus, lastVisitAt: new Date().toISOString() }
           : p),
-
-
-
-
       };
       if (newLabRequests.length > 0 && labInvoiceId) {
         const labItems = newLabRequests.map((lr) => ({ description: `${lr.examType}${lr.urgent ? ' (Urgent)' : ''}`, amount: lr.price || 0, category: 'lab' as const }));
         const labTotalAmt = labItems.reduce((s, i) => s + i.amount, 0);
         const labInv: Invoice = {
           id: labInvoiceId, patientId: selectedPatientId, consultationId: consultation.id, clientType: ct,
-          items: labItems, totalAmount: labTotalAmt, patientCharge: labTotalAmt,
+          items: labItems, totalAmount: labTotalAmt, patientCharge: labTotalAmt, numeroFacture: labNumeroFacture,
           status: 'pending' as const, createdAt: new Date().toISOString(), isExternal: ct === 'externe',
         };
         next = { ...next, labRequests: [...next.labRequests, ...newLabRequests], invoices: [...next.invoices, labInv] };
@@ -867,7 +881,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
         const echoTotalAmt = echoItems.reduce((s, i) => s + i.amount, 0);
         const echoInv: Invoice = {
           id: echoInvoiceId, patientId: selectedPatientId, consultationId: consultation.id, clientType: ct,
-          items: echoItems, totalAmount: echoTotalAmt, patientCharge: echoTotalAmt,
+          items: echoItems, totalAmount: echoTotalAmt, patientCharge: echoTotalAmt, numeroFacture: echoNumeroFacture,
           status: 'pending' as const, createdAt: new Date().toISOString(), isExternal: ct === 'externe',
         };
         next = { ...next, invoices: [...next.invoices, echoInv] };
