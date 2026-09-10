@@ -17,6 +17,34 @@ Le module utilise **la base et le mécanisme de sauvegarde de l'application** : 
 
 Les modifications de sociétés et de couvertures d'assurés sont répercutées dans `companies` et `patients`. Les données médicales ne sont pas réécrites. Les pièces historiques conservent autant que possible le payeur enregistré dans la vente, plutôt que la nouvelle affiliation du patient.
 
+## Deux grandes familles de sociétés
+
+Chaque société appartient à l'une de ces familles, choisie dans la fiche **Sociétés** :
+
+| Famille | Comportement |
+|---|---|
+| **Payeur global** | Règle la totalité de la facture en une seule fois, sans distinction de personne ni d'acte (taux proposé à 100 %). |
+| **Paiement partiel (assurance)** | Règle partiellement, assuré par assuré et/ou acte par acte, selon le taux contractuel de la société. |
+
+Le choix est enregistré dans la base commune : `payeur` (Payeur global) ou `assurance` (Paiement partiel) sur `companies`, complété par `modePaiement` dans `assuranceSocietes`. Le taux de couverture reste modifiable à la main dans les deux cas.
+
+## Exclusions d'une société
+
+Une société peut **exclure** ce qu'elle ne prend pas en charge. Le bloc *Exclusions* de la fiche société (et le bouton **Exclusions** de chaque carte) permet d'ajouter :
+
+- **une personne cliente** : un assuré exclu n'est plus remboursé du tout, quel que soit l'acte ;
+- **une famille d'articles** : tous les actes de cette famille sont bloqués (ex. **ÉCHOGRAPHIE**, **LABORATOIRE**). La recherche accepte un code du catalogue, un libellé ou un mot-clé libre saisi directement.
+
+Une exclusion bloque la prise en charge par la société : le montant reste dû par le patient. S'il faut malgré tout prescrire l'acte, le patient doit être facturé en **client comptoir**.
+
+Les règles sont appliquées **à la saisie** :
+
+- à la création/modification d'une prestation, le ticket modérateur est recalculé acte par acte (0 % de remboursement sur un acte exclu) et l'acte est signalé *Exclu* ;
+- à la préparation d'un règlement, une ligne exclue n'est pas sélectionnée et son commentaire rappelle le motif ;
+- les prestations déjà enregistrées ne sont jamais recalculées rétroactivement.
+
+Les exclusions sont conservées dans `assuranceSocietes[].exclusions`, donc dans la même sauvegarde que le reste de la base.
+
 ## Compléments assurance, dans la même base
 
 Les collections `assuranceSocietes`, `assurancePersonnes` et `assuranceFamilles` conservent les attributs propres au suivi (coordonnées du garant, taux par assuré, alias des actes, etc.). Les identités de Réception sont prioritaires : il ne s'agit plus de référentiels indépendants.

@@ -38,6 +38,7 @@ import { Paiement, LignePaiement, Prestation, Societe, Personne, Famille } from 
 import { formatMoney, formatDate, formatDateTime, generateId, getCurrentTimestamp } from '../utils/formatters';
 import { maskNom } from '../utils/inputMasks';
 import { calculateRecouvrementData, generateRecouvrementPdf } from '../utils/recouvrementPdf';
+import { repartirActe } from '../utils/societeExclusions';
 import { DecompteImportModal } from './DecompteImportModal';
 import { RelierPaiementModal } from './paiements/RelierPaiementModal';
 import { SaisieReglementModal } from './paiements/SaisieReglementModal';
@@ -916,15 +917,17 @@ export const PaiementsView: React.FC<PaiementsViewProps> = ({
     const lines: StagedPaymentLine[] = [];
     const targetPrestations = prestations.filter(p => p.societeId === socId && p.statut !== 'Payé' && p.statut !== 'Rejeté');
     const soc = societes.find(s => s.id === socId);
-    const taux = soc?.tauxCouvertureDefaut || 80;
 
     targetPrestations.forEach(p => {
       const personne = personnes.find(pers => pers.id === p.personneId);
       (p.lignes || []).forEach(l => {
         const reste = Math.max(0, l.totalPrestation - (l.totalPaye || 0));
         if (reste > 0) {
-          const defaultPaye = Math.round(reste * (taux / 100));
-          const defaultCopay = Math.round(reste * (1 - taux / 100));
+          // Exclusions de la société : assuré exclu ou famille d'articles non
+          // prise en charge → rien n'est réclamé à la société (client comptoir).
+          const repartition = repartirActe(soc, { totalPrestation: reste, code: l.code, libelle: l.libelle }, personne);
+          const defaultPaye = repartition.montantARembourser;
+          const defaultCopay = repartition.ticketModerateur;
           lines.push({
             prestationId: p.id,
             lignePrestationId: l.id,
@@ -936,11 +939,11 @@ export const PaiementsView: React.FC<PaiementsViewProps> = ({
             montantFacture: l.totalPrestation,
             dejaPaye: l.totalPaye || 0,
             resteAPayer: reste,
-            selected: true,
+            selected: !repartition.excluParSociete,
             totalPaye: defaultPaye,
             ticketModerateur: defaultCopay,
-            montantExclu: 0,
-            commentaire: 'Pris en charge au barème standard',
+            montantExclu: repartition.montantExclu,
+            commentaire: repartition.motifExclusion || 'Pris en charge au barème standard',
           });
         }
       });

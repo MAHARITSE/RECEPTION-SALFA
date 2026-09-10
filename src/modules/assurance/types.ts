@@ -1,3 +1,55 @@
+/**
+ * Grande famille d'organisme payeur :
+ *  - 'global'  : PAYEUR GLOBAL — règle la totalité de la facture en une seule
+ *                fois, sans distinction de personne ni d'acte.
+ *  - 'partiel' : PAIEMENT PARTIEL (ASSURANCE) — règle partiellement, assuré par
+ *                assuré et/ou acte par acte, selon le taux contractuel.
+ */
+export type SocieteModePaiement = 'global' | 'partiel';
+
+export interface SocieteModeOption {
+  value: SocieteModePaiement;
+  label: string;
+  description: string;
+}
+
+export const SOCIETE_MODES_PAIEMENT: SocieteModeOption[] = [
+  {
+    value: 'global',
+    label: 'Payeur global',
+    description: 'Paie la totalité de la facture en une fois, sans distinction de personne.',
+  },
+  {
+    value: 'partiel',
+    label: 'Paiement partiel (assurance)',
+    description: 'Paie partiellement, par assuré ou par acte, selon le taux contractuel.',
+  },
+];
+
+/**
+ * Exclusion contractuelle d'une société : un assuré ('personne') ou une famille
+ * d'articles ('famille' — ex. ÉCHOGRAPHIE, LABORATOIRE) n'est pas pris en charge.
+ * Le montant correspondant est alors à la charge du patient (client comptoir).
+ */
+export interface ExclusionSociete {
+  id: string;
+  type: 'personne' | 'famille';
+  /** Référence de l'assuré exclu (référentiel commun Réception). */
+  personneId?: string;
+  nomPrenom?: string;
+  matricule?: string;
+  /** Code famille du catalogue (ex: ECHO, LABO) ou libellé libre saisi. */
+  familleCode?: string;
+  familleLibelle?: string;
+  /** Mots-clés additionnels reconnus dans le libellé de l'acte. */
+  motsCles?: string[];
+  /** Taux résiduel encore pris en charge par la société (0 = exclusion totale). */
+  tauxPriseEnCharge?: number;
+  motif?: string;
+  actif?: boolean;
+  dateAjout?: string;
+}
+
 export interface Societe {
   sharedCompany?: boolean;
   id: string;
@@ -9,6 +61,10 @@ export interface Societe {
   adresse?: string;
   tauxCouvertureDefaut: number; // e.g. 80%
   sousSocietes?: string[];
+  /** Payeur global ou paiement partiel (assurance). */
+  modePaiement?: SocieteModePaiement;
+  /** Personnes / familles d'articles non pris en charge par cette société. */
+  exclusions?: ExclusionSociete[];
 }
 
 export interface Personne {
@@ -53,6 +109,8 @@ export interface LignePrestation {
   totalPaye: number; // Montant cumulé payé à travers tous les règlements
   montantExclu?: number; // Montant exclu / rejeté
   motifExclusion?: string; // Motif de l'exclusion
+  /** Acte bloqué par une exclusion de la société (assuré ou famille d'articles). */
+  excluParSociete?: boolean;
   statut?: 'En attente' | 'Partiellement payé' | 'Payé' | 'Rejeté';
 }
 

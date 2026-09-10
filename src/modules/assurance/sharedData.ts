@@ -19,7 +19,10 @@ export function sharedSocietes(state: AppState): Societe[] {
     // Sans code enregistré, le diminutif est déduit du nom (ex: « Bureau des Services Administratifs » → BSA) ;
     // il sera enregistré dans la société dès la première facture émise à la caisse.
     return { ...extra, sharedCompany: true, id: company.id, nom: company.name, code: extra?.code || societeDiminutive(company.name),
-      tauxCouvertureDefaut: company.tauxCouverture ?? extra?.tauxCouvertureDefaut ?? 100 };
+      tauxCouvertureDefaut: company.tauxCouverture ?? extra?.tauxCouvertureDefaut ?? 100,
+      // « Payeur global » (règlement en une fois) ou « Paiement partiel » (assurance, par assuré / par acte).
+      modePaiement: extra?.modePaiement ?? (company.type === 'assurance' ? 'partiel' : 'global'),
+      exclusions: extra?.exclusions };
   });
   // Old standalone entries remain visible until their first save/migration.
   return [...rows, ...(state.assuranceSocietes || []).filter(s => !s.sharedCompany && !rows.some(r => r.id === s.id || key(r.nom) === key(s.nom)))];
@@ -167,7 +170,9 @@ function saveSocietes(state: AppState, rows: Societe[]): AppState {
     const existing = state.companies.find(c => c.id === s.id);
     if (existing && existing.name !== s.nom) renames.set(key(existing.name), s.nom);
     return { ...existing, id: s.id, name: s.nom.trim(), paymentMode: 'Crédit',
-      settlementMode: existing?.settlementMode || 'per_invoice', type: existing?.type || 'assurance',
+      settlementMode: existing?.settlementMode || 'per_invoice',
+      // Rattachement au type commun : 'payeur' = payeur global, 'assurance' = paiement partiel.
+      type: s.modePaiement ? (s.modePaiement === 'global' ? 'payeur' : 'assurance') : (existing?.type || 'assurance'),
       tauxCouverture: s.tauxCouvertureDefaut, createdAt: existing?.createdAt || new Date().toISOString() };
   });
   return { ...state, companies, assuranceSocietes: rows.map(s => ({ ...s, sharedCompany: true })),
