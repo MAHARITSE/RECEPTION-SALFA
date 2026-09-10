@@ -65,6 +65,12 @@ export interface Societe {
   modePaiement?: SocieteModePaiement;
   /** Personnes / familles d'articles non pris en charge par cette société. */
   exclusions?: ExclusionSociete[];
+  /** Liste noire : plus aucune consultation / prise en charge aux frais de la société. */
+  blacklisted?: boolean;
+  blacklistReason?: string;
+  blacklistDate?: string;
+  /** Fin de la suspension temporaire (vide = durée indéterminée). */
+  blacklistUntil?: string;
 }
 
 export interface Personne {

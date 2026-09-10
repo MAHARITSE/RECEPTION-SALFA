@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Patient, VitalSigns, ClientType, PatientStatus } from '../types';
 import type { AppState } from '../store';
-import { normalizeDossierNumber, isDossierTaken, calculateAge, addAuditLog, addNotification, addJourneyEvent } from '../store';
+import { normalizeDossierNumber, isDossierTaken, calculateAge, addAuditLog, addNotification, addJourneyEvent, companyIsBlocked, selectableCompanies } from '../store';
 import { printQueueTicket } from '../utils/printTicket';
 import {
   Search, Plus, Edit, Trash2, UserX, Activity,
@@ -788,7 +788,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                       className={`w-full h-9 bg-surface border rounded px-2 focus:outline-none cursor-pointer ${ (patientTouched.company || patientSubmitted) && patientErrors.company ? 'border-rose-500 bg-rose-50/50 dark:bg-rose-500/4' : 'border-line-control focus:border-accent'}`}
                     >
                       <option value="">— Sélectionner une société —</option>
-                      {state.companies.map((c) => (<option key={c.id} value={c.name}>{c.name}</option>))}
+                      {selectableCompanies(state.companies, patientForm.company).map((c) => (<option key={c.id} value={c.name}>{companyIsBlocked(c) ? `🚫 ${c.name} — bloquée` : c.name}</option>))}
                     </select>
                     {(patientTouched.company || patientSubmitted) && patientErrors.company && (
                       <span className="text-[11px] text-rose-600 dark:text-rose-400 font-medium mt-0.5 block">{patientErrors.company}</span>
@@ -1017,7 +1017,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                       className={`w-full bg-surface border rounded px-2 py-1.5 focus:outline-none cursor-pointer ${ (vitalsTouched.vitalsCompany || vitalsSubmitted) && vitalsErrors.vitalsCompany ? 'border-rose-500 bg-rose-50/50 dark:bg-rose-500/4' : 'border-amber-400 focus:border-amber-500'}`}
                     >
                       <option value="">— Sélectionner —</option>
-                      {state.companies.map((c) => (<option key={c.id} value={c.name}>{c.name}</option>))}
+                      {selectableCompanies(state.companies, vitalsCompany).map((c) => (<option key={c.id} value={c.name}>{companyIsBlocked(c) ? `🚫 ${c.name} — bloquée` : c.name}</option>))}
                     </select>
                     {(vitalsTouched.vitalsCompany || vitalsSubmitted) && vitalsErrors.vitalsCompany && (
                       <span className="text-[10px] text-rose-600 dark:text-rose-400 font-bold mt-0.5 block">{vitalsErrors.vitalsCompany}</span>

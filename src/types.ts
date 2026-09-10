@@ -522,6 +522,15 @@ export interface Company {
   tauxCouverture?: number;
   notes?: string;
   createdAt?: string;
+  /**
+   * LISTE NOIRE : la société ne doit plus ouvrir de consultation ni de prise en
+   * charge à ses frais (impayé, suspension temporaire, contentieux…).
+   */
+  blacklisted?: boolean;
+  blacklistReason?: string;
+  blacklistDate?: string;
+  /** Fin de la suspension (vide = durée indéterminée). */
+  blacklistUntil?: string;
 }
 
 /** Un tiers-payant est soit un Payeur global, soit une Assurance. */

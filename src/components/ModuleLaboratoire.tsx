@@ -6,7 +6,7 @@ import type { Societe } from '../modules/assurance/types';
 import { allocateFactureNumber, applySocieteUpsert, collectExistingFactureNumbers } from '../store';
 import {
   addAuditLog, addNotification, addJourneyEvent, LAB_NORMS,
-  labCategoryLabel, LAB_CATEGORIES, normalizeDossierNumber, isDossierTaken, calculateAge, formatAr, getLabCatalog,
+  labCategoryLabel, LAB_CATEGORIES, normalizeDossierNumber, isDossierTaken, calculateAge, formatAr, getLabCatalog, companyIsBlocked, selectableCompanies,
 } from '../store';
 import { printLabResultTicket } from '../utils/printTicket';
 import { PhoneInput } from './PhoneInput';
@@ -795,7 +795,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
                         <label className="block font-bold text-ink mb-0.5">Société</label>
                         <select value={labEditCompany} onChange={e => setLabEditCompany(e.target.value)} className="w-full px-2 py-1.5 border rounded bg-surface cursor-pointer">
                           <option value="">— Sélectionner —</option>
-                          {state.companies.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
+                          {selectableCompanies(state.companies, labEditCompany).map(c => (<option key={c.id} value={c.name}>{companyIsBlocked(c) ? `🚫 ${c.name} — bloquée` : c.name}</option>))}
                         </select>
                       </div>
                     )}

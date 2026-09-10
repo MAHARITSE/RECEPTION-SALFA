@@ -1431,6 +1431,12 @@ export function companyTypeBadge(c?: Partial<Company> | null): string {
     : 'bg-indigo-100 dark:bg-indigo-500/15 text-indigo-800 dark:text-indigo-300';
 }
 
+/* ====== LISTE NOIRE DES SOCIÉTÉS ====== */
+
+// Implémentations dans `utils/companyStatus` (module sans dépendance aux données
+// locales, réutilisable et testable hors navigateur).
+export { todayIsoDate, companySuspensionExpired, companyIsBlocked, companyBlockLabel, companyBlockBadge, findCompanyByName, companyNameIsBlocked, selectableCompanies } from './utils/companyStatus';
+
 /** Garantit que chaque société a un type ('payeur' par défaut) et un taux de couverture. */
 export function normalizeCompanies(companies: Company[] = []): Company[] {
   return companies.map((c) => ({

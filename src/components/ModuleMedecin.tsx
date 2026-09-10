@@ -7,7 +7,7 @@ import { allocateFactureNumber, applySocieteUpsert, collectExistingFactureNumber
 import {
   addAuditLog, addNotification, formatAr, formatNum, roundTo2, getPrice, addJourneyEvent,
   labCategoryLabel, purgePatientFromQueue, isPrescriptionPaid, isMedicationEntryFamily,
-  getEchoCatalog, getLabCatalog, DEFAULT_ECHO_CATALOG, familyManagesStock
+  getEchoCatalog, getLabCatalog, DEFAULT_ECHO_CATALOG, familyManagesStock, companyIsBlocked, selectableCompanies
 } from '../store';
 import type { EchoExamCatalog } from '../store';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
@@ -1069,7 +1069,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                     <label className="block font-bold text-ink mb-0.5">Société</label>
                     <select value={medEditCompany} onChange={e => setMedEditCompany(e.target.value)} className="w-full px-2 py-1.5 border rounded bg-surface cursor-pointer">
                       <option value="">— Sélectionner —</option>
-                      {state.companies.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
+                      {selectableCompanies(state.companies, medEditCompany).map(c => (<option key={c.id} value={c.name}>{companyIsBlocked(c) ? `🚫 ${c.name} — bloquée` : c.name}</option>))}
                     </select>
                   </div>
                 )}

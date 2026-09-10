@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import type { UserRole, TicketSettings, Company, CompanySettlementMode, User } from '../types';
-import { formatAr, addAuditLog, ensureEtablissements, migrateLegacyToVentes, createInitialState, familyManagesStock, prepareLoadedState, companyTypeLabel, companyTypeBadge } from '../store';
+import { formatAr, addAuditLog, ensureEtablissements, migrateLegacyToVentes, createInitialState, familyManagesStock, prepareLoadedState, companyTypeLabel, companyTypeBadge, companyIsBlocked, companyBlockLabel, companyBlockBadge } from '../store';
 import { IS_WAMP_BUILD } from '../wamp';
 import { credentialAutofillOptOut, passwordInputOptOut } from '../utils/credentialAutofill';
 import type { AppState } from '../store';
@@ -21,7 +21,7 @@ import {
   CreditCard, AlertCircle, Search, RefreshCw, Copy, Activity,
   Key, Edit2, Hospital, Stethoscope, Pill, Package, FlaskConical,
   Menu, LayoutDashboard, AlertTriangle, ArrowRight, HardDrive, FileSpreadsheet, Lock, Unlock, CheckCircle2,
-  Landmark
+  Landmark, Ban, ShieldCheck, Undo2
 } from 'lucide-react';
 
 interface Props {
@@ -132,6 +132,13 @@ export default function ModuleAdministration({ state, setState }: Props) {
   const [newCompany, setNewCompany] = useState({ name: '', settlementMode: 'monthly_global' as CompanySettlementMode, type: 'payeur' as 'payeur' | 'assurance', tauxCouverture: '' });
   const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null);
   const [editCompany, setEditCompany] = useState<{ name: string; settlementMode: CompanySettlementMode; type: 'payeur' | 'assurance'; tauxCouverture: string }>({ name: '', settlementMode: 'monthly_global', type: 'payeur', tauxCouverture: '' });
+
+  // Liste noire des sociétés (impayé, suspension temporaire…)
+  const [showCompanyBlacklist, setShowCompanyBlacklist] = useState(false);
+  const [companyToBlock, setCompanyToBlock] = useState<Company | null>(null);
+  const [companyBlockReason, setCompanyBlockReason] = useState('');
+  const [companyBlockUntil, setCompanyBlockUntil] = useState('');
+  const [companyToRestore, setCompanyToRestore] = useState<Company | null>(null);
 
   // Aperçu Ticket
   const [showPreview, setShowPreview] = useState(false);
@@ -381,6 +388,53 @@ export default function ModuleAdministration({ state, setState }: Props) {
     });
   };
 
+  // ============ LISTE NOIRE DES SOCIÉTÉS ============
+  const startBlockCompany = (c: Company) => {
+    setCompanyToBlock(c);
+    setCompanyBlockReason('');
+    setCompanyBlockUntil('');
+  };
+
+  const saveCompanyBlacklist = () => {
+    if (!companyToBlock || !companyBlockReason.trim()) return;
+    const target = companyToBlock;
+    const motif = companyBlockReason.trim();
+    const until = companyBlockUntil.trim() || undefined;
+    setState((prev) => {
+      const next = {
+        ...prev,
+        companies: prev.companies.map((c) => c.id === target.id ? {
+          ...c,
+          blacklisted: true,
+          blacklistReason: motif,
+          blacklistDate: new Date().toISOString(),
+          blacklistUntil: until,
+        } : c),
+      };
+      addAuditLog(next, 'SOCIETE_LISTE_NOIRE', `${target.name} — Motif : ${motif}${until ? ` (jusqu'au ${until})` : ''}`);
+      return next;
+    });
+    showToast(`🚫 ${target.name} placée en liste noire — consultations bloquées`);
+    setCompanyToBlock(null);
+  };
+
+  const confirmRestoreCompany = () => {
+    if (!companyToRestore) return;
+    const target = companyToRestore;
+    setState((prev) => {
+      const next = {
+        ...prev,
+        companies: prev.companies.map((c) => c.id === target.id ? {
+          ...c, blacklisted: false, blacklistReason: undefined, blacklistDate: undefined, blacklistUntil: undefined,
+        } : c),
+      };
+      addAuditLog(next, 'SOCIETE_RETABLE', `${target.name} rétablie dans la liste normale`);
+      return next;
+    });
+    showToast(`✅ ${target.name} rétablie — prise en charge à nouveau possible`);
+    setCompanyToRestore(null);
+  };
+
   // ============ BACKUP & RESTORE ============
   const exportBackup = () => {
     const data = {
@@ -590,9 +644,12 @@ export default function ModuleAdministration({ state, setState }: Props) {
     return matchesSearch && matchesRole;
   });
 
+  const blockedCompanies = state.companies.filter((c) => companyIsBlocked(c));
+
   const filteredCompanies = state.companies.filter((c) => {
     const matchesSearch = c.name.toLowerCase().includes(searchCompany.toLowerCase());
-    const matchesType = companyTypeFilter === 'all' || (c.type || 'payeur') === companyTypeFilter;
+    const matchesType = companyTypeFilter === 'all'
+      || (companyTypeFilter === 'bloquees' ? companyIsBlocked(c) : (c.type || 'payeur') === companyTypeFilter);
     const matchesSettlement = companySettlementFilter === 'all' || c.settlementMode === companySettlementFilter;
     return matchesSearch && matchesType && matchesSettlement;
   });
@@ -1478,6 +1535,16 @@ export default function ModuleAdministration({ state, setState }: Props) {
                           <span className="px-2.5 py-1 rounded-full bg-indigo-100 dark:bg-indigo-500/15 text-indigo-800 dark:text-indigo-300 text-[11px] font-bold">{state.companies.filter(c => companyTypeLabel(c) === 'Payeur global').length} payeur(s)</span>
                           <span className="px-2.5 py-1 rounded-full bg-sky-100 dark:bg-sky-500/15 text-sky-800 dark:text-sky-300 text-[11px] font-bold">{state.companies.filter(c => companyTypeLabel(c) === 'Assurance').length} assurance(s)</span>
                           <button
+                            onClick={() => setShowCompanyBlacklist(true)}
+                            className="px-3.5 py-2.5 bg-slate-700 text-white rounded-xl hover:bg-slate-800 flex items-center gap-2 cursor-pointer text-xs font-bold shadow-md"
+                            title="Sociétés bloquées : consultations et prises en charge suspendues"
+                          >
+                            <Ban className="w-4 h-4" /> Liste noire
+                            {blockedCompanies.length > 0 && (
+                              <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] leading-none">{blockedCompanies.length}</span>
+                            )}
+                          </button>
+                          <button
                             onClick={() => setAddCompany(true)}
                             className="px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 flex items-center gap-2 cursor-pointer text-xs font-bold shadow-md"
                           >
@@ -1595,6 +1662,14 @@ export default function ModuleAdministration({ state, setState }: Props) {
                           >
                             🛡️ Assurance (suivi)
                           </button>
+                          <button
+                            onClick={() => setCompanyTypeFilter('bloquees')}
+                            className={`px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer ${
+                              companyTypeFilter === 'bloquees' ? 'bg-red-600 text-white' : 'bg-surface-hover text-ink-secondary'
+                            }`}
+                          >
+                            🚫 Bloquées ({blockedCompanies.length})
+                          </button>
                           <span className="text-xs font-semibold text-ink-muted ml-2">Sous-mode :</span>
                           <button
                             onClick={() => setCompanySettlementFilter('all')}
@@ -1694,8 +1769,23 @@ export default function ModuleAdministration({ state, setState }: Props) {
                                   </>
                                 ) : (
                                   <>
-                                    <td className="p-3.5 font-bold text-ink-strong flex items-center gap-2">
-                                      <Building2 className={`w-4 h-4 ${c.type === 'assurance' ? 'text-sky-600 dark:text-sky-400' : 'text-indigo-600 dark:text-indigo-400'}`} /> {c.name}
+                                    <td className="p-3.5 font-bold text-ink-strong">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="flex items-center gap-2">
+                                          <Building2 className={`w-4 h-4 ${c.type === 'assurance' ? 'text-sky-600 dark:text-sky-400' : 'text-indigo-600 dark:text-indigo-400'}`} /> {c.name}
+                                        </span>
+                                        {companyIsBlocked(c) && (
+                                          <span
+                                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${companyBlockBadge(c)}`}
+                                            title={c.blacklistReason || 'Société en liste noire'}
+                                          >
+                                            🚫 {companyBlockLabel(c)}
+                                          </span>
+                                        )}
+                                      </div>
+                                      {companyIsBlocked(c) && c.blacklistReason && (
+                                        <p className="text-[10px] text-red-700 dark:text-red-400 font-medium mt-0.5">Motif : {c.blacklistReason}</p>
+                                      )}
                                     </td>
                                     <td className="p-3.5 text-center">
                                       <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold inline-flex flex-col items-center ${companyTypeBadge(c)}`}>
@@ -1717,6 +1807,17 @@ export default function ModuleAdministration({ state, setState }: Props) {
                                       )}
                                     </td>
                                     <td className="p-3.5 text-right space-x-1">
+                                      <button
+                                        onClick={() => companyIsBlocked(c) ? setCompanyToRestore(c) : startBlockCompany(c)}
+                                        className={`p-1.5 cursor-pointer rounded-lg ${
+                                          companyIsBlocked(c)
+                                            ? 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-500/8'
+                                            : 'text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-500/8'
+                                        }`}
+                                        title={companyIsBlocked(c) ? 'Rétablir la société' : 'Mettre en liste noire'}
+                                      >
+                                        {companyIsBlocked(c) ? <ShieldCheck className="w-4 h-4" /> : <Ban className="w-4 h-4" />}
+                                      </button>
                                       <button onClick={() => startEditCompany(c)} className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 p-1.5 cursor-pointer rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-500/8" title="Modifier">
                                         <Edit2 className="w-4 h-4" />
                                       </button>
@@ -1738,6 +1839,188 @@ export default function ModuleAdministration({ state, setState }: Props) {
                           </tbody>
                         </table>
                       </div>
+
+                      {/* Modale : motif de mise en liste noire */}
+                      {companyToBlock && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in">
+                          <div className="bg-surface rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4 border border-line">
+                            <div className="flex items-center justify-between border-b border-line pb-3">
+                              <h3 className="font-bold text-ink-strong text-lg flex items-center gap-2">
+                                <Ban className="w-5 h-5 text-red-600 dark:text-red-400" /> Bloquer cette société
+                              </h3>
+                              <button onClick={() => setCompanyToBlock(null)} className="text-ink-faint hover:text-ink cursor-pointer">
+                                <X className="w-5 h-5" />
+                              </button>
+                            </div>
+
+                            <div className="bg-red-50/70 dark:bg-red-500/8 border border-red-200 dark:border-red-500/25 rounded-xl p-3 text-xs text-red-800 dark:text-red-300 space-y-1">
+                              <p className="font-bold uppercase">{companyToBlock.name}</p>
+                              <p>Aucune consultation ni prise en charge ne sera plus ouverte aux frais de cette société. Si un acte est nécessaire, le patient passe en <strong>client comptoir</strong>.</p>
+                            </div>
+
+                            <div className="space-y-2">
+                              <label className="text-xs font-bold text-ink block">Motif du blocage *</label>
+                              <div className="flex flex-wrap gap-1.5">
+                                {['Impayé', 'Suspension temporaire', 'Contentieux', 'Convention expirée', 'Dépôt de bilan'].map((motif) => (
+                                  <button
+                                    key={motif}
+                                    type="button"
+                                    onClick={() => setCompanyBlockReason(motif)}
+                                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer border ${
+                                      companyBlockReason === motif
+                                        ? 'bg-red-600 text-white border-red-600'
+                                        : 'bg-surface hover:bg-surface-hover text-ink-secondary border-line'
+                                    }`}
+                                  >
+                                    {motif}
+                                  </button>
+                                ))}
+                              </div>
+                              <textarea
+                                autoFocus
+                                value={companyBlockReason}
+                                onChange={(e) => setCompanyBlockReason(e.target.value)}
+                                placeholder="Ex. Impayé de 3 mois, suspension temporaire de la convention..."
+                                className="min-h-24 w-full rounded-xl border border-line-strong p-3 text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 dark:focus:ring-red-500/25 bg-surface"
+                              />
+                            </div>
+
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                              <label className="text-xs font-bold text-ink whitespace-nowrap">Fin de suspension (optionnel)</label>
+                              <input
+                                type="date"
+                                value={companyBlockUntil}
+                                onChange={(e) => setCompanyBlockUntil(e.target.value)}
+                                className="px-3 py-2 rounded-xl border border-line-strong text-sm outline-none bg-surface"
+                              />
+                              {companyBlockUntil && (
+                                <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+                                  Suspendue jusqu'au {companyBlockUntil} — rétablie automatiquement après cette date
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex justify-end gap-2 pt-3 border-t border-line">
+                              <button onClick={() => setCompanyToBlock(null)} className="px-4 py-2 rounded-xl text-ink-secondary font-semibold hover:bg-surface-hover cursor-pointer">
+                                Annuler
+                              </button>
+                              <button
+                                onClick={saveCompanyBlacklist}
+                                disabled={!companyBlockReason.trim()}
+                                className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+                              >
+                                <Ban className="w-4 h-4" /> Bloquer la société
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Modale : liste noire des sociétés */}
+                      {showCompanyBlacklist && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in">
+                          <div className="bg-surface rounded-2xl shadow-2xl max-w-3xl w-full p-6 space-y-4 border border-line">
+                            <div className="flex items-center justify-between border-b border-line pb-3">
+                              <h3 className="font-bold text-ink-strong text-lg flex items-center gap-2">
+                                <Ban className="w-5 h-5 text-red-600 dark:text-red-400" /> Sociétés bloquées ({blockedCompanies.length})
+                              </h3>
+                              <button onClick={() => setShowCompanyBlacklist(false)} className="text-ink-faint hover:text-ink cursor-pointer">
+                                <X className="w-5 h-5" />
+                              </button>
+                            </div>
+
+                            <p className="text-xs text-ink-muted">
+                              Une société bloquée ne peut plus ouvrir de consultation ni de prise en charge à ses frais
+                              (impayé, suspension temporaire, contentieux…). Les actes nécessaires sont facturés en client comptoir.
+                            </p>
+
+                            <div className="max-h-[55vh] overflow-auto rounded-xl border border-line">
+                              {blockedCompanies.length > 0 ? (
+                                <table className="w-full min-w-[640px] text-left text-xs">
+                                  <thead className="sticky top-0 bg-red-50 dark:bg-red-500/8 text-red-800 dark:text-red-300">
+                                    <tr>
+                                      <th className="p-3">Société</th>
+                                      <th className="p-3">Type</th>
+                                      <th className="p-3">Motif</th>
+                                      <th className="p-3">Depuis</th>
+                                      <th className="p-3">Fin de suspension</th>
+                                      <th className="p-3 text-right">Action</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {blockedCompanies.map((c) => (
+                                      <tr key={c.id} className="border-t border-line-soft text-ink hover:bg-surface-muted/70">
+                                        <td className="p-3 font-bold uppercase">{c.name}</td>
+                                        <td className="p-3">
+                                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${companyTypeBadge(c)}`}>{companyTypeLabel(c)}</span>
+                                        </td>
+                                        <td className="p-3 max-w-xs whitespace-normal">{c.blacklistReason || 'Motif non renseigné'}</td>
+                                        <td className="p-3 whitespace-nowrap">{c.blacklistDate ? new Date(c.blacklistDate).toLocaleDateString('fr-FR') : '—'}</td>
+                                        <td className="p-3 whitespace-nowrap">{c.blacklistUntil ? new Date(c.blacklistUntil).toLocaleDateString('fr-FR') : 'Indéterminée'}</td>
+                                        <td className="p-3 text-right">
+                                          <button
+                                            onClick={() => setCompanyToRestore(c)}
+                                            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-emerald-600 px-3 py-2 text-[11px] font-bold text-white shadow-sm hover:bg-emerald-700 cursor-pointer"
+                                            title="Rétablir dans la liste normale"
+                                          >
+                                            <Undo2 className="h-3.5 w-3.5" /> Rétablir
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              ) : (
+                                <div className="p-10 text-center text-ink-muted">
+                                  <Building2 className="mx-auto mb-2 h-10 w-10 text-slate-300" />
+                                  <p className="font-medium">Aucune société en liste noire.</p>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex justify-end pt-3 border-t border-line">
+                              <button onClick={() => setShowCompanyBlacklist(false)} className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold cursor-pointer">
+                                Fermer
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Modale : rétablissement d'une société */}
+                      {companyToRestore && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in">
+                          <div className="bg-surface rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-line">
+                            <div className="flex items-center justify-between border-b border-line pb-3">
+                              <h3 className="font-bold text-ink-strong text-lg flex items-center gap-2">
+                                <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" /> Rétablir la société
+                              </h3>
+                              <button onClick={() => setCompanyToRestore(null)} className="text-ink-faint hover:text-ink cursor-pointer">
+                                <X className="w-5 h-5" />
+                              </button>
+                            </div>
+
+                            <p className="text-sm text-ink">
+                              Rétablir <strong className="uppercase">{companyToRestore.name}</strong> dans la liste normale ?
+                              Les consultations et prises en charge seront à nouveau possibles.
+                            </p>
+                            {companyToRestore.blacklistReason && (
+                              <div className="p-2.5 bg-amber-50 dark:bg-amber-500/8 border border-amber-200 dark:border-amber-500/25 rounded-xl text-xs text-amber-800 dark:text-amber-300">
+                                <strong>Motif du blocage actuel :</strong> {companyToRestore.blacklistReason}
+                              </div>
+                            )}
+
+                            <div className="flex justify-end gap-2 pt-3 border-t border-line">
+                              <button onClick={() => setCompanyToRestore(null)} className="px-4 py-2 rounded-xl text-ink-secondary font-semibold hover:bg-surface-hover cursor-pointer">
+                                Annuler
+                              </button>
+                              <button onClick={confirmRestoreCompany} className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer flex items-center gap-2">
+                                <ShieldCheck className="w-4 h-4" /> Rétablir
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 

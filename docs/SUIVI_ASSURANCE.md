@@ -45,6 +45,27 @@ Les règles sont appliquées **à la saisie** :
 
 Les exclusions sont conservées dans `assuranceSocietes[].exclusions`, donc dans la même sauvegarde que le reste de la base.
 
+## Liste noire des sociétés
+
+Comme pour les patients de Réception, une société peut être **mise en liste noire** : aucune consultation ni prise en charge ne doit alors être ouverte à ses frais (impayé, suspension temporaire de la convention, contentieux…). Si un acte est malgré tout nécessaire, le patient est facturé en **client comptoir**.
+
+| Champ | Rôle |
+|---|---|
+| `blacklisted` | Société bloquée |
+| `blacklistReason` | Motif saisi (impayé, suspension temporaire, contentieux…) |
+| `blacklistDate` | Date du blocage |
+| `blacklistUntil` | Fin de la suspension, facultative : passée cette date, la société redevient active d'elle-même |
+
+**Où la gérer**
+
+- **Administration → Sociétés & Conventions** : bouton **Liste noire** (liste complète, motifs, rétablissement), bouton 🚫 / 🛡️ sur chaque ligne, filtre **Bloquées**.
+- **Suivi assurance → Sociétés** : bloc *Liste noire / suspension* dans la fiche société, badge 🚫 sur la carte et filtre dédié.
+
+**Effets**
+
+- Une société bloquée est retirée des listes de sélection (Réception, Caisse, Médecin, Laboratoire). Une fiche déjà enregistrée sur cette société n'est jamais modifiée en silence : la société reste affichée, marquée *bloquée*.
+- Chaque mise en liste noire et chaque rétablissement sont tracés dans le journal d'audit (`SOCIETE_LISTE_NOIRE`, `SOCIETE_RETABLE`).
+
 ## Compléments assurance, dans la même base
 
 Les collections `assuranceSocietes`, `assurancePersonnes` et `assuranceFamilles` conservent les attributs propres au suivi (coordonnées du garant, taux par assuré, alias des actes, etc.). Les identités de Réception sont prioritaires : il ne s'agit plus de référentiels indépendants.

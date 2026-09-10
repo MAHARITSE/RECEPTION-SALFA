@@ -22,7 +22,12 @@ export function sharedSocietes(state: AppState): Societe[] {
       tauxCouvertureDefaut: company.tauxCouverture ?? extra?.tauxCouvertureDefaut ?? 100,
       // « Payeur global » (règlement en une fois) ou « Paiement partiel » (assurance, par assuré / par acte).
       modePaiement: extra?.modePaiement ?? (company.type === 'assurance' ? 'partiel' : 'global'),
-      exclusions: extra?.exclusions };
+      exclusions: extra?.exclusions,
+      // Liste noire / suspension : la société ne doit plus ouvrir de prise en charge.
+      blacklisted: company.blacklisted ?? extra?.blacklisted,
+      blacklistReason: company.blacklistReason ?? extra?.blacklistReason,
+      blacklistDate: company.blacklistDate ?? extra?.blacklistDate,
+      blacklistUntil: company.blacklistUntil ?? extra?.blacklistUntil };
   });
   // Old standalone entries remain visible until their first save/migration.
   return [...rows, ...(state.assuranceSocietes || []).filter(s => !s.sharedCompany && !rows.some(r => r.id === s.id || key(r.nom) === key(s.nom)))];
@@ -173,7 +178,9 @@ function saveSocietes(state: AppState, rows: Societe[]): AppState {
       settlementMode: existing?.settlementMode || 'per_invoice',
       // Rattachement au type commun : 'payeur' = payeur global, 'assurance' = paiement partiel.
       type: s.modePaiement ? (s.modePaiement === 'global' ? 'payeur' : 'assurance') : (existing?.type || 'assurance'),
-      tauxCouverture: s.tauxCouvertureDefaut, createdAt: existing?.createdAt || new Date().toISOString() };
+      tauxCouverture: s.tauxCouvertureDefaut, createdAt: existing?.createdAt || new Date().toISOString(),
+      blacklisted: s.blacklisted, blacklistReason: s.blacklistReason, blacklistDate: s.blacklistDate,
+      blacklistUntil: s.blacklistUntil };
   });
   return { ...state, companies, assuranceSocietes: rows.map(s => ({ ...s, sharedCompany: true })),
     patients: state.patients.map(p => renames.has(key(p.company)) ? { ...p, company: renames.get(key(p.company)) } : p),

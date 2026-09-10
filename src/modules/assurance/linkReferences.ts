@@ -15,7 +15,9 @@ export function linkSharedReferences(state: AppState): AppState {
       if (s.id !== common.id || !s.sharedCompany) changed = true;
     } else if (!s.sharedCompany) {
       companies.push({ id: s.id, name: s.nom, paymentMode: 'Crédit', settlementMode: 'per_invoice',
-        type: s.modePaiement === 'global' ? 'payeur' : 'assurance', tauxCouverture: s.tauxCouvertureDefaut });
+        type: s.modePaiement === 'global' ? 'payeur' : 'assurance', tauxCouverture: s.tauxCouvertureDefaut,
+        blacklisted: s.blacklisted, blacklistReason: s.blacklistReason, blacklistDate: s.blacklistDate,
+        blacklistUntil: s.blacklistUntil });
       societyIds.set(s.id, s.id);
       changed = true;
     }
