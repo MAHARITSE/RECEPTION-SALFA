@@ -66,7 +66,7 @@ export function collectBillingDocuments(state: AppState): BillingDocument[] {
     if (sale?.status === 'annule') continue;
     const patient = state.patients.find(p => p.id === invoice.patientId);
     docs.push({ id: `caisse:${invoice.id}`, sourceId: invoice.id, category,
-      number: sale?.numeroFacture || invoice.id, date: localBillingDate(invoice.createdAt),
+      number: invoice.numeroFacture || sale?.numeroFacture || invoice.id, date: localBillingDate(invoice.createdAt),
       client: invoice.clientName || (patient ? `${patient.lastName} ${patient.firstName}`.trim() : categoryLabels[category]), dossier: patient?.dossier,
       matricule: patient?.matricule,
       consultationDate: localBillingDate(state.consultations.find(c => c.id === invoice.consultationId)?.date || invoice.createdAt),

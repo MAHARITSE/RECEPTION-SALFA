@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { LabRequest, Patient, ClientType, LabExamCatalog, LabCategory, Article } from '../types';
 import type { AppState } from '../store';
+import type { Societe } from '../modules/assurance/types';
+import { allocateFactureNumber, applySocieteUpsert, collectExistingFactureNumbers } from '../store';
 import {
   addAuditLog, addNotification, addJourneyEvent, LAB_NORMS,
   labCategoryLabel, LAB_CATEGORIES, normalizeDossierNumber, isDossierTaken, calculateAge, formatAr, getLabCatalog,
@@ -372,7 +374,17 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
     const total = items.reduce((s, i) => s + i.amount, 0);
     const reqIds: string[] = [];
 
+    // Numérotation officielle de la facture d'analyses en attente :
+    // FA-MM/CODE/YY-NNN pour les sociétés, AAFAMMJJ + ordre du jour sinon.
+    const factureNumbers = collectExistingFactureNumbers(state);
+    let factureUpsert: Societe | undefined;
+    const allocated = allocateFactureNumber(state, {
+      clientType: ct, company: patient.company, invoiceDate: new Date().toISOString(), numbers: factureNumbers,
+    });
+    factureUpsert = allocated.societeUpsert;
+
     setState((prev) => {
+      const base = factureUpsert ? applySocieteUpsert(prev, factureUpsert) : prev;
       const newRequests: LabRequest[] = chosen.map((e) => {
         const id = uuidv4();
         reqIds.push(id);
@@ -385,9 +397,10 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
       });
       const inv = {
         id: invoiceId, patientId: patient.id, clientType: ct, items, totalAmount: total,
-        patientCharge: total, status: 'pending' as const, createdAt: new Date().toISOString(), isExternal: ct === 'externe',
+        patientCharge: total, numeroFacture: allocated.numeroFacture,
+        status: 'pending' as const, createdAt: new Date().toISOString(), isExternal: ct === 'externe',
       };
-      const next = { ...prev, labRequests: [...prev.labRequests, ...newRequests], invoices: [...prev.invoices, inv] };
+      const next = { ...base, labRequests: [...base.labRequests, ...newRequests], invoices: [...base.invoices, inv] };
       addAuditLog(next, 'DEMANDE_ANALYSE', `${chosen.map((c) => c.name).join(', ')} — ${formatAr(total)} (${patient.dossier})`, patient.id);
       addJourneyEvent(next, { patientId: patient.id, department: 'laboratoire', action: 'Demande d\'analyse', status: 'analyses_pending', details: `${chosen.map((c) => c.name).join(', ')} — à facturer`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name });
       return next;

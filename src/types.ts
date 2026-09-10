@@ -218,6 +218,13 @@ export interface Invoice {
   id: string; patientId?: string; consultationId?: string; clientName?: string;
   clientType: ClientType; items: InvoiceItem[]; totalAmount: number;
   patientCharge: number; status: 'pending' | 'paid';
+  /**
+   * Numéro de facture officiel attribué à l'émission :
+   *  - client société : FA-MM/CODE/YY-NNN (ex: FA-07/BSA/26-014) ;
+   *  - autres clients : AAFAMMJJ + ordre du jour (ex: 26FA0427102).
+   * Absent sur les anciennes factures (migration : numéro FAC-AAAA-NNNN de la vente liée).
+   */
+  numeroFacture?: string;
   paidAt?: string; paidBy?: string; createdAt: string; isExternal: boolean;
   /**
    * Paiement validé par la caisse en CRÉDIT SOCIÉTÉ : aucun encaissement en
@@ -642,6 +649,8 @@ export interface HbRecord {
   type: 'hospit' | 'bloc';
   lines: HbLine[];
   payments: { amount: number; paidBy: string; date: string; paidByUserId?: string; receivedBy?: 'caisse' | 'pharmacie' }[];
+  /** Numéro de facture officiel attribué à l'ouverture (26FA0427102 / FA-07/BSA/26-014). */
+  numeroFacture?: string;
   /** Date d'ouverture du dossier. */
   openedAt?: string;
   /** Qui a ouvert le dossier (caisse / pharmacie de garde). */

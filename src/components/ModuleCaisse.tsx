@@ -7,10 +7,11 @@ import { useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription, Article, Patient } from '../types';
 import type { AppState } from '../store';
+import type { Societe } from '../modules/assurance/types';
 import {
   addAuditLog, addNotification, formatAr, formatNum, roundTo2, getPrice, calculateAge,
   normalizeDossierNumber, isDossierTaken, addJourneyEvent, generatePharmaClosingNumber, purgePatientFromQueue,
-  familyManagesStock, isLabFamily, isEchoFamily,
+  familyManagesStock, isLabFamily, isEchoFamily, allocateFactureNumber, applySocieteUpsert, collectExistingFactureNumbers,
 } from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText, RefreshCw } from 'lucide-react';
 import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket, printPharmaDeliveryClosingTicket } from '../utils/printTicket';
@@ -181,6 +182,19 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       const next = typeof updater === 'function' ? (updater as (p: HbRecord[]) => HbRecord[])(base) : updater;
       return { ...prev, hbRecords: next };
     });
+  };
+
+  /** Numéro de facture officiel d'un nouveau dossier hospit/bloc :
+   *  FA-MM/CODE/YY-NNN pour les sociétés, AAFAMMJJ + ordre du jour sinon. */
+  const hbNumeroFacture = (clientType: ClientType, company?: string): string => {
+    const allocated = allocateFactureNumber(state, {
+      clientType,
+      company,
+      invoiceDate: new Date().toISOString(),
+      prescriptionDate: new Date().toISOString(),
+    });
+    if (allocated.societeUpsert) setState(prev => applySocieteUpsert(prev, allocated.societeUpsert));
+    return allocated.numeroFacture;
   };
   const [hbSelRecordId, setHbSelRecordId] = useState<string | null>(null);
   // 💡 Saisie du montant INDÉPENDANTE par dossier (chaque patient a sa propre saisie)
@@ -395,6 +409,26 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     })));
     const serviceInvoices = pendingServiceInvoices.filter(i => i.patientId === selPatient.id);
     const serviceItems = serviceInvoices.flatMap(i => i.items);
+    // Numérotation officielle des factures réglées :
+    //  - client société → FA-MM/CODE/YY-NNN (mois des prescriptions, code société) ;
+    //  - autres clients → AAFAMMJJ + ordre du jour (ex: 26FA0427102).
+    // Les factures de services (labo/écho) en attente reçoivent leur numéro dans
+    // l'ordre chronologique, puis la facture médicaments.
+    const numbers = collectExistingFactureNumbers(state);
+    const societeUpserts: Societe[] = [];
+    const allocatedNumbers = new Map<string, string>();
+    const allocateFor = (clientType: ClientType, company: string | undefined, invoiceDate: string, prescriptionDate?: string): string => {
+      const allocated = allocateFactureNumber(state, { clientType, company, invoiceDate, prescriptionDate, numbers });
+      if (allocated.societeUpsert) societeUpserts.push(allocated.societeUpsert);
+      numbers.push(allocated.numeroFacture);
+      return allocated.numeroFacture;
+    };
+    for (const svc of [...serviceInvoices].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''))) {
+      if (svc.numeroFacture) { numbers.push(svc.numeroFacture); continue; }
+      const svcPatient = svc.patientId ? state.patients.find(p => p.id === svc.patientId) : undefined;
+      const svcConsultDate = svc.consultationId ? state.consultations.find(c => c.id === svc.consultationId)?.date : undefined;
+      allocatedNumbers.set(svc.id, allocateFor(svc.clientType, svcPatient?.company, svc.createdAt || new Date().toISOString(), svcConsultDate || svc.createdAt));
+    }
     // Déduplication des items service par description + montant (sécurité anti-doublon)
     const seen = new Set<string>();
     const dedupedServiceItems = serviceItems.filter(item => {
@@ -431,18 +465,24 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     // attente : celles-ci sont soldées directement ci-dessous. Cela évite le double
     // comptage dans la facturation sociétés (crédit société).
     const medsTotal = medicationItems.reduce((sum, item) => sum + item.amount, 0);
+    const medsNumero = medicationItems.length > 0
+      ? allocateFor(selPatient.clientType, selPatient.company, paidAt, unpaidConsults[0]?.date || paidAt)
+      : undefined;
     const inv: Invoice | null = medicationItems.length > 0 ? {
       id: uuidv4(), patientId: selPatient.id, consultationId: unpaidConsults[0]?.id, clientType: selPatient.clientType,
-      items: medicationItems, totalAmount: medsTotal, patientCharge: medsTotal,
+      items: medicationItems, totalAmount: medsTotal, patientCharge: medsTotal, numeroFacture: medsNumero,
       status: 'paid', paidAt, paidBy: state.currentUser?.id || '', createdAt: paidAt, isExternal: false, creditSociete: isSocieteCredit,
     } : null;
     // Facture combinée (médicaments + services) utilisée UNIQUEMENT pour le ticket.
+    const printNumero = inv
+      ? medsNumero
+      : (serviceInvoices[0] && (serviceInvoices[0].numeroFacture || allocatedNumbers.get(serviceInvoices[0].id)));
     const printInvoice: Invoice = inv
       ? { ...inv, items: unifiedItems, totalAmount: total, patientCharge: total }
       : {
           id: serviceInvoices[0]?.id || `caisse-${uuidv4()}`, patientId: selPatient.id,
           consultationId: serviceInvoices[0]?.consultationId || unpaidConsults[0]?.id,
-          clientType: selPatient.clientType, items: unifiedItems, totalAmount: total, patientCharge: total,
+          clientType: selPatient.clientType, items: unifiedItems, totalAmount: total, patientCharge: total, numeroFacture: printNumero,
           status: 'paid', paidAt, paidBy: state.currentUser?.id || '', createdAt: paidAt, isExternal: false, creditSociete: isSocieteCredit,
         };
 
@@ -458,9 +498,12 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
           .filter(i => i.patientId === selPatient.id && i.status === 'pending' && i.items.every(it => it.category === 'pharmacy'))
           .map(i => i.id),
       ]);
-      const next = { ...prev,
+      // Codes société (diminutifs) générés pour la numérotation → enregistrés dans les sociétés.
+      let withCodes: AppState = prev;
+      for (const upsert of societeUpserts) withCodes = applySocieteUpsert(withCodes, upsert);
+      const next: AppState = { ...withCodes,
         invoices: [
-          ...prev.invoices.map(i => toMarkPaid.has(i.id)
+          ...withCodes.invoices.map(i => toMarkPaid.has(i.id)
             ? { ...i, status: 'paid' as const, paidAt, paidBy: prev.currentUser?.id || '', creditSociete: i.creditSociete || isSocieteCredit }
             : i),
           ...(inv ? [inv] : []),
@@ -743,11 +786,15 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       newConsultations.push(extConsult);
     }
 
+    // Numérotation officielle : les ventes externes sont des factures « comptoir »
+    // → AAFAMMJJ + numéro d'ordre du jour (ex: 26FA0427102).
+    const extNumero = allocateFactureNumber(state, { clientType: 'externe', invoiceDate: now }).numeroFacture;
     const inv: Invoice = {
       id: invId,
       consultationId: extConsultId,
       clientName: 'Client Externe',
       clientType: 'externe',
+      numeroFacture: extNumero,
       items: extLines.map(l => {
         const art = state.articles.find(a => a.name === l.articleName);
         const category: InvoiceItem['category'] = isLabExamArticle(art) ? 'lab' : isEchoActArticle(art) ? 'echo' : 'pharmacy';
@@ -808,6 +855,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     updateHbRecords([...hbRecords, {
       id: uuidv4(), patientId: p.id, patientName: `${p.lastName} ${p.firstName}`,
       clientType: p.clientType, company: p.company, subCompany: p.subCompany,
+      numeroFacture: hbNumeroFacture(p.clientType, p.company),
       type: tab as 'hospit' | 'bloc', lines: [], payments: [],
       openedAt: now, openedBy: state.currentUser?.name, openedByUserId: state.currentUser?.id,
     }]);
@@ -849,6 +897,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     updateHbRecords([...hbRecords, {
       id: uuidv4(), patientId: np.id, patientName: `${np.lastName} ${np.firstName}`,
       clientType: np.clientType, company: np.company, subCompany: np.subCompany,
+      numeroFacture: hbNumeroFacture(np.clientType, np.company),
       type: tab as 'hospit' | 'bloc', lines: [], payments: [],
       openedAt: now, openedBy: state.currentUser?.name, openedByUserId: state.currentUser?.id,
     }]);
@@ -1063,16 +1112,29 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     const openerName = state.currentUser?.name;
     const openerId = state.currentUser?.id;
     const additions: HbRecord[] = [];
+    // Plusieurs dossiers peuvent être créés d'affilée : les numéros sont attribués
+    // dans une même série pour ne pas se chevaucher.
+    const numbers = collectExistingFactureNumbers(state);
+    const upserts: Societe[] = [];
+    const nextNumero = (clientType: ClientType, company?: string): string => {
+      const allocated = allocateFactureNumber(state, { clientType, company, invoiceDate: now, prescriptionDate: now, numbers });
+      if (allocated.societeUpsert) upserts.push(allocated.societeUpsert);
+      numbers.push(allocated.numeroFacture);
+      return allocated.numeroFacture;
+    };
     state.consultations.forEach(c => {
       const pat = state.patients.find(p => p.id === c.patientId);
       if (!pat) return;
       const name = `${pat.lastName} ${pat.firstName}`;
       if (c.hospitalizeRequested && !hbRecords.some(h => h.patientId === pat.id && h.type === 'hospit'))
-        additions.push({ id: uuidv4(), patientId: pat.id, patientName: name, clientType: pat.clientType, company: pat.company, subCompany: pat.subCompany, type: 'hospit', lines: [], payments: [], openedAt: now, openedBy: openerName, openedByUserId: openerId });
+        additions.push({ id: uuidv4(), patientId: pat.id, patientName: name, clientType: pat.clientType, company: pat.company, subCompany: pat.subCompany, numeroFacture: nextNumero(pat.clientType, pat.company), type: 'hospit', lines: [], payments: [], openedAt: now, openedBy: openerName, openedByUserId: openerId });
       if (c.surgeryRequested && !hbRecords.some(h => h.patientId === pat.id && h.type === 'bloc'))
-        additions.push({ id: uuidv4(), patientId: pat.id, patientName: name, clientType: pat.clientType, company: pat.company, subCompany: pat.subCompany, type: 'bloc', lines: [], payments: [], openedAt: now, openedBy: openerName, openedByUserId: openerId });
+        additions.push({ id: uuidv4(), patientId: pat.id, patientName: name, clientType: pat.clientType, company: pat.company, subCompany: pat.subCompany, numeroFacture: nextNumero(pat.clientType, pat.company), type: 'bloc', lines: [], payments: [], openedAt: now, openedBy: openerName, openedByUserId: openerId });
     });
-    if (additions.length > 0) updateHbRecords(prev => [...prev, ...additions]);
+    if (additions.length > 0) {
+      for (const upsert of upserts) setState(prev => applySocieteUpsert(prev, upsert));
+      updateHbRecords(prev => [...prev, ...additions]);
+    }
   };
   const switchTab = (t: Tab) => { setTab(t); if (t === 'hospit' || t === 'bloc') autoAddRequests(); };
 
@@ -1513,7 +1575,9 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                     return (
                       <tr key={group.key} className="border-b">
                         <td className="p-2 font-mono">{group.timeStr}</td>
-                        <td className="p-2">{pat ? `${pat.lastName} ${pat.firstName}` : inv.clientName || 'Ext.'}</td>
+                        <td className="p-2">{pat ? `${pat.lastName} ${pat.firstName}` : inv.clientName || 'Ext.'}
+                          {inv.numeroFacture && <span className="block text-[10px] font-mono text-ink-faint" title="Numéro de facture">{inv.numeroFacture}</span>}
+                        </td>
                         <td className="p-2 text-center"><span className={`px-1 py-0.5 rounded text-[10px] font-bold ${inv.isExternal ? 'bg-purple-100 dark:bg-purple-500/15 text-purple-700 dark:text-purple-400' : 'bg-green-100 dark:bg-green-500/15 text-green-700 dark:text-green-400'}`}>{inv.isExternal ? 'Externe' : 'Consult.'}</span></td>
                         <td className="p-2 text-right font-mono font-bold">{formatAr(inv.patientCharge)}</td>
                         <td className="p-2 text-center space-y-1.5">
