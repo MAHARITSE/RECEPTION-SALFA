@@ -153,7 +153,8 @@ export function stockAlertStatus(a: Article, location: 'central' | 'pharmacie'):
 /* ====== NUMÉROTATION DES FACTURES ======
  * Format officiel (voir src/utils/factureNumber.ts) :
  *  - client société : FA-MM/CODE/YY-NNN (ex: FA-07/BSA/26-014) — mois des prescriptions,
- *    code société (diminutif créé et enregistré si absent), ordre d'établissement ;
+ *    code société (diminutif créé et enregistré si absent), ordre d'établissement du
+ *    mois : séquence globale partagée par toutes les sociétés (-013 JIRAMA, -014 BSA…) ;
  *  - autres clients : AAFAMMJJ + ordre du jour (ex: 26FA0427102). */
 /** Construit un numéro de facture de la forme "FAC-YYYY-NNNN" (format historique). */
 export function generateFactureNumber(prefix: string = 'FAC', counter: number = 1): string {

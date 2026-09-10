@@ -13,7 +13,8 @@
  *   07   → mois des prescriptions (prise en charge)
  *   BSA  → code société (diminutif) — généré puis enregistré dans la société s'il n'existe pas
  *   26   → année
- *   014  → ordre d'établissement de la facture (par société / mois / année des prescriptions)
+ *   014  → ordre d'établissement de la facture dans le mois : séquence GLOBALE,
+ *          partagée par toutes les sociétés (-013 JIRAMA, -014 BSA, -015 COPEFRITO…)
  *
  * Les compteurs sont déduits des numéros déjà émis : renuméroter ou supprimer
  * une facture ne réutilise jamais un numéro déjà attribué.
@@ -67,14 +68,16 @@ export function nextDailySequence(numbers: string[], date: Date): number {
   }) + 1;
 }
 
-/** Prochain ordre d'établissement pour une société et un mois de prescriptions donnés. */
+/** Prochain ordre d'établissement pour le mois des prescriptions donné.
+ *  Séquence LOGIQUE GLOBALE du mois, toutes sociétés confondues :
+ *  si JIRAMA a -013 et BSA -014 ce mois-là, la prochaine facture (COPEFRITO
+ *  par exemple) recevra -015. */
 export function nextSocieteSequence(numbers: string[], societeCode: string, prescriptionDate: Date): number {
   const p = factureDateParts(prescriptionDate);
-  const code = normalizeSocieteCode(societeCode);
+  void societeCode;
   return maxSequence(numbers, (n) => {
     const m = SOCIETE_FACTURE_RE.exec(n);
-    if (!m) return null;
-    return m[1] === p.mm && m[3] === p.yy && normalizeSocieteCode(m[2]) === code ? Number(m[4]) : null;
+    return m && m[1] === p.mm && m[3] === p.yy ? Number(m[4]) : null;
   }) + 1;
 }
 

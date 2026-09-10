@@ -19,7 +19,7 @@ Application complète de gestion clinique et hospitalière (HIS — Hospital Inf
 
 3. **💰 Caisse & Facturation**
    - Émission des factures comptoir, sociétés et ventes externes.
-   - **Numérotation officielle des factures** : `26FA0427102` = année (26) + diminutif facture (FA) + mois (04) + jour (27) + numéro d'ordre du jour (102). Pour les sociétés : `FA-07/BSA/26-014` = diminutif facture (FA) + mois des prescriptions (07) + code société ou diminutif enregistré automatiquement dans la société (BSA) + année (26) + ordre d'établissement de la facture (014).
+   - **Numérotation officielle des factures** : `26FA0427102` = année (26) + diminutif facture (FA) + mois (04) + jour (27) + numéro d'ordre du jour (102). Pour les sociétés : `FA-07/BSA/26-014` = diminutif facture (FA) + mois des prescriptions (07) + code société ou diminutif enregistré automatiquement dans la société (BSA) + année (26) + ordre d'établissement dans le mois (014) — suite logique commune à toutes les sociétés (ex. le même mois : -013 JIRAMA, -014 BSA, -015 COPEFRITO).
    - Gestion des remises, acomptes et règlements multi-modes (Espèces, Chèque, Virement, Mobile Money).
    - Reçus et factures au format d'impression standard et tickets 80x80mm.
    - Clôture de caisse de garde avec récapitulatif comptable.
