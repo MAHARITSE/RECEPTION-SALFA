@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import type { UserRole, TicketSettings, Company, CompanySettlementMode, User } from '../types';
 import { formatAr, addAuditLog, ensureEtablissements, migrateLegacyToVentes, createInitialState, familyManagesStock, prepareLoadedState, companyTypeLabel, companyTypeBadge } from '../store';
 import { IS_WAMP_BUILD } from '../wamp';
+import { credentialAutofillOptOut, passwordInputOptOut } from '../utils/credentialAutofill';
 import type { AppState } from '../store';
 import ModuleReception from './ModuleReception';
 import ModuleMedecin from './ModuleMedecin';
@@ -9,7 +10,7 @@ import ModuleCaisse from './ModuleCaisse';
 import ModulePharmacie from './ModulePharmacie';
 import ModuleMagasinier from './ModuleMagasinier';
 import ModuleLaboratoire from './ModuleLaboratoire';
-import ModuleFacturationSocietes from './ModuleFacturationSocietes';
+import ModuleSuiviAssurance from '../modules/assurance/ModuleSuiviAssurance';
 import ModuleDossierMedical from './ModuleDossierMedical';
 import TableEtablissements from './TableEtablissements';
 import EnTeteFactureEditor from './EnTeteFactureEditor';
@@ -37,7 +38,7 @@ const roleLabels: Record<string, string> = {
   pharmacy: 'Pharmacie',
   magasinier: 'Magasinier',
   laboratory: 'Laboratoire',
-  billing: 'Responsable facturation',
+  billing: 'Responsable assurance',
   admin: 'Admin'
 };
 
@@ -63,7 +64,7 @@ const APP_MODULES: { key: AppModuleKey; label: string; icon: any; desc: string }
   { key: 'pharmacy', label: 'Pharmacie & Dispensation', icon: Pill, desc: 'Vente directe & délivrance des ordonnances' },
   { key: 'magasinier', label: 'Gestion des Stocks', icon: Package, desc: 'Stock central, entrées, achats & transferts' },
   { key: 'laboratory', label: 'Analyses Laboratoire', icon: FlaskConical, desc: 'Prélèvements, paillasse & compte-rendu' },
-  { key: 'billing', label: 'Facturation Sociétés', icon: Building2, desc: 'Relevés des comptes conventionnés' },
+  { key: 'billing', label: 'Suivi assurance', icon: Building2, desc: 'Prestations, règlements, rejets et rapports' },
 ];
 
 interface ConfirmModalState {
@@ -327,7 +328,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
     });
     setNewCompany({ name: '', settlementMode: 'monthly_global', type: 'payeur', tauxCouverture: '' });
     setAddCompany(false);
-    showToast(isAssurance ? 'Assurance enregistrée — suivi disponible dans Facturation sociétés' : 'Payeur global enregistré');
+    showToast(isAssurance ? 'Assurance enregistrée — référentiel Réception mis à jour' : 'Payeur global enregistré');
   };
 
   const startEditCompany = (c: Company) => {
@@ -446,6 +447,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
         ...prev,
         ...backupState,
         currentUser: prev.currentUser,
+        assuranceStorageSupported: prev.assuranceStorageSupported,
         ventes: backupState.ventes || [],
         venteLines: backupState.venteLines || [],
         ventePayments: backupState.ventePayments || [],
@@ -709,7 +711,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
       case 'laboratory':
         return <ModuleLaboratoire state={state} setState={setState} />;
       case 'billing':
-        return <ModuleFacturationSocietes state={state} setState={setState} />;
+        return <ModuleSuiviAssurance state={state} setState={setState} />;
       default:
         return null;
     }
@@ -781,6 +783,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
                 <label className="text-xs font-bold text-ink block mb-1">Identifiant ID *</label>
                 <input
                   type="text"
+                  {...credentialAutofillOptOut}
                   disabled={userModal.mode === 'edit'}
                   value={userModal.user.id}
                   onChange={(e) => setUserModal({ ...userModal, user: { ...userModal.user, id: e.target.value } })}
@@ -832,6 +835,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
                 </label>
                 <input
                   type="text"
+                  {...passwordInputOptOut}
                   value={userModal.user.password || ''}
                   onChange={(e) => setUserModal({ ...userModal, user: { ...userModal.user, password: e.target.value } })}
                   className="w-full px-3 py-2 border rounded-xl text-sm font-mono outline-none"
@@ -879,9 +883,11 @@ export default function ModuleAdministration({ state, setState }: Props) {
               </div>
 
               <div>
-                <label className="text-xs font-bold text-ink block mb-1">Nouveau mot de passe :</label>
+                <label htmlFor="admin-reset-password" className="text-xs font-bold text-ink block mb-1">Nouveau mot de passe :</label>
                 <div className="relative">
                   <input
+                    id="admin-reset-password"
+                    {...passwordInputOptOut}
                     type={resetPasswordModal.showPassword ? 'text' : 'password'}
                     value={resetPasswordModal.newPassword}
                     onChange={(e) => setResetPasswordModal({ ...resetPasswordModal, newPassword: e.target.value })}
@@ -889,6 +895,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
                   />
                   <button
                     type="button"
+                    aria-label={resetPasswordModal.showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
                     onClick={() => setResetPasswordModal({ ...resetPasswordModal, showPassword: !resetPasswordModal.showPassword })}
                     className="absolute right-3 top-2.5 text-ink-faint hover:text-ink cursor-pointer"
                   >
@@ -1121,6 +1128,13 @@ export default function ModuleAdministration({ state, setState }: Props) {
                           >
                             <Building2 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                             <span>Société Partenaire</span>
+                          </button>
+                          <button
+                            onClick={() => selectAppModule('billing')}
+                            className="p-3 bg-surface-muted hover:bg-accent-soft border rounded-xl text-xs font-semibold text-ink transition flex flex-col items-center gap-2 cursor-pointer text-center"
+                          >
+                            <Shield className="w-5 h-5 text-accent" />
+                            <span>Suivi assurance</span>
                           </button>
                           <button
                             onClick={exportBackup}

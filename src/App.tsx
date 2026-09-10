@@ -24,7 +24,7 @@ import ModulePharmacie from './components/ModulePharmacie';
 import ModuleMagasinier from './components/ModuleMagasinier';
 import ModuleLaboratoire from './components/ModuleLaboratoire';
 import ModuleAdministration from './components/ModuleAdministration';
-import ModuleFacturationSocietes from './components/ModuleFacturationSocietes';
+import ModuleSuiviAssurance from './modules/assurance/ModuleSuiviAssurance';
 import ModuleDossierMedical from './components/ModuleDossierMedical';
 import Messagerie from './components/Messagerie';
 import FloatingThemeToggle from './components/ThemeToggle';
@@ -36,7 +36,7 @@ const roleTitles: Record<string, string> = {
   magasinier: '📦 Magasinier — Stock Central, Achats & Transferts',
   laboratory: '🔬 Laboratoire — Analyses & Résultats',
   admin: '⚙️ Administration — Configuration système',
-  billing: '🏢 Facturation sociétés — Suivi des comptes conventionnés',
+  billing: '🏢 Suivi assurance — Prestations, règlements & rejets',
 };
 
 type AppView = 'reception' | 'login' | 'staff' | 'medicalRecord';
@@ -549,7 +549,7 @@ function AppInner() {
       case 'magasinier': return <ModuleMagasinier state={state} setState={setState} />;
       case 'laboratory': return <ModuleLaboratoire state={state} setState={setState} />;
       case 'admin': return <ModuleAdministration state={state} setState={setState} />;
-      case 'billing': return <ModuleFacturationSocietes state={state} setState={setState} />;
+      case 'billing': return <ModuleSuiviAssurance state={state} setState={setState} />;
       default: return <div>Module non trouvé</div>;
     }
   };
@@ -560,7 +560,7 @@ function AppInner() {
         onOpenMessaging={() => handleOpenMessagingWithRecipient(null)} onOpenMedicalRecord={state.currentUser.role === 'doctor' || state.currentUser.role === 'admin' ? handleOpenMedicalRecord : undefined} unreadMessages={myMsgCount}
         onChangeRole={(role) => setState((prev) => ({ ...prev, currentUser: { ...prev.currentUser!, role } }))}
         fullHeight={state.currentUser.role === 'admin'}>
-        {state.currentUser.role !== 'admin' && (
+        {state.currentUser.role !== 'admin' && state.currentUser.role !== 'billing' && (
           <div className="mb-6">
             <h2 className="text-2xl font-bold text-ink-strong">{roleTitles[state.currentUser.role] || 'Module'}</h2>
             <p className="text-ink-muted text-sm mt-1">

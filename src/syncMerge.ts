@@ -1,4 +1,6 @@
 import type { AppState } from './store';
+import { preserveMonthlyInvoices } from './modules/assurance/monthlyBilling';
+import { syncSharedInvoiceBalances } from './modules/assurance/sharedData';
 
 /**
  * ─────────────────────────────────────────────────────────────────────────────
@@ -27,6 +29,7 @@ import type { AppState } from './store';
 
 /** Collections « liste » réconciliées enregistrement par enregistrement. */
 export const MERGEABLE_LISTS = [
+  'assuranceSocietes', 'assurancePersonnes', 'assuranceFamilles', 'assurancePrestations', 'assurancePaiements',
   'patients', 'consultations', 'invoices', 'ventes', 'venteLines', 'ventePayments',
   'labRequests', 'journey', 'pharmaDeliveryItems', 'stockEntries', 'stockTransfers',
   'stockMovements', 'movementHeaders', 'movementLines', 'companyBillingAccounts',
@@ -151,14 +154,20 @@ export function mergeStates(base: AppState | null, local: AppState, remote: AppS
     merged[key] = Math.max(l, r);
   }
 
+  if (remote.assuranceStorageSupported !== undefined) merged.assuranceStorageSupported = remote.assuranceStorageSupported;
+
+  merged.monthlyInvoices = preserveMonthlyInvoices(remote.monthlyInvoices, local.monthlyInvoices);
+
   // La session du poste reste celle de l'utilisateur connecté ici.
   merged.currentUser = localRec.currentUser ?? null;
 
-  return merged as unknown as AppState;
+  return syncSharedInvoiceBalances(merged as unknown as AppState);
 }
 
 /** Vrai si la fusion n'a rien changé pour ce poste (évite un re-rendu inutile). */
 export function sameBusinessData(a: AppState, b: AppState): boolean {
+  if (stable(a.monthlyInvoices || []) !== stable(b.monthlyInvoices || [])) return false;
+  if (a.assuranceStorageSupported !== b.assuranceStorageSupported) return false;
   const aRec = a as unknown as Record<string, unknown>;
   const bRec = b as unknown as Record<string, unknown>;
   for (const key of MERGEABLE_LISTS) {

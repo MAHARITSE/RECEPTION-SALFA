@@ -10,6 +10,9 @@ import type {
   TicketSettings, Etablissement, EtablissementType,
 } from './types';
 import localSeedData from './data/localData.json';
+import { initialFamilles as assuranceActes } from './modules/assurance/data/initialData';
+import { ensureAssuranceCollections } from './modules/assurance/state';
+import { syncSharedInvoiceBalances } from './modules/assurance/sharedData';
 
 let dossierCounter = 100;
 export function generateDossierNumber(ln: string): string { dossierCounter++; return `${ln.substring(0,3).toUpperCase().padEnd(3,'X')}${dossierCounter}`; }
@@ -451,6 +454,16 @@ export const LAB_FEE_URGENT = 25000;
 export const SURGERY_FEE = 500000;
 
 export interface AppState {
+  /** Factures mensuelles émises : instantanés immuables, sans nouvel encaissement. */
+  monthlyInvoices?: import('./modules/assurance/monthlyBilling').MonthlyInvoice[];
+  /** Module importé de MAHARITSE/suivi_assurance ; historique Caisse inchangé. */
+  assuranceSocietes?: import('./modules/assurance/types').Societe[];
+  assurancePersonnes?: import('./modules/assurance/types').Personne[];
+  assuranceFamilles?: import('./modules/assurance/types').Famille[];
+  assurancePrestations?: import('./modules/assurance/types').Prestation[];
+  assurancePaiements?: import('./modules/assurance/types').Paiement[];
+  /** Capacité annoncée par l'API WAMP, jamais présumée. */
+  assuranceStorageSupported?: boolean;
   currentUser: User | null; ticketSettings: import('./types').TicketSettings; patients: Patient[]; consultations: Consultation[];
   invoices: Invoice[]; cashClosings: CashClosing[]; articles: Article[];
   stockTransfers: StockTransfer[];
@@ -618,6 +631,7 @@ export function normalizeEtablissements(list: Etablissement[] = []): Etablisseme
  */
 function createEmptyInitialState(): AppState {
   return {
+    assuranceSocietes: [], assurancePersonnes: [], assuranceFamilles: structuredClone(assuranceActes), assurancePrestations: [], assurancePaiements: [],
     currentUser: null,
     ticketSettings: JSON.parse(JSON.stringify(DEFAULT_TICKET_SETTINGS)),
     patients: [],
@@ -667,7 +681,7 @@ export function createInitialState(): AppState {
   if (import.meta.env.VITE_WAMP_MODE === '1') {
     return ensureEtablissements(createEmptyInitialState());
   }
-  return ensureEtablissements(normalizeFamilyBases(JSON.parse(JSON.stringify(localSeedData)) as AppState));
+  return ensureAssuranceCollections(ensureEtablissements(normalizeFamilyBases(JSON.parse(JSON.stringify(localSeedData)) as AppState)));
 }
 
 /**
@@ -1207,6 +1221,7 @@ function normalizeInvoiceItemCategories(state: AppState): AppState {
  * synchronisation de la base unifiée des articles (LABO + ECHO).
  */
 export function prepareLoadedState(state: AppState): AppState {
+  state = ensureAssuranceCollections(state);
   const normalized = ensureEtablissements(
     normalizeFamilyBases(ensureConsultationArrays(normalizeInvoiceItemCategories({
       ...state,
@@ -1220,7 +1235,7 @@ export function prepareLoadedState(state: AppState): AppState {
       `[articles unifiés] base locale synchronisée : ${addedLab} article(s) LABO, ${addedEcho} article(s) ECHO et ${addedHosp} article(s) HOSP intégrés à la table articles, catalogue legacy réaligné.`
     );
   }
-  return unified;
+  return syncSharedInvoiceBalances(unified);
 }
 
 /**
@@ -1348,7 +1363,8 @@ export function assuranceStatutBadge(s?: AssuranceSuiviStatut): string {
 export function invoicePaidAmount(state: AppState, invoice: Invoice): number {
   // Une facture marquée « paid » (validée en caisse ou soldée via un relevé) est
   // réglée en totalité : elle n'attend plus rien de l'assurance.
-  if (invoice.status === 'paid') return invoice.totalAmount;
+  if (invoice.assuranceSuivi?.montantRegle !== undefined) return invoice.assuranceSuivi.montantRegle;
+  if (invoice.status === 'paid' && !invoice.creditSociete) return invoice.totalAmount;
   return (state.companyBillingAccounts || []).reduce((sum, a) => {
     return sum + (a.payments || []).filter((p) => p.invoiceIds?.includes(invoice.id)).reduce((s, p) => s + p.amount, 0);
   }, 0);
@@ -1402,7 +1418,7 @@ export function invoiceAssuranceReste(state: AppState, invoice: Invoice): number
  */
 export function invoiceAssuranceStatut(state: AppState, invoice: Invoice): AssuranceSuiviStatut {
   const suivi = invoice.assuranceSuivi;
-  if (invoice.status === 'paid') return 'reglee';
+  if (invoice.status === 'paid' && !invoice.creditSociete && invoice.assuranceSuivi?.montantRegle === undefined) return 'reglee';
   const remb = invoiceAssuranceARembourser(invoice);
   const paid = invoicePaidAmount(state, invoice);
   const rejete = invoiceAssuranceRejete(invoice);

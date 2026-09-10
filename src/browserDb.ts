@@ -1,4 +1,6 @@
 import type { AppState } from './store';
+import { reorganizeFamilyMetadata } from './modules/assurance/billingFamilyRepair';
+import { billingFacility, collectBillingDocuments, documentsForScope, monthlyScopeId, createMonthlyInvoice, preserveMonthlyInvoices, type MonthlyInvoice, type MonthlyScope } from './modules/assurance/monthlyBilling';
 
 /**
  * Stockage hors WAMP : la base reste dans le navigateur de l'utilisateur.
@@ -63,7 +65,7 @@ function fallbackLoad(): AppState | null {
 
 function fallbackSave(state: AppState): boolean {
   try {
-    window.localStorage.setItem(FALLBACK_KEY, JSON.stringify({ state: stateForStorage(state), savedAt: Date.now() }));
+    window.localStorage.setItem(FALLBACK_KEY, JSON.stringify({ state: stateForStorage({ ...state, monthlyInvoices: preserveMonthlyInvoices(fallbackLoad()?.monthlyInvoices, state.monthlyInvoices) }), savedAt: Date.now() }));
     return true;
   } catch {
     return false;
@@ -75,14 +77,38 @@ export async function loadStateFromBrowser(): Promise<AppState | null> {
   try {
     const db = await openDatabase();
     return await new Promise<AppState | null>((resolve, reject) => {
-      const transaction = db.transaction(STORE_NAME, 'readonly');
-      const request = transaction.objectStore(STORE_NAME).get(STATE_KEY);
+      const transaction = db.transaction(STORE_NAME, 'readwrite');
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.get(STATE_KEY);
+      let original: AppState | null = null;
+      let result: AppState | null = null;
+      let changed = false;
+      let failure: unknown;
       request.onsuccess = () => {
-        const value: unknown = request.result;
-        resolve(isStoredRecord(value) ? { ...value.state, currentUser: null } : null);
+        try {
+          const value: unknown = request.result;
+          if (!isStoredRecord(value)) return;
+          original = stateForStorage(value.state);
+          result = reorganizeFamilyMetadata(original);
+          changed = result !== original;
+          if (changed) store.put({ state: result, savedAt: Date.now() }, STATE_KEY);
+        } catch (error) { failure = error; transaction.abort(); }
       };
-      request.onerror = () => reject(request.error || new Error('Lecture IndexedDB impossible'));
-      transaction.oncomplete = () => db.close();
+      transaction.oncomplete = () => {
+        db.close();
+        if (changed) notifyBrowserStateSaved();
+        resolve(result);
+      };
+      transaction.onerror = () => { failure ||= transaction.error; };
+      transaction.onabort = () => {
+        db.close();
+        // A failed migration must never look like an empty database to App.tsx:
+        // keep the original records, retry at the next sync, never seed over them.
+        if (original) {
+          console.warn('[Familles] Réorganisation non enregistrée, base originale conservée :', failure || transaction.error);
+          resolve(original);
+        } else reject(failure || transaction.error || new Error('Lecture IndexedDB impossible'));
+      };
     });
   } catch (error) {
     // Le repli garde l'application utilisable dans les navigateurs très limités.
@@ -98,10 +124,20 @@ export async function saveStateToBrowser(state: AppState): Promise<boolean> {
     const db = await openDatabase();
     await new Promise<void>((resolve, reject) => {
       const transaction = db.transaction(STORE_NAME, 'readwrite');
-      transaction.objectStore(STORE_NAME).put(record, STATE_KEY);
+      const store = transaction.objectStore(STORE_NAME);
+      const read = store.get(STATE_KEY);
+      let failure: unknown;
+      read.onsuccess = () => {
+        try {
+          const stored = isStoredRecord(read.result) ? read.result.state : undefined;
+          record.state.monthlyInvoices = preserveMonthlyInvoices(stored?.monthlyInvoices, record.state.monthlyInvoices);
+          record.state = reorganizeFamilyMetadata(record.state);
+          store.put(record, STATE_KEY);
+        } catch (error) { failure = error; transaction.abort(); }
+      };
       transaction.oncomplete = () => { db.close(); resolve(); };
-      transaction.onerror = () => reject(transaction.error || new Error('Écriture IndexedDB impossible'));
-      transaction.onabort = () => reject(transaction.error || new Error('Écriture IndexedDB annulée'));
+      transaction.onerror = () => { failure ||= transaction.error; };
+      transaction.onabort = () => { db.close(); reject(failure || transaction.error || new Error('Écriture IndexedDB annulée')); };
     });
     notifyBrowserStateSaved();
     return true;
@@ -161,4 +197,41 @@ export function subscribeBrowserState(onRemoteSave: () => void): () => void {
     ch?.removeEventListener('message', onMessage);
     window.removeEventListener('storage', onStorage);
   };
+}
+
+/** The snapshot and its month sequence are created in ONE read/write transaction.
+ * Resolve only after commit; never open the printer on a failed write. There is
+ * deliberately no non-atomic localStorage fallback for financial issuance. */
+export async function issueMonthlyInvoiceInBrowser(current: AppState, scope: MonthlyScope): Promise<MonthlyInvoice> {
+  const db = await openDatabase();
+  const invoice = await new Promise<MonthlyInvoice>((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    const request = store.get(STATE_KEY);
+    let result: MonthlyInvoice;
+    let failure: unknown;
+    request.onsuccess = () => {
+      try {
+        if (!isStoredRecord(request.result)) throw new Error('La base doit être chargée et enregistrée avant émission.');
+        const stored = request.result as StoredRecord;
+        const source = reorganizeFamilyMetadata({ ...stored.state, currentUser: current.currentUser,
+          monthlyInvoices: preserveMonthlyInvoices(stored.state.monthlyInvoices, current.monthlyInvoices) });
+        const archive = source.monthlyInvoices || [];
+        if (!archive.some(i => i.id === monthlyScopeId(scope))) {
+          const scoped = (s: AppState) => JSON.stringify(documentsForScope(collectBillingDocuments(s), scope));
+          if (scoped(source) !== scoped(current) || JSON.stringify(billingFacility(source)) !== JSON.stringify(billingFacility(current))) {
+            throw new Error('Enregistrement ou synchronisation des pièces en cours. Réessayez dans quelques secondes.');
+          }
+        }
+        result = createMonthlyInvoice(source, scope, archive);
+        const next = { ...stored.state, articles: source.articles, monthlyInvoices: preserveMonthlyInvoices(archive, [result]) };
+        store.put({ state: stateForStorage(next), savedAt: Date.now() }, STATE_KEY);
+      } catch (error) { failure = error; tx.abort(); }
+    };
+    tx.oncomplete = () => { db.close(); resolve(result!); };
+    tx.onabort = () => { db.close(); reject(failure || tx.error || new Error('Facture non enregistrée.')); };
+    tx.onerror = () => { failure ||= tx.error; };
+  });
+  notifyBrowserStateSaved();
+  return invoice;
 }

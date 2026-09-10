@@ -64,8 +64,14 @@ Les comptes initiaux (intégrés dans le fichier compilé, identiques à
 | Pharmacie | Pharmacie 1 - Tiana Soa / Pharmacie 2 - Fatima Benali | `pharma123` |
 | Laboratoire | Hery Lanto | `labo123` |
 | Magasinier | Niry Tahina | `mag123` |
-| Facturation sociétés | Lova Sitraka | `fact123` |
+| Suivi assurance | Lova Sitraka | `fact123` |
 
 > ⚠️ Version JSON : les données saisies sont conservées en mémoire pendant la
 > session (rechargement = retour aux données d'origine). Pour un stockage
 > persistant (MySQL), utilisez la **PARTIE 2** : le dossier `WAMP/`.
+
+## Nouveau suivi assurance
+
+Le nouveau module remplace les anciens écrans de facturation sociétés, sans retirer la Caisse ni effacer l’historique. Voir [la documentation d’intégration](../docs/SUIVI_ASSURANCE.md). Le bundle `public/index.html` est recompilé avec cette intégration ; aucun déploiement Cloudflare n’est effectué automatiquement.
+
+**Stockage actuel :** les données sont conservées dans IndexedDB (avec repli local), y compris après rechargement, et partagées entre onglets du même navigateur. Les mentions historiques « mémoire uniquement » ci-dessus ne décrivent plus le fonctionnement actuel. Les navigateurs/postes distincts ne partagent pas cette base locale.

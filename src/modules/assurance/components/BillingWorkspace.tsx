@@ -1,0 +1,124 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Printer, Receipt, FileText } from 'lucide-react';
+import type { AppState } from '../../../store';
+import type { ClientType } from '../../../types';
+import { IS_WAMP_BUILD } from '../../../wamp';
+import { issueMonthlyInvoiceInBrowser } from '../../../browserDb';
+import { PrestationsView, type PrestationsViewProps } from './PrestationsView';
+import { billingTotals, categoryLabels, collectBillingDocuments, documentsForScope, monthlyGroups, monthlyScopeId, preserveMonthlyInvoices, type BillingDocument, type MonthlyScope } from '../monthlyBilling';
+import { auditArticleFamilies } from '../billingFamilies';
+import { printIndividualBillingDocument, printMonthlyInvoice } from '../printBilling';
+
+type Props = PrestationsViewProps & { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>> };
+
+export function BillingWorkspace({ state, setState, ...details }: Props) {
+  const formatMoney = (value: number, currency = state.ticketSettings.currency) => `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(value)} ${currency}`;
+  const [mode, setMode] = useState<'factures' | 'detaillee'>('factures');
+  const [month, setMonth] = useState('');
+  const articleIssues = useMemo(() => auditArticleFamilies(state), [state]);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
+  const printing = useRef(false);
+  const documents = useMemo(() => collectBillingDocuments(state), [state]);
+  const snapshots = state.monthlyInvoices || [];
+  const matches = (scope: { category: ClientType; companyId?: string; month?: string }) => (!month || scope.month === month) && (details.selectedSocieteId === 'ALL' || (scope.category === 'societe' && scope.companyId === details.selectedSocieteId));
+  const visible = documents.filter(d => {
+    if (!matches({ ...d, month: d.date.slice(0, 7) })) return false;
+    if (d.category !== 'societe' || !details.selectedSubSocieteId || details.selectedSubSocieteId === 'ALL') return true;
+    const prestation = details.prestations.find(p => p.id === d.id);
+    const subCompany = prestation?.sousSociete || state.ventes.find(v => v.id === d.sourceId)?.subCompany;
+    return subCompany === details.selectedSubSocieteId;
+  });
+  const scopes = new Map(monthlyGroups(documents).map(scope => [monthlyScopeId(scope), scope]));
+  snapshots.forEach(snapshot => scopes.set(snapshot.id, snapshot));
+  const groups = [...scopes.values()].filter(matches).sort((a, b) => b.month.localeCompare(a.month) || monthlyScopeId(a).localeCompare(monthlyScopeId(b)));
+  const visibleIds = new Set(visible.map(d => d.id));
+  const visiblePrestations = details.prestations.filter(p => visibleIds.has(p.id));
+  const otherDocuments = visible.filter(d => !details.prestations.some(p => p.id === d.id));
+
+  useEffect(() => {
+    if (details.isCreateModalOpen) setMode('detaillee');
+  }, [details.isCreateModalOpen]);
+
+  useEffect(() => { setError(''); setNotice(''); }, [details.selectedSocieteId, month]);
+
+  async function printMonthly(scope: MonthlyScope) {
+    if (printing.current) return;
+    printing.current = true;
+    const id = monthlyScopeId(scope);
+    setBusy(id); setError(''); setNotice('');
+    try {
+      const saved = snapshots.find(i => i.id === id);
+      if (IS_WAMP_BUILD && !saved) throw new Error('L’émission mensuelle MySQL nécessite une opération atomique dans l’API Réception. Elle n’est pas disponible sur ce serveur.');
+      const invoice = IS_WAMP_BUILD ? saved! : await issueMonthlyInvoiceInBrowser(state, scope);
+      setState(prev => ({ ...prev, monthlyInvoices: preserveMonthlyInvoices([invoice], prev.monthlyInvoices) }));
+      printMonthlyInvoice(invoice, state.ticketSettings);
+      setNotice(`${invoice.number} — document enregistré, envoyé à la file d’impression. Une annulation de l’impression ne change pas son numéro.`);
+    } catch (cause) {
+      setError(`Impression mensuelle non lancée : ${(cause as Error).message}`);
+    } finally { printing.current = false; setBusy(null); }
+  }
+
+  function renderDetailTable(rows: BillingDocument[]) {
+    return <div className="overflow-x-auto rounded-xl border border-line bg-surface">
+      <table className="w-full text-left text-xs" aria-label="Factures détaillées clients">
+        <thead className="bg-surface-muted text-ink-secondary"><tr>{['Date', 'Facture', 'Client / Dossier', 'Détail des actes', 'Montant', 'Payé', 'Solde', 'Impression'].map(label => <th className="p-3" key={label}>{label}</th>)}</tr></thead>
+        <tbody>{rows.map(d => <tr key={d.id} className="border-t border-line hover:bg-surface-hover">
+          <td className="p-3 whitespace-nowrap">{d.date}</td><td className="p-3 font-mono font-semibold">{d.number}</td>
+          <td className="p-3">{d.client}{d.dossier && <span className="block text-ink-muted">{d.dossier}</span>}</td>
+          <td className="p-3"><details><summary className="cursor-pointer">{d.items.length} acte(s)</summary><ul className="mt-2 space-y-1">{d.items.map((item, index) => <li key={index}>{item.description} — {formatMoney(item.amount)}</li>)}</ul></details></td>
+          <td className="p-3 whitespace-nowrap">{formatMoney(d.total)}</td><td className="p-3 whitespace-nowrap">{formatMoney(d.paid)}</td><td className="p-3 whitespace-nowrap">{formatMoney(Math.max(0, d.payable - d.paid - d.rejected))}</td>
+          <td className="p-3"><button type="button" onClick={() => printIndividualBillingDocument(state, d)} aria-label={`Imprimer la facture ${d.number}`} className="inline-flex items-center gap-1.5 rounded-lg border border-line-strong px-3 py-2 hover:bg-accent-soft text-accent"><Printer size={15} />Imprimer</button></td>
+        </tr>)}</tbody>
+      </table>
+      {!rows.length && <p className="p-6 text-center text-sm text-ink-muted">Aucune facture pour cette sélection.</p>}
+    </div>;
+  }
+
+  return <section className="space-y-4" aria-label="Facturation clients">
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <label className="text-sm text-ink">Mois <input aria-label="Mois de facturation" type="month" value={month} onChange={event => setMonth(event.target.value)} className="ml-2 rounded-lg border border-line bg-field p-2" /></label>
+      {month && <button type="button" className="text-xs text-accent underline" onClick={() => setMonth('')}>Tous les mois</button>}
+    </div>
+    {articleIssues.length > 0 && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+      {articleIssues.length} article(s) ne peuvent pas être rattachés automatiquement à une famille valide. Aucun classement arbitraire n’a été appliqué.
+      <ul className="max-h-48 overflow-auto">{articleIssues.map(a => <li key={a.id}>{a.name} ({a.id}) — {a.reason}{a.family ? ` : ${a.family}` : ''}</li>)}</ul>
+    </div>}
+    <div className="flex flex-wrap gap-2" role="tablist" aria-label="Vues de facturation">
+      <button role="tab" aria-selected={mode === 'factures'} onClick={() => setMode('factures')} className={`flex items-center gap-2 rounded-lg px-4 py-2 border ${mode === 'factures' ? 'border-accent-line bg-accent-soft text-accent' : 'border-line text-ink-muted'}`}><Receipt size={17} />Vue par Facture <strong>{groups.length}</strong></button>
+      <button role="tab" aria-selected={mode === 'detaillee'} onClick={() => setMode('detaillee')} className={`flex items-center gap-2 rounded-lg px-4 py-2 border ${mode === 'detaillee' ? 'border-accent-line bg-accent-soft text-accent' : 'border-line text-ink-muted'}`}><FileText size={17} />Vue Détaillée (Dossiers) <strong>{visible.length}</strong></button>
+    </div>
+    <p className="text-xs text-ink-muted">La sélection Société / Garant du haut s’applique aux deux vues et à leurs compteurs. Réinitialiser rétablit la vue globale, incluant les factures Comptoir et Externes.</p>
+    {error && <p role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+    {notice && <p role="status" className="rounded-lg border border-accent-line bg-accent-soft p-3 text-sm text-ink">{notice}</p>}
+    {mode === 'factures' ? <div data-testid="monthly-invoices-view" className="space-y-3">
+      <div className="rounded-xl border border-line bg-surface p-4">
+        <h2 className="font-bold text-ink-strong">Factures mensuelles</h2>
+        <p className="mt-1 text-xs text-ink-muted">Une facture par mois pour tous les clients Comptoir, une pour tous les Externes, et une par société (toutes sous-entités comprises). Le premier clic sur Imprimer fige le contenu et attribue un numéro FM-AAAA-MM-0001. Les réimpressions ne reprennent pas les opérations ajoutées ensuite.</p>
+        {IS_WAMP_BUILD && <p className="mt-2 text-xs text-amber-700">Sur MySQL, les émissions nécessitent une API atomique à déployer. Les factures déjà enregistrées peuvent être réimprimées.</p>}
+      </div>
+      <div className="overflow-x-auto rounded-xl border border-line bg-surface"><table className="w-full text-left text-xs" aria-label="Factures mensuelles">
+        <thead className="bg-surface-muted text-ink-secondary"><tr>{['Mois', 'Destinataire', 'Pièces', 'Montant', 'Numéro mensuel', 'Impression'].map(label => <th className="p-3" key={label}>{label}</th>)}</tr></thead>
+        <tbody>{groups.map(scope => {
+          const id = monthlyScopeId(scope), saved = snapshots.find(i => i.id === id);
+          const rows = documentsForScope(documents, scope);
+          const missing = saved?.documents.reduce((sum, d) => sum + d.items.filter(i => !i.actCode?.trim()).length, 0) || 0;
+          const recipient = saved?.recipient || (scope.category === 'societe' ? state.companies.find(c => c.id === scope.companyId)?.name || rows[0]?.companyName || 'Société' : `Clients ${categoryLabels[scope.category]}`);
+          return <tr key={id} className="border-t border-line" data-monthly-scope={id}>
+            <td className="p-3 whitespace-nowrap font-semibold">{scope.month}</td><td className="p-3">{recipient}</td>
+            <td className="p-3">{saved?.documents.length ?? rows.length}{saved && <span className="block text-ink-muted">Contenu figé</span>}</td>
+            <td className="p-3 whitespace-nowrap">{formatMoney(saved?.total ?? billingTotals(rows).total)}</td>
+            <td className="p-3 font-mono">{saved?.number || 'Attribué à la première impression'}{missing > 0 && <div className="mt-2 text-xs text-amber-700 font-sans">{missing} famille(s) encore sans rattachement certain. Les correspondances identifiées sont réorganisées automatiquement en base navigateur.</div>}</td>
+            <td className="p-3"><button type="button" disabled={!!busy || (IS_WAMP_BUILD && !saved)} onClick={() => void printMonthly(scope)} aria-label={`${saved ? 'Réimprimer' : 'Imprimer'} la facture mensuelle ${scope.month} ${recipient}`} className="inline-flex items-center gap-1.5 rounded-lg border border-line-strong px-3 py-2 text-accent hover:bg-accent-soft disabled:opacity-50"><Printer size={15} />{busy === id ? 'Enregistrement…' : saved ? 'Réimprimer' : 'Imprimer'}</button>{IS_WAMP_BUILD && missing > 0 && <p className="mt-1 text-xs">Réparation à effectuer côté serveur MySQL.</p>}</td>
+          </tr>;
+        })}</tbody>
+      </table>{!groups.length && <p className="p-6 text-center text-sm text-ink-muted">Aucune facture pour cette sélection.</p>}</div>
+    </div> : <div data-testid="billing-detail-view">
+      <>
+        <PrestationsView {...details} prestations={visiblePrestations} hideViewSwitcher onPrintPrestation={p => { const doc = documents.find(d => d.id === p.id); if (doc) printIndividualBillingDocument(state, doc); }} />
+        {otherDocuments.length > 0 && <div className="mt-4"><h3 className="mb-2 font-semibold">Autres factures de la base commune</h3>{renderDetailTable(otherDocuments)}</div>}
+      </>
+    </div>}
+  </section>;
+}

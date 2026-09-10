@@ -1,0 +1,774 @@
+import React, { useState, useMemo } from 'react';
+import { Building, Plus, Search, Edit3, Trash2, Phone, Mail, MapPin, X, Layers, GitMerge, CheckSquare, Square, ArrowRight, Check, Sparkles, RefreshCw } from 'lucide-react';
+import { Societe, Prestation, Personne } from '../types';
+import { generateId } from '../utils/formatters';
+import { maskNom } from '../utils/inputMasks';
+
+interface SocietesViewProps {
+  societes: Societe[];
+  prestations?: Prestation[];
+  personnes?: Personne[];
+  onSaveSociete: (societe: Societe) => void;
+  onDeleteSociete: (id: string) => void;
+  onMergeSubSocietes?: (societeId: string, sourceNames: string[], targetName: string) => Promise<void> | void;
+}
+
+export const SocietesView: React.FC<SocietesViewProps> = ({
+  societes,
+  prestations = [],
+  personnes = [],
+  onSaveSociete,
+  onDeleteSociete,
+  onMergeSubSocietes,
+}) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingSociete, setEditingSociete] = useState<Societe | null>(null);
+  const [societeToDelete, setSocieteToDelete] = useState<Societe | null>(null);
+  const [formData, setFormData] = useState<Partial<Societe>>({
+    nom: '',
+    code: '',
+    contact: '',
+    telephone: '',
+    email: '',
+    adresse: '',
+    tauxCouvertureDefaut: 80,
+  });
+
+  // State for Regrouping Sub-Societés Modal
+  const [regroupSociete, setRegroupSociete] = useState<Societe | null>(null);
+  const [selectedSubNames, setSelectedSubNames] = useState<string[]>([]);
+  const [targetSubName, setTargetSubName] = useState<string>('');
+  const [editingSingleSub, setEditingSingleSub] = useState<{ oldName: string; newName: string } | null>(null);
+  const [isProcessingMerge, setIsProcessingMerge] = useState(false);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  const filtered = societes.filter(s =>
+    s.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    s.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (s.contact && s.contact.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
+  // Calculate unique sub-société statistics for the company being managed
+  const subSocietesStats = useMemo(() => {
+    if (!regroupSociete) return [];
+
+    const socIdLower = regroupSociete.id.toLowerCase().trim();
+    const socNomLower = regroupSociete.nom.toLowerCase().trim();
+
+    const map = new Map<string, { name: string; prestationCount: number; personneCount: number }>();
+
+    const getOrCreate = (rawName: string) => {
+      const clean = rawName.trim();
+      if (!clean) return null;
+      let existingKey = Array.from(map.keys()).find(k => k.toLowerCase() === clean.toLowerCase());
+      if (!existingKey) {
+        map.set(clean, { name: clean, prestationCount: 0, personneCount: 0 });
+        return map.get(clean)!;
+      }
+      return map.get(existingKey)!;
+    };
+
+    // Count in prestations
+    prestations.forEach(p => {
+      const pSocId = (p.societeId || '').toLowerCase().trim();
+      const pSocNom = (p.societeNom || '').toLowerCase().trim();
+      const matchesSoc = pSocId === socIdLower || (socNomLower && pSocNom === socNomLower);
+
+      if (matchesSoc && p.sousSociete) {
+        const item = getOrCreate(p.sousSociete);
+        if (item) item.prestationCount++;
+      }
+    });
+
+    // Count in personnes
+    personnes.forEach(p => {
+      const pSocId = (p.societeId || '').toLowerCase().trim();
+      if (pSocId === socIdLower && p.sousSociete) {
+        const item = getOrCreate(p.sousSociete);
+        if (item) item.personneCount++;
+      }
+    });
+
+    // Include defined list on societe if any
+    if (regroupSociete.sousSocietes) {
+      regroupSociete.sousSocietes.forEach(s => {
+        getOrCreate(s);
+      });
+    }
+
+    return Array.from(map.values()).sort((a, b) => (b.prestationCount + b.personneCount) - (a.prestationCount + a.personneCount));
+  }, [regroupSociete, prestations, personnes]);
+
+  const handleOpenCreate = () => {
+    setEditingSociete(null);
+    setFormData({
+      nom: '',
+      code: `SOC-${String(societes.length + 1).padStart(2, '0')}`,
+      contact: '',
+      telephone: '',
+      email: '',
+      adresse: '',
+      tauxCouvertureDefaut: 80,
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEdit = (s: Societe) => {
+    setEditingSociete(s);
+    setFormData({
+      ...s,
+      nom: maskNom(s.nom || ''),
+      contact: maskNom(s.contact || ''),
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.nom?.trim() || !formData.code?.trim()) {
+      alert('Veuillez renseigner le nom et le code de la société.');
+      return;
+    }
+
+    const toSave: Societe = {
+      id: editingSociete ? editingSociete.id : generateId('soc'),
+      nom: maskNom(formData.nom.trim()),
+      code: formData.code!,
+      contact: maskNom(formData.contact || '').trim(),
+      telephone: formData.telephone || '',
+      email: formData.email || '',
+      adresse: formData.adresse || '',
+      tauxCouvertureDefaut: formData.tauxCouvertureDefaut == null ? 80 : Number(formData.tauxCouvertureDefaut),
+    };
+
+    onSaveSociete(toSave);
+    setIsModalOpen(false);
+  };
+
+  // Sub-Sociétés Regrouping handlers
+  const handleOpenRegroupModal = (s: Societe) => {
+    setRegroupSociete(s);
+    setSelectedSubNames([]);
+    setTargetSubName('');
+    setEditingSingleSub(null);
+    setSuccessMsg(null);
+  };
+
+  const handleToggleSelectSub = (name: string) => {
+    setSelectedSubNames(prev => {
+      if (prev.includes(name)) {
+        const next = prev.filter(item => item !== name);
+        if (next.length > 0 && !next.includes(targetSubName)) {
+          setTargetSubName(maskNom(next[0]));
+        }
+        return next;
+      } else {
+        const next = [...prev, name];
+        if (!targetSubName) {
+          setTargetSubName(maskNom(name));
+        }
+        return next;
+      }
+    });
+  };
+
+  const handleSelectAllSubs = () => {
+    if (selectedSubNames.length === subSocietesStats.length) {
+      setSelectedSubNames([]);
+    } else {
+      const allNames = subSocietesStats.map(s => s.name);
+      setSelectedSubNames(allNames);
+      if (allNames.length > 0 && !targetSubName) {
+        setTargetSubName(maskNom(allNames[0]));
+      }
+    }
+  };
+
+  const handleExecuteMerge = async () => {
+    if (!regroupSociete || !onMergeSubSocietes) return;
+    if (selectedSubNames.length === 0) {
+      alert('Veuillez sélectionner au moins une sous-société à regrouper.');
+      return;
+    }
+    if (!targetSubName.trim()) {
+      alert('Veuillez saisir ou choisir le nom unifié de la sous-société.');
+      return;
+    }
+
+    try {
+      setIsProcessingMerge(true);
+      const finalTargetName = maskNom(targetSubName.trim());
+      await onMergeSubSocietes(regroupSociete.id, selectedSubNames, finalTargetName);
+      setSuccessMsg(`Regroupement réussi ! ${selectedSubNames.length} sous-sociétés ont été unifiées sous "${finalTargetName}".`);
+      setSelectedSubNames([]);
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (err: any) {
+      alert(`Erreur lors du regroupement : ${err.message || err}`);
+    } finally {
+      setIsProcessingMerge(false);
+    }
+  };
+
+  const handleExecuteSingleRename = async (oldName: string, newName: string) => {
+    const finalNewName = maskNom(newName.trim());
+    if (!regroupSociete || !onMergeSubSocietes || !finalNewName || oldName === finalNewName) {
+      setEditingSingleSub(null);
+      return;
+    }
+
+    try {
+      setIsProcessingMerge(true);
+      await onMergeSubSocietes(regroupSociete.id, [oldName], finalNewName);
+      setSuccessMsg(`Sous-société "${oldName}" renommée avec succès en "${finalNewName}".`);
+      setEditingSingleSub(null);
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (err: any) {
+      alert(`Erreur : ${err.message || err}`);
+    } finally {
+      setIsProcessingMerge(false);
+    }
+  };
+
+  return (
+    <div id="societes-view" className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-ink-strong">Sociétés & Compagnies d'Assurance</h2>
+          <p className="text-xs text-ink-muted">
+            Gestion des organismes payeurs, taux de prise en charge contractuels, coordonnées et harmonisation des sous-sociétés
+          </p>
+        </div>
+
+        <button
+          onClick={handleOpenCreate}
+          className="flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm"
+        >
+          <Plus className="w-4 h-4" />
+          <span>Nouvelle Société d'Assurance</span>
+        </button>
+      </div>
+
+      {/* Search */}
+      <div className="bg-surface p-4 rounded-xl border border-line shadow-xs flex items-center justify-between">
+        <div className="relative w-full max-w-sm">
+          <Search className="w-4 h-4 absolute left-3 top-2.5 text-ink-faint" />
+          <input
+            type="text"
+            placeholder="Rechercher une société..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(maskNom(e.target.value))}
+            className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border border-line focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+        </div>
+        <span className="text-xs text-ink-muted font-medium">{filtered.length} sociétés actives</span>
+      </div>
+
+      {/* Grid of Company Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {filtered.map(soc => {
+          // Count total sub-societes associated with this company
+          const socIdLower = soc.id.toLowerCase().trim();
+          const socNomLower = soc.nom.toLowerCase().trim();
+          const subSet = new Set<string>();
+
+          prestations.forEach(p => {
+            const pSocId = (p.societeId || '').toLowerCase().trim();
+            const pSocNom = (p.societeNom || '').toLowerCase().trim();
+            if ((pSocId === socIdLower || (socNomLower && pSocNom === socNomLower)) && p.sousSociete) {
+              subSet.add(p.sousSociete.trim());
+            }
+          });
+          personnes.forEach(p => {
+            if ((p.societeId || '').toLowerCase().trim() === socIdLower && p.sousSociete) {
+              subSet.add(p.sousSociete.trim());
+            }
+          });
+
+          return (
+            <div key={soc.id} className="bg-surface rounded-xl border border-line shadow-xs p-5 flex flex-col justify-between space-y-4 hover:border-indigo-300 transition">
+              <div className="space-y-4">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-md border border-indigo-200 font-mono">
+                      {soc.code}
+                    </span>
+                    <h3 className="font-bold text-ink-strong text-base">{soc.nom}</h3>
+                  </div>
+
+                  <div className="flex items-center space-x-1">
+                    <button
+                      onClick={() => handleOpenEdit(soc)}
+                      className="p-1.5 text-ink-faint hover:text-indigo-600 rounded-lg hover:bg-indigo-50"
+                      title="Modifier les coordonnées"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSocieteToDelete(soc)}
+                      className="p-1.5 text-ink-faint hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                      title="Supprimer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2 text-xs text-ink-secondary pt-2 border-t border-line-soft">
+                  <div className="flex items-center justify-between bg-surface-muted p-2 rounded-lg">
+                    <span className="text-ink-muted">Taux de couverture standard :</span>
+                    <span className="font-bold text-emerald-700">{soc.tauxCouvertureDefaut}%</span>
+                  </div>
+
+                  {soc.contact && (
+                    <div className="text-ink">
+                      <span className="text-ink-faint mr-1">Contact :</span> {soc.contact}
+                    </div>
+                  )}
+
+                  {soc.telephone && (
+                    <div className="flex items-center text-ink-secondary">
+                      <Phone className="w-3.5 h-3.5 mr-1.5 text-ink-faint" />
+                      <span>{soc.telephone}</span>
+                    </div>
+                  )}
+
+                  {soc.email && (
+                    <div className="flex items-center text-ink-secondary">
+                      <Mail className="w-3.5 h-3.5 mr-1.5 text-ink-faint" />
+                      <span className="truncate">{soc.email}</span>
+                    </div>
+                  )}
+
+                  {soc.adresse && (
+                    <div className="flex items-center text-ink-secondary">
+                      <MapPin className="w-3.5 h-3.5 mr-1.5 text-ink-faint shrink-0" />
+                      <span className="truncate">{soc.adresse}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Button: Regroup Sub-Sociétés */}
+              <div className="pt-3 border-t border-line-soft">
+                <button
+                  type="button"
+                  onClick={() => handleOpenRegroupModal(soc)}
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 text-xs font-bold transition shadow-xs cursor-pointer group"
+                >
+                  <div className="flex items-center space-x-2">
+                    <Layers className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform shrink-0" />
+                    <span>Regrouper les sous-sociétés</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full bg-indigo-200/80 text-indigo-950 text-[11px] font-extrabold">
+                    {subSet.size}
+                  </span>
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Modal: Regrouper / Modifier les Sous-Sociétés */}
+      {regroupSociete && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-surface rounded-3xl max-w-2xl w-full p-6 shadow-2xl space-y-5 border border-line-soft max-h-[90vh] flex flex-col">
+            
+            {/* Header */}
+            <div className="flex items-start justify-between border-b border-line-soft pb-4 shrink-0">
+              <div className="space-y-1">
+                <div className="flex items-center space-x-2">
+                  <div className="p-2 rounded-xl bg-indigo-100 text-indigo-700">
+                    <GitMerge className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-ink-strong text-base">
+                      Harmoniser & Regrouper les Sous-Sociétés
+                    </h3>
+                    <p className="text-xs text-indigo-900 font-semibold">
+                      Organisme : <strong className="text-ink-strong">{regroupSociete.nom}</strong> ({regroupSociete.code})
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setRegroupSociete(null)}
+                className="text-ink-faint hover:text-ink p-1.5 rounded-lg hover:bg-surface-hover"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Notification message */}
+            {successMsg && (
+              <div className="bg-emerald-50 border border-emerald-300 text-emerald-900 p-3 rounded-2xl text-xs font-bold flex items-center space-x-2 shrink-0 animate-fade-in">
+                <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{successMsg}</span>
+              </div>
+            )}
+
+            {/* Instructions */}
+            <p className="text-xs text-ink-secondary leading-relaxed bg-amber-50/70 p-3 rounded-2xl border border-amber-200/80 shrink-0">
+              💡 <strong>Principe :</strong> cochez les variantes ou doublons de sous-sociétés ci-dessous pour les fusionner instantanément en une seule sous-société officielle sur toutes les prestations et tous les adhérents existants.
+            </p>
+
+            {/* List & Controls */}
+            <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-xs font-bold text-ink">
+                  Sous-sociétés recensées ({subSocietesStats.length}) :
+                </span>
+                {subSocietesStats.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleSelectAllSubs}
+                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center space-x-1 cursor-pointer"
+                  >
+                    {selectedSubNames.length === subSocietesStats.length ? (
+                      <>
+                        <CheckSquare className="w-3.5 h-3.5" />
+                        <span>Tout désélectionner</span>
+                      </>
+                    ) : (
+                      <>
+                        <Square className="w-3.5 h-3.5" />
+                        <span>Tout sélectionner</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+
+              {subSocietesStats.length === 0 ? (
+                <div className="p-8 text-center bg-surface-muted rounded-2xl border border-dashed border-line-strong text-ink-muted text-xs">
+                  Aucune sous-société répertoriée pour le moment pour {regroupSociete.nom}.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {subSocietesStats.map((item) => {
+                    const isSelected = selectedSubNames.includes(item.name);
+                    const isEditing = editingSingleSub?.oldName === item.name;
+
+                    return (
+                      <div
+                        key={item.name}
+                        className={`p-3 rounded-2xl border transition flex items-center justify-between gap-3 ${
+                          isSelected
+                            ? 'bg-indigo-50/80 border-indigo-300 shadow-xs'
+                            : 'bg-surface border-line hover:border-line-strong'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-3 min-w-0 flex-1">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleSelectSub(item.name)}
+                            className="text-ink-muted hover:text-indigo-600 cursor-pointer shrink-0"
+                          >
+                            {isSelected ? (
+                              <CheckSquare className="w-5 h-5 text-indigo-600" />
+                            ) : (
+                              <Square className="w-5 h-5 text-slate-300" />
+                            )}
+                          </button>
+
+                          {isEditing ? (
+                            <div className="flex items-center space-x-2 flex-1">
+                              <input
+                                type="text"
+                                value={editingSingleSub.newName}
+                                onChange={(e) => setEditingSingleSub({ ...editingSingleSub, newName: maskNom(e.target.value) })}
+                                className="px-2 py-1 border border-indigo-300 rounded-lg text-xs font-bold text-ink-strong focus:outline-none focus:ring-2 focus:ring-indigo-500 flex-1 uppercase"
+                                autoFocus
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleExecuteSingleRename(editingSingleSub.oldName, editingSingleSub.newName)}
+                                className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-xs"
+                              >
+                                Valider
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingSingleSub(null)}
+                                className="px-2 py-1 bg-surface-hover text-ink-secondary rounded-lg text-xs"
+                              >
+                                Annuler
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="min-w-0 flex-1 flex items-center justify-between pr-2">
+                              <span className="text-xs font-extrabold text-ink-strong truncate">
+                                {item.name}
+                              </span>
+
+                              <div className="flex items-center space-x-2 shrink-0">
+                                <span className="px-2 py-0.5 rounded-full bg-surface-hover text-ink text-[10px] font-semibold border border-line">
+                                  {item.prestationCount} prestation(s)
+                                </span>
+                                {item.personneCount > 0 && (
+                                  <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-semibold border border-blue-200">
+                                    {item.personneCount} adhérent(s)
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {!isEditing && (
+                          <button
+                            type="button"
+                            onClick={() => setEditingSingleSub({ oldName: item.name, newName: maskNom(item.name) })}
+                            className="p-1.5 text-ink-faint hover:text-indigo-600 rounded-lg hover:bg-surface-hover shrink-0 cursor-pointer"
+                            title="Renommer directement"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Merge Action Box */}
+            <div className="p-4 bg-surface-muted rounded-2xl border border-line space-y-3 shrink-0">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <label className="text-xs font-bold text-ink flex items-center space-x-1.5">
+                  <Sparkles className="w-4 h-4 text-amber-500" />
+                  <span>Nom unifié de la sous-société cible :</span>
+                </label>
+                {selectedSubNames.length > 0 && (
+                  <span className="text-[11px] font-extrabold text-indigo-700 bg-indigo-100/70 px-2.5 py-0.5 rounded-full border border-indigo-200">
+                    {selectedSubNames.length} élément(s) sélectionné(s)
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Saisissez ou choisissez le nom unifié (ex: DIRECTION GENERALE)"
+                  value={targetSubName}
+                  onChange={(e) => setTargetSubName(maskNom(e.target.value))}
+                  className="w-full px-3 py-2 text-xs font-bold border border-line-strong rounded-xl bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-xs uppercase"
+                />
+
+                <button
+                  type="button"
+                  onClick={handleExecuteMerge}
+                  disabled={selectedSubNames.length === 0 || !targetSubName.trim() || isProcessingMerge}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-300 text-white rounded-xl text-xs font-extrabold shadow-sm transition flex items-center space-x-1.5 shrink-0 cursor-pointer disabled:cursor-not-allowed"
+                >
+                  {isProcessingMerge ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <GitMerge className="w-4 h-4" />
+                  )}
+                  <span>Fusionner vers ce nom</span>
+                </button>
+              </div>
+
+              {/* Quick suggestions from selected */}
+              {selectedSubNames.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  <span className="text-[10px] text-ink-muted font-semibold">Propositions :</span>
+                  {selectedSubNames.map(name => (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => setTargetSubName(maskNom(name))}
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border transition cursor-pointer ${
+                        targetSubName === name
+                          ? 'bg-indigo-600 text-white border-indigo-600'
+                          : 'bg-surface text-ink border-line-strong hover:bg-surface-hover'
+                      }`}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex justify-end pt-2 border-t border-line-soft shrink-0">
+              <button
+                type="button"
+                onClick={() => setRegroupSociete(null)}
+                className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition cursor-pointer"
+              >
+                Fermer
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Create/Edit Société */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-surface rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-line-soft pb-3">
+              <h3 className="font-bold text-ink-strong text-base">
+                {editingSociete ? 'Modifier la Société' : 'Nouvelle Société d\'Assurance'}
+              </h3>
+              <button onClick={() => setIsModalOpen(false)} className="text-ink-faint hover:text-ink">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-ink font-semibold mb-1">Nom de la Société *</label>
+                <input
+                  type="text"
+                  required
+                  value={formData.nom || ''}
+                  onChange={(e) => setFormData(p => ({ ...p, nom: maskNom(e.target.value) }))}
+                  className="w-full p-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none uppercase"
+                  placeholder="Ex: Sanlam Santé"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-ink font-semibold mb-1">Code / Abrégé *</label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.code || ''}
+                    onChange={(e) => setFormData(p => ({ ...p, code: e.target.value }))}
+                    className="w-full p-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono"
+                    placeholder="Ex: SNL-01"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-ink font-semibold mb-1">Taux Prise en Charge (%)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={formData.tauxCouvertureDefaut || 80}
+                    onChange={(e) => setFormData(p => ({ ...p, tauxCouvertureDefaut: Number(e.target.value) }))}
+                    className="w-full p-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none font-semibold text-emerald-700"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-ink font-semibold mb-1">Personne de Contact</label>
+                <input
+                  type="text"
+                  value={formData.contact || ''}
+                  onChange={(e) => setFormData(p => ({ ...p, contact: maskNom(e.target.value) }))}
+                  className="w-full p-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none uppercase"
+                  placeholder="Ex: M. Rasoanaivo"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-ink font-semibold mb-1">Téléphone</label>
+                  <input
+                    type="text"
+                    value={formData.telephone || ''}
+                    onChange={(e) => setFormData(p => ({ ...p, telephone: e.target.value }))}
+                    className="w-full p-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    placeholder="+261 20..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-ink font-semibold mb-1">Email</label>
+                  <input
+                    type="email"
+                    value={formData.email || ''}
+                    onChange={(e) => setFormData(p => ({ ...p, email: e.target.value }))}
+                    className="w-full p-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    placeholder="contact@assur.mg"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-ink font-semibold mb-1">Adresse</label>
+                <input
+                  type="text"
+                  value={formData.adresse || ''}
+                  onChange={(e) => setFormData(p => ({ ...p, adresse: e.target.value }))}
+                  className="w-full p-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  placeholder="Ville, Quartier, Rue..."
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-3 border-t border-line-soft">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 rounded-xl border border-line text-ink-secondary hover:bg-surface-hover"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold shadow-sm"
+                >
+                  Enregistrer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Confirmation de Suppression */}
+      {societeToDelete && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-surface rounded-2xl max-w-sm w-full p-6 shadow-xl space-y-4">
+            <div className="flex items-center space-x-3 text-rose-600">
+              <div className="p-2.5 bg-rose-100 rounded-full">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-ink-strong text-base">Supprimer la société ?</h3>
+                <p className="text-[11px] text-ink-muted font-mono">{societeToDelete.code}</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-ink-secondary leading-relaxed">
+              Voulez-vous vraiment supprimer la société <strong className="text-ink-strong font-bold">{societeToDelete.nom}</strong> ?
+              Cette action retirera la société de votre liste d'organismes payeurs.
+            </p>
+
+            <div className="flex justify-end space-x-2 pt-3 border-t border-line-soft">
+              <button
+                type="button"
+                onClick={() => setSocieteToDelete(null)}
+                className="px-4 py-2 rounded-xl border border-line text-ink-secondary text-xs font-semibold hover:bg-surface-hover transition cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onDeleteSociete(societeToDelete.id);
+                  setSocieteToDelete(null);
+                }}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold shadow-sm transition cursor-pointer"
+              >
+                Confirmer la suppression
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
