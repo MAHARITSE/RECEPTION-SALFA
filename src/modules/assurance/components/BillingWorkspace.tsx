@@ -222,6 +222,7 @@ export function BillingWorkspace({ state, setState, ...details }: Props) {
       <PrescriptionEditModal
         prestation={prescription}
         familles={details.familles}
+        articles={state.articles}
         onClose={() => setPrescription(null)}
         onSave={enregistrerPrescription}
       />

@@ -121,6 +121,11 @@ export interface LignePrestation {
   /** Ligne Caisse (originale, lecture seule) ou ajout du facturier
    * (« omission » / « ordonnance externe remboursée par l'hôpital »). */
   origine?: 'caisse' | 'omission' | 'ordonnance_externe';
+  /** Saisie façon Sage (ajouts du facturier) : quantité, remise, P.U., date d'acte. */
+  quantity?: number;
+  remisePct?: number;
+  prixUnitaire?: number;
+  dateActe?: string;
 }
 
 export interface Prestation {
