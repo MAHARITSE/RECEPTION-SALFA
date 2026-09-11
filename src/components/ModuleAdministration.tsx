@@ -11,6 +11,9 @@ import ModulePharmacie from './ModulePharmacie';
 import ModuleMagasinier from './ModuleMagasinier';
 import ModuleLaboratoire from './ModuleLaboratoire';
 import ModuleSuiviAssurance from '../modules/assurance/ModuleSuiviAssurance';
+import { SocietesView } from '../modules/assurance/components/SocietesView';
+import type { Societe } from '../modules/assurance/types';
+import { sharedPersonnes, sharedFamilles, sharedSocietes, sharedTransactions, writeSharedTable } from '../modules/assurance/sharedData';
 import ModuleDossierMedical from './ModuleDossierMedical';
 import TableEtablissements from './TableEtablissements';
 import EnTeteFactureEditor from './EnTeteFactureEditor';
@@ -133,6 +136,9 @@ export default function ModuleAdministration({ state, setState }: Props) {
   const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null);
   const [editCompany, setEditCompany] = useState<{ name: string; settlementMode: CompanySettlementMode; type: 'payeur' | 'assurance'; tauxCouverture: string }>({ name: '', settlementMode: 'monthly_global', type: 'payeur', tauxCouverture: '' });
 
+  // Sociétés : « Fiches » = gestion complète comme dans le suivi assurance,
+  // « Tableau » = vue synthétique (nom, type, sous-mode de règlement).
+  const [companyView, setCompanyView] = useState<'fiches' | 'tableau'>('fiches');
   // Liste noire des sociétés (impayé, suspension temporaire…)
   const [showCompanyBlacklist, setShowCompanyBlacklist] = useState(false);
   const [companyToBlock, setCompanyToBlock] = useState<Company | null>(null);
@@ -386,6 +392,77 @@ export default function ModuleAdministration({ state, setState }: Props) {
         setConfirmModal((cm) => ({ ...cm, isOpen: false }));
       },
     });
+  };
+
+  // ============ FICHES SOCIÉTÉS (base commune, comme le suivi assurance) ============
+  const assuranceSocietes = sharedSocietes(state);
+  const assurancePersonnes = sharedPersonnes(state);
+  const assuranceFamilles = sharedFamilles(state);
+  const assurancePrestations = sharedTransactions(state).prestations;
+
+  /** Applique une modification de société dans la base commune (validation avant écriture). */
+  const applySocietes = (rows: Societe[], logAction: string, logDetails: string, message: string) => {
+    try {
+      writeSharedTable(state, 'assuranceSocietes', rows); // valide avant toute écriture
+      setState((prev) => {
+        const next = { ...writeSharedTable(prev, 'assuranceSocietes', rows), auditLogs: [...prev.auditLogs] };
+        addAuditLog(next, logAction, logDetails);
+        return next;
+      });
+      showToast(message);
+    } catch (err) {
+      showToast(`⚠️ ${(err as Error).message}`);
+    }
+  };
+
+  const handleSaveSocieteFiche = (societe: Societe) => {
+    const exists = assuranceSocietes.some((c) => c.id === societe.id);
+    const rows = exists
+      ? assuranceSocietes.map((c) => (c.id === societe.id ? societe : c))
+      : [...assuranceSocietes, societe];
+    applySocietes(rows, exists ? 'MODIFICATION_SOCIETE_PARTENAIRE' : 'AJOUT_SOCIETE_PARTENAIRE',
+      `${societe.nom} (${societe.code})`, exists ? `✅ ${societe.nom} mise à jour` : `✅ ${societe.nom} enregistrée`);
+  };
+
+  const handleDeleteSocieteFiche = (id: string) => {
+    const societe = assuranceSocietes.find((c) => c.id === id);
+    if (!societe) return;
+    applySocietes(assuranceSocietes.filter((c) => c.id !== id), 'SUPPRESSION_SOCIETE_PARTENAIRE',
+      `${societe.nom} (${societe.code})`, `🗑️ ${societe.nom} supprimée`);
+  };
+
+  /** Regroupement des sous-sociétés : patients, ventes et prestations assurance. */
+  const handleMergeSubSocietes = (societeId: string, sourceNames: string[], targetName: string) => {
+    const cleanTarget = targetName.trim();
+    if (!cleanTarget || !sourceNames.length) return;
+    const sources = new Set(sourceNames.map((n) => n.trim().toLowerCase()));
+    const societe = assuranceSocietes.find((c) => c.id === societeId);
+    if (!societe) return;
+    try {
+      setState((prev) => {
+        const next = { ...prev, auditLogs: [...prev.auditLogs] };
+        const societes = sharedSocietes(next);
+        const societeIdParNom = new Map(societes.map((c) => [c.nom.trim().toUpperCase(), c.id]));
+        const concerne = (nom?: string, id?: string) =>
+          (id && id === societeId) || (!!nom && societeIdParNom.get(nom.trim().toUpperCase()) === societeId);
+        next.patients = prev.patients.map((p) =>
+          concerne(p.company, p.company ? societeIdParNom.get(p.company.trim().toUpperCase()) : undefined) &&
+          p.subCompany && sources.has(p.subCompany.trim().toLowerCase())
+            ? { ...p, subCompany: cleanTarget } : p);
+        next.ventes = prev.ventes.map((v) =>
+          concerne(v.company, v.company ? societeIdParNom.get(v.company.trim().toUpperCase()) : undefined) &&
+          v.subCompany && sources.has(v.subCompany.trim().toLowerCase())
+            ? { ...v, subCompany: cleanTarget } : v);
+        next.assurancePrestations = (prev.assurancePrestations || []).map((pr) =>
+          concerne(pr.societeNom, pr.societeId) && pr.sousSociete && sources.has(pr.sousSociete.trim().toLowerCase())
+            ? { ...pr, sousSociete: cleanTarget } : pr);
+        addAuditLog(next, 'REGROUPEMENT_SOUS_SOCIETE', `${societe.nom} : ${sourceNames.join(', ')} → ${cleanTarget}`);
+        return next;
+      });
+      showToast(`✅ Sous-sociétés regroupées sous « ${cleanTarget} »`);
+    } catch (err) {
+      showToast(`⚠️ ${(err as Error).message}`);
+    }
   };
 
   // ============ LISTE NOIRE DES SOCIÉTÉS ============
@@ -1534,6 +1611,24 @@ export default function ModuleAdministration({ state, setState }: Props) {
                         <div className="flex items-center gap-2">
                           <span className="px-2.5 py-1 rounded-full bg-indigo-100 dark:bg-indigo-500/15 text-indigo-800 dark:text-indigo-300 text-[11px] font-bold">{state.companies.filter(c => companyTypeLabel(c) === 'Payeur global').length} payeur(s)</span>
                           <span className="px-2.5 py-1 rounded-full bg-sky-100 dark:bg-sky-500/15 text-sky-800 dark:text-sky-300 text-[11px] font-bold">{state.companies.filter(c => companyTypeLabel(c) === 'Assurance').length} assurance(s)</span>
+                          <div className="flex items-center p-0.5 bg-surface-hover rounded-xl">
+                            <button
+                              onClick={() => setCompanyView('fiches')}
+                              className={`px-3 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer ${
+                                companyView === 'fiches' ? 'bg-surface text-indigo-700 dark:text-indigo-300 shadow-xs' : 'text-ink-muted hover:text-ink'
+                              }`}
+                            >
+                              🏢 Fiches sociétés
+                            </button>
+                            <button
+                              onClick={() => setCompanyView('tableau')}
+                              className={`px-3 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer ${
+                                companyView === 'tableau' ? 'bg-surface text-indigo-700 dark:text-indigo-300 shadow-xs' : 'text-ink-muted hover:text-ink'
+                              }`}
+                            >
+                              📋 Tableau
+                            </button>
+                          </div>
                           <button
                             onClick={() => setShowCompanyBlacklist(true)}
                             className="px-3.5 py-2.5 bg-slate-700 text-white rounded-xl hover:bg-slate-800 flex items-center gap-2 cursor-pointer text-xs font-bold shadow-md"
@@ -1545,7 +1640,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
                             )}
                           </button>
                           <button
-                            onClick={() => setAddCompany(true)}
+                            onClick={() => { setCompanyView('tableau'); setAddCompany(true); }}
                             className="px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 flex items-center gap-2 cursor-pointer text-xs font-bold shadow-md"
                           >
                             <Plus className="w-4 h-4" /> Nouvelle société partenaire
@@ -1553,8 +1648,22 @@ export default function ModuleAdministration({ state, setState }: Props) {
                         </div>
                       </div>
 
+                      {companyView === 'fiches' && (
+                        <div className="border border-line rounded-2xl p-4 bg-surface shadow-xs">
+                          <SocietesView
+                            societes={assuranceSocietes}
+                            prestations={assurancePrestations}
+                            personnes={assurancePersonnes}
+                            familles={assuranceFamilles}
+                            onSaveSociete={handleSaveSocieteFiche}
+                            onDeleteSociete={handleDeleteSocieteFiche}
+                            onMergeSubSocietes={handleMergeSubSocietes}
+                          />
+                        </div>
+                      )}
+
                       {/* Add company form */}
-                      {addCompany && (
+                      {companyView === 'tableau' && addCompany && (
                         <div className="p-4 bg-indigo-50/70 dark:bg-indigo-500/6 border border-indigo-200 dark:border-indigo-500/25 rounded-2xl space-y-3 animate-in fade-in">
                           <h4 className="font-bold text-sm text-indigo-950 dark:text-indigo-300">Enregistrer une entreprise partenaire</h4>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1623,6 +1732,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
                         </div>
                       )}
 
+{companyView === 'tableau' && (<>
                       {/* Filter Bar */}
                       <div className="bg-surface p-3.5 border border-line rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-xs">
                         <div className="relative flex-1 min-w-[240px] max-w-md">
@@ -1698,7 +1808,8 @@ export default function ModuleAdministration({ state, setState }: Props) {
                         </div>
                       </div>
 
-                      {/* Companies Table */}
+</>
+)}                      {/* Companies Table */}
                       <div className="border border-line rounded-2xl overflow-hidden bg-surface shadow-xs">
                         <table className="w-full text-xs text-left">
                           <thead className="bg-surface-muted border-b text-ink-secondary font-bold">

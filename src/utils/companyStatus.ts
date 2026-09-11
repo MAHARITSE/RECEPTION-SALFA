@@ -62,10 +62,48 @@ export function companyNameIsBlocked(companies: Company[] = [], name?: string, a
   return companyIsBlocked(findCompanyByName(companies, name), at);
 }
 
+/** Option de liste déroulante (valeur, libellé, alerte éventuelle). */
+export interface CompanyOption {
+  value: string;
+  label: string;
+  hint?: string;
+  /** Société en liste noire / suspendue : à afficher en rouge. */
+  danger?: boolean;
+}
+
 /**
- * Sociétés proposées à la sélection : les sociétés bloquées sont retirées, sauf
- * celle déjà enregistrée sur la fiche en cours (jamais modifiée en silence).
+ * Sociétés proposées à la sélection.
+ *
+ * Une société bloquée n'est **jamais retirée** de la liste : elle reste
+ * affichée, signalée en rouge, pour que l'opérateur voie immédiatement le
+ * problème (impayé, suspension…). Le libellé rappelle le motif.
  */
-export function selectableCompanies(companies: Company[] = [], keepName?: string, at: Date = new Date()): Company[] {
-  return (companies || []).filter(c => !companyIsBlocked(c, at) || (!!keepName && c.name === keepName));
+export function companyOptions(companies: Company[] = [], at: Date = new Date()): CompanyOption[] {
+  return (companies || [])
+    .slice()
+    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fr'))
+    .map(c => {
+      const bloquee = companyIsBlocked(c, at);
+      return {
+        value: c.name,
+        label: bloquee ? `🚫 ${c.name} — ${companyBlockLabel(c, at)}` : c.name,
+        hint: bloquee ? (c.blacklistReason || 'Société bloquée') : undefined,
+        danger: bloquee,
+      };
+    });
+}
+
+/** Sous-sociétés / services connus pour une société (saisie assistée). */
+export function subCompaniesOf(rows: { company?: string; subCompany?: string }[] = [], companyName?: string): string[] {
+  const key = (companyName || '').trim().toUpperCase();
+  if (!key) return [];
+  const uniques = new Map<string, string>();
+  for (const row of rows) {
+    const societe = (row?.company || '').trim().toUpperCase();
+    const sous = (row?.subCompany || '').trim();
+    if (societe !== key || !sous) continue;
+    const cle = sous.toUpperCase();
+    if (!uniques.has(cle)) uniques.set(cle, sous);
+  }
+  return [...uniques.values()].sort((a, b) => a.localeCompare(b, 'fr'));
 }

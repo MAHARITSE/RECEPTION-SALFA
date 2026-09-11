@@ -4,10 +4,11 @@ import type { Consultation, VitalSigns, Prescription, LabRequest, ClientType, In
 import type { AppState } from '../store';
 import type { Societe } from '../modules/assurance/types';
 import { allocateFactureNumber, applySocieteUpsert, collectExistingFactureNumbers } from '../store';
+import { SearchableSelect, optionsFromValues } from './SearchableSelect';
 import {
   addAuditLog, addNotification, formatAr, formatNum, roundTo2, getPrice, addJourneyEvent,
   labCategoryLabel, purgePatientFromQueue, isPrescriptionPaid, isMedicationEntryFamily,
-  getEchoCatalog, getLabCatalog, DEFAULT_ECHO_CATALOG, familyManagesStock, companyIsBlocked, selectableCompanies
+  getEchoCatalog, getLabCatalog, DEFAULT_ECHO_CATALOG, familyManagesStock, companyIsBlocked, companyOptions, sousSocietesConnues
 } from '../store';
 import type { EchoExamCatalog } from '../store';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
@@ -1067,10 +1068,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                 {medEditClientType === 'societe' && (
                   <div>
                     <label className="block font-bold text-ink mb-0.5">Société</label>
-                    <select value={medEditCompany} onChange={e => setMedEditCompany(e.target.value)} className="w-full px-2 py-1.5 border rounded bg-surface cursor-pointer">
-                      <option value="">— Sélectionner —</option>
-                      {selectableCompanies(state.companies, medEditCompany).map(c => (<option key={c.id} value={c.name}>{companyIsBlocked(c) ? `🚫 ${c.name} — bloquée` : c.name}</option>))}
-                    </select>
+                    <SearchableSelect value={medEditCompany} onChange={setMedEditCompany} options={companyOptions(state.companies)} placeholder="— Taper pour filtrer puis choisir —" ariaLabel="Société" inputClassName="w-full px-2 py-1.5 border rounded outline-none bg-surface" />
                   </div>
                 )}
               </div>
@@ -1082,7 +1080,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                   </div>
                   <div>
                     <label className="block font-bold text-ink mb-0.5">Sous-société</label>
-                    <input type="text" value={medEditSubCompany} onChange={e => setMedEditSubCompany(e.target.value.toUpperCase())} className="w-full px-2 py-1.5 border rounded uppercase bg-surface" placeholder="Direction, service…" />
+                    <SearchableSelect value={medEditSubCompany} onChange={setMedEditSubCompany} options={optionsFromValues(sousSocietesConnues(state, medEditCompany))} placeholder={"— Sous-société de " + (medEditCompany || "la société") + " —"} ariaLabel="Sous-société" inputClassName="w-full px-2 py-1.5 border rounded outline-none bg-surface uppercase" />
                   </div>
                 </div>
               )}

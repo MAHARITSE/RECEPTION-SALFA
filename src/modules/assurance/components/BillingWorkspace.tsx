@@ -5,7 +5,9 @@ import type { ClientType } from '../../../types';
 import { IS_WAMP_BUILD } from '../../../wamp';
 import { issueMonthlyInvoiceInBrowser } from '../../../browserDb';
 import { PrestationsView, type PrestationsViewProps } from './PrestationsView';
-import { billingTotals, categoryLabels, collectBillingDocuments, documentsForScope, monthlyGroups, monthlyScopeId, preserveMonthlyInvoices, type BillingDocument, type MonthlyScope } from '../monthlyBilling';
+import { billingTotals, categoryLabels, collectBillingDocuments, documentsForScope, groupBillingDocumentsByFacture, monthlyGroups, monthlyScopeId, preserveMonthlyInvoices, type BillingDocument, type MonthlyScope } from '../monthlyBilling';
+import { FacturationParFactureTable } from './billing/FacturationParFactureTable';
+import { isOfficialFactureNumber } from '../../../utils/factureNumber';
 import { auditArticleFamilies } from '../billingFamilies';
 import { printIndividualBillingDocument, printMonthlyInvoice } from '../printBilling';
 
@@ -13,7 +15,7 @@ type Props = PrestationsViewProps & { state: AppState; setState: React.Dispatch<
 
 export function BillingWorkspace({ state, setState, ...details }: Props) {
   const formatMoney = (value: number, currency = state.ticketSettings.currency) => `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(value)} ${currency}`;
-  const [mode, setMode] = useState<'factures' | 'detaillee'>('factures');
+  const [mode, setMode] = useState<'factures' | 'par_facture' | 'detaillee'>('factures');
   const [month, setMonth] = useState('');
   const articleIssues = useMemo(() => auditArticleFamilies(state), [state]);
   const [error, setError] = useState('');
@@ -35,6 +37,7 @@ export function BillingWorkspace({ state, setState, ...details }: Props) {
   const groups = [...scopes.values()].filter(matches).sort((a, b) => b.month.localeCompare(a.month) || monthlyScopeId(a).localeCompare(monthlyScopeId(b)));
   const visibleIds = new Set(visible.map(d => d.id));
   const visiblePrestations = details.prestations.filter(p => visibleIds.has(p.id));
+  const facturesGroupees = useMemo(() => groupBillingDocumentsByFacture(visible), [visible]);
   const otherDocuments = visible.filter(d => !details.prestations.some(p => p.id === d.id));
 
   useEffect(() => {
@@ -87,6 +90,7 @@ export function BillingWorkspace({ state, setState, ...details }: Props) {
     </div>}
     <div className="flex flex-wrap gap-2" role="tablist" aria-label="Vues de facturation">
       <button role="tab" aria-selected={mode === 'factures'} onClick={() => setMode('factures')} className={`flex items-center gap-2 rounded-lg px-4 py-2 border ${mode === 'factures' ? 'border-accent-line bg-accent-soft text-accent' : 'border-line text-ink-muted'}`}><Receipt size={17} />Vue par Facture <strong>{groups.length}</strong></button>
+      <button role="tab" aria-selected={mode === 'par_facture'} onClick={() => setMode('par_facture')} className={`flex items-center gap-2 rounded-lg px-4 py-2 border ${mode === 'par_facture' ? 'border-accent-line bg-accent-soft text-accent' : 'border-line text-ink-muted'}`}><Receipt size={17} />Par N° de facture <strong>{facturesGroupees.length}</strong></button>
       <button role="tab" aria-selected={mode === 'detaillee'} onClick={() => setMode('detaillee')} className={`flex items-center gap-2 rounded-lg px-4 py-2 border ${mode === 'detaillee' ? 'border-accent-line bg-accent-soft text-accent' : 'border-line text-ink-muted'}`}><FileText size={17} />Vue Détaillée (Dossiers) <strong>{visible.length}</strong></button>
     </div>
     <p className="text-xs text-ink-muted">La sélection Société / Garant du haut s’applique aux deux vues et à leurs compteurs. Réinitialiser rétablit la vue globale, incluant les factures Comptoir et Externes.</p>
@@ -114,6 +118,17 @@ export function BillingWorkspace({ state, setState, ...details }: Props) {
           </tr>;
         })}</tbody>
       </table>{!groups.length && <p className="p-6 text-center text-sm text-ink-muted">Aucune facture pour cette sélection.</p>}</div>
+    </div> : mode === 'par_facture' ? <div data-testid="billing-par-facture-view" className="space-y-3">
+      <div className="rounded-xl border border-line bg-surface p-4">
+        <h2 className="font-bold text-ink-strong">Factures par numéro</h2>
+        <p className="mt-1 text-xs text-ink-muted">Une ligne par numéro de facture, avec la période, les actes, le total brut, le ticket modérateur, la part à réclamer, l’encaissé, le reste et le taux de recouvrement — comme la vue Prestations du suivi assurance. Les numéros d’un ancien format sont signalés.</p>
+      </div>
+      <FacturationParFactureTable
+        factures={facturesGroupees}
+        formatMoney={formatMoney}
+        isOfficialNumber={isOfficialFactureNumber}
+        onPrint={d => printIndividualBillingDocument(state, d)}
+      />
     </div> : <div data-testid="billing-detail-view">
       <>
         <PrestationsView {...details} prestations={visiblePrestations} hideViewSwitcher onPrintPrestation={p => { const doc = documents.find(d => d.id === p.id); if (doc) printIndividualBillingDocument(state, doc); }} />

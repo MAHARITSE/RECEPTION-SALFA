@@ -66,6 +66,19 @@ Comme pour les patients de Réception, une société peut être **mise en liste 
 - Une société bloquée est retirée des listes de sélection (Réception, Caisse, Médecin, Laboratoire). Une fiche déjà enregistrée sur cette société n'est jamais modifiée en silence : la société reste affichée, marquée *bloquée*.
 - Chaque mise en liste noire et chaque rétablissement sont tracés dans le journal d'audit (`SOCIETE_LISTE_NOIRE`, `SOCIETE_RETABLE`).
 
+## Saisie assistée et sociétés bloquées dans les formulaires
+
+- **Sociétés bloquées** : elles ne sont jamais retirées des listes de saisie (Réception, Caisse, Médecin, Laboratoire, paramètres). Elles restent affichées, en **rouge** et précédées de 🚫, avec le motif en dessous du champ : l'opérateur voit immédiatement le problème et facture en client comptoir.
+- **Combobox saisissables** : tous les champs « Société » et « Sous-société » acceptent la frappe (filtrage au clavier, choix à la souris, saisie libre conservée). Seuls les **types client** (Comptoir / Société / Externe) restent des listes fermées.
+- **Sous-sociétés assistées** : les suggestions proposées sont celles déjà enregistrées pour la société choisie (patients, ventes et prestations), et non la liste complète.
+- **Nouveau patient** : Adresse, Nom, Prénom et N° de dossier restent des champs de **saisie libre avec suggestions** (historique de la base proposé pendant la frappe, jamais imposé).
+
+## Facturation : vue « Par N° de facture »
+
+En plus de la vue mensuelle et de la vue détaillée, la Facturation propose un onglet **Par N° de facture** : une ligne par numéro de facture, avec la période, le nombre d'actes, le total brut, le ticket modérateur, la part à réclamer, l'encaissé, le reste à réclamer, le taux de recouvrement, le statut et l'impression — les mêmes repères que la vue **Prestations**. Le détail des actes se déplie sous chaque facture.
+
+Les numéros qui ne suivent pas la numérotation officielle en vigueur (`26FA0427102` pour le comptoir et les externes, `FA-07/CODE/26-014` pour les sociétés) sont signalés « ancien format » dans cette vue.
+
 ## Compléments assurance, dans la même base
 
 Les collections `assuranceSocietes`, `assurancePersonnes` et `assuranceFamilles` conservent les attributs propres au suivi (coordonnées du garant, taux par assuré, alias des actes, etc.). Les identités de Réception sont prioritaires : il ne s'agit plus de référentiels indépendants.

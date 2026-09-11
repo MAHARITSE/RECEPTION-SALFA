@@ -148,3 +148,67 @@ export function billingFacility(state: AppState): MonthlyInvoice['facility'] {
     phone: header?.telephone ?? ts.phone, email: header?.email ?? ts.email ?? '',
     nif: header?.nifStat ?? ts.nif, currency: ts.currency };
 }
+
+/* ====== VUE « PAR FACTURE » (regroupement par numéro de facture) ====== */
+
+export interface BillingFactureGroup {
+  number: string;
+  category: ClientType;
+  client: string;
+  companyName?: string;
+  subCompany?: string;
+  dossier?: string;
+  matricule?: string;
+  dateMin: string;
+  dateMax: string;
+  documents: BillingDocument[];
+  actes: number;
+  total: number;
+  copay: number;
+  payable: number;
+  paid: number;
+  rejected: number;
+  remaining: number;
+  tauxRecouvrement: number;
+  statut: 'Payé' | 'Partiellement payé' | 'En attente' | 'Rejeté';
+}
+
+/**
+ * Regroupe les pièces par **numéro de facture** : une ligne par facture, comme
+ * la vue « Prestations » du suivi assurance (N° facture, client/société,
+ * période, actes, total brut, ticket modérateur, part à réclamer, perçu,
+ * reste à réclamer, taux de recouvrement et statut).
+ */
+export function groupBillingDocumentsByFacture(documents: BillingDocument[]): BillingFactureGroup[] {
+  const groups = new Map<string, BillingDocument[]>();
+  for (const doc of documents) {
+    const key = (doc.number || 'SANS_NUMERO').trim().toUpperCase();
+    const bucket = groups.get(key);
+    if (bucket) bucket.push(doc); else groups.set(key, [doc]);
+  }
+  return [...groups.values()].map(rows => {
+    const dates = rows.map(d => d.date).filter(Boolean).sort();
+    const total = rows.reduce((s, d) => s + d.total, 0);
+    const copay = rows.reduce((s, d) => s + d.copay, 0);
+    const payable = rows.reduce((s, d) => s + d.payable, 0);
+    const paid = rows.reduce((s, d) => s + d.paid, 0);
+    const rejected = rows.reduce((s, d) => s + d.rejected, 0);
+    const remaining = Math.max(0, payable - paid - rejected);
+    const premier = rows[0];
+    const tauxRecouvrement = payable > 0 ? Math.round((paid / payable) * 100) : (paid > 0 ? 100 : 0);
+    const statut: BillingFactureGroup['statut'] = rejected >= payable && payable > 0 && paid === 0
+      ? 'Rejeté'
+      : (paid >= payable && payable > 0) || (remaining <= 0 && paid > 0)
+        ? 'Payé'
+        : paid > 0 ? 'Partiellement payé' : 'En attente';
+    return {
+      number: premier.number || 'SANS_NUMERO', category: premier.category, client: premier.client,
+      companyName: premier.companyName, subCompany: premier.subCompany,
+      dossier: rows.find(d => d.dossier)?.dossier, matricule: rows.find(d => d.matricule)?.matricule,
+      dateMin: dates[0] || '', dateMax: dates[dates.length - 1] || '',
+      documents: rows.slice().sort((a, b) => a.date.localeCompare(b.date)),
+      actes: rows.reduce((s, d) => s + d.items.length, 0),
+      total, copay, payable, paid, rejected, remaining, tauxRecouvrement, statut,
+    };
+  }).sort((a, b) => b.dateMin.localeCompare(a.dateMin) || a.number.localeCompare(b.number));
+}

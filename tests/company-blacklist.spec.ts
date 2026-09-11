@@ -5,8 +5,9 @@ import {
   companyBlockLabel,
   companyIsBlocked,
   companyNameIsBlocked,
+  companyOptions,
   companySuspensionExpired,
-  selectableCompanies,
+  subCompaniesOf,
 } from '../src/utils/companyStatus';
 import { sharedSocietes, writeSharedTable } from '../src/modules/assurance/sharedData';
 
@@ -31,19 +32,38 @@ test('liste noire : blocage, motif et suspension temporaire', () => {
   expect(companyBlockLabel(suspendue, le('2026-10-01'))).toBe('');
 });
 
-test('les sociétés bloquées ne sont plus proposées à la sélection', () => {
+test('les sociétés bloquées restent proposées, signalées en rouge', () => {
   const companies = [
     societe({ id: 'soc-1', name: 'JIRAMA' }),
     societe({ id: 'soc-2', name: 'TELMA', blacklisted: true, blacklistReason: 'Impayé' }),
     societe({ id: 'soc-3', name: 'AXIAN' }),
   ];
-  expect(selectableCompanies(companies).map(c => c.name)).toEqual(['JIRAMA', 'AXIAN']);
-  // Une fiche déjà enregistrée sur une société bloquée n'est jamais modifiée en silence.
-  expect(selectableCompanies(companies, 'TELMA').map(c => c.name)).toEqual(['JIRAMA', 'TELMA', 'AXIAN']);
+  const options = companyOptions(companies);
+  // Aucune société n'est retirée de la liste : l'opérateur doit pouvoir la voir.
+  expect(options.map(o => o.value)).toEqual(['AXIAN', 'JIRAMA', 'TELMA']);
+  const telma = options.find(o => o.value === 'TELMA')!;
+  expect(telma.danger).toBe(true);
+  expect(telma.hint).toBe('Impayé');
+  expect(telma.label).toContain('TELMA');
+  expect(options.find(o => o.value === 'JIRAMA')?.danger).toBeFalsy();
   expect(companyNameIsBlocked(companies, 'TELMA')).toBe(true);
   expect(companyNameIsBlocked(companies, 'telma')).toBe(true);
   expect(companyNameIsBlocked(companies, 'JIRAMA')).toBe(false);
   expect(companyNameIsBlocked(companies, undefined)).toBe(false);
+});
+
+test('saisie assistée des sous-sociétés par rapport à la société', () => {
+  const rows = [
+    { company: 'JIRAMA', subCompany: 'Direction' },
+    { company: 'jirama ', subCompany: '  service technique ' },
+    { company: 'JIRAMA', subCompany: 'Direction' },
+    { company: 'TELMA', subCompany: 'Réseau' },
+    { company: 'JIRAMA', subCompany: '' },
+  ];
+  expect(subCompaniesOf(rows, 'JIRAMA')).toEqual(['Direction', 'service technique']);
+  expect(subCompaniesOf(rows, 'TELMA')).toEqual(['Réseau']);
+  expect(subCompaniesOf(rows, 'INCONNUE')).toEqual([]);
+  expect(subCompaniesOf(rows, '')).toEqual([]);
 });
 
 test('le blocage est enregistré dans la base commune et relu par le suivi assurance', () => {
