@@ -112,8 +112,6 @@ export function BillingWorkspace({ state, setState, onFusionPrescription, onAnnu
 
   return <section className="space-y-4" aria-label="Facturation clients">
     <div className="flex flex-wrap items-center gap-3">
-      <label className="text-sm text-ink">Mois <input aria-label="Mois de facturation" type="month" value={month} onChange={event => setMonth(event.target.value)} className="ml-2 rounded-lg border border-line bg-field p-2" /></label>
-      {month && <button type="button" className="text-xs text-accent underline" onClick={() => setMonth('')}>Tous les mois</button>}
       <div className="inline-flex p-1 bg-surface-hover rounded-xl border border-line text-xs" role="tablist" aria-label="Vues de facturation">
         <button type="button" role="tab" aria-selected={mode === 'factures'} onClick={() => setMode('factures')}
           className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${mode === 'factures' ? 'bg-surface text-indigo-700 shadow-2xs' : 'text-ink-secondary hover:text-ink-strong'}`}>
@@ -128,6 +126,8 @@ export function BillingWorkspace({ state, setState, onFusionPrescription, onAnnu
           <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-surface-active text-ink font-bold">{visible.length}</span>
         </button>
       </div>
+      <label className="text-sm text-ink">Mois <input aria-label="Mois de facturation" type="month" value={month} onChange={event => setMonth(event.target.value)} className="ml-2 rounded-lg border border-line bg-field p-2" /></label>
+      {month && <button type="button" className="text-xs text-accent underline" onClick={() => setMonth('')}>Tous les mois</button>}
     </div>
     {articleIssues.length > 0 && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
       {articleIssues.length} article(s) ne peuvent pas être rattachés automatiquement à une famille valide. Aucun classement arbitraire n’a été appliqué.
