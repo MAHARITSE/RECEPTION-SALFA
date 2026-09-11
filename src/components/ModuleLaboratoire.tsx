@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { LabRequest, Patient, ClientType, LabExamCatalog, LabCategory, Article } from '../types';
 import type { AppState } from '../store';
 import type { Societe } from '../modules/assurance/types';
 import { allocateFactureNumber, applySocieteUpsert, collectExistingFactureNumbers } from '../store';
 import { SearchableSelect, optionsFromValues } from './SearchableSelect';
+import { SuggestionInput, suggestionsFrom } from './SuggestionInput';
 import {
   addAuditLog, addNotification, addJourneyEvent, LAB_NORMS,
   labCategoryLabel, LAB_CATEGORIES, normalizeDossierNumber, isDossierTaken, calculateAge, formatAr, getLabCatalog, companyIsBlocked, companyOptions, sousSocietesConnues,
@@ -50,6 +51,9 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
   const [showNew, setShowNew] = useState(false);
   const [patSearch, setPatSearch] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+  const suggestionsNomsPatients = useMemo(() => suggestionsFrom(state.patients.map(p => p.lastName)), [state.patients]);
+  const suggestionsPrenomsPatients = useMemo(() => suggestionsFrom(state.patients.map(p => p.firstName)), [state.patients]);
+
   const [newPat, setNewPat] = useState({ dossier: '', lastName: '', firstName: '', gender: 'F' as 'M' | 'F', dateOfBirth: '', contact: '', clientType: 'comptoir' as ClientType, company: '' });
   // Edition société — toujours visible quand patient choisi (comme hospit/bloc)
   const [labEditClientType, setLabEditClientType] = useState<ClientType>('comptoir');
@@ -739,8 +743,8 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
                   <div className="mt-3 p-3 bg-surface-muted rounded-lg border">
                     <div className="text-xs font-bold text-ink-secondary mb-2">Ou créer un nouveau patient (externe / ponctuel)</div>
                     <div className="grid grid-cols-2 gap-2 text-xs">
-                      <input value={newPat.lastName} onChange={(e) => setNewPat({ ...newPat, lastName: e.target.value })} placeholder="Nom *" className="px-2 py-1.5 border rounded uppercase outline-none" />
-                      <input value={newPat.firstName} onChange={(e) => setNewPat({ ...newPat, firstName: e.target.value })} placeholder="Prénom *" className="px-2 py-1.5 border rounded uppercase outline-none" />
+                      <SuggestionInput id="labo-nouveau-nom" value={newPat.lastName} onChange={(v) => setNewPat({ ...newPat, lastName: v })} suggestions={suggestionsNomsPatients} placeholder="Nom *" ariaLabel="Nom" className="px-2 py-1.5 border rounded uppercase outline-none" />
+                      <SuggestionInput id="labo-nouveau-prenom" value={newPat.firstName} onChange={(v) => setNewPat({ ...newPat, firstName: v })} suggestions={suggestionsPrenomsPatients} placeholder="Prénom *" ariaLabel="Prénom" className="px-2 py-1.5 border rounded uppercase outline-none" />
                       <input type="date" value={newPat.dateOfBirth} onChange={(e) => setNewPat({ ...newPat, dateOfBirth: e.target.value })} className="px-2 py-1.5 border rounded outline-none" />
                       <PhoneInput value={newPat.contact} onChange={(v) => setNewPat({ ...newPat, contact: v })} placeholder="Téléphone" className="px-2 py-1.5 border rounded outline-none" />
                       <Select value={newPat.gender} onChange={(e) => setNewPat({ ...newPat, gender: e.target.value as 'M' | 'F' })} className="px-2 py-1.5 border rounded cursor-pointer">

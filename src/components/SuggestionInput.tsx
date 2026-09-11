@@ -46,3 +46,15 @@ export function SuggestionInput({
     </>
   );
 }
+
+/** Liste de suggestions nettoyée : vides exclus, doublons ignorés (casse ignorée). */
+export function suggestionsFrom(values: (string | undefined | null)[]): string[] {
+  const vus = new Map<string, string>();
+  for (const brute of values) {
+    const valeur = (brute || '').trim();
+    if (!valeur) continue;
+    const cle = valeur.toUpperCase();
+    if (!vus.has(cle)) vus.set(cle, valeur);
+  }
+  return [...vus.values()].sort((a, b) => a.localeCompare(b, 'fr'));
+}

@@ -3,7 +3,7 @@
  * provoquait `Expected identifier but found "/"` à 1998:13 (vite/esbuild).
  * Le composant se termine désormais proprement par `</div> ); }` — build OK (1843 modules).
  */
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription, Article, Patient } from '../types';
 import type { AppState } from '../store';
@@ -15,6 +15,7 @@ import {
 } from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText, RefreshCw } from 'lucide-react';
 import { SearchableSelect, optionsFromValues } from './SearchableSelect';
+import { SuggestionInput, suggestionsFrom } from './SuggestionInput';
 import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket, printPharmaDeliveryClosingTicket } from '../utils/printTicket';
 import { printSalfaIndividualInvoice } from '../utils/printSalfaInvoice';
 import { getExamReceipts, type ExamReceipts } from '../utils/examReceipts';
@@ -207,6 +208,12 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
   // HB Modal: patient search/add (ALL fields like reception)
   const [hbPatSearch, setHbPatSearch] = useState('');
+  // Saisie assistée du nouveau patient : valeurs déjà connues dans la base.
+  const suggestionsDossiers = useMemo(() => suggestionsFrom(state.patients.map(p => p.dossier)), [state.patients]);
+  const suggestionsNoms = useMemo(() => suggestionsFrom(state.patients.map(p => p.lastName)), [state.patients]);
+  const suggestionsPrenoms = useMemo(() => suggestionsFrom(state.patients.map(p => p.firstName)), [state.patients]);
+  const suggestionsAdresses = useMemo(() => suggestionsFrom(state.patients.map(p => p.address)), [state.patients]);
+
   const [hbNewPat, setHbNewPat] = useState({ dossier: '', lastName: '', firstName: '', dateOfBirth: '', gender: 'M' as 'M'|'F', contact: '', address: '', matricule: '', ssn: '', insureName: '', clientType: 'comptoir' as ClientType, company: '', subCompany: '' });
   const [hbNewCompanyName, setHbNewCompanyName] = useState('');
 
@@ -1619,7 +1626,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="col-span-2">
                   <label className="block font-bold text-ink mb-0.5">N° Dossier *</label>
-                  <input type="text" value={hbNewPat.dossier} onChange={e => setHbNewPat({...hbNewPat, dossier: e.target.value.toUpperCase()})} className="w-full px-2 py-1.5 border rounded outline-none uppercase font-mono font-bold bg-surface" placeholder="SAISIE MANUELLE — MAJUSCULES" />
+                  <SuggestionInput id="caisse-nouveau-dossier" value={hbNewPat.dossier} onChange={v => setHbNewPat({...hbNewPat, dossier: v.toUpperCase()})} suggestions={suggestionsDossiers} placeholder="SAISIE MANUELLE — MAJUSCULES" ariaLabel="Numéro de dossier" className="w-full px-2 py-1.5 border rounded outline-none uppercase font-mono font-bold bg-surface" />
                   <span className="text-[10px] text-ink-muted">Clé unique, jamais incrémentée automatiquement.</span>
                 </div>
                 <div className="col-span-2 flex items-center gap-3 mb-1">
@@ -1629,13 +1636,13 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                     <button type="button" onClick={() => setHbNewPat({...hbNewPat, gender: 'F'})} className={`px-3 py-1 font-bold border-l border-line-control cursor-pointer ${hbNewPat.gender === 'F' ? 'bg-pink-500 text-white' : 'bg-surface'}`}>F</button>
                   </div>
                 </div>
-                <div><label className="block font-bold text-ink mb-0.5">Nom *</label><input type="text" value={hbNewPat.lastName} onChange={e => setHbNewPat({...hbNewPat, lastName: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" /></div>
-                <div><label className="block font-bold text-ink mb-0.5">Prénom *</label><input type="text" value={hbNewPat.firstName} onChange={e => setHbNewPat({...hbNewPat, firstName: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" /></div>
+                <div><label className="block font-bold text-ink mb-0.5">Nom *</label><SuggestionInput id="caisse-nouveau-nom" value={hbNewPat.lastName} onChange={v => setHbNewPat({...hbNewPat, lastName: v})} suggestions={suggestionsNoms} placeholder="Nom de famille" ariaLabel="Nom" className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" /></div>
+                <div><label className="block font-bold text-ink mb-0.5">Prénom *</label><SuggestionInput id="caisse-nouveau-prenom" value={hbNewPat.firstName} onChange={v => setHbNewPat({...hbNewPat, firstName: v})} suggestions={suggestionsPrenoms} placeholder="Prénom" ariaLabel="Prénom" className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" /></div>
                 <div><label className="block font-bold text-ink mb-0.5">Date Naissance</label><input type="date" value={hbNewPat.dateOfBirth} onChange={e => setHbNewPat({...hbNewPat, dateOfBirth: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none bg-surface" /></div>
                 <div><label className="block font-bold text-ink mb-0.5">Age</label><input type="text" readOnly value={hbNewPat.dateOfBirth ? calculateAge(hbNewPat.dateOfBirth) : '—'} className="w-full px-2 py-1.5 border rounded bg-surface-hover" /></div>
                 <div><label className="block font-bold text-ink mb-0.5">Matricule</label><input type="text" value={hbNewPat.matricule} onChange={e => setHbNewPat({...hbNewPat, matricule: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none font-mono bg-surface" placeholder="M-0000" /></div>
                 <div><label className="block font-bold text-ink mb-0.5">Téléphone</label><PhoneInput value={hbNewPat.contact} onChange={v => setHbNewPat({...hbNewPat, contact: v})} className="w-full px-2 py-1.5 border rounded outline-none font-mono bg-surface" placeholder="038 34 092 61" /></div>
-                <div className="col-span-2"><label className="block font-bold text-ink mb-0.5">Adresse</label><input type="text" value={hbNewPat.address} onChange={e => setHbNewPat({...hbNewPat, address: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" /></div>
+                <div className="col-span-2"><label className="block font-bold text-ink mb-0.5">Adresse</label><SuggestionInput id="caisse-nouveau-adresse" value={hbNewPat.address} onChange={v => setHbNewPat({...hbNewPat, address: v})} suggestions={suggestionsAdresses} placeholder="Adresse du patient" ariaLabel="Adresse" className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" /></div>
                 <div><label className="block font-bold text-ink mb-0.5">N° Sécurité Sociale</label><input type="text" value={hbNewPat.ssn} onChange={e => setHbNewPat({...hbNewPat, ssn: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none bg-surface" /></div>
                 <div><label className="block font-bold text-ink mb-0.5">Société</label><input type="text" value={hbNewPat.insureName} onChange={e => setHbNewPat({...hbNewPat, insureName: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" /></div>
                 <div><label className="block font-bold text-ink mb-0.5">Type Client</label><select value={hbNewPat.clientType} onChange={e => setHbNewPat({...hbNewPat, clientType: e.target.value as ClientType})} className="w-full px-2 py-1.5 border rounded outline-none cursor-pointer bg-surface"><option value="comptoir">Client Comptoir</option><option value="societe">Client Société</option></select></div>
