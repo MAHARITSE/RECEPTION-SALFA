@@ -10,11 +10,12 @@ import { billingTotals, categoryLabels, collectBillingDocuments, documentsForSco
 import { auditArticleFamilies } from '../billingFamilies';
 import { printIndividualBillingDocument, printMonthlyInvoice } from '../printBilling';
 import { PrescriptionEditModal } from './billing/PrescriptionEditModal';
+import { FusionPrescriptionModal } from './billing/FusionPrescriptionModal';
 import { formatDate } from '../utils/formatters';
 
 type Props = PrestationsViewProps & { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>> };
 
-export function BillingWorkspace({ state, setState, ...details }: Props) {
+export function BillingWorkspace({ state, setState, onFusionPrescription, onAnnulerFusion, ...details }: Props) {
   const formatMoney = (value: number, currency = state.ticketSettings.currency) => `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(value)} ${currency}`;
   const [mode, setMode] = useState<'factures' | 'detaillee'>('factures');
   const [month, setMonth] = useState('');
@@ -27,6 +28,8 @@ export function BillingWorkspace({ state, setState, ...details }: Props) {
   const [societeDetail, setSocieteDetail] = useState<MonthlyScope | null>(null);
   // Double-clic sur le nom → édition de la prescription (omissions / ordonnances externes)
   const [prescription, setPrescription] = useState<Prestation | null>(null);
+  // Fusion : prescription Caisse à absorber + cible choisie dans le modal
+  const [fusionSource, setFusionSource] = useState<Prestation | null>(null);
   const documents = useMemo(() => collectBillingDocuments(state), [state]);
   const snapshots = state.monthlyInvoices || [];
   const matches = (scope: { category: ClientType; companyId?: string; month?: string }) => (!month || scope.month === month) && (details.selectedSocieteId === 'ALL' || (scope.category === 'societe' && scope.companyId === details.selectedSocieteId));
@@ -68,6 +71,18 @@ export function BillingWorkspace({ state, setState, ...details }: Props) {
   }
 
   const prestationDe = (docId: string) => details.prestations.find(p => p.id === docId);
+  const estCaisse = (p: Prestation) => !!(p.sourceInvoiceId || p.id.startsWith('caisse:'));
+  const nbFusions = (p: Prestation) => p.fusionsAnnulees?.length || 0;
+  const candidatesFusion = (source: Prestation) => details.prestations
+    .filter(p => p.id !== source.id && p.societeId === source.societeId && !estCaisse(p))
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  function confirmerFusion(conserveId: string, libelle?: string) {
+    if (!fusionSource || !onFusionPrescription) return;
+    onFusionPrescription(fusionSource, conserveId, libelle);
+    setFusionSource(null);
+    setSocieteDetail(null);
+  }
   const ajoutsDe = (p: Prestation) => (p.lignes || []).filter(l => l.origine === 'omission' || l.origine === 'ordonnance_externe').length;
 
   function enregistrerPrescription(next: Prestation) {
@@ -119,24 +134,32 @@ export function BillingWorkspace({ state, setState, ...details }: Props) {
         {IS_WAMP_BUILD && <p className="mt-2 text-xs text-amber-700">Sur MySQL, les émissions nécessitent une API atomique à déployer. Les factures déjà enregistrées peuvent être réimprimées.</p>}
       </div>
       <div className="overflow-x-auto rounded-xl border border-line bg-surface"><table className="w-full text-left text-xs" aria-label="Factures mensuelles">
-        <thead className="bg-surface-muted text-ink-secondary"><tr>{['Mois', 'Destinataire', 'Pièces', 'Montant', 'Numéro mensuel', 'Impression'].map(label => <th className="p-3" key={label}>{label}</th>)}</tr></thead>
+        <thead className="bg-surface-muted text-ink-secondary"><tr>{['Date', 'Facture', 'Client / Dossier', 'Détail des actes', 'Montant', 'Payé', 'Solde', 'Impression'].map(label => <th className="p-3" key={label}>{label}</th>)}</tr></thead>
         <tbody>{groups.map(scope => {
           const id = monthlyScopeId(scope), saved = snapshots.find(i => i.id === id);
           const rows = documentsForScope(documents, scope);
+          const totaux = saved ?? billingTotals(rows);
           const missing = saved?.documents.reduce((sum, d) => sum + d.items.filter(i => !i.actCode?.trim()).length, 0) || 0;
           const recipient = saved?.recipient || (scope.category === 'societe' ? state.companies.find(c => c.id === scope.companyId)?.name || rows[0]?.companyName || 'Société' : `Clients ${categoryLabels[scope.category]}`);
+          const nbActes = saved?.documents.reduce((sum, d) => sum + d.items.length, 0) ?? rows.reduce((sum, d) => sum + d.items.length, 0);
+          const echeance = rows.length ? rows.map(r => r.date).sort()[rows.length - 1] : scope.month;
+          const solde = Math.max(0, (totaux.payable ?? totaux.total) - (totaux.paid ?? 0) - (totaux.rejected ?? 0));
+          const detailActes = (saved?.documents ?? rows).flatMap(d => d.items.map(i => ({ ...i, client: d.client })));
           return <tr key={id} className="border-t border-line cursor-pointer hover:bg-surface-hover" data-monthly-scope={id} title="Double-clic : vue détaillée de ce destinataire" onDoubleClick={() => setSocieteDetail(scope)}>
-            <td className="p-3 whitespace-nowrap font-semibold">{scope.month}</td><td className="p-3">{recipient}</td>
-            <td className="p-3">{saved?.documents.length ?? rows.length}{saved && <span className="block text-ink-muted">Contenu figé</span>}</td>
-            <td className="p-3 whitespace-nowrap">{formatMoney(saved?.total ?? billingTotals(rows).total)}</td>
-            <td className="p-3 font-mono">{saved?.number || 'Attribué à la première impression'}{missing > 0 && <div className="mt-2 text-xs text-amber-700 font-sans">{missing} famille(s) encore sans rattachement certain. Les correspondances identifiées sont réorganisées automatiquement en base navigateur.</div>}</td>
-            <td className="p-3"><button type="button" disabled={!!busy || (IS_WAMP_BUILD && !saved)} onClick={() => void printMonthly(scope)} aria-label={`${saved ? 'Réimprimer' : 'Imprimer'} la facture mensuelle ${scope.month} ${recipient}`} className="inline-flex items-center gap-1.5 rounded-lg border border-line-strong px-3 py-2 text-accent hover:bg-accent-soft disabled:opacity-50"><Printer size={15} />{busy === id ? 'Enregistrement…' : saved ? 'Réimprimer' : 'Imprimer'}</button>{IS_WAMP_BUILD && missing > 0 && <p className="mt-1 text-xs">Réparation à effectuer côté serveur MySQL.</p>}</td>
+            <td className="p-3 whitespace-nowrap">{saved?.issuedAt ? formatDate(saved.issuedAt) : echeance}<span className="block text-ink-muted">{scope.month}</span></td>
+            <td className="p-3 font-mono font-semibold">{saved?.number || '— attribué à la première impression —'}</td>
+            <td className="p-3">{recipient}<span className="block text-ink-muted">{categoryLabels[scope.category]} · {saved?.documents.length ?? rows.length} pièce(s) · {nbActes} acte(s)</span></td>
+            <td className="p-3"><details><summary className="cursor-pointer">{nbActes} acte(s)</summary><ul className="mt-2 space-y-1 max-h-48 overflow-auto">{detailActes.slice(0, 40).map((item, index) => <li key={index}>{item.client && item.client !== recipient ? <span className="text-ink-muted">{item.client} — </span> : null}{item.description} — {formatMoney(item.amount)}</li>)}{detailActes.length > 40 && <li className="text-ink-muted italic">… {detailActes.length - 40} autre(s)</li>}</ul></details></td>
+            <td className="p-3 whitespace-nowrap">{formatMoney(totaux.total)}{missing > 0 && <span className="block text-[11px] text-amber-700">{missing} famille(s) sans rattachement certain</span>}</td>
+            <td className="p-3 whitespace-nowrap">{formatMoney(totaux.paid ?? 0)}</td>
+            <td className="p-3 whitespace-nowrap">{formatMoney(solde)}</td>
+            <td className="p-3"><button type="button" disabled={!!busy || (IS_WAMP_BUILD && !saved)} onClick={() => void printMonthly(scope)} aria-label={`${saved ? 'Réimprimer' : 'Imprimer'} la facture mensuelle ${scope.month} ${recipient}`} className="inline-flex items-center gap-1.5 rounded-lg border border-line-strong px-3 py-2 hover:bg-accent-soft text-accent disabled:opacity-50"><Printer size={15} />{busy === id ? 'Enregistrement…' : saved ? 'Réimprimer' : 'Imprimer'}</button>{IS_WAMP_BUILD && missing > 0 && <p className="mt-1 text-[11px]">Réparation à effectuer côté serveur MySQL.</p>}</td>
           </tr>;
         })}</tbody>
       </table>{!groups.length && <p className="p-6 text-center text-sm text-ink-muted">Aucune facture pour cette sélection.</p>}</div>
     </div> : <div data-testid="billing-detail-view">
       <>
-        <PrestationsView {...details} prestations={visiblePrestations} hideViewSwitcher onPrintPrestation={p => { const doc = documents.find(d => d.id === p.id); if (doc) printIndividualBillingDocument(state, doc); }} />
+        <PrestationsView {...details} prestations={visiblePrestations} hideViewSwitcher onFusionPrescription={onFusionPrescription} onAnnulerFusion={onAnnulerFusion} onPrintPrestation={p => { const doc = documents.find(d => d.id === p.id); if (doc) printIndividualBillingDocument(state, doc); }} />
         {otherDocuments.length > 0 && <div className="mt-4"><h3 className="mb-2 font-semibold">Autres factures de la base commune</h3>{renderDetailTable(otherDocuments)}</div>}
       </>
     </div>}
@@ -175,7 +198,7 @@ export function BillingWorkspace({ state, setState, ...details }: Props) {
                         <td className="p-2.5 font-mono font-semibold">{d.number}</td>
                         <td className={`p-2.5 ${p ? 'cursor-pointer font-semibold text-indigo-700 dark:text-indigo-300 underline decoration-dotted underline-offset-2' : ''}`}
                             title={p ? 'Double-clic : ouvrir la prescription' : undefined}
-                            onDoubleClick={() => { if (p) setPrescription(p) }}>
+                            onDoubleClick={() => { if (!p) return; if (estCaisse(p) && onFusionPrescription) { setFusionSource(p); } else { setPrescription(p); } }}>
                           {d.client}{d.dossier && <span className="block text-ink-muted font-normal">{d.dossier}</span>}
                           {nbAjouts > 0 && <span className="ml-1.5 inline-block px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300 text-[10px] font-bold" title="Lignes ajoutées par le facturier">+{nbAjouts}</span>}
                         </td>
@@ -200,6 +223,19 @@ export function BillingWorkspace({ state, setState, ...details }: Props) {
           </div>
         </div>
       );
+    })()}
+
+    {/* ===== MODAL : fusion de deux prescriptions (patient revenu deux fois) ===== */}
+    {fusionSource && (() => {
+      const candidates = candidatesFusion(fusionSource);
+      return <FusionPrescriptionModal
+        source={fusionSource}
+        candidates={candidates}
+        societeNom={state.companies.find(c => c.id === fusionSource.societeId)?.name || fusionSource.societeNom || ''}
+        formatMoney={formatMoney}
+        onClose={() => setFusionSource(null)}
+        onConfirm={confirmerFusion}
+      />;
     })()}
 
     {/* ===== MODAL : édition de la prescription (omissions / ordonnances externes) ===== */}

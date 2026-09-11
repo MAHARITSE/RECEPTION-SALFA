@@ -159,6 +159,9 @@ export interface Prestation {
   datePaiement?: string;
   numeroBordereau?: string;
   commentaires?: string;
+  /** Prescriptions absorbées par fusion (facturier) — conservées pour
+   * restituer les deux prescriptions d'origine en cas d'annulation. */
+  fusionsAnnulees?: Prestation[];
 }
 
 export interface LignePaiement {
