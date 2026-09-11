@@ -66,12 +66,25 @@ Comme pour les patients de Réception, une société peut être **mise en liste 
 - Une société bloquée est retirée des listes de sélection (Réception, Caisse, Médecin, Laboratoire). Une fiche déjà enregistrée sur cette société n'est jamais modifiée en silence : la société reste affichée, marquée *bloquée*.
 - Chaque mise en liste noire et chaque rétablissement sont tracés dans le journal d'audit (`SOCIETE_LISTE_NOIRE`, `SOCIETE_RETABLE`).
 
+## Numérotation des factures
+
+La **numérotation officielle SALFA** est la référence, partout :
+
+| Nature | Format | Exemple |
+|---|---|---|
+| Comptoir / externes | `AA FA MM JJ NNN` (année + FA + mois + jour + ordre du jour) | `26FA0427102` |
+| Sociétés | `FA-MM/CODE/AA-NNN` (mois des prescriptions + code société + ordre) | `FA-07/BSA/26-014` |
+
+Les numéros hérités d'un autre format (`FACT-2026-001`, `FACT-FA-…`, `FACT-REG-…`, `FACT-BORD-…`) ne sont pas réécrits : ils restent affichés et sont simplement signalés **« ancien format »** dans la vue Facturation *Par N° de facture*.
+
 ## Saisie assistée et sociétés bloquées dans les formulaires
 
 - **Sociétés bloquées** : elles ne sont jamais retirées des listes de saisie (Réception, Caisse, Médecin, Laboratoire, paramètres). Elles restent affichées, en **rouge** et précédées de 🚫, avec le motif en dessous du champ : l'opérateur voit immédiatement le problème et facture en client comptoir.
-- **Combobox saisissables** : tous les champs « Société » et « Sous-société » acceptent la frappe (filtrage au clavier, choix à la souris, saisie libre conservée). Seuls les **types client** (Comptoir / Société / Externe) restent des listes fermées.
+- **Combobox saisissables partout** : toutes les listes déroulantes de saisie acceptent la frappe (filtrage au clavier, choix à la souris, libellé affiché plutôt que l'identifiant). Restent volontairement des listes fermées : les **types client** (Comptoir / Société / Externe), l'identifiant de connexion, la bascule de rôle de l'en-tête, la police de l'en-tête et quelques filtres.
 - **Sous-sociétés assistées** : les suggestions proposées sont celles déjà enregistrées pour la société choisie (patients, ventes et prestations), et non la liste complète.
 - **Nouveau patient** : Adresse, Nom, Prénom et N° de dossier restent des champs de **saisie libre avec suggestions** (historique de la base proposé pendant la frappe, jamais imposé).
+
+- **Taux de couverture jamais imposé** : le mode de règlement (payeur global / paiement partiel) est une simple classification ; il ne pré-remplit plus le taux, qui reste saisi à la main selon le contrat (repère usuel affiché : 100 % payeur global, 80 % assurance).
 
 ## Facturation : vue « Par N° de facture »
 
