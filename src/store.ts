@@ -516,7 +516,9 @@ export function migrateLegacyToVentes(state: AppState): { migratedInvoices: numb
     counter++;
     const vtype: VenteType = hb.type === 'hospit' ? 'hospitalisation' : 'bloc';
     const venteId = uuidv4();
-    const num = allocateLegacyNumber(hb.clientType, hb.clientType === 'societe' ? hb.company : undefined, hb.openedAt || new Date().toISOString());
+    // Un dossier hospit/bloc déjà numéroté à l'ouverture conserve son numéro ;
+    // les anciens (sans numéro) reçoivent le format officiel à leur date d'ouverture.
+    const num = hb.numeroFacture || allocateLegacyNumber(hb.clientType, hb.clientType === 'societe' ? hb.company : undefined, hb.openedAt || new Date().toISOString());
     const tot = computeVenteTotals(hb.lines.map(l => ({ quantity: l.quantity, unitPrice: l.unitPrice, discount: l.discount })), 0);
     const totalPaye = hb.payments.reduce((s, p) => s + p.amount, 0);
     const status: Vente['status'] = totalPaye >= tot.montantFacture && tot.montantFacture > 0 ? 'paid'
@@ -628,6 +630,10 @@ export interface AppState {
   ventePayments: VentePayment[];
   /** Compteur séquentiel des numéros de facture. */
   factureCounter: number;
+  /** Registre des numéros de facture officielle déjà attribués puis retirés
+   *  (factures en attente supprimées, purge de file d'attente…). Un numéro
+   *  attribué n'est JAMAIS réutilisé, même après suppression de sa facture. */
+  issuedFactureNumbers?: string[];
 }
 
 /**
@@ -794,6 +800,7 @@ function createEmptyInitialState(): AppState {
     venteLines: [],
     ventePayments: [],
     factureCounter: 0,
+    issuedFactureNumbers: [],
   };
 }
 
@@ -1350,6 +1357,9 @@ function normalizeInvoiceItemCategories(state: AppState): AppState {
  */
 export function prepareLoadedState(state: AppState): AppState {
   state = ensureAssuranceCollections(state);
+  // Registre des numéros déjà attribués : présent par défaut, y compris pour
+  // les bases sauvegardées avant son introduction (promesse de non-réutilisation).
+  state.issuedFactureNumbers = state.issuedFactureNumbers || [];
   const normalized = ensureEtablissements(
     normalizeFamilyBases(ensureConsultationArrays(normalizeInvoiceItemCategories({
       ...state,
@@ -1378,7 +1388,17 @@ export function purgePatientFromQueue(state: AppState, patientId: string): void 
       .filter((i) => i.patientId === patientId && i.status === 'paid' && i.consultationId)
       .map((i) => i.consultationId as string)
   );
-  // Factures jamais encaissées : supprimées (aucune écriture de caisse à préserver)
+  // Factures jamais encaissées : supprimées (aucune écriture de caisse à préserver).
+  // Leurs numéros passent d'abord dans le registre : un numéro attribué n'est
+  // jamais réattribué, même après suppression de la facture en attente.
+  const removedPendingNumbers = [
+    ...state.invoices.filter((i) => i.patientId === patientId && i.status === 'pending').map((i) => i.numeroFacture),
+    ...state.ventes.filter((v) => v.patientId === patientId && v.status === 'pending').map((v) => v.numeroFacture),
+  ].filter((n): n is string => typeof n === 'string' && n.trim().length > 0);
+  if (removedPendingNumbers.length) {
+    const registre = new Set([...(state.issuedFactureNumbers || []), ...removedPendingNumbers]);
+    state.issuedFactureNumbers = [...registre];
+  }
   state.invoices = state.invoices.filter((i) => !(i.patientId === patientId && i.status === 'pending'));
   // Demandes d'analyses non payées : supprimées (elles n'attendent plus en caisse/labo)
   state.labRequests = state.labRequests.filter((lr) => !(lr.patientId === patientId && lr.status === 'pending'));
