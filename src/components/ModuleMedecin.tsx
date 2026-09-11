@@ -1082,7 +1082,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                   </div>
                   <div>
                     <label className="block font-bold text-ink mb-0.5">Sous-société</label>
-                    <SuggestionInput mode="contient" value={medEditSubCompany} onChange={setMedEditSubCompany} suggestions={classerSuggestions(sousSocietesConnues(state, medEditCompany))} placeholder="Sous-société — saisie libre (assistance de la base)" ariaLabel="Sous-société" className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" />
+                    <SuggestionInput mode="contient" value={medEditSubCompany} onChange={setMedEditSubCompany} suggestions={classerSuggestions(sousSocietesConnues(state, medEditCompany))} placeholder={"Sous-société" + (medEditCompany ? " de " + medEditCompany : "") + " — saisie libre"} ariaLabel="Sous-société" className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" />
                   </div>
                 </div>
               )}

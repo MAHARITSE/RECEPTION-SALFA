@@ -837,7 +837,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                       value={patientForm.subCompany}
                       onChange={(v) => setPatientForm({ ...patientForm, subCompany: v })}
                       suggestions={optionsSousSocietes}
-                      placeholder="Sous-société / Service — saisie libre (assistance de la base)"
+                      placeholder={"Sous-société / Service" + (patientForm.company ? " de " + patientForm.company : "") + " — saisie libre"}
                       ariaLabel="Sous-société"
                       className="w-full h-9 bg-surface border border-line-control rounded px-2 uppercase focus:outline-none focus:border-accent"
                     />
@@ -1072,7 +1072,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                     )}
                   </div>}
                 </div>
-                {vitalsClientType === 'societe' && <div className="mt-3"><label className="block font-bold text-ink text-xs mb-1">Sous-société (libre)</label><SuggestionInput mode="contient" value={vitalsSubCompany} onChange={setVitalsSubCompany} suggestions={optionsSousSocietesVitals} placeholder="Sous-société — saisie libre (assistance de la base)" ariaLabel="Sous-société" className="w-full bg-surface border border-amber-400 rounded px-2 py-1.5 uppercase focus:outline-none focus:border-amber-500" /></div>}
+                {vitalsClientType === 'societe' && <div className="mt-3"><label className="block font-bold text-ink text-xs mb-1">Sous-société (libre)</label><SuggestionInput mode="contient" value={vitalsSubCompany} onChange={setVitalsSubCompany} suggestions={optionsSousSocietesVitals} placeholder={"Sous-société" + (vitalsCompany ? " de " + vitalsCompany : "") + " — saisie libre"} ariaLabel="Sous-société" className="w-full bg-surface border border-amber-400 rounded px-2 py-1.5 uppercase focus:outline-none focus:border-amber-500" /></div>}
                 <p className="text-[10px] text-ink-muted mt-2 italic">Remise saisie par le médecin</p>
               </div>
 
