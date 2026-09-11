@@ -39,7 +39,7 @@ const roleLabels: Record<string, string> = {
   pharmacy: 'Pharmacie',
   magasinier: 'Magasinier',
   laboratory: 'Laboratoire',
-  billing: 'Responsable assurance',
+  billing: 'Responsable Facturation',
   admin: 'Admin'
 };
 
@@ -64,7 +64,7 @@ const APP_MODULES: { key: AppModuleKey; label: string; icon: any; desc: string }
   { key: 'pharmacy', label: 'Pharmacie & Dispensation', icon: Pill, desc: 'Vente directe & délivrance des ordonnances' },
   { key: 'magasinier', label: 'Gestion des Stocks', icon: Package, desc: 'Stock central, entrées, achats & transferts' },
   { key: 'laboratory', label: 'Analyses Laboratoire', icon: FlaskConical, desc: 'Prélèvements, paillasse & compte-rendu' },
-  { key: 'billing', label: 'Suivi assurance', icon: Building2, desc: 'Prestations, règlements, rejets et rapports' },
+  { key: 'billing', label: 'Facturation', icon: Building2, desc: 'Factures, prescriptions, règlements et rapports' },
 ];
 
 interface ConfirmModalState {
@@ -1034,7 +1034,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
                             className="p-3 bg-surface-muted hover:bg-accent-soft border rounded-xl text-xs font-semibold text-ink transition flex flex-col items-center gap-2 cursor-pointer text-center"
                           >
                             <Shield className="w-5 h-5 text-accent" />
-                            <span>Suivi assurance</span>
+                            <span>Facturation</span>
                           </button>
                           <button
                             onClick={exportBackup}
