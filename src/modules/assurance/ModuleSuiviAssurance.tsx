@@ -3,6 +3,7 @@ import { Societe, Personne, Famille, Prestation, Paiement, EnteteConfig, ActiveT
 import { Navigation } from './components/Navigation';
 import { Dashboard } from './components/Dashboard';
 import { BillingWorkspace } from './components/BillingWorkspace';
+import { ComptoirExterneView } from './components/ComptoirExterneView';
 import { PaiementsView } from './components/PaiementsView';
 import { RejetsView } from './components/RejetsView';
 import type { RejetDetail } from './components/RejetsView';
@@ -658,6 +659,13 @@ export default function ModuleSuiviAssurance({ state, setState }: Props) {
             onSavePaiement={handleSavePaiement}
             isCreateModalOpen={isPrestationModalOpen}
             setIsCreateModalOpen={setIsPrestationModalOpen}
+          />
+        )}
+
+        {activeTab === 'comptoir' && (
+          <ComptoirExterneView
+            state={state}
+            setState={setState}
           />
         )}
 

@@ -2,6 +2,7 @@ import React from 'react';
 import {
   LayoutDashboard,
   FileText,
+  Store,
   CreditCard,
   AlertTriangle,
   History,
@@ -27,6 +28,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange }
   }[] = [
     { id: 'dashboard', label: "Vue d'ensemble", icon: LayoutDashboard },
     { id: 'prestations', label: 'Facturation', icon: FileText },
+    { id: 'comptoir', label: 'Comptoir & Externe', icon: Store },
     { id: 'paiements', label: 'Règlements', icon: CreditCard },
     { id: 'rejets', label: 'Rejets', icon: AlertTriangle },
     { id: 'historique', label: 'Historique', icon: History },

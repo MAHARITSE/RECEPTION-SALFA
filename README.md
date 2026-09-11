@@ -27,7 +27,7 @@ Application complète de gestion clinique et hospitalière (HIS — Hospital Inf
 4. **🛡️ Suivi assurance — nouveau module**
    - Intégré depuis `MAHARITSE/suivi_assurance` : prestations, règlements, rejets, sociétés, assurés, actes et rapports.
    - Imports Excel/CSV, exports PDF/Excel, sauvegarde commune JSON et saisie manuelle.
-   - Facturation Sociétés / Comptoir / Externes : vues mensuelle et détaillée distinctes, impression individuelle et numéro mensuel figé à la première impression. Émission atomique disponible en mode navigateur ; intégration serveur WAMP encore requise (voir [documentation](docs/SUIVI_ASSURANCE.md)).
+   - Facturation Sociétés (onglet Facturation) ; clients Comptoir & Externes regroupés dans l'onglet dédié « Comptoir & Externe » (leur règlement est encaissé à la validation Caisse, sans suivi) : vues mensuelle et détaillée distinctes, impression individuelle et numéro mensuel figé à la première impression. Émission atomique disponible en mode navigateur ; intégration serveur WAMP encore requise (voir [documentation](docs/SUIVI_ASSURANCE.md)).
    - Remplace les anciens écrans Facturation sociétés / Suivi assurance ; **la Caisse et l'historique sont conservés**.
    - Accès par le rôle **Responsable assurance** (identifiant technique `billing` conservé) ou le raccourci Administration.
    - Même base que Réception : sociétés, patients, familles et factures Caisse partagés. Les factures apparaissent automatiquement ; les règlements d’assurance mettent à jour leur suivi sans doubler les encaissements Caisse.

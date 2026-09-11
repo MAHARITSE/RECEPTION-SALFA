@@ -280,6 +280,7 @@ export interface ParsedFactureAssurance {
 export type ActiveTab = 
   | 'dashboard'
   | 'prestations'
+  | 'comptoir'
   | 'paiements'
   | 'rejets'
   | 'historique'

@@ -34,7 +34,9 @@ export function BillingWorkspace({ state, setState, onFusionPrescription, onAnnu
   const [fusionSource, setFusionSource] = useState<Prestation | null>(null);
   // Règlement « payeur global » : facture mensuelle (mois + société) à régler
   const [paiementGlobal, setPaiementGlobal] = useState<MonthlyScope | null>(null);
-  const documents = useMemo(() => collectBillingDocuments(state), [state]);
+  // Facturation = sociétés uniquement : les clients comptoir & externes sont
+  // regroupés dans l'onglet dédié (règlement encaissé à la validation Caisse).
+  const documents = useMemo(() => collectBillingDocuments(state).filter(d => d.category === 'societe'), [state]);
   const snapshots = state.monthlyInvoices || [];
   const matches = (scope: { category: ClientType; companyId?: string; month?: string }) => (!month || scope.month === month) && (details.selectedSocieteId === 'ALL' || (scope.category === 'societe' && scope.companyId === details.selectedSocieteId));
   const visible = documents.filter(d => {
@@ -67,6 +69,7 @@ export function BillingWorkspace({ state, setState, onFusionPrescription, onAnnu
       if (IS_WAMP_BUILD && !saved) throw new Error('L’émission mensuelle MySQL nécessite une opération atomique dans l’API Réception. Elle n’est pas disponible sur ce serveur.');
       const invoice = IS_WAMP_BUILD ? saved! : await issueMonthlyInvoiceInBrowser(state, scope);
       setState(prev => ({ ...prev, monthlyInvoices: preserveMonthlyInvoices([invoice], prev.monthlyInvoices) }));
+      setNotice(`Facture mensuelle ${invoice.number} enregistrée — les impressions suivantes réutilisent ce numéro.`);
       printMonthlyInvoice(invoice, state.ticketSettings);
     } catch (cause) {
       setError(`Impression mensuelle non lancée : ${(cause as Error).message}`);
