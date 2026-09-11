@@ -126,8 +126,10 @@ export function SuggestionInput({
           e.preventDefault();
           accepter(false);
         } else if (e.key === 'Tab') {
-          // Valide le mot proposé ET laisse le focus passer au champ suivant.
-          accepter(true);
+          // Valide le mot proposé et RESTE dans le champ
+          // (un second Tab, sans proposition, repassera au champ suivant).
+          e.preventDefault();
+          accepter(false);
         } else if (e.key === 'Escape') {
           e.preventDefault();
           setAnnule(value);
