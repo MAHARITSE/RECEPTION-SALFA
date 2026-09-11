@@ -60,8 +60,11 @@ export function reconcilePrestationsWithPaiements(rawPrestations: Prestation[], 
         const isLPaid = (lTotalPaye >= lRemb && lRemb > 0) || (lReste <= 0 && lTotalPaye > 0);
         const isLPart = lTotalPaye > 0 && !isLPaid && lReste > 0;
         const isLExcluded = lTotalExclu >= lRemb && lRemb > 0 && lTotalPaye === 0;
+        // Acte bloqué par une exclusion de la société (assuré ou famille d'articles) :
+        // il n'y a rien à recouvrer, il est affiché comme rejeté / exclu.
+        const isLBlocked = Boolean((l as any).excluParSociete) && lTotalPaye === 0;
 
-        const lStatut = isLExcluded ? 'Rejeté' : isLPaid ? 'Payé' : isLPart ? 'Partiellement payé' : 'En attente';
+        const lStatut = (isLExcluded || isLBlocked) ? 'Rejeté' : isLPaid ? 'Payé' : isLPart ? 'Partiellement payé' : 'En attente';
 
         pTotalPaye += lTotalPaye;
         pTotalExclu += lTotalExclu;
@@ -80,6 +83,9 @@ export function reconcilePrestationsWithPaiements(rawPrestations: Prestation[], 
       pTotalPaye = matchingLinesWithPayment.reduce((sum, { lp }) => sum + Number(lp.totalPaye ?? lp.montantPaye ?? 0), 0);
       pTotalExclu = matchingLinesWithPayment.reduce((sum, { lp }) => sum + Number(lp.montantExclu || 0), 0);
 
+      const lignesBloquees = (p.lignes || []).filter(l => Boolean((l as any).excluParSociete)).length;
+      const toutBloque = hasLignes && lignesBloquees === (p.lignes?.length || 0);
+
       const tot = p.montantTotal ?? p.totalPrestation ?? 0;
       const mod = p.ticketModerateur ?? p.participation ?? 0;
       const remb = p.montantARembourser ?? Math.max(0, tot - mod);
@@ -89,7 +95,7 @@ export function reconcilePrestationsWithPaiements(rawPrestations: Prestation[], 
 
       const isFullyPaid = (totalPaye >= remb && remb > 0) || (resteAPayer <= 0 && totalPaye > 0);
       const isPartiallyPaid = totalPaye > 0 && !isFullyPaid && resteAPayer > 0;
-      const isExcluded = totalExclu >= remb && remb > 0 && totalPaye === 0;
+      const isExcluded = (totalExclu >= remb && remb > 0 && totalPaye === 0) || (toutBloque && totalPaye === 0);
 
       const newNumeroBordereau = Array.from(matchingBordereaux).join(', ');
 

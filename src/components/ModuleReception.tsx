@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Patient, VitalSigns, ClientType, PatientStatus } from '../types';
 import type { AppState } from '../store';
-import { normalizeDossierNumber, isDossierTaken, calculateAge, addAuditLog, addNotification, addJourneyEvent } from '../store';
+import { normalizeDossierNumber, isDossierTaken, calculateAge, addAuditLog, addNotification, addJourneyEvent, companyIsBlocked, companyOptions, sousSocietesConnues } from '../store';
+import { SearchableSelect, optionsFromValues } from './SearchableSelect';
+import { SuggestionInput } from './SuggestionInput';
 import { printQueueTicket } from '../utils/printTicket';
 import {
   Search, Plus, Edit, Trash2, UserX, Activity,
@@ -11,6 +13,7 @@ import {
 } from 'lucide-react';
 import { PhoneInput } from './PhoneInput';
 import { motion, AnimatePresence } from 'motion/react';
+import { Select } from './Select';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; onStaffLogin: () => void; onOpenMessaging: () => void; }
 type ModalType = 'none' | 'add' | 'edit' | 'vitals' | 'blacklistConfirm' | 'blacklistReason' | 'blacklistList' | 'unblacklistConfirm' | 'deleteConfirm' | 'patientInfo';
@@ -212,6 +215,14 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
 
   const waitingCount = state.patients.filter((p) => p.status === 'waiting_consultation').length;
   const todayCount = state.patients.filter((p) => new Date(p.registeredAt).toDateString() === new Date().toDateString()).length;
+  // Saisie assistée : valeurs déjà connues dans la base (dossiers, noms, prénoms, adresses).
+  const optionsDossiers = useMemo(() => optionsFromValues(state.patients.map(p => p.dossier)), [state.patients]);
+  const optionsNoms = useMemo(() => optionsFromValues(state.patients.map(p => p.lastName)), [state.patients]);
+  const optionsPrenoms = useMemo(() => optionsFromValues(state.patients.map(p => p.firstName)), [state.patients]);
+  const optionsAdresses = useMemo(() => optionsFromValues(state.patients.map(p => p.address)), [state.patients]);
+  const optionsSousSocietes = useMemo(() => optionsFromValues(sousSocietesConnues(state, patientForm.company)), [state, patientForm.company]);
+  const optionsSousSocietesVitals = useMemo(() => optionsFromValues(sousSocietesConnues(state, vitalsCompany)), [state, vitalsCompany]);
+
   const blacklistedPatients = state.patients.filter((p) => p.blacklisted);
 
   const addRecPartnerCompany = (rawName: string): string | null => {
@@ -662,14 +673,15 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                 {/* Ligne : N° Dossier / Matricule */}
                 <div className="flex flex-col">
                   <label className="block font-bold text-ink h-4 leading-4 mb-1">N° Dossier *</label>
-                  <input
-                    type="text"
+                  <SuggestionInput
+                    id="patient-dossier"
                     value={patientForm.dossier}
+                    onChange={(v) => setPatientForm({ ...patientForm, dossier: v.toUpperCase() })}
                     onBlur={() => setPatientTouched((t) => ({ ...t, dossier: true }))}
-                    onChange={(e) => setPatientForm({ ...patientForm, dossier: e.target.value.toUpperCase() })}
-                    className={`w-full h-9 bg-surface border rounded px-2 uppercase font-mono font-bold tracking-wide focus:outline-none ${ (patientTouched.dossier || patientSubmitted) && patientErrors.dossier ? 'border-rose-500 bg-rose-50/50 dark:bg-rose-500/4 focus:border-rose-600' : 'border-line-control focus:border-accent'}`}
+                    suggestions={optionsDossiers.map((o) => o.value)}
                     placeholder="SAISIE MANUELLE — MAJUSCULES"
-                    autoComplete="off"
+                    ariaLabel="Numéro de dossier"
+                    className={`w-full h-9 bg-surface border rounded px-2 uppercase font-mono font-bold tracking-wide focus:outline-none ${ (patientTouched.dossier || patientSubmitted) && patientErrors.dossier ? 'border-rose-500 bg-rose-50/50 dark:bg-rose-500/4 focus:border-rose-600' : 'border-line-control focus:border-accent'}`}
                   />
                   {(patientTouched.dossier || patientSubmitted) && patientErrors.dossier && (
                     <span className="text-[11px] text-rose-600 dark:text-rose-400 font-medium mt-0.5 block">{patientErrors.dossier}</span>
@@ -685,11 +697,14 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                 {/* Ligne : Nom / Prénom */}
                 <div className="flex flex-col">
                   <label className="block font-bold text-ink h-4 leading-4 mb-1">Nom *</label>
-                  <input
-                    type="text"
+                  <SuggestionInput
+                    id="patient-lastname"
                     value={patientForm.lastName}
+                    onChange={(v) => setPatientForm({ ...patientForm, lastName: v })}
                     onBlur={() => setPatientTouched((t) => ({ ...t, lastName: true }))}
-                    onChange={(e) => setPatientForm({ ...patientForm, lastName: e.target.value })}
+                    suggestions={optionsNoms.map((o) => o.value)}
+                    placeholder="Nom de famille"
+                    ariaLabel="Nom"
                     className={`w-full h-9 bg-surface border rounded px-2 uppercase font-medium focus:outline-none ${ (patientTouched.lastName || patientSubmitted) && patientErrors.lastName ? 'border-rose-500 bg-rose-50/50 dark:bg-rose-500/4 focus:border-rose-600' : 'border-line-control focus:border-accent'}`}
                   />
                   {(patientTouched.lastName || patientSubmitted) && patientErrors.lastName && (
@@ -698,11 +713,14 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                 </div>
                 <div className="flex flex-col">
                   <label className="block font-bold text-ink h-4 leading-4 mb-1">Prénom</label>
-                  <input
-                    type="text"
+                  <SuggestionInput
+                    id="patient-firstname"
                     value={patientForm.firstName}
+                    onChange={(v) => setPatientForm({ ...patientForm, firstName: v })}
                     onBlur={() => setPatientTouched((t) => ({ ...t, firstName: true }))}
-                    onChange={(e) => setPatientForm({ ...patientForm, firstName: e.target.value })}
+                    suggestions={optionsPrenoms.map((o) => o.value)}
+                    placeholder="Prénom"
+                    ariaLabel="Prénom"
                     className={`w-full h-9 bg-surface border rounded px-2 uppercase font-medium focus:outline-none ${ (patientTouched.firstName || patientSubmitted) && patientErrors.firstName ? 'border-rose-500 bg-rose-50/50 dark:bg-rose-500/4 focus:border-rose-600' : 'border-line-control focus:border-accent'}`}
                   />
                   {(patientTouched.firstName || patientSubmitted) && patientErrors.firstName && (
@@ -747,11 +765,14 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                 {/* Ligne : Adresse / Société (libre) */}
                 <div className="flex flex-col">
                   <label className="block font-bold text-ink h-4 leading-4 mb-1">Adresse *</label>
-                  <input
-                    type="text"
+                  <SuggestionInput
+                    id="patient-address"
                     value={patientForm.address}
+                    onChange={(v) => setPatientForm({ ...patientForm, address: v })}
                     onBlur={() => setPatientTouched((t) => ({ ...t, address: true }))}
-                    onChange={(e) => setPatientForm({ ...patientForm, address: e.target.value })}
+                    suggestions={optionsAdresses.map((o) => o.value)}
+                    placeholder="Adresse du patient"
+                    ariaLabel="Adresse"
                     className={`w-full h-9 bg-surface border rounded px-2 uppercase focus:outline-none ${ (patientTouched.address || patientSubmitted) && patientErrors.address ? 'border-rose-500 bg-rose-50/50 dark:bg-rose-500/4 focus:border-rose-600' : 'border-line-control focus:border-accent'}`}
                   />
                   {(patientTouched.address || patientSubmitted) && patientErrors.address && (
@@ -781,18 +802,31 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                 {patientForm.clientType === 'societe' && (
                   <div className="flex flex-col">
                     <label className="block font-bold text-ink h-4 leading-4 mb-1">Société *</label>
-                    <select
+                    <SearchableSelect
                       value={patientForm.company}
+                      onChange={(v) => setPatientForm({ ...patientForm, company: v })}
                       onBlur={() => setPatientTouched((t) => ({ ...t, company: true }))}
-                      onChange={(e) => setPatientForm({ ...patientForm, company: e.target.value })}
-                      className={`w-full h-9 bg-surface border rounded px-2 focus:outline-none cursor-pointer ${ (patientTouched.company || patientSubmitted) && patientErrors.company ? 'border-rose-500 bg-rose-50/50 dark:bg-rose-500/4' : 'border-line-control focus:border-accent'}`}
-                    >
-                      <option value="">— Sélectionner une société —</option>
-                      {state.companies.map((c) => (<option key={c.id} value={c.name}>{c.name}</option>))}
-                    </select>
+                      options={companyOptions(state.companies)}
+                      placeholder="— Taper pour filtrer puis choisir une société —"
+                      ariaLabel="Société"
+                      inputClassName={`w-full h-9 bg-surface border rounded px-2 uppercase focus:outline-none ${ (patientTouched.company || patientSubmitted) && patientErrors.company ? 'border-rose-500 bg-rose-50/50 dark:bg-rose-500/4' : 'border-line-control focus:border-accent'}`}
+                    />
                     {(patientTouched.company || patientSubmitted) && patientErrors.company && (
                       <span className="text-[11px] text-rose-600 dark:text-rose-400 font-medium mt-0.5 block">{patientErrors.company}</span>
                     )}
+                  </div>
+                )}
+                {patientForm.clientType === 'societe' && (
+                  <div className="flex flex-col">
+                    <label className="block font-bold text-ink h-4 leading-4 mb-1">Sous-société / Service</label>
+                    <SearchableSelect
+                      value={patientForm.subCompany}
+                      onChange={(v) => setPatientForm({ ...patientForm, subCompany: v })}
+                      options={optionsSousSocietes}
+                      placeholder={"— Sous-société de " + (patientForm.company || "la société") + " —"}
+                      ariaLabel="Sous-société"
+                      inputClassName="w-full h-9 bg-surface border border-line-control rounded px-2 uppercase focus:outline-none focus:border-accent"
+                    />
                   </div>
                 )}
               </div>
@@ -975,7 +1009,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                       <div className="flex items-center justify-between">
                         <label className="font-bold text-ink">{f.label}</label>
                         {f.key === 'tdr' ? (
-                          <select value={vitalsForm.tdr || ''} disabled={vitalsReadOnly} onChange={(e) => setVitalsForm({ ...vitalsForm, tdr: e.target.value })} className="w-24 bg-surface border border-line-control rounded px-2 py-1.5 text-center focus:outline-none focus:border-emerald-500 cursor-pointer"><option value="">—</option><option value="Positif">Positif</option><option value="Négatif">Négatif</option></select>
+                          <Select value={vitalsForm.tdr || ''} disabled={vitalsReadOnly} onChange={(e) => setVitalsForm({ ...vitalsForm, tdr: e.target.value })} className="w-24 bg-surface border border-line-control rounded px-2 py-1.5 text-center focus:outline-none focus:border-emerald-500 cursor-pointer"><option value="">—</option><option value="Positif">Positif</option><option value="Négatif">Négatif</option></Select>
                         ) : (
                           <div className="flex items-center gap-1">
                             <input
@@ -1010,21 +1044,21 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                     </select>
                   </div>
                   {vitalsClientType === 'societe' && <div><label className="block font-bold text-ink mb-1">Société *</label>
-                    <select
+                    <SearchableSelect
                       value={vitalsCompany}
+                      onChange={setVitalsCompany}
                       onBlur={() => setVitalsTouched((t) => ({ ...t, vitalsCompany: true }))}
-                      onChange={(e) => setVitalsCompany(e.target.value)}
-                      className={`w-full bg-surface border rounded px-2 py-1.5 focus:outline-none cursor-pointer ${ (vitalsTouched.vitalsCompany || vitalsSubmitted) && vitalsErrors.vitalsCompany ? 'border-rose-500 bg-rose-50/50 dark:bg-rose-500/4' : 'border-amber-400 focus:border-amber-500'}`}
-                    >
-                      <option value="">— Sélectionner —</option>
-                      {state.companies.map((c) => (<option key={c.id} value={c.name}>{c.name}</option>))}
-                    </select>
+                      options={companyOptions(state.companies)}
+                      placeholder="— Taper pour filtrer puis choisir —"
+                      ariaLabel="Société"
+                      inputClassName={`w-full bg-surface border rounded px-2 py-1.5 focus:outline-none ${ (vitalsTouched.vitalsCompany || vitalsSubmitted) && vitalsErrors.vitalsCompany ? 'border-rose-500 bg-rose-50/50 dark:bg-rose-500/4' : 'border-amber-400 focus:border-amber-500'}`}
+                    />
                     {(vitalsTouched.vitalsCompany || vitalsSubmitted) && vitalsErrors.vitalsCompany && (
                       <span className="text-[10px] text-rose-600 dark:text-rose-400 font-bold mt-0.5 block">{vitalsErrors.vitalsCompany}</span>
                     )}
                   </div>}
                 </div>
-                {vitalsClientType === 'societe' && <div className="mt-3"><label className="block font-bold text-ink text-xs mb-1">Sous-société (libre)</label><input type="text" value={vitalsSubCompany} onChange={(e) => setVitalsSubCompany(e.target.value)} className="w-full bg-surface border border-amber-400 rounded px-2 py-1.5 uppercase focus:outline-none focus:border-amber-500" /></div>}
+                {vitalsClientType === 'societe' && <div className="mt-3"><label className="block font-bold text-ink text-xs mb-1">Sous-société (libre)</label><SearchableSelect value={vitalsSubCompany} onChange={setVitalsSubCompany} options={optionsSousSocietesVitals} placeholder={"— Sous-société de " + (vitalsCompany || "la société") + " —"} ariaLabel="Sous-société" inputClassName="w-full bg-surface border border-amber-400 rounded px-2 py-1.5 uppercase focus:outline-none focus:border-amber-500" /></div>}
                 <p className="text-[10px] text-ink-muted mt-2 italic">Remise saisie par le médecin</p>
               </div>
 

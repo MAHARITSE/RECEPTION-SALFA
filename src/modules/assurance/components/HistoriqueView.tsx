@@ -3,6 +3,7 @@ import { History, Search, Calendar, Download, Building, Receipt, ArrowUpDown } f
 import { Paiement, Societe } from '../types';
 import { formatMoney, formatDate } from '../utils/formatters';
 import * as XLSX from 'xlsx';
+import { Select } from '../../../components/Select';
 
 interface HistoriqueViewProps {
   paiements: Paiement[];
@@ -115,7 +116,7 @@ export const HistoriqueView: React.FC<HistoriqueViewProps> = ({
 
         <div>
           <label className="block text-ink-muted font-medium mb-1">Mode de Paiement</label>
-          <select
+          <Select
             value={selectedMode}
             onChange={(e) => setSelectedMode(e.target.value)}
             className="w-full p-1.5 rounded-lg border border-line focus:ring-2 focus:ring-indigo-500 focus:outline-none"
@@ -125,7 +126,7 @@ export const HistoriqueView: React.FC<HistoriqueViewProps> = ({
             <option value="Chèque">Chèque</option>
             <option value="Espèces">Espèces</option>
             <option value="Mobile Money">Mobile Money</option>
-          </select>
+          </Select>
         </div>
       </div>
 

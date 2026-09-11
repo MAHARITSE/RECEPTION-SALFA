@@ -1,12 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { LabRequest, Patient, ClientType, LabExamCatalog, LabCategory, Article } from '../types';
 import type { AppState } from '../store';
 import type { Societe } from '../modules/assurance/types';
 import { allocateFactureNumber, applySocieteUpsert, collectExistingFactureNumbers } from '../store';
+import { SearchableSelect, optionsFromValues } from './SearchableSelect';
+import { SuggestionInput, suggestionsFrom } from './SuggestionInput';
 import {
   addAuditLog, addNotification, addJourneyEvent, LAB_NORMS,
-  labCategoryLabel, LAB_CATEGORIES, normalizeDossierNumber, isDossierTaken, calculateAge, formatAr, getLabCatalog,
+  labCategoryLabel, LAB_CATEGORIES, normalizeDossierNumber, isDossierTaken, calculateAge, formatAr, getLabCatalog, companyIsBlocked, companyOptions, sousSocietesConnues,
 } from '../store';
 import { printLabResultTicket } from '../utils/printTicket';
 import { PhoneInput } from './PhoneInput';
@@ -14,6 +16,7 @@ import {
   FlaskConical, CheckCircle, AlertTriangle, Send, Microscope, FileSearch,
   Plus, Search, Printer, Check, Edit2,
 } from 'lucide-react';
+import { Select } from './Select';
 
 interface Props {
   state: AppState;
@@ -48,6 +51,9 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
   const [showNew, setShowNew] = useState(false);
   const [patSearch, setPatSearch] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+  const suggestionsNomsPatients = useMemo(() => suggestionsFrom(state.patients.map(p => p.lastName)), [state.patients]);
+  const suggestionsPrenomsPatients = useMemo(() => suggestionsFrom(state.patients.map(p => p.firstName)), [state.patients]);
+
   const [newPat, setNewPat] = useState({ dossier: '', lastName: '', firstName: '', gender: 'F' as 'M' | 'F', dateOfBirth: '', contact: '', clientType: 'comptoir' as ClientType, company: '' });
   // Edition société — toujours visible quand patient choisi (comme hospit/bloc)
   const [labEditClientType, setLabEditClientType] = useState<ClientType>('comptoir');
@@ -467,10 +473,10 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
           <Search className="absolute left-3 top-2.5 w-4 h-4 text-ink-faint" />
           <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-9 pr-3 py-2 border border-line-strong rounded-lg outline-none focus:ring-2 focus:ring-cyan-500 text-sm" placeholder={tab === 'completed' ? 'Rechercher une personne dans les résultats...' : 'Rechercher patient ou examen...'} />
         </div>
-        <select value={filterCat} onChange={(e) => setFilterCat(e.target.value)} className="px-3 py-2 border border-line-strong rounded-lg text-sm cursor-pointer">
+        <Select value={filterCat} onChange={(e) => setFilterCat(e.target.value)} className="px-3 py-2 border border-line-strong rounded-lg text-sm cursor-pointer">
           <option value="all">Toutes catégories</option>
           {LAB_CATEGORIES.map((c) => <option key={c} value={c}>{labCategoryLabel(c)}</option>)}
-        </select>
+        </Select>
       </div>
 
       {/* Tabs */}
@@ -737,13 +743,13 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
                   <div className="mt-3 p-3 bg-surface-muted rounded-lg border">
                     <div className="text-xs font-bold text-ink-secondary mb-2">Ou créer un nouveau patient (externe / ponctuel)</div>
                     <div className="grid grid-cols-2 gap-2 text-xs">
-                      <input value={newPat.lastName} onChange={(e) => setNewPat({ ...newPat, lastName: e.target.value })} placeholder="Nom *" className="px-2 py-1.5 border rounded uppercase outline-none" />
-                      <input value={newPat.firstName} onChange={(e) => setNewPat({ ...newPat, firstName: e.target.value })} placeholder="Prénom *" className="px-2 py-1.5 border rounded uppercase outline-none" />
+                      <SuggestionInput id="labo-nouveau-nom" value={newPat.lastName} onChange={(v) => setNewPat({ ...newPat, lastName: v })} suggestions={suggestionsNomsPatients} placeholder="Nom *" ariaLabel="Nom" className="px-2 py-1.5 border rounded uppercase outline-none" />
+                      <SuggestionInput id="labo-nouveau-prenom" value={newPat.firstName} onChange={(v) => setNewPat({ ...newPat, firstName: v })} suggestions={suggestionsPrenomsPatients} placeholder="Prénom *" ariaLabel="Prénom" className="px-2 py-1.5 border rounded uppercase outline-none" />
                       <input type="date" value={newPat.dateOfBirth} onChange={(e) => setNewPat({ ...newPat, dateOfBirth: e.target.value })} className="px-2 py-1.5 border rounded outline-none" />
                       <PhoneInput value={newPat.contact} onChange={(v) => setNewPat({ ...newPat, contact: v })} placeholder="Téléphone" className="px-2 py-1.5 border rounded outline-none" />
-                      <select value={newPat.gender} onChange={(e) => setNewPat({ ...newPat, gender: e.target.value as 'M' | 'F' })} className="px-2 py-1.5 border rounded cursor-pointer">
+                      <Select value={newPat.gender} onChange={(e) => setNewPat({ ...newPat, gender: e.target.value as 'M' | 'F' })} className="px-2 py-1.5 border rounded cursor-pointer">
                         <option value="F">Femme</option><option value="M">Homme</option>
-                      </select>
+                      </Select>
                       <select value={newPat.clientType} onChange={(e) => setNewPat({ ...newPat, clientType: e.target.value as ClientType })} className="px-2 py-1.5 border rounded cursor-pointer">
                         <option value="comptoir">Comptoir</option><option value="societe">Société</option><option value="externe">Externe</option>
                       </select>
@@ -793,10 +799,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
                     {labEditClientType === 'societe' && (
                       <div>
                         <label className="block font-bold text-ink mb-0.5">Société</label>
-                        <select value={labEditCompany} onChange={e => setLabEditCompany(e.target.value)} className="w-full px-2 py-1.5 border rounded bg-surface cursor-pointer">
-                          <option value="">— Sélectionner —</option>
-                          {state.companies.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
-                        </select>
+                        <SearchableSelect value={labEditCompany} onChange={setLabEditCompany} options={companyOptions(state.companies)} placeholder="— Taper pour filtrer puis choisir —" ariaLabel="Société" inputClassName="w-full px-2 py-1.5 border rounded outline-none bg-surface" />
                       </div>
                     )}
                   </div>
@@ -808,7 +811,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
                       </div>
                       <div>
                         <label className="block font-bold text-ink mb-0.5">Sous-société</label>
-                        <input type="text" value={labEditSubCompany} onChange={e => setLabEditSubCompany(e.target.value.toUpperCase())} className="w-full px-2 py-1.5 border rounded uppercase bg-surface" placeholder="Direction, service…" />
+                        <SearchableSelect value={labEditSubCompany} onChange={setLabEditSubCompany} options={optionsFromValues(sousSocietesConnues(state, labEditCompany))} placeholder={"— Sous-société de " + (labEditCompany || "la société") + " —"} ariaLabel="Sous-société" inputClassName="w-full px-2 py-1.5 border rounded outline-none bg-surface uppercase" />
                       </div>
                     </div>
                   )}
@@ -896,9 +899,9 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-ink-secondary mb-1">Catégorie</label>
-                  <select value={examForm.category} onChange={(e) => setExamForm({ ...examForm, category: e.target.value as LabCategory })} className="w-full px-2 py-1.5 border rounded cursor-pointer">
+                  <Select value={examForm.category} onChange={(e) => setExamForm({ ...examForm, category: e.target.value as LabCategory })} className="w-full px-2 py-1.5 border rounded cursor-pointer">
                     {LAB_CATEGORIES.map((c) => <option key={c} value={c}>{labCategoryLabel(c)}</option>)}
-                  </select>
+                  </Select>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-ink-secondary mb-1">Prélèvement</label>

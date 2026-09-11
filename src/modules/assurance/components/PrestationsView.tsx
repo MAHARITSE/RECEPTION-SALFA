@@ -32,18 +32,22 @@ import {
   SlidersHorizontal,
   DollarSign,
   Edit2,
-  Ban
+  Ban,
+  ShieldOff,
+  Info
 } from 'lucide-react';
 import { Prestation, LignePrestation, Paiement, Societe, Personne, Famille } from '../types';
 import { formatMoney, formatDate, generateId, getCurrentTimestamp } from '../utils/formatters';
 import { maskNom } from '../utils/inputMasks';
 import { buildSocieteFactureNumber, collectExistingFactureNumbers, SOCIETE_FACTURE_RE } from '../../../utils/factureNumber';
 import { calculateRecouvrementData, generateRecouvrementPdf, generateSelectedPrestationsPdf } from '../utils/recouvrementPdf';
+import { exclusionPersonne, repartirPrestation, societeEstPayeurGlobal } from '../utils/societeExclusions';
 import { SalfaImportModal } from './SalfaImportModal';
 import { FacturesGroupedTable } from './prestations/FacturesGroupedTable';
 import { ChangerLiaisonModal } from './prestations/ChangerLiaisonModal';
 import { FactureDetailModal } from './prestations/FactureDetailModal';
 import * as XLSX from 'xlsx';
+import { Select } from '../../../components/Select';
 
 export type PrestationViewMode = 'detaillee' | 'factures';
 
@@ -1524,17 +1528,36 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
     recalcFormTotals(newLignes, formData.societeId);
   };
 
-  const recalcFormTotals = (lignes: LignePrestation[], socId?: string) => {
+  const recalcFormTotals = (lignes: LignePrestation[], socId?: string, personneId?: string) => {
     const total = lignes.reduce((sum, l) => sum + (l.totalPrestation || 0), 0);
     const soc = societes.find(s => s.id === (socId || formData.societeId));
-    const taux = soc ? soc.tauxCouvertureDefaut : 80;
-    const ticketModerateur = Math.round(total * (1 - (taux / 100)));
+    // Exclusions de la société : assuré exclu ou famille d'articles non prise en
+    // charge (ex. ÉCHOGRAPHIE, LABORATOIRE) → 0 % remboursé, reste à la charge du
+    // patient (facturation en client comptoir).
+    const assure = personnes.find(p => p.id === (personneId ?? formData.personneId));
+    const repartition = repartirPrestation(soc, lignes, assure);
+    const lignesCalculees = lignes.map((l, index) => {
+      const r = repartition.lignes[index];
+      return {
+        ...l,
+        ticketModerateur: r.ticketModerateur,
+        montantARembourser: r.montantARembourser,
+        montantExclu: r.montantExclu,
+        motifExclusion: r.motifExclusion,
+        excluParSociete: r.excluParSociete || undefined,
+      };
+    });
 
     setFormData(prev => ({
       ...prev,
-      lignes,
+      lignes: lignesCalculees,
       totalPrestation: total,
-      participation: ticketModerateur,
+      participation: repartition.ticketModerateur,
+      montantARembourser: repartition.montantARembourser,
+      montantExclu: repartition.montantExclu,
+      motifExclusion: repartition.nbActesExclus === lignes.length && lignes.length > 0
+        ? repartition.lignes[0]?.motifExclusion
+        : (repartition.montantExclu > 0 ? repartition.lignes.find(r => r.motifExclusion)?.motifExclusion : undefined),
     }));
   };
 
@@ -1623,6 +1646,8 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
       montantTotal: formData.totalPrestation || 0,
       ticketModerateur: formData.participation || 0,
       montantARembourser: Math.max(0, (formData.totalPrestation || 0) - (formData.participation || 0)),
+      montantExclu: formData.montantExclu || 0,
+      motifExclusion: formData.motifExclusion,
       statut: (formData.statut as any) || 'En attente',
       dateCreation: formData.dateCreation || new Date().toISOString().split('T')[0],
       commentaires: formData.commentaires || '',
@@ -1912,7 +1937,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
               <label className="block text-[11px] font-semibold text-ink-secondary mb-1">
                 Société / Garant
               </label>
-              <select
+              <Select
                 value={filterSocieteId}
                 onChange={(e) => setFilterSocieteId(e.target.value)}
                 className="w-full text-xs py-1.5 px-2.5 rounded-lg border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -1921,7 +1946,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
                 {societes.map(s => (
                   <option key={s.id} value={s.id}>{s.nom}</option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             {/* Sous-société */}
@@ -1929,7 +1954,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
               <label className="block text-[11px] font-semibold text-ink-secondary mb-1">
                 Sous-Société / Service
               </label>
-              <select
+              <Select
                 value={filterSousSociete}
                 onChange={(e) => setFilterSousSociete(e.target.value)}
                 className="w-full text-xs py-1.5 px-2.5 rounded-lg border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -1938,7 +1963,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
                 {uniqueSousSocietes.map(ss => (
                   <option key={ss} value={ss}>{ss}</option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             {/* Solde Filter */}
@@ -1946,7 +1971,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
               <label className="block text-[11px] font-semibold text-ink-secondary mb-1">
                 État du solde
               </label>
-              <select
+              <Select
                 value={soldeFilter}
                 onChange={(e) => setSoldeFilter(e.target.value as any)}
                 className="w-full text-xs py-1.5 px-2.5 rounded-lg border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -1954,7 +1979,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
                 <option value="ALL">Tous les états</option>
                 <option value="NON_SOLDE">Non soldés uniquement (Reste &gt; 0)</option>
                 <option value="SOLDE">Entièrement soldés (Reste = 0)</option>
-              </select>
+              </Select>
             </div>
 
             {/* Date Range & Presets */}
@@ -2788,7 +2813,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
 
                 <div>
                   <label className="block text-ink font-semibold mb-1">Société d'Assurance *</label>
-                  <select
+                  <Select
                     value={formData.societeId || ''}
                     onChange={(e) => {
                       const newSocId = e.target.value;
@@ -2805,9 +2830,11 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
                     className="w-full p-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   >
                     {societes.map(s => (
-                      <option key={s.id} value={s.id}>{s.nom} ({s.tauxCouvertureDefaut}%)</option>
+                      <option key={s.id} value={s.id}>
+                        {s.nom} ({s.tauxCouvertureDefaut}%){societeEstPayeurGlobal(s) ? ' · Payeur global' : ''}
+                      </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
 
                 <div>
@@ -2823,9 +2850,13 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
 
                 <div className="sm:col-span-2">
                   <label className="block text-ink font-semibold mb-1">Adhérent / Assuré Bénéficiaire *</label>
-                  <select
+                  <Select
                     value={formData.personneId || ''}
-                    onChange={(e) => setFormData(prev => ({ ...prev, personneId: e.target.value }))}
+                    onChange={(e) => {
+                      const newPersonneId = e.target.value;
+                      setFormData(prev => ({ ...prev, personneId: newPersonneId }));
+                      recalcFormTotals(formData.lignes || [], formData.societeId, newPersonneId);
+                    }}
                     className="w-full p-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   >
                     {personnes.filter(p => p.societeId === formData.societeId).map(p => (
@@ -2833,9 +2864,52 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
                         {p.nomPrenom} (Mat: {p.matricule} - {p.qualite})
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
               </div>
+
+              {/* Exclusions contractuelles de la société */}
+              {(() => {
+                const soc = societes.find(s => s.id === formData.societeId);
+                const assure = personnes.find(p => p.id === formData.personneId);
+                if (!soc) return null;
+                const excluAssure = exclusionPersonne(soc, assure);
+                if (excluAssure) {
+                  return (
+                    <div className="flex items-start space-x-2 p-3 rounded-xl bg-rose-50 border border-rose-200 text-[11px] text-rose-900">
+                      <ShieldOff className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
+                      <p>
+                        <strong>{assure?.nomPrenom || 'Assuré'}</strong> est exclu(e) de la couverture de{' '}
+                        <strong>{soc.nom}</strong> : aucun acte ne sera remboursé.
+                        {excluAssure.motif ? ` Motif : ${excluAssure.motif}.` : ''} À facturer en <strong>client comptoir</strong>.
+                      </p>
+                    </div>
+                  );
+                }
+                const nbExclus = (formData.lignes || []).filter(l => l.excluParSociete).length;
+                if (nbExclus > 0) {
+                  return (
+                    <div className="flex items-start space-x-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900">
+                      <ShieldOff className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+                      <p>
+                        {nbExclus} acte(s) exclu(s) par <strong>{soc.nom}</strong> : non remboursé(s) par la société,
+                        à facturer en <strong>client comptoir</strong>.
+                      </p>
+                    </div>
+                  );
+                }
+                if (societeEstPayeurGlobal(soc)) {
+                  return (
+                    <div className="flex items-start space-x-2 p-3 rounded-xl bg-slate-100 border border-slate-200 text-[11px] text-slate-700">
+                      <Info className="w-4 h-4 shrink-0 mt-0.5 text-slate-500" />
+                      <p>
+                        <strong>Payeur global</strong> : {soc.nom} règle la facture en une seule fois, sans distinction de personne.
+                      </p>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
 
               {/* Dynamic Line Items */}
               <div className="border border-line rounded-xl p-3 bg-surface-muted space-y-3">
@@ -2855,7 +2929,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
                   {(formData.lignes || []).map((ligne, idx) => (
                     <div key={ligne.id || idx} className="flex items-center gap-2 bg-surface p-2.5 rounded-lg border border-line text-xs">
                       <div className="w-32">
-                        <select
+                        <Select
                           value={ligne.code}
                           onChange={(e) => handleLineChange(idx, 'code', e.target.value)}
                           className="w-full p-1.5 border border-line-strong rounded font-semibold text-indigo-700 bg-indigo-50/50"
@@ -2863,7 +2937,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
                           {familles.map(f => (
                             <option key={f.code} value={f.code}>{f.code} - {f.libelle.substring(0, 22)}...</option>
                           ))}
-                        </select>
+                        </Select>
                       </div>
 
                       <div className="flex-1">
@@ -2887,6 +2961,15 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
                           className="w-full p-1.5 border border-line-strong rounded text-right font-semibold"
                         />
                       </div>
+
+                      {ligne.excluParSociete && (
+                        <span
+                          className="px-1.5 py-0.5 rounded-md bg-rose-100 text-rose-700 border border-rose-200 text-[9px] font-extrabold uppercase shrink-0"
+                          title={ligne.motifExclusion || 'Acte exclu par la société'}
+                        >
+                          Exclu
+                        </span>
+                      )}
 
                       {formData.lignes && formData?.lignes?.length > 1 && (
                         <button
@@ -2917,7 +3000,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 <div>
                   <label className="block text-ink font-semibold mb-1">Statut du Dossier</label>
-                  <select
+                  <Select
                     value={formData.statut || 'En attente'}
                     onChange={(e) => setFormData(prev => ({ ...prev, statut: e.target.value as any }))}
                     className="w-full p-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
@@ -2926,7 +3009,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
                     <option value="Partiellement payé">Partiellement payé</option>
                     <option value="Payé">Payé</option>
                     <option value="Rejeté">Rejeté</option>
-                  </select>
+                  </Select>
                 </div>
 
                 <div>
@@ -2982,7 +3065,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
             <form onSubmit={handleSaveLigneEdit} className="p-6 space-y-4">
               <div>
                 <label className="block text-ink text-sm font-semibold mb-1">Code Acte / Famille *</label>
-                <select
+                <Select
                   value={lineEditForm.code}
                   onChange={(e) => setLineEditForm(prev => ({ ...prev, code: e.target.value }))}
                   className="w-full p-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
@@ -2992,7 +3075,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
                   {familles.map(f => (
                     <option key={f.code} value={f.code}>{f.code} - {f.libelle}</option>
                   ))}
-                </select>
+                </Select>
               </div>
               
               <div>

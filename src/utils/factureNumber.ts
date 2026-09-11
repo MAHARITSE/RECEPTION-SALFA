@@ -50,6 +50,12 @@ export function formatSocieteFactureNumber(prescriptionDate: Date, societeCode: 
   return `FA-${p.mm}/${normalizeSocieteCode(societeCode) || 'SOC'}/${p.yy}-${pad3(Math.max(1, sequence))}`;
 }
 
+/** Vrai si le numéro suit la numérotation officielle en vigueur (26FA0427102 ou FA-07/BSA/26-014). */
+export function isOfficialFactureNumber(numero?: string): boolean {
+  const n = (numero || '').trim().toUpperCase();
+  return DAILY_FACTURE_RE.test(n) || SOCIETE_FACTURE_RE.test(n);
+}
+
 function maxSequence(numbers: string[], extract: (n: string) => number | null): number {
   let max = 0;
   for (const raw of numbers) {

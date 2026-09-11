@@ -674,6 +674,7 @@ export default function ModuleSuiviAssurance({ state, setState }: Props) {
             societes={societes}
             prestations={prestations}
             personnes={personnes}
+            familles={familles}
             onSaveSociete={handleSaveSociete}
             onDeleteSociete={handleDeleteSociete}
             onMergeSubSocietes={handleMergeSubSocietes}

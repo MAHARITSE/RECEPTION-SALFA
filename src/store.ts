@@ -1431,6 +1431,28 @@ export function companyTypeBadge(c?: Partial<Company> | null): string {
     : 'bg-indigo-100 dark:bg-indigo-500/15 text-indigo-800 dark:text-indigo-300';
 }
 
+/* ====== LISTE NOIRE DES SOCIÉTÉS ====== */
+
+// Implémentations dans `utils/companyStatus` (module sans dépendance aux données
+// locales, réutilisable et testable hors navigateur).
+export { todayIsoDate, companySuspensionExpired, companyIsBlocked, companyBlockLabel, companyBlockBadge, findCompanyByName, companyNameIsBlocked, companyOptions, subCompaniesOf } from './utils/companyStatus';
+export type { CompanyOption } from './utils/companyStatus';
+import { subCompaniesOf } from './utils/companyStatus';
+
+/** Sous-sociétés / services déjà enregistrés pour une société (saisie assistée). */
+export function sousSocietesConnues(state: AppState, companyName?: string): string[] {
+  const nomSociete = (state.companies || []);
+  const rows: { company?: string; subCompany?: string }[] = [
+    ...(state.patients || []).map(p => ({ company: p.company, subCompany: p.subCompany })),
+    ...(state.ventes || []).map(v => ({ company: v.company, subCompany: v.subCompany })),
+    ...(state.assurancePrestations || []).map(p => ({
+      company: p.societeNom || nomSociete.find(c => c.id === p.societeId)?.name,
+      subCompany: p.sousSociete,
+    })),
+  ];
+  return subCompaniesOf(rows, companyName);
+}
+
 /** Garantit que chaque société a un type ('payeur' par défaut) et un taux de couverture. */
 export function normalizeCompanies(companies: Company[] = []): Company[] {
   return companies.map((c) => ({

@@ -3,7 +3,7 @@
  * provoquait `Expected identifier but found "/"` à 1998:13 (vite/esbuild).
  * Le composant se termine désormais proprement par `</div> ); }` — build OK (1843 modules).
  */
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription, Article, Patient } from '../types';
 import type { AppState } from '../store';
@@ -11,9 +11,11 @@ import type { Societe } from '../modules/assurance/types';
 import {
   addAuditLog, addNotification, formatAr, formatNum, roundTo2, getPrice, calculateAge,
   normalizeDossierNumber, isDossierTaken, addJourneyEvent, generatePharmaClosingNumber, purgePatientFromQueue,
-  familyManagesStock, isLabFamily, isEchoFamily, allocateFactureNumber, applySocieteUpsert, collectExistingFactureNumbers,
+  familyManagesStock, isLabFamily, isEchoFamily, allocateFactureNumber, applySocieteUpsert, collectExistingFactureNumbers, companyIsBlocked, companyOptions, sousSocietesConnues,
 } from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText, RefreshCw } from 'lucide-react';
+import { SearchableSelect, optionsFromValues } from './SearchableSelect';
+import { SuggestionInput, suggestionsFrom } from './SuggestionInput';
 import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket, printPharmaDeliveryClosingTicket } from '../utils/printTicket';
 import { printSalfaIndividualInvoice } from '../utils/printSalfaInvoice';
 import { getExamReceipts, type ExamReceipts } from '../utils/examReceipts';
@@ -22,6 +24,7 @@ import ConfirmModal from './ConfirmModal';
 import AlerteArticleIndisponible from './AlerteArticleIndisponible';
 import { PhoneInput } from './PhoneInput';
 import type { ArticleAlertInfo } from './AlerteArticleIndisponible';
+import { Select } from './Select';
 
 /** Patient factice utilisé pour imprimer les bons d'analyse / d'échographie des ventes
  *  externes (un client externe n'a pas de dossier ouvert en réception). */
@@ -205,6 +208,12 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
   // HB Modal: patient search/add (ALL fields like reception)
   const [hbPatSearch, setHbPatSearch] = useState('');
+  // Saisie assistée du nouveau patient : valeurs déjà connues dans la base.
+  const suggestionsDossiers = useMemo(() => suggestionsFrom(state.patients.map(p => p.dossier)), [state.patients]);
+  const suggestionsNoms = useMemo(() => suggestionsFrom(state.patients.map(p => p.lastName)), [state.patients]);
+  const suggestionsPrenoms = useMemo(() => suggestionsFrom(state.patients.map(p => p.firstName)), [state.patients]);
+  const suggestionsAdresses = useMemo(() => suggestionsFrom(state.patients.map(p => p.address)), [state.patients]);
+
   const [hbNewPat, setHbNewPat] = useState({ dossier: '', lastName: '', firstName: '', dateOfBirth: '', gender: 'M' as 'M'|'F', contact: '', address: '', matricule: '', ssn: '', insureName: '', clientType: 'comptoir' as ClientType, company: '', subCompany: '' });
   const [hbNewCompanyName, setHbNewCompanyName] = useState('');
 
@@ -1617,7 +1626,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="col-span-2">
                   <label className="block font-bold text-ink mb-0.5">N° Dossier *</label>
-                  <input type="text" value={hbNewPat.dossier} onChange={e => setHbNewPat({...hbNewPat, dossier: e.target.value.toUpperCase()})} className="w-full px-2 py-1.5 border rounded outline-none uppercase font-mono font-bold bg-surface" placeholder="SAISIE MANUELLE — MAJUSCULES" />
+                  <SuggestionInput id="caisse-nouveau-dossier" value={hbNewPat.dossier} onChange={v => setHbNewPat({...hbNewPat, dossier: v.toUpperCase()})} suggestions={suggestionsDossiers} placeholder="SAISIE MANUELLE — MAJUSCULES" ariaLabel="Numéro de dossier" className="w-full px-2 py-1.5 border rounded outline-none uppercase font-mono font-bold bg-surface" />
                   <span className="text-[10px] text-ink-muted">Clé unique, jamais incrémentée automatiquement.</span>
                 </div>
                 <div className="col-span-2 flex items-center gap-3 mb-1">
@@ -1627,17 +1636,17 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                     <button type="button" onClick={() => setHbNewPat({...hbNewPat, gender: 'F'})} className={`px-3 py-1 font-bold border-l border-line-control cursor-pointer ${hbNewPat.gender === 'F' ? 'bg-pink-500 text-white' : 'bg-surface'}`}>F</button>
                   </div>
                 </div>
-                <div><label className="block font-bold text-ink mb-0.5">Nom *</label><input type="text" value={hbNewPat.lastName} onChange={e => setHbNewPat({...hbNewPat, lastName: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" /></div>
-                <div><label className="block font-bold text-ink mb-0.5">Prénom *</label><input type="text" value={hbNewPat.firstName} onChange={e => setHbNewPat({...hbNewPat, firstName: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" /></div>
+                <div><label className="block font-bold text-ink mb-0.5">Nom *</label><SuggestionInput id="caisse-nouveau-nom" value={hbNewPat.lastName} onChange={v => setHbNewPat({...hbNewPat, lastName: v})} suggestions={suggestionsNoms} placeholder="Nom de famille" ariaLabel="Nom" className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" /></div>
+                <div><label className="block font-bold text-ink mb-0.5">Prénom *</label><SuggestionInput id="caisse-nouveau-prenom" value={hbNewPat.firstName} onChange={v => setHbNewPat({...hbNewPat, firstName: v})} suggestions={suggestionsPrenoms} placeholder="Prénom" ariaLabel="Prénom" className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" /></div>
                 <div><label className="block font-bold text-ink mb-0.5">Date Naissance</label><input type="date" value={hbNewPat.dateOfBirth} onChange={e => setHbNewPat({...hbNewPat, dateOfBirth: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none bg-surface" /></div>
                 <div><label className="block font-bold text-ink mb-0.5">Age</label><input type="text" readOnly value={hbNewPat.dateOfBirth ? calculateAge(hbNewPat.dateOfBirth) : '—'} className="w-full px-2 py-1.5 border rounded bg-surface-hover" /></div>
                 <div><label className="block font-bold text-ink mb-0.5">Matricule</label><input type="text" value={hbNewPat.matricule} onChange={e => setHbNewPat({...hbNewPat, matricule: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none font-mono bg-surface" placeholder="M-0000" /></div>
                 <div><label className="block font-bold text-ink mb-0.5">Téléphone</label><PhoneInput value={hbNewPat.contact} onChange={v => setHbNewPat({...hbNewPat, contact: v})} className="w-full px-2 py-1.5 border rounded outline-none font-mono bg-surface" placeholder="038 34 092 61" /></div>
-                <div className="col-span-2"><label className="block font-bold text-ink mb-0.5">Adresse</label><input type="text" value={hbNewPat.address} onChange={e => setHbNewPat({...hbNewPat, address: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" /></div>
+                <div className="col-span-2"><label className="block font-bold text-ink mb-0.5">Adresse</label><SuggestionInput id="caisse-nouveau-adresse" value={hbNewPat.address} onChange={v => setHbNewPat({...hbNewPat, address: v})} suggestions={suggestionsAdresses} placeholder="Adresse du patient" ariaLabel="Adresse" className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" /></div>
                 <div><label className="block font-bold text-ink mb-0.5">N° Sécurité Sociale</label><input type="text" value={hbNewPat.ssn} onChange={e => setHbNewPat({...hbNewPat, ssn: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none bg-surface" /></div>
                 <div><label className="block font-bold text-ink mb-0.5">Société</label><input type="text" value={hbNewPat.insureName} onChange={e => setHbNewPat({...hbNewPat, insureName: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" /></div>
                 <div><label className="block font-bold text-ink mb-0.5">Type Client</label><select value={hbNewPat.clientType} onChange={e => setHbNewPat({...hbNewPat, clientType: e.target.value as ClientType})} className="w-full px-2 py-1.5 border rounded outline-none cursor-pointer bg-surface"><option value="comptoir">Client Comptoir</option><option value="societe">Client Société</option></select></div>
-                {hbNewPat.clientType === 'societe' && <div><label className="block font-bold text-ink mb-0.5">Société</label><select value={hbNewPat.company} onChange={e => setHbNewPat({...hbNewPat, company: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none cursor-pointer bg-surface"><option value="">— Sélectionner —</option>{state.companies.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}</select></div>}
+                {hbNewPat.clientType === 'societe' && <div><label className="block font-bold text-ink mb-0.5">Société</label><SearchableSelect value={hbNewPat.company} onChange={v => setHbNewPat({...hbNewPat, company: v})} options={companyOptions(state.companies)} placeholder="— Taper pour filtrer puis choisir —" ariaLabel="Société" inputClassName="w-full px-2 py-1.5 border rounded outline-none bg-surface" /></div>}
                 {hbNewPat.clientType === 'societe' && (
                   <div className="col-span-2 space-y-2">
                     <div className="flex gap-2">
@@ -1646,7 +1655,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                     </div>
                     <div>
                       <label className="block font-bold text-ink mb-0.5">Sous-société</label>
-                      <input type="text" value={hbNewPat.subCompany} onChange={e => setHbNewPat({...hbNewPat, subCompany: e.target.value.toUpperCase()})} className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" placeholder="Direction, Service..." />
+                      <SearchableSelect value={hbNewPat.subCompany} onChange={v => setHbNewPat({...hbNewPat, subCompany: v})} options={optionsFromValues(sousSocietesConnues(state, hbNewPat.company))} placeholder={"— Sous-société de " + (hbNewPat.company || "la société") + " —"} ariaLabel="Sous-société" inputClassName="w-full px-2 py-1.5 border rounded outline-none bg-surface uppercase" />
                     </div>
                   </div>
                 )}
@@ -1683,10 +1692,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                   {hbEditClientType === 'societe' && (
                     <div>
                       <label className="block font-bold text-ink mb-0.5">Société</label>
-                      <select value={hbEditCompany} onChange={e => setHbEditCompany(e.target.value)} className="w-full px-2 py-1.5 border rounded bg-surface cursor-pointer">
-                        <option value="">—</option>
-                        {state.companies.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
-                      </select>
+                      <SearchableSelect value={hbEditCompany} onChange={setHbEditCompany} options={companyOptions(state.companies)} placeholder="— Taper pour filtrer puis choisir —" ariaLabel="Société" inputClassName="w-full px-2 py-1.5 border rounded outline-none bg-surface" />
                     </div>
                   )}
                 </div>
@@ -1698,7 +1704,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                     </div>
                     <div>
                       <label className="block font-bold text-ink mb-0.5">Sous-société</label>
-                      <input type="text" value={hbEditSubCompany} onChange={e => setHbEditSubCompany(e.target.value.toUpperCase())} className="w-full px-2 py-1.5 border rounded uppercase bg-surface" placeholder="Direction, service…" />
+                      <SearchableSelect value={hbEditSubCompany} onChange={setHbEditSubCompany} options={optionsFromValues(sousSocietesConnues(state, hbEditCompany))} placeholder={"— Sous-société de " + (hbEditCompany || "la société") + " —"} ariaLabel="Sous-société" inputClassName="w-full px-2 py-1.5 border rounded outline-none bg-surface uppercase" />
                     </div>
                   </div>
                 )}
@@ -1905,7 +1911,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
             <div className="bg-blue-600 px-4 py-3 flex justify-between items-center text-white"><span className="font-bold"><Edit2 className="w-5 h-5 inline" /> Modifier Type Client</span><button onClick={() => setHbModal('none')} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button></div>
             <div className="p-4 space-y-3">
               <div><label className="block text-sm font-medium mb-1">Type</label><select value={hbEditClientType} onChange={e => setHbEditClientType(e.target.value as ClientType)} className="w-full px-3 py-2 border rounded-lg outline-none cursor-pointer"><option value="comptoir">Client Comptoir</option><option value="societe">Client Société</option></select></div>
-              {hbEditClientType === 'societe' && <div><label className="block text-sm font-medium mb-1">Société</label><select value={hbEditCompany} onChange={e => setHbEditCompany(e.target.value)} className="w-full px-3 py-2 border rounded-lg outline-none cursor-pointer"><option value="">—</option>{state.companies.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}</select></div>}
+              {hbEditClientType === 'societe' && <div><label className="block text-sm font-medium mb-1">Société</label><SearchableSelect value={hbEditCompany} onChange={setHbEditCompany} options={companyOptions(state.companies)} placeholder="— Taper pour filtrer puis choisir —" ariaLabel="Société" inputClassName="w-full px-3 py-2 border rounded-lg outline-none bg-surface" /></div>}
               <button onClick={hbSaveClientType} className="w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer">Enregistrer</button>
             </div>
           </div>
@@ -2116,10 +2122,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                   {payEditClientType === 'societe' && (
                     <div>
                       <label className="block font-bold text-ink mb-0.5">Société</label>
-                      <select value={payEditCompany} onChange={e => setPayEditCompany(e.target.value)} className="w-full px-2 py-1.5 border rounded bg-surface cursor-pointer">
-                        <option value="">— Sélectionner —</option>
-                        {state.companies.map(c => (<option key={c.id} value={c.name}>{c.name}</option>))}
-                      </select>
+                      <SearchableSelect value={payEditCompany} onChange={setPayEditCompany} options={companyOptions(state.companies)} placeholder="— Taper pour filtrer puis choisir —" ariaLabel="Société" inputClassName="w-full px-2 py-1.5 border rounded outline-none bg-surface" />
                     </div>
                   )}
                 </div>
@@ -2131,7 +2134,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                     </div>
                     <div>
                       <label className="block font-bold text-ink mb-0.5">Sous-société</label>
-                      <input type="text" value={payEditSubCompany} onChange={e => setPayEditSubCompany(e.target.value.toUpperCase())} className="w-full px-2 py-1.5 border rounded uppercase bg-surface" placeholder="Direction, service…" />
+                      <SearchableSelect value={payEditSubCompany} onChange={setPayEditSubCompany} options={optionsFromValues(sousSocietesConnues(state, payEditCompany))} placeholder={"— Sous-société de " + (payEditCompany || "la société") + " —"} ariaLabel="Sous-société" inputClassName="w-full px-2 py-1.5 border rounded outline-none bg-surface uppercase" />
                     </div>
                   </div>
                 )}
@@ -2280,14 +2283,14 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-ink mb-1">Format Papier Thermique</label>
-                  <select
+                  <Select
                     value={tempPrinterSettings.paperWidth}
                     onChange={e => setTempPrinterSettings({ ...tempPrinterSettings, paperWidth: Number(e.target.value) })}
                     className="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium bg-surface"
                   >
                     <option value={80}>80 mm (Standard POS)</option>
                     <option value={58}>58 mm (Étroit / Portable)</option>
-                  </select>
+                  </Select>
                 </div>
                 <div>
                   <label className="block font-semibold text-ink mb-1">Nombre d'exemplaires</label>

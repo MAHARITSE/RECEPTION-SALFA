@@ -17,6 +17,81 @@ Le module utilise **la base et le mécanisme de sauvegarde de l'application** : 
 
 Les modifications de sociétés et de couvertures d'assurés sont répercutées dans `companies` et `patients`. Les données médicales ne sont pas réécrites. Les pièces historiques conservent autant que possible le payeur enregistré dans la vente, plutôt que la nouvelle affiliation du patient.
 
+## Deux grandes familles de sociétés
+
+Chaque société appartient à l'une de ces familles, choisie dans la fiche **Sociétés** :
+
+| Famille | Comportement |
+|---|---|
+| **Payeur global** | Règle la totalité de la facture en une seule fois, sans distinction de personne ni d'acte (taux proposé à 100 %). |
+| **Paiement partiel (assurance)** | Règle partiellement, assuré par assuré et/ou acte par acte, selon le taux contractuel de la société. |
+
+Le choix est enregistré dans la base commune : `payeur` (Payeur global) ou `assurance` (Paiement partiel) sur `companies`, complété par `modePaiement` dans `assuranceSocietes`. Le taux de couverture reste modifiable à la main dans les deux cas.
+
+## Exclusions d'une société
+
+Une société peut **exclure** ce qu'elle ne prend pas en charge. Le bloc *Exclusions* de la fiche société (et le bouton **Exclusions** de chaque carte) permet d'ajouter :
+
+- **une personne cliente** : un assuré exclu n'est plus remboursé du tout, quel que soit l'acte ;
+- **une famille d'articles** : tous les actes de cette famille sont bloqués (ex. **ÉCHOGRAPHIE**, **LABORATOIRE**). La recherche accepte un code du catalogue, un libellé ou un mot-clé libre saisi directement.
+
+Une exclusion bloque la prise en charge par la société : le montant reste dû par le patient. S'il faut malgré tout prescrire l'acte, le patient doit être facturé en **client comptoir**.
+
+Les règles sont appliquées **à la saisie** :
+
+- à la création/modification d'une prestation, le ticket modérateur est recalculé acte par acte (0 % de remboursement sur un acte exclu) et l'acte est signalé *Exclu* ;
+- à la préparation d'un règlement, une ligne exclue n'est pas sélectionnée et son commentaire rappelle le motif ;
+- les prestations déjà enregistrées ne sont jamais recalculées rétroactivement.
+
+Les exclusions sont conservées dans `assuranceSocietes[].exclusions`, donc dans la même sauvegarde que le reste de la base.
+
+## Liste noire des sociétés
+
+Comme pour les patients de Réception, une société peut être **mise en liste noire** : aucune consultation ni prise en charge ne doit alors être ouverte à ses frais (impayé, suspension temporaire de la convention, contentieux…). Si un acte est malgré tout nécessaire, le patient est facturé en **client comptoir**.
+
+| Champ | Rôle |
+|---|---|
+| `blacklisted` | Société bloquée |
+| `blacklistReason` | Motif saisi (impayé, suspension temporaire, contentieux…) |
+| `blacklistDate` | Date du blocage |
+| `blacklistUntil` | Fin de la suspension, facultative : passée cette date, la société redevient active d'elle-même |
+
+**Où la gérer**
+
+- **Administration → Sociétés & Conventions** : bouton **Liste noire** (liste complète, motifs, rétablissement), bouton 🚫 / 🛡️ sur chaque ligne, filtre **Bloquées**.
+- **Suivi assurance → Sociétés** : bloc *Liste noire / suspension* dans la fiche société, badge 🚫 sur la carte et filtre dédié.
+
+**Effets**
+
+- Une société bloquée est retirée des listes de sélection (Réception, Caisse, Médecin, Laboratoire). Une fiche déjà enregistrée sur cette société n'est jamais modifiée en silence : la société reste affichée, marquée *bloquée*.
+- Chaque mise en liste noire et chaque rétablissement sont tracés dans le journal d'audit (`SOCIETE_LISTE_NOIRE`, `SOCIETE_RETABLE`).
+
+## Numérotation des factures
+
+La **numérotation officielle SALFA** est la référence, partout :
+
+| Nature | Format | Exemple |
+|---|---|---|
+| Comptoir / externes | `AA FA MM JJ NNN` (année + FA + mois + jour + ordre du jour) | `26FA0427102` |
+| Sociétés | `FA-MM/CODE/AA-NNN` (mois des prescriptions + code société + ordre) | `FA-07/BSA/26-014` |
+
+Les numéros hérités d'un autre format (`FACT-2026-001`, `FACT-FA-…`, `FACT-REG-…`, `FACT-BORD-…`) ne sont pas réécrits : ils restent affichés et sont simplement signalés **« ancien format »** dans la vue Facturation *Par N° de facture*.
+
+## Saisie assistée et sociétés bloquées dans les formulaires
+
+- **Sociétés bloquées** : elles ne sont jamais retirées des listes de saisie (Réception, Caisse, Médecin, Laboratoire, paramètres). Elles restent affichées, en **rouge** et précédées de 🚫, avec le motif en dessous du champ : l'opérateur voit immédiatement le problème et facture en client comptoir.
+- **Combobox saisissables partout** : toutes les listes déroulantes de saisie acceptent la frappe (filtrage au clavier, choix à la souris, libellé affiché plutôt que l'identifiant). Restent volontairement des listes fermées : les **types client** (Comptoir / Société / Externe), l'identifiant de connexion, la bascule de rôle de l'en-tête, la police de l'en-tête et quelques filtres.
+- **Sous-sociétés assistées** : les suggestions proposées sont celles déjà enregistrées pour la société choisie (patients, ventes et prestations), et non la liste complète.
+- **Nouveau patient** : Adresse, Nom, Prénom et N° de dossier sont des champs de **saisie libre avec suggestions** — jamais des listes déroulantes. L'opérateur tape normalement, l'historique de la base (patients déjà enregistrés) lui est simplement proposé en dessous, sans jamais être imposé. Appliqué dans les formulaires de création de la **Réception**, de la **Caisse** et du **Laboratoire**.
+
+- **Taux de couverture jamais imposé** : le mode de règlement (payeur global / paiement partiel) est une simple classification ; il ne pré-remplit plus le taux, qui reste saisi à la main selon le contrat (repère usuel affiché : 100 % payeur global, 80 % assurance).
+
+## Facturation : vue « Par N° de facture »
+
+En plus de la vue mensuelle et de la vue détaillée, la Facturation propose un onglet **Par N° de facture** : une ligne par numéro de facture, avec la période, le nombre d'actes, le total brut, le ticket modérateur, la part à réclamer, l'encaissé, le reste à réclamer, le taux de recouvrement, le statut et l'impression — les mêmes repères que la vue **Prestations**. Le détail des actes se déplie sous chaque facture.
+
+Les numéros qui ne suivent pas la numérotation officielle en vigueur (`26FA0427102` pour le comptoir et les externes, `FA-07/CODE/26-014` pour les sociétés) sont signalés « ancien format » dans cette vue.
+
 ## Compléments assurance, dans la même base
 
 Les collections `assuranceSocietes`, `assurancePersonnes` et `assuranceFamilles` conservent les attributs propres au suivi (coordonnées du garant, taux par assuré, alias des actes, etc.). Les identités de Réception sont prioritaires : il ne s'agit plus de référentiels indépendants.
