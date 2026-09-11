@@ -118,6 +118,9 @@ export interface LignePrestation {
   /** Acte bloqué par une exclusion de la société (assuré ou famille d'articles). */
   excluParSociete?: boolean;
   statut?: 'En attente' | 'Partiellement payé' | 'Payé' | 'Rejeté';
+  /** Ligne Caisse (originale, lecture seule) ou ajout du facturier
+   * (« omission » / « ordonnance externe remboursée par l'hôpital »). */
+  origine?: 'caisse' | 'omission' | 'ordonnance_externe';
 }
 
 export interface Prestation {
@@ -143,6 +146,10 @@ export interface Prestation {
   resteAPayer?: number; // Reste à recouvrer
   statut: 'En attente' | 'Partiellement payé' | 'Payé' | 'Rejeté';
   lignes: LignePrestation[];
+  /** Lignes saisies par le facturier (omissions / ordonnances externes) pour
+   * une prescription liée à une facture Caisse : superposées à la facture,
+   * sans jamais modifier ses lignes originales. */
+  ajouts?: LignePrestation[];
   dateCreation: string;
   datePaiement?: string;
   numeroBordereau?: string;

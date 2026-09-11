@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Printer, Receipt, FileText } from 'lucide-react';
+import { Printer, Receipt, FileText, X, PencilLine } from 'lucide-react';
+import type { Prestation } from '../types';
 import type { AppState } from '../../../store';
 import type { ClientType } from '../../../types';
 import { IS_WAMP_BUILD } from '../../../wamp';
@@ -10,6 +11,8 @@ import { FacturationParFactureTable } from './billing/FacturationParFactureTable
 import { isOfficialFactureNumber } from '../../../utils/factureNumber';
 import { auditArticleFamilies } from '../billingFamilies';
 import { printIndividualBillingDocument, printMonthlyInvoice } from '../printBilling';
+import { PrescriptionEditModal } from './billing/PrescriptionEditModal';
+import { formatDate } from '../utils/formatters';
 
 type Props = PrestationsViewProps & { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>> };
 
@@ -22,6 +25,10 @@ export function BillingWorkspace({ state, setState, ...details }: Props) {
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const printing = useRef(false);
+  // Double-clic « Factures mensuelles » → vue détaillée du destinataire (modal)
+  const [societeDetail, setSocieteDetail] = useState<MonthlyScope | null>(null);
+  // Double-clic sur le nom → édition de la prescription (omissions / ordonnances externes)
+  const [prescription, setPrescription] = useState<Prestation | null>(null);
   const documents = useMemo(() => collectBillingDocuments(state), [state]);
   const snapshots = state.monthlyInvoices || [];
   const matches = (scope: { category: ClientType; companyId?: string; month?: string }) => (!month || scope.month === month) && (details.selectedSocieteId === 'ALL' || (scope.category === 'societe' && scope.companyId === details.selectedSocieteId));
@@ -61,6 +68,19 @@ export function BillingWorkspace({ state, setState, ...details }: Props) {
     } catch (cause) {
       setError(`Impression mensuelle non lancée : ${(cause as Error).message}`);
     } finally { printing.current = false; setBusy(null); }
+  }
+
+  const prestationDe = (docId: string) => details.prestations.find(p => p.id === docId);
+  const ajoutsDe = (p: Prestation) => (p.lignes || []).filter(l => l.origine === 'omission' || l.origine === 'ordonnance_externe').length;
+
+  function enregistrerPrescription(next: Prestation) {
+    try {
+      details.onSavePrestation(next);
+      setPrescription(null);
+      setNotice(`Prescription ${next.numeroFacture} mise à jour — omissions / ordonnances externes enregistrées.`);
+    } catch (cause) {
+      setError(`Enregistrement refusé : ${(cause as Error).message}`);
+    }
   }
 
   function renderDetailTable(rows: BillingDocument[]) {
@@ -109,7 +129,7 @@ export function BillingWorkspace({ state, setState, ...details }: Props) {
           const rows = documentsForScope(documents, scope);
           const missing = saved?.documents.reduce((sum, d) => sum + d.items.filter(i => !i.actCode?.trim()).length, 0) || 0;
           const recipient = saved?.recipient || (scope.category === 'societe' ? state.companies.find(c => c.id === scope.companyId)?.name || rows[0]?.companyName || 'Société' : `Clients ${categoryLabels[scope.category]}`);
-          return <tr key={id} className="border-t border-line" data-monthly-scope={id}>
+          return <tr key={id} className="border-t border-line cursor-pointer hover:bg-surface-hover" data-monthly-scope={id} title="Double-clic : vue détaillée de ce destinataire" onDoubleClick={() => setSocieteDetail(scope)}>
             <td className="p-3 whitespace-nowrap font-semibold">{scope.month}</td><td className="p-3">{recipient}</td>
             <td className="p-3">{saved?.documents.length ?? rows.length}{saved && <span className="block text-ink-muted">Contenu figé</span>}</td>
             <td className="p-3 whitespace-nowrap">{formatMoney(saved?.total ?? billingTotals(rows).total)}</td>
@@ -135,5 +155,76 @@ export function BillingWorkspace({ state, setState, ...details }: Props) {
         {otherDocuments.length > 0 && <div className="mt-4"><h3 className="mb-2 font-semibold">Autres factures de la base commune</h3>{renderDetailTable(otherDocuments)}</div>}
       </>
     </div>}
+
+    {/* ===== MODAL : vue détaillée du destinataire de la facture mensuelle ===== */}
+    {societeDetail && (() => {
+      const saved = snapshots.find(i => i.id === monthlyScopeId(societeDetail));
+      const lignes = saved?.documents ?? documentsForScope(documents, societeDetail);
+      const destinataire = saved?.recipient || (societeDetail.category === 'societe' ? state.companies.find(c => c.id === societeDetail.companyId)?.name || 'Société' : `Clients ${categoryLabels[societeDetail.category]}`);
+      const total = saved?.total ?? billingTotals(lignes).total;
+      return (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200" onMouseDown={e => { if (e.target === e.currentTarget) setSocieteDetail(null); }}>
+          <div className="bg-surface rounded-2xl max-w-5xl w-full p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto" role="dialog" aria-label={`Vue détaillée ${destinataire} ${societeDetail.month}`}>
+            <div className="flex items-start justify-between gap-3 border-b border-line-soft pb-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/25 text-indigo-700 dark:text-indigo-300"><Receipt className="w-6 h-6" /></div>
+                <div>
+                  <h3 className="text-lg font-bold text-ink-strong">{destinataire} — {societeDetail.month}</h3>
+                  <p className="text-xs text-ink-muted mt-0.5">{saved ? `Facture mensuelle ${saved.number || 'enregistrée'} — contenu figé à l'impression.` : 'Facture mensuelle pas encore imprimée — contenu en cours.'}</p>
+                </div>
+              </div>
+              <button onClick={() => setSocieteDetail(null)} aria-label="Fermer" className="p-2 rounded-xl text-ink-faint hover:text-ink hover:bg-surface-hover transition cursor-pointer"><X className="w-5 h-5" /></button>
+            </div>
+            <p className="text-xs text-ink-muted"><strong>Double-cliquez sur le nom</strong> d'un assuré pour ouvrir sa prescription et y saisir les omissions ou les ordonnances externes remboursées par l'hôpital.</p>
+            <div className="overflow-x-auto rounded-xl border border-line">
+              <table className="w-full text-left text-xs" aria-label={`Prescriptions de ${destinataire}`}>
+                <thead className="bg-surface-muted text-ink-secondary"><tr>{['Date', 'Facture', 'Assuré / Client', 'Sous-soc.', 'Actes', 'Brut', 'À rembourser', 'Payé', 'Solde', 'Statut'].map(label => <th className="p-2.5" key={label}>{label}</th>)}</tr></thead>
+                <tbody>
+                  {lignes.map(d => {
+                    const p = prestationDe(d.id);
+                    const nbAjouts = p ? ajoutsDe(p) : 0;
+                    const solde = Math.max(0, d.payable - d.paid - d.rejected);
+                    return (
+                      <tr key={d.id} className="border-t border-line hover:bg-surface-hover">
+                        <td className="p-2.5 whitespace-nowrap">{formatDate(d.date)}</td>
+                        <td className="p-2.5 font-mono font-semibold">{d.number}</td>
+                        <td className={`p-2.5 ${p ? 'cursor-pointer font-semibold text-indigo-700 dark:text-indigo-300 underline decoration-dotted underline-offset-2' : ''}`}
+                            title={p ? 'Double-clic : ouvrir la prescription' : undefined}
+                            onDoubleClick={() => { if (p) setPrescription(p) }}>
+                          {d.client}{d.dossier && <span className="block text-ink-muted font-normal">{d.dossier}</span>}
+                          {nbAjouts > 0 && <span className="ml-1.5 inline-block px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300 text-[10px] font-bold" title="Lignes ajoutées par le facturier">+{nbAjouts}</span>}
+                        </td>
+                        <td className="p-2.5">{d.subCompany || '—'}</td>
+                        <td className="p-2.5">{d.items.length} acte(s)</td>
+                        <td className="p-2.5 whitespace-nowrap font-mono">{formatMoney(d.total)}</td>
+                        <td className="p-2.5 whitespace-nowrap font-mono">{formatMoney(d.payable)}</td>
+                        <td className="p-2.5 whitespace-nowrap font-mono">{formatMoney(d.paid)}</td>
+                        <td className="p-2.5 whitespace-nowrap font-mono">{formatMoney(solde)}</td>
+                        <td className="p-2.5">{p?.statut || '—'}</td>
+                      </tr>
+                    );
+                  })}
+                  {!lignes.length && <tr><td colSpan={10} className="p-6 text-center text-ink-muted italic">Aucune prescription pour cette sélection.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex items-center justify-between border-t border-line-soft pt-3">
+              <span className="text-sm font-bold text-ink-strong">Total : {formatMoney(total)}</span>
+              <span className="inline-flex items-center gap-1.5 text-xs text-ink-muted"><PencilLine className="w-3.5 h-3.5" /> Les ajouts du facturier n'altèrent jamais la facture Caisse d'origine.</span>
+            </div>
+          </div>
+        </div>
+      );
+    })()}
+
+    {/* ===== MODAL : édition de la prescription (omissions / ordonnances externes) ===== */}
+    {prescription && (
+      <PrescriptionEditModal
+        prestation={prescription}
+        familles={details.familles}
+        onClose={() => setPrescription(null)}
+        onSave={enregistrerPrescription}
+      />
+    )}
   </section>;
 }
