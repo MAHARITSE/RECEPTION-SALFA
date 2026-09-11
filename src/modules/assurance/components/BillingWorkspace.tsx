@@ -133,10 +133,6 @@ export function BillingWorkspace({ state, setState, onFusionPrescription, onAnnu
       {articleIssues.length} article(s) ne peuvent pas être rattachés automatiquement à une famille valide. Aucun classement arbitraire n’a été appliqué.
       <ul className="max-h-48 overflow-auto">{articleIssues.map(a => <li key={a.id}>{a.name} ({a.id}) — {a.reason}{a.family ? ` : ${a.family}` : ''}</li>)}</ul>
     </div>}
-    <div className="flex flex-wrap gap-2" role="tablist" aria-label="Vues de facturation">
-      <button role="tab" aria-selected={mode === 'factures'} onClick={() => setMode('factures')} className={`flex items-center gap-2 rounded-lg px-4 py-2 border ${mode === 'factures' ? 'border-accent-line bg-accent-soft text-accent' : 'border-line text-ink-muted'}`}><Receipt size={17} />Vue par Facture <strong>{groups.length}</strong></button>
-      <button role="tab" aria-selected={mode === 'detaillee'} onClick={() => setMode('detaillee')} className={`flex items-center gap-2 rounded-lg px-4 py-2 border ${mode === 'detaillee' ? 'border-accent-line bg-accent-soft text-accent' : 'border-line text-ink-muted'}`}><FileText size={17} />Vue Détaillée (Dossiers) <strong>{visible.length}</strong></button>
-    </div>
     {error && <p role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
     {notice && <p role="status" className="rounded-lg border border-accent-line bg-accent-soft p-3 text-sm text-ink">{notice}</p>}
     {mode === 'factures' ? <div data-testid="monthly-invoices-view" className="space-y-3">
