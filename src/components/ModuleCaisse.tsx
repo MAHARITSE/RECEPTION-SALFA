@@ -15,7 +15,7 @@ import {
 } from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText, RefreshCw } from 'lucide-react';
 import { SearchableSelect, optionsFromValues } from './SearchableSelect';
-import { SuggestionInput, suggestionsFrom } from './SuggestionInput';
+import { SuggestionInput, classerSuggestions } from './SuggestionInput';
 import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket, printPharmaDeliveryClosingTicket } from '../utils/printTicket';
 import { printSalfaIndividualInvoice } from '../utils/printSalfaInvoice';
 import { getExamReceipts, type ExamReceipts } from '../utils/examReceipts';
@@ -208,13 +208,24 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
   // HB Modal: patient search/add (ALL fields like reception)
   const [hbPatSearch, setHbPatSearch] = useState('');
-  // Saisie assistée du nouveau patient : valeurs déjà connues dans la base.
-  const suggestionsDossiers = useMemo(() => suggestionsFrom(state.patients.map(p => p.dossier)), [state.patients]);
-  const suggestionsNoms = useMemo(() => suggestionsFrom(state.patients.map(p => p.lastName)), [state.patients]);
-  const suggestionsPrenoms = useMemo(() => suggestionsFrom(state.patients.map(p => p.firstName)), [state.patients]);
-  const suggestionsAdresses = useMemo(() => suggestionsFrom(state.patients.map(p => p.address)), [state.patients]);
-
   const [hbNewPat, setHbNewPat] = useState({ dossier: '', lastName: '', firstName: '', dateOfBirth: '', gender: 'M' as 'M'|'F', contact: '', address: '', matricule: '', ssn: '', insureName: '', clientType: 'comptoir' as ClientType, company: '', subCompany: '' });
+
+  // Saisie assistée du nouveau patient : valeurs déjà connues dans la base
+  // (appariement : noms/prénoms déjà portés ensemble passent en tête).
+  const suggestionsDossiers = useMemo(() => classerSuggestions(state.patients.map(p => p.dossier)), [state.patients]);
+  const suggestionsNoms = useMemo(() => classerSuggestions(
+    state.patients.map(p => p.lastName),
+    (nom) => state.patients.some(p =>
+      (p.lastName || '').trim().toUpperCase() === nom.toUpperCase()
+      && (p.firstName || '').trim().toUpperCase() === (hbNewPat.firstName || '').trim().toUpperCase()),
+  ), [state.patients, hbNewPat.firstName]);
+  const suggestionsPrenoms = useMemo(() => classerSuggestions(
+    state.patients.map(p => p.firstName),
+    (pr) => state.patients.some(p =>
+      (p.firstName || '').trim().toUpperCase() === pr.toUpperCase()
+      && (p.lastName || '').trim().toUpperCase() === (hbNewPat.lastName || '').trim().toUpperCase()),
+  ), [state.patients, hbNewPat.lastName]);
+  const suggestionsAdresses = useMemo(() => classerSuggestions(state.patients.map(p => p.address)), [state.patients]);
   const [hbNewCompanyName, setHbNewCompanyName] = useState('');
 
   // HB Modal: article add

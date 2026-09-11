@@ -24,7 +24,8 @@ const norm = (s: string) => (s || '')
 /**
  * Champ de **saisie libre avec assistance des données de la base** — ce n'est pas une combobox :
  *  - le champ reste une saisie texte ordinaire (pas de flèche déroulante, aucune valeur imposée) ;
- *  - pendant la frappe, les valeurs déjà connues de la base qui contiennent le texte tapé
+ *  - dès l'arrivée dans le champ, les valeurs les plus fréquentes de la base sont proposées ;
+ *  - pendant la frappe, les valeurs connues qui contiennent le texte tapé
  *    sont proposées juste en dessous (clic, ou flèches ↑↓ + Entrée) ;
  *  - l'opérateur peut toujours terminer avec une valeur inédite.
  */
@@ -37,11 +38,13 @@ export function SuggestionInput({
   const [ouverte, setOuverte] = useState(false);
   const [indexActif, setIndexActif] = useState(-1);
 
-  // Suggestions de la base correspondant au texte tapé (contient, insensible
-  // à la casse et aux accents) — la valeur déjà saisie à l'identique est écartée.
+  // Suggestions de la base : sans saisie, les valeurs les plus fréquentes
+  // (déjà classées par l'appelant) sont proposées dès l'arrivée dans le champ ;
+  // pendant la frappe, celles qui contiennent le texte tapé (insensible à la
+  // casse et aux accents) — la valeur déjà saisie à l'identique est écartée.
   const filtres = useMemo(() => {
     const saisie = norm(value);
-    if (!saisie) return [];
+    if (!saisie) return suggestions.slice(0, maxSuggestions);
     const exact = saisie.toUpperCase();
     const out: string[] = [];
     for (const brute of suggestions) {
@@ -70,7 +73,7 @@ export function SuggestionInput({
         type="text"
         value={value}
         onChange={(e) => { onChange(e.target.value); setOuverte(true); setIndexActif(-1); }}
-        onFocus={() => { if (filtres.length > 0) setOuverte(true); }}
+        onFocus={() => setOuverte(true)}
         onBlur={() => { setOuverte(false); setIndexActif(-1); onBlur?.(); }}
         onKeyDown={(e) => {
           if (!visible) return;
@@ -125,4 +128,37 @@ export function suggestionsFrom(values: (string | undefined | null)[]): string[]
     if (!vus.has(cle)) vus.set(cle, valeur);
   }
   return [...vus.values()].sort((a, b) => a.localeCompare(b, 'fr'));
+}
+
+/**
+ * Classe les valeurs de la base pour l'assistance à la saisie :
+ *  - doublons fusionnés (casse ignorée) avec leur fréquence ;
+ *  - si `apparie` est fourni, les valeurs « appariées » passent en tête
+ *    (ex : prénoms déjà portés par le nom saisi) ;
+ *  - puis fréquence décroissante, puis ordre alphabétique.
+ */
+export function classerSuggestions(
+  values: (string | undefined | null)[],
+  apparie?: (valeur: string) => boolean,
+): string[] {
+  const vus = new Map<string, { valeur: string; n: number }>();
+  for (const brute of values) {
+    const valeur = (brute || '').trim();
+    if (!valeur) continue;
+    const cle = valeur.toUpperCase();
+    const entree = vus.get(cle);
+    if (entree) entree.n += 1;
+    else vus.set(cle, { valeur, n: 1 });
+  }
+  return [...vus.values()]
+    .sort((a, b) => {
+      if (apparie) {
+        const ma = apparie(a.valeur) ? 0 : 1;
+        const mb = apparie(b.valeur) ? 0 : 1;
+        if (ma !== mb) return ma - mb;
+      }
+      if (b.n !== a.n) return b.n - a.n;
+      return a.valeur.localeCompare(b.valeur, 'fr');
+    })
+    .map((e) => e.valeur);
 }

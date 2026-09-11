@@ -4,7 +4,7 @@ import type { Patient, VitalSigns, ClientType, PatientStatus } from '../types';
 import type { AppState } from '../store';
 import { normalizeDossierNumber, isDossierTaken, calculateAge, addAuditLog, addNotification, addJourneyEvent, companyIsBlocked, companyOptions, sousSocietesConnues } from '../store';
 import { SearchableSelect, optionsFromValues } from './SearchableSelect';
-import { SuggestionInput } from './SuggestionInput';
+import { SuggestionInput, classerSuggestions } from './SuggestionInput';
 import { printQueueTicket } from '../utils/printTicket';
 import {
   Search, Plus, Edit, Trash2, UserX, Activity,
@@ -216,10 +216,20 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
   const waitingCount = state.patients.filter((p) => p.status === 'waiting_consultation').length;
   const todayCount = state.patients.filter((p) => new Date(p.registeredAt).toDateString() === new Date().toDateString()).length;
   // Saisie assistée : valeurs déjà connues dans la base (dossiers, noms, prénoms, adresses).
-  const optionsDossiers = useMemo(() => optionsFromValues(state.patients.map(p => p.dossier)), [state.patients]);
-  const optionsNoms = useMemo(() => optionsFromValues(state.patients.map(p => p.lastName)), [state.patients]);
-  const optionsPrenoms = useMemo(() => optionsFromValues(state.patients.map(p => p.firstName)), [state.patients]);
-  const optionsAdresses = useMemo(() => optionsFromValues(state.patients.map(p => p.address)), [state.patients]);
+  const optionsDossiers = useMemo(() => classerSuggestions(state.patients.map(p => p.dossier)), [state.patients]);
+  const optionsNoms = useMemo(() => classerSuggestions(
+    state.patients.map(p => p.lastName),
+    (nom) => state.patients.some(p =>
+      (p.lastName || '').trim().toUpperCase() === nom.toUpperCase()
+      && (p.firstName || '').trim().toUpperCase() === patientForm.firstName.trim().toUpperCase()),
+  ), [state.patients, patientForm.firstName]);
+  const optionsPrenoms = useMemo(() => classerSuggestions(
+    state.patients.map(p => p.firstName),
+    (pr) => state.patients.some(p =>
+      (p.firstName || '').trim().toUpperCase() === pr.toUpperCase()
+      && (p.lastName || '').trim().toUpperCase() === patientForm.lastName.trim().toUpperCase()),
+  ), [state.patients, patientForm.lastName]);
+  const optionsAdresses = useMemo(() => classerSuggestions(state.patients.map(p => p.address)), [state.patients]);
   const optionsSousSocietes = useMemo(() => optionsFromValues(sousSocietesConnues(state, patientForm.company)), [state, patientForm.company]);
   const optionsSousSocietesVitals = useMemo(() => optionsFromValues(sousSocietesConnues(state, vitalsCompany)), [state, vitalsCompany]);
 
@@ -678,7 +688,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                     value={patientForm.dossier}
                     onChange={(v) => setPatientForm({ ...patientForm, dossier: v.toUpperCase() })}
                     onBlur={() => setPatientTouched((t) => ({ ...t, dossier: true }))}
-                    suggestions={optionsDossiers.map((o) => o.value)}
+                    suggestions={optionsDossiers}
                     placeholder="SAISIE MANUELLE — MAJUSCULES"
                     ariaLabel="Numéro de dossier"
                     className={`w-full h-9 bg-surface border rounded px-2 uppercase font-mono font-bold tracking-wide focus:outline-none ${ (patientTouched.dossier || patientSubmitted) && patientErrors.dossier ? 'border-rose-500 bg-rose-50/50 dark:bg-rose-500/4 focus:border-rose-600' : 'border-line-control focus:border-accent'}`}
@@ -702,7 +712,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                     value={patientForm.lastName}
                     onChange={(v) => setPatientForm({ ...patientForm, lastName: v })}
                     onBlur={() => setPatientTouched((t) => ({ ...t, lastName: true }))}
-                    suggestions={optionsNoms.map((o) => o.value)}
+                    suggestions={optionsNoms}
                     placeholder="Nom de famille"
                     ariaLabel="Nom"
                     className={`w-full h-9 bg-surface border rounded px-2 uppercase font-medium focus:outline-none ${ (patientTouched.lastName || patientSubmitted) && patientErrors.lastName ? 'border-rose-500 bg-rose-50/50 dark:bg-rose-500/4 focus:border-rose-600' : 'border-line-control focus:border-accent'}`}
@@ -718,7 +728,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                     value={patientForm.firstName}
                     onChange={(v) => setPatientForm({ ...patientForm, firstName: v })}
                     onBlur={() => setPatientTouched((t) => ({ ...t, firstName: true }))}
-                    suggestions={optionsPrenoms.map((o) => o.value)}
+                    suggestions={optionsPrenoms}
                     placeholder="Prénom"
                     ariaLabel="Prénom"
                     className={`w-full h-9 bg-surface border rounded px-2 uppercase font-medium focus:outline-none ${ (patientTouched.firstName || patientSubmitted) && patientErrors.firstName ? 'border-rose-500 bg-rose-50/50 dark:bg-rose-500/4 focus:border-rose-600' : 'border-line-control focus:border-accent'}`}
@@ -770,7 +780,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                     value={patientForm.address}
                     onChange={(v) => setPatientForm({ ...patientForm, address: v })}
                     onBlur={() => setPatientTouched((t) => ({ ...t, address: true }))}
-                    suggestions={optionsAdresses.map((o) => o.value)}
+                    suggestions={optionsAdresses}
                     placeholder="Adresse du patient"
                     ariaLabel="Adresse"
                     className={`w-full h-9 bg-surface border rounded px-2 uppercase focus:outline-none ${ (patientTouched.address || patientSubmitted) && patientErrors.address ? 'border-rose-500 bg-rose-50/50 dark:bg-rose-500/4 focus:border-rose-600' : 'border-line-control focus:border-accent'}`}

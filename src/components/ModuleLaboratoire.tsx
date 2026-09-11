@@ -5,7 +5,7 @@ import type { AppState } from '../store';
 import type { Societe } from '../modules/assurance/types';
 import { allocateFactureNumber, applySocieteUpsert, collectExistingFactureNumbers } from '../store';
 import { SearchableSelect, optionsFromValues } from './SearchableSelect';
-import { SuggestionInput, suggestionsFrom } from './SuggestionInput';
+import { SuggestionInput, classerSuggestions } from './SuggestionInput';
 import {
   addAuditLog, addNotification, addJourneyEvent, LAB_NORMS,
   labCategoryLabel, LAB_CATEGORIES, normalizeDossierNumber, isDossierTaken, calculateAge, formatAr, getLabCatalog, companyIsBlocked, companyOptions, sousSocietesConnues,
@@ -51,10 +51,22 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
   const [showNew, setShowNew] = useState(false);
   const [patSearch, setPatSearch] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
-  const suggestionsNomsPatients = useMemo(() => suggestionsFrom(state.patients.map(p => p.lastName)), [state.patients]);
-  const suggestionsPrenomsPatients = useMemo(() => suggestionsFrom(state.patients.map(p => p.firstName)), [state.patients]);
-
   const [newPat, setNewPat] = useState({ dossier: '', lastName: '', firstName: '', gender: 'F' as 'M' | 'F', dateOfBirth: '', contact: '', clientType: 'comptoir' as ClientType, company: '' });
+
+  // Saisie assistée : valeurs déjà connues dans la base
+  // (appariement : noms/prénoms déjà portés ensemble passent en tête).
+  const suggestionsNomsPatients = useMemo(() => classerSuggestions(
+    state.patients.map(p => p.lastName),
+    (nom) => state.patients.some(p =>
+      (p.lastName || '').trim().toUpperCase() === nom.toUpperCase()
+      && (p.firstName || '').trim().toUpperCase() === (newPat.firstName || '').trim().toUpperCase()),
+  ), [state.patients, newPat.firstName]);
+  const suggestionsPrenomsPatients = useMemo(() => classerSuggestions(
+    state.patients.map(p => p.firstName),
+    (pr) => state.patients.some(p =>
+      (p.firstName || '').trim().toUpperCase() === pr.toUpperCase()
+      && (p.lastName || '').trim().toUpperCase() === (newPat.lastName || '').trim().toUpperCase()),
+  ), [state.patients, newPat.lastName]);
   // Edition société — toujours visible quand patient choisi (comme hospit/bloc)
   const [labEditClientType, setLabEditClientType] = useState<ClientType>('comptoir');
   const [labEditCompany, setLabEditCompany] = useState('');
