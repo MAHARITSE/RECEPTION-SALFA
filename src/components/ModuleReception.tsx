@@ -1,10 +1,10 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Patient, VitalSigns, ClientType, PatientStatus } from '../types';
 import type { AppState } from '../store';
 import { normalizeDossierNumber, isDossierTaken, calculateAge, addAuditLog, addNotification, addJourneyEvent, companyIsBlocked, companyOptions, sousSocietesConnues } from '../store';
 import { SearchableSelect, optionsFromValues } from './SearchableSelect';
-import { SuggestionInput, classerSuggestions } from './SuggestionInput';
+import { SuggestionInput, classerSuggestions, motsIdentite } from './SuggestionInput';
 import { printQueueTicket } from '../utils/printTicket';
 import {
   Search, Plus, Edit, Trash2, UserX, Activity,
@@ -217,18 +217,21 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
   const todayCount = state.patients.filter((p) => new Date(p.registeredAt).toDateString() === new Date().toDateString()).length;
   // Saisie assistée : valeurs déjà connues dans la base (dossiers, noms, prénoms, adresses).
   const optionsDossiers = useMemo(() => classerSuggestions(state.patients.map(p => p.dossier)), [state.patients]);
-  const optionsNoms = useMemo(() => classerSuggestions(
-    state.patients.map(p => p.lastName),
-    (nom) => state.patients.some(p =>
-      (p.lastName || '').trim().toUpperCase() === nom.toUpperCase()
-      && (p.firstName || '').trim().toUpperCase() === patientForm.firstName.trim().toUpperCase()),
-  ), [state.patients, patientForm.firstName]);
-  const optionsPrenoms = useMemo(() => classerSuggestions(
-    state.patients.map(p => p.firstName),
-    (pr) => state.patients.some(p =>
-      (p.firstName || '').trim().toUpperCase() === pr.toUpperCase()
-      && (p.lastName || '').trim().toUpperCase() === patientForm.lastName.trim().toUpperCase()),
-  ), [state.patients, patientForm.lastName]);
+  // Assistance identité : chaque mot du Nom / Prénom est complété à partir des
+  // mots connus de la base (noms ET prénoms confondus). Appariement : les mots
+  // déjà portés avec ce qui est saisi passent en tête (RAVELO → AINA, NAINA → RAZAFY).
+  const apparieIdentite = useCallback((mot: string) => {
+    const M = mot.trim().toUpperCase();
+    const saisis = new Set([...motsIdentite(patientForm.lastName), ...motsIdentite(patientForm.firstName)]);
+    if (!M || saisis.size === 0) return false;
+    return state.patients.some(p => {
+      const identite = [...motsIdentite(p.lastName), ...motsIdentite(p.firstName)];
+      return identite.includes(M) && identite.some(m => m !== M && saisis.has(m));
+    });
+  }, [state.patients, patientForm.lastName, patientForm.firstName]);
+  const suggestionsIdentite = useMemo(() => classerSuggestions(
+    state.patients.flatMap(p => [p.lastName, p.firstName]), apparieIdentite,
+  ), [state.patients, apparieIdentite]);
   const optionsAdresses = useMemo(() => classerSuggestions(state.patients.map(p => p.address)), [state.patients]);
   const optionsSousSocietes = useMemo(() => optionsFromValues(sousSocietesConnues(state, patientForm.company)), [state, patientForm.company]);
   const optionsSousSocietesVitals = useMemo(() => optionsFromValues(sousSocietesConnues(state, vitalsCompany)), [state, vitalsCompany]);
@@ -712,7 +715,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                     value={patientForm.lastName}
                     onChange={(v) => setPatientForm({ ...patientForm, lastName: v })}
                     onBlur={() => setPatientTouched((t) => ({ ...t, lastName: true }))}
-                    suggestions={optionsNoms}
+                    suggestions={suggestionsIdentite}
                     placeholder="Nom de famille"
                     ariaLabel="Nom"
                     className={`w-full h-9 bg-surface border rounded px-2 uppercase font-medium focus:outline-none ${ (patientTouched.lastName || patientSubmitted) && patientErrors.lastName ? 'border-rose-500 bg-rose-50/50 dark:bg-rose-500/4 focus:border-rose-600' : 'border-line-control focus:border-accent'}`}
@@ -728,7 +731,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                     value={patientForm.firstName}
                     onChange={(v) => setPatientForm({ ...patientForm, firstName: v })}
                     onBlur={() => setPatientTouched((t) => ({ ...t, firstName: true }))}
-                    suggestions={optionsPrenoms}
+                    suggestions={suggestionsIdentite}
                     placeholder="Prénom"
                     ariaLabel="Prénom"
                     className={`w-full h-9 bg-surface border rounded px-2 uppercase font-medium focus:outline-none ${ (patientTouched.firstName || patientSubmitted) && patientErrors.firstName ? 'border-rose-500 bg-rose-50/50 dark:bg-rose-500/4 focus:border-rose-600' : 'border-line-control focus:border-accent'}`}

@@ -19,15 +19,28 @@ const norm = (s: string) => (s || '')
   .toLowerCase()
   .trim();
 
+/** Découpe une identité en mots (RAVELO NAINA → [RAVELO, NAINA]). */
+export function motsIdentite(s: string | undefined | null): string[] {
+  return (s || '')
+    .normalize('NFKC')
+    .toUpperCase()
+    .split(/[\s'’\-]+/)
+    .map((m) => m.trim())
+    .filter(Boolean);
+}
+
 /**
- * Champ de **saisie assistée en ligne** — aucune liste déroulante :
- *  - l'opérateur tape normalement ; dès que ce qui est tapé correspond au début
- *    d'une valeur déjà connue de la base (classement par appariement/fréquence),
- *    la suite du mot est complétée DANS le champ, en sélection ;
- *  - la frappe suivante remplace cette sélection et la complétion se recalcule ;
- *  - Entrée / Tab / → acceptent la proposition ; Échap, un clic dans le champ
- *    ou la sortie du champ l'abandonnent : seul le texte réellement tapé est conservé ;
- *  - la saisie reste 100 % libre : une valeur inédite est toujours acceptée.
+ * Champ de **saisie assistée mot par mot** — aucune liste déroulante :
+ *  - l'opérateur tape mot après mot ; chaque mot en cours de frappe est complété
+ *    DANS le champ (en sélection) par le premier mot connu de la base qui commence
+ *    comme lui — la liste reçue est déjà classée par l'appelant (appariement,
+ *    fréquence, alphabétique) ;
+ *  - la frappe suivante remplace la sélection et la complétion se recalcule ;
+ *  - Entrée / Tab / → valident le mot proposé (Tab passe aussi au champ suivant) ;
+ *    Échap, un clic dans le champ ou la sortie abandonnent la proposition :
+ *    seul le texte réellement tapé est conservé ;
+ *  - la saisie reste 100 % libre (RAVELO NAINA à partir de RAVELO AINA et
+ *    RAZAFY NAINA fonctionne : chaque mot est repris de la base).
  */
 export function SuggestionInput({
   value, onChange, suggestions = [], onBlur, placeholder, ariaLabel, className, id,
@@ -36,20 +49,23 @@ export function SuggestionInput({
   const champId = id || `sugg-${genere}`;
   const inputRef = useRef<HTMLInputElement>(null);
   // Valeur pour laquelle la complétion a été explicitement abandonnée
-  // (Échap, clic dans le champ, sortie) : elle ne revient pas tant que
-  // la saisie n'a pas changé.
+  // (Échap, clic dans le champ, sortie) ou déjà validée : elle ne revient
+  // pas tant que la saisie n'a pas changé.
   const [annule, setAnnule] = useState<string | null>(null);
 
-  // Proposition de la base : première valeur (déjà classée par l'appelant)
-  // qui commence par ce qui est tapé, insensible à la casse et aux accents.
+  // Complétion du mot en cours : préfixe déjà tapé (mots antérieurs + espace)
+  // + premier mot connu de la base qui commence comme le mot tapé.
   const completion = useMemo(() => {
-    const saisie = norm(value);
-    if (!saisie || annule === value) return null;
-    const exact = saisie.toUpperCase();
+    if (!value || annule === value) return null;
+    const coupe = value.lastIndexOf(' ');
+    const avant = value.slice(0, coupe + 1);
+    const mot = norm(value.slice(coupe + 1));
+    if (!mot) return null;
+    const exact = mot.toUpperCase();
     for (const brute of suggestions) {
       const candidat = (brute || '').trim();
       if (!candidat || candidat.toUpperCase() === exact) continue;
-      if (norm(candidat).startsWith(saisie)) return candidat;
+      if (norm(candidat).startsWith(mot)) return avant + candidat;
     }
     return null;
   }, [value, suggestions, annule]);
@@ -64,15 +80,16 @@ export function SuggestionInput({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [completion, affiche]);
 
-  const accepter = (deplacerFocus: boolean) => {
-    setAnnule(null);
-    onChange(completion as string);
+  const accepter = (laisserPasser: boolean) => {
+    const complet = completion as string;
+    setAnnule(complet);
+    onChange(complet);
     const el = inputRef.current;
     if (el) {
-      const fin = (completion as string).length;
+      const fin = complet.length;
       requestAnimationFrame(() => {
         el.setSelectionRange(fin, fin);
-        if (!deplacerFocus && document.activeElement === el) el.focus();
+        if (!laisserPasser && document.activeElement === el) el.focus();
       });
     }
   };
@@ -84,8 +101,8 @@ export function SuggestionInput({
       type="text"
       value={affiche}
       onChange={(e) => {
-        // Avec une sélection de complétion en place, la frappe/removal ne touche
-        // que la partie tapée : la valeur reçue est déjà propre.
+        // Avec la sélection de complétion en place, la frappe ne touche que la
+        // partie tapée : la valeur reçue est déjà propre.
         setAnnule(null);
         onChange(e.target.value);
       }}
@@ -109,7 +126,7 @@ export function SuggestionInput({
           e.preventDefault();
           accepter(false);
         } else if (e.key === 'Tab') {
-          // Accepte la proposition ET laisse le focus passer au champ suivant.
+          // Valide le mot proposé ET laisse le focus passer au champ suivant.
           accepter(true);
         } else if (e.key === 'Escape') {
           e.preventDefault();
@@ -118,7 +135,7 @@ export function SuggestionInput({
         }
       }}
       onBlur={() => {
-        // Une complétion non acceptée n'est jamais enregistrée.
+        // Une complétion non validée n'est jamais enregistrée.
         if (completion) { setAnnule(value); if (inputRef.current) inputRef.current.value = value; }
         onBlur?.();
       }}
@@ -147,7 +164,7 @@ export function suggestionsFrom(values: (string | undefined | null)[]): string[]
  * Classe les valeurs de la base pour l'assistance à la saisie :
  *  - doublons fusionnés (casse ignorée) avec leur fréquence ;
  *  - si `apparie` est fourni, les valeurs « appariées » passent en tête
- *    (ex : prénoms déjà portés par le nom saisi) ;
+ *    (ex : mots déjà portés avec l'identité en cours de saisie) ;
  *  - puis fréquence décroissante, puis ordre alphabétique.
  */
 export function classerSuggestions(

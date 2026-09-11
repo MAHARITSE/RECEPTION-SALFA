@@ -3,7 +3,7 @@
  * provoquait `Expected identifier but found "/"` à 1998:13 (vite/esbuild).
  * Le composant se termine désormais proprement par `</div> ); }` — build OK (1843 modules).
  */
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription, Article, Patient } from '../types';
 import type { AppState } from '../store';
@@ -15,7 +15,7 @@ import {
 } from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText, RefreshCw } from 'lucide-react';
 import { SearchableSelect, optionsFromValues } from './SearchableSelect';
-import { SuggestionInput, classerSuggestions } from './SuggestionInput';
+import { SuggestionInput, classerSuggestions, motsIdentite } from './SuggestionInput';
 import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket, printPharmaDeliveryClosingTicket } from '../utils/printTicket';
 import { printSalfaIndividualInvoice } from '../utils/printSalfaInvoice';
 import { getExamReceipts, type ExamReceipts } from '../utils/examReceipts';
@@ -213,18 +213,21 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   // Saisie assistée du nouveau patient : valeurs déjà connues dans la base
   // (appariement : noms/prénoms déjà portés ensemble passent en tête).
   const suggestionsDossiers = useMemo(() => classerSuggestions(state.patients.map(p => p.dossier)), [state.patients]);
-  const suggestionsNoms = useMemo(() => classerSuggestions(
-    state.patients.map(p => p.lastName),
-    (nom) => state.patients.some(p =>
-      (p.lastName || '').trim().toUpperCase() === nom.toUpperCase()
-      && (p.firstName || '').trim().toUpperCase() === (hbNewPat.firstName || '').trim().toUpperCase()),
-  ), [state.patients, hbNewPat.firstName]);
-  const suggestionsPrenoms = useMemo(() => classerSuggestions(
-    state.patients.map(p => p.firstName),
-    (pr) => state.patients.some(p =>
-      (p.firstName || '').trim().toUpperCase() === pr.toUpperCase()
-      && (p.lastName || '').trim().toUpperCase() === (hbNewPat.lastName || '').trim().toUpperCase()),
-  ), [state.patients, hbNewPat.lastName]);
+  // Assistance identité : chaque mot du Nom / Prénom est complété à partir des
+  // mots connus de la base (noms ET prénoms confondus). Appariement : les mots
+  // déjà portés avec ce qui est saisi passent en tête (RAVELO → AINA, NAINA → RAZAFY).
+  const apparieIdentite = useCallback((mot: string) => {
+    const M = mot.trim().toUpperCase();
+    const saisis = new Set([...motsIdentite(hbNewPat.lastName), ...motsIdentite(hbNewPat.firstName)]);
+    if (!M || saisis.size === 0) return false;
+    return state.patients.some(p => {
+      const identite = [...motsIdentite(p.lastName), ...motsIdentite(p.firstName)];
+      return identite.includes(M) && identite.some(m => m !== M && saisis.has(m));
+    });
+  }, [state.patients, hbNewPat.lastName, hbNewPat.firstName]);
+  const suggestionsIdentite = useMemo(() => classerSuggestions(
+    state.patients.flatMap(p => [p.lastName, p.firstName]), apparieIdentite,
+  ), [state.patients, apparieIdentite]);
   const suggestionsAdresses = useMemo(() => classerSuggestions(state.patients.map(p => p.address)), [state.patients]);
   const [hbNewCompanyName, setHbNewCompanyName] = useState('');
 
@@ -1647,8 +1650,8 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                     <button type="button" onClick={() => setHbNewPat({...hbNewPat, gender: 'F'})} className={`px-3 py-1 font-bold border-l border-line-control cursor-pointer ${hbNewPat.gender === 'F' ? 'bg-pink-500 text-white' : 'bg-surface'}`}>F</button>
                   </div>
                 </div>
-                <div><label className="block font-bold text-ink mb-0.5">Nom *</label><SuggestionInput id="caisse-nouveau-nom" value={hbNewPat.lastName} onChange={v => setHbNewPat({...hbNewPat, lastName: v})} suggestions={suggestionsNoms} placeholder="Nom de famille" ariaLabel="Nom" className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" /></div>
-                <div><label className="block font-bold text-ink mb-0.5">Prénom *</label><SuggestionInput id="caisse-nouveau-prenom" value={hbNewPat.firstName} onChange={v => setHbNewPat({...hbNewPat, firstName: v})} suggestions={suggestionsPrenoms} placeholder="Prénom" ariaLabel="Prénom" className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" /></div>
+                <div><label className="block font-bold text-ink mb-0.5">Nom *</label><SuggestionInput id="caisse-nouveau-nom" value={hbNewPat.lastName} onChange={v => setHbNewPat({...hbNewPat, lastName: v})} suggestions={suggestionsIdentite} placeholder="Nom de famille" ariaLabel="Nom" className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" /></div>
+                <div><label className="block font-bold text-ink mb-0.5">Prénom *</label><SuggestionInput id="caisse-nouveau-prenom" value={hbNewPat.firstName} onChange={v => setHbNewPat({...hbNewPat, firstName: v})} suggestions={suggestionsIdentite} placeholder="Prénom" ariaLabel="Prénom" className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" /></div>
                 <div><label className="block font-bold text-ink mb-0.5">Date Naissance</label><input type="date" value={hbNewPat.dateOfBirth} onChange={e => setHbNewPat({...hbNewPat, dateOfBirth: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none bg-surface" /></div>
                 <div><label className="block font-bold text-ink mb-0.5">Age</label><input type="text" readOnly value={hbNewPat.dateOfBirth ? calculateAge(hbNewPat.dateOfBirth) : '—'} className="w-full px-2 py-1.5 border rounded bg-surface-hover" /></div>
                 <div><label className="block font-bold text-ink mb-0.5">Matricule</label><input type="text" value={hbNewPat.matricule} onChange={e => setHbNewPat({...hbNewPat, matricule: e.target.value})} className="w-full px-2 py-1.5 border rounded outline-none font-mono bg-surface" placeholder="M-0000" /></div>
