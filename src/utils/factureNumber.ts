@@ -16,8 +16,9 @@
  *   014  → ordre d'établissement de la facture dans le mois : séquence GLOBALE,
  *          partagée par toutes les sociétés (-013 JIRAMA, -014 BSA, -015 COPEFRITO…)
  *
- * Les compteurs sont déduits des numéros déjà émis : renuméroter ou supprimer
- * une facture ne réutilise jamais un numéro déjà attribué.
+ * Les compteurs sont déduits des numéros déjà émis (ventes, factures caisse,
+ * dossiers hospit/bloc, prestations assurance et registre des numéros retirés) :
+ * renuméroter ou supprimer une facture ne réutilise jamais un numéro déjà attribué.
  */
 
 /** Numéro standard : 2 chiffres année + FA + 2 chiffres mois + 2 chiffres jour + ordre du jour. */
@@ -118,7 +119,7 @@ function significantWords(name: string): string[] {
  * Diminutif d'une société à partir de son nom :
  *  - plusieurs mots → initiales (ex : « Bureau des Services Administratifs » → BSA) ;
  *  - un seul mot → 3 premiers caractères (ex : JIRAMA → JIR, MCI → MCI) ;
- *  - 2 mots → initiales complétées par les lettres du 1er mot (ex : « BNI Madagascar » → BNM).
+ *  - 2 mots → initiales complétées par les lettres du 1er mot (ex : « BNI Madagascar » → BMN).
  */
 export function societeDiminutive(name: string): string {
   const words = significantWords(name);
@@ -157,15 +158,22 @@ export function generateUniqueSocieteCode(name: string, existingCodes: string[])
   return `${base}${(Date.now() % 89) + 10}`;
 }
 
-/** Rassemble tous les numéros de facture déjà émis (ventes, factures caisse, prestations assurance). */
+/** Rassemble tous les numéros de facture déjà émis : ventes, factures caisse,
+ *  dossiers hospitalisation/bloc, prestations assurance ET registre des numéros
+ *  attribués puis retirés (suppression de factures en attente). */
 export function collectExistingFactureNumbers(state: {
   ventes?: Array<{ numeroFacture?: string }>;
   invoices?: Array<{ numeroFacture?: string }>;
+  hbRecords?: Array<{ numeroFacture?: string }>;
   assurancePrestations?: Array<{ numeroFacture?: string }>;
+  issuedFactureNumbers?: string[];
 }): string[] {
+  const keep = (n?: string): n is string => typeof n === 'string' && n.trim().length > 0;
   return [
-    ...(state.ventes || []).map(v => v.numeroFacture),
-    ...(state.invoices || []).map(i => i.numeroFacture),
-    ...(state.assurancePrestations || []).map(p => p.numeroFacture),
-  ].filter((n): n is string => typeof n === 'string' && n.trim().length > 0);
+    ...(state.issuedFactureNumbers || []),
+    ...(state.ventes || []).map(v => v.numeroFacture).filter(keep),
+    ...(state.invoices || []).map(i => i.numeroFacture).filter(keep),
+    ...(state.hbRecords || []).map(h => h.numeroFacture).filter(keep),
+    ...(state.assurancePrestations || []).map(p => p.numeroFacture).filter(keep),
+  ];
 }
