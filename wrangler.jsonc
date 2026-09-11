@@ -1,0 +1,23 @@
+{
+  // ============================================================
+  // RECEPTION SALFA — configuration wrangler à la RACINE du dépôt.
+  //
+  // Pourquoi ce fichier ? L'intégration Git « Workers Builds » de Cloudflare
+  // exécute `npx wrangler deploy` depuis la racine du dépôt ; sans
+  // configuration à la racine, le déploiement échoue (« No wrangler
+  // configuration found »). Ce fichier déploie le MÊME Worker que
+  // workers/wrangler.jsonc (même nom `reception-salfa`) à partir de
+  // l'artefact précompilé versionné `workers/public/index.html`
+  // (convention du dépôt : rebuild via `npm run build` puis copie vers
+  // workers/public/).
+  //
+  // Le déploiement manuel depuis workers/ reste possible :
+  //   cd workers && npx wrangler deploy
+  // ============================================================
+  "name": "reception-salfa",
+  "compatibility_date": "2026-08-02",
+  "assets": {
+    "directory": "./workers/public",
+    "not_found_handling": "single-page-application"
+  }
+}
