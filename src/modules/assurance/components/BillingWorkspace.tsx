@@ -64,7 +64,6 @@ export function BillingWorkspace({ state, setState, onFusionPrescription, onAnnu
       const invoice = IS_WAMP_BUILD ? saved! : await issueMonthlyInvoiceInBrowser(state, scope);
       setState(prev => ({ ...prev, monthlyInvoices: preserveMonthlyInvoices([invoice], prev.monthlyInvoices) }));
       printMonthlyInvoice(invoice, state.ticketSettings);
-      setNotice(`${invoice.number} — document enregistré, envoyé à la file d’impression. Une annulation de l’impression ne change pas son numéro.`);
     } catch (cause) {
       setError(`Impression mensuelle non lancée : ${(cause as Error).message}`);
     } finally { printing.current = false; setBusy(null); }
@@ -112,9 +111,23 @@ export function BillingWorkspace({ state, setState, onFusionPrescription, onAnnu
   }
 
   return <section className="space-y-4" aria-label="Facturation clients">
-    <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="flex flex-wrap items-center gap-3">
       <label className="text-sm text-ink">Mois <input aria-label="Mois de facturation" type="month" value={month} onChange={event => setMonth(event.target.value)} className="ml-2 rounded-lg border border-line bg-field p-2" /></label>
       {month && <button type="button" className="text-xs text-accent underline" onClick={() => setMonth('')}>Tous les mois</button>}
+      <div className="inline-flex p-1 bg-surface-hover rounded-xl border border-line text-xs" role="tablist" aria-label="Vues de facturation">
+        <button type="button" role="tab" aria-selected={mode === 'factures'} onClick={() => setMode('factures')}
+          className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${mode === 'factures' ? 'bg-surface text-indigo-700 shadow-2xs' : 'text-ink-secondary hover:text-ink-strong'}`}>
+          <Receipt className="w-3.5 h-3.5 text-indigo-600" />
+          <span>Vue par Facture</span>
+          <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-indigo-100 text-indigo-800 font-bold">{groups.length}</span>
+        </button>
+        <button type="button" role="tab" aria-selected={mode === 'detaillee'} onClick={() => setMode('detaillee')}
+          className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${mode === 'detaillee' ? 'bg-surface text-indigo-700 shadow-2xs' : 'text-ink-secondary hover:text-ink-strong'}`}>
+          <FileText className="w-3.5 h-3.5 text-ink-secondary" />
+          <span>Vue Détaillée (Dossiers)</span>
+          <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-surface-active text-ink font-bold">{visible.length}</span>
+        </button>
+      </div>
     </div>
     {articleIssues.length > 0 && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
       {articleIssues.length} article(s) ne peuvent pas être rattachés automatiquement à une famille valide. Aucun classement arbitraire n’a été appliqué.
@@ -124,15 +137,9 @@ export function BillingWorkspace({ state, setState, onFusionPrescription, onAnnu
       <button role="tab" aria-selected={mode === 'factures'} onClick={() => setMode('factures')} className={`flex items-center gap-2 rounded-lg px-4 py-2 border ${mode === 'factures' ? 'border-accent-line bg-accent-soft text-accent' : 'border-line text-ink-muted'}`}><Receipt size={17} />Vue par Facture <strong>{groups.length}</strong></button>
       <button role="tab" aria-selected={mode === 'detaillee'} onClick={() => setMode('detaillee')} className={`flex items-center gap-2 rounded-lg px-4 py-2 border ${mode === 'detaillee' ? 'border-accent-line bg-accent-soft text-accent' : 'border-line text-ink-muted'}`}><FileText size={17} />Vue Détaillée (Dossiers) <strong>{visible.length}</strong></button>
     </div>
-    <p className="text-xs text-ink-muted">La sélection Société / Garant du haut s’applique aux deux vues et à leurs compteurs. Réinitialiser rétablit la vue globale, incluant les factures Comptoir et Externes.</p>
     {error && <p role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
     {notice && <p role="status" className="rounded-lg border border-accent-line bg-accent-soft p-3 text-sm text-ink">{notice}</p>}
     {mode === 'factures' ? <div data-testid="monthly-invoices-view" className="space-y-3">
-      <div className="rounded-xl border border-line bg-surface p-4">
-        <h2 className="font-bold text-ink-strong">Factures mensuelles</h2>
-        <p className="mt-1 text-xs text-ink-muted">Une facture par mois pour tous les clients Comptoir, une pour tous les Externes, et une par société (toutes sous-entités comprises). Le premier clic sur Imprimer fige le contenu et attribue un numéro FM-AAAA-MM-0001. Les réimpressions ne reprennent pas les opérations ajoutées ensuite.</p>
-        {IS_WAMP_BUILD && <p className="mt-2 text-xs text-amber-700">Sur MySQL, les émissions nécessitent une API atomique à déployer. Les factures déjà enregistrées peuvent être réimprimées.</p>}
-      </div>
       <div className="overflow-x-auto rounded-xl border border-line bg-surface"><table className="w-full text-left text-xs" aria-label="Factures mensuelles">
         <thead className="bg-surface-muted text-ink-secondary"><tr>{['Date', 'Facture', 'Client / Dossier', 'Détail des actes', 'Montant', 'Payé', 'Solde', 'Impression'].map(label => <th className="p-3" key={label}>{label}</th>)}</tr></thead>
         <tbody>{groups.map(scope => {
