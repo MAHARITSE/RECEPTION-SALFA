@@ -22,12 +22,17 @@ interface Props {
   disabled?: boolean;
   /** Message affiché sous le champ quand la valeur retenue est signalée. */
   warning?: string;
+  /**
+   * `false` : la valeur doit correspondre à une option (liste fermée).
+   * `true` (défaut) : le texte tapé est conservé comme valeur libre.
+   */
+  allowFreeText?: boolean;
 }
 
 const normalise = (value: string) => (value || '')
   .toString()
   .normalize('NFD')
-  .replace(/[̀-ͯ]/g, '')
+  .replace(/[\u0300-\u036f]/g, '')
   .toUpperCase()
   .replace(/[^A-Z0-9]+/g, ' ')
   .trim();
@@ -41,19 +46,22 @@ const normalise = (value: string) => (value || '')
  */
 export function SearchableSelect({
   value, onChange, options, placeholder, ariaLabel, id, className = '', inputClassName = '',
-  onBlur, disabled, warning,
+  onBlur, disabled, warning, allowFreeText = true,
 }: Props) {
-  const [texte, setTexte] = useState(value || '');
+  const [texte, setTexte] = useState('');
   const [ouvert, setOuvert] = useState(false);
   const [actif, setActif] = useState(0);
   const boite = useRef<HTMLDivElement>(null);
+  const selection = useMemo(() => options.find(o => o.value === value), [options, value]);
+  // Hors saisie, le champ affiche le libellé de l'option retenue, jamais son identifiant.
+  const affiche = ouvert ? texte : (selection?.label ?? value ?? '');
 
-  useEffect(() => { setTexte(value || ''); }, [value]);
+  useEffect(() => { setTexte(''); }, [value]);
 
   useEffect(() => {
     if (!ouvert) return;
     const fermer = (event: MouseEvent) => {
-      if (boite.current && !boite.current.contains(event.target as Node)) { setOuvert(false); setTexte(value || ''); onBlur?.(); }
+      if (boite.current && !boite.current.contains(event.target as Node)) { setOuvert(false); setTexte(''); onBlur?.(); }
     };
     document.addEventListener('mousedown', fermer);
     return () => document.removeEventListener('mousedown', fermer);
@@ -77,7 +85,7 @@ export function SearchableSelect({
   );
 
   const choisir = (option: SearchableOption) => {
-    setTexte(option.value);
+    setTexte('');
     onChange(option.value);
     setOuvert(false);
     onBlur?.();
@@ -96,7 +104,7 @@ export function SearchableSelect({
       choisir(filtrees[actif]);
     } else if (event.key === 'Escape') {
       setOuvert(false);
-      setTexte(value || '');
+      setTexte('');
     }
   };
 
@@ -111,14 +119,22 @@ export function SearchableSelect({
           aria-label={ariaLabel}
           autoComplete="off"
           disabled={disabled}
-          value={texte}
-          placeholder={placeholder}
+          value={affiche}
+          placeholder={ouvert ? (selection?.label || placeholder) : placeholder}
           onChange={(e) => { setTexte(e.target.value); setActif(0); setOuvert(true); }}
-          onFocus={() => { setOuvert(true); setActif(0); }}
+          onFocus={() => { setTexte(''); setOuvert(true); setActif(0); }}
           onKeyDown={onKeyDown}
           onBlur={() => {
-            // Saisie libre conservée : le texte tapé devient la valeur du champ.
-            if (texte !== value) onChange(texte);
+            const saisie = texte.trim();
+            if (saisie) {
+              // Une option peut être choisie en tapant son libellé exact.
+              const exacte = options.find(o => o.label.trim().toUpperCase() === saisie.toUpperCase())
+                || options.find(o => o.value.trim().toUpperCase() === saisie.toUpperCase());
+              if (exacte) onChange(exacte.value);
+              else if (allowFreeText) onChange(saisie);
+            }
+            setTexte('');
+            setOuvert(false);
             onBlur?.();
           }}
           className={`w-full pr-7 ${inputClassName || 'h-9 bg-surface border border-line-control rounded px-2 focus:outline-none focus:border-accent'} ${

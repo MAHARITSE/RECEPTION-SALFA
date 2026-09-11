@@ -51,9 +51,9 @@ export const SocietesView: React.FC<SocietesViewProps> = ({
   // Code / abrégé : tant qu'il n'est pas saisi manuellement, il est proposé
   // automatiquement comme diminutif du nom (ex: « Bureau des Services Administratifs » → BSA).
   const [codeTouched, setCodeTouched] = useState(false);
-  // Taux de couverture : proposé automatiquement selon le mode de règlement tant
-  // qu'il n'est pas saisi à la main (Payeur global → 100 %, Assurance → 80 %).
-  const [tauxTouched, setTauxTouched] = useState(false);
+  // Taux de couverture : jamais imposé. Le mode de règlement est une simple
+  // classification (payeur global / paiement partiel) et ne pré-remplit pas le
+  // taux, qui reste saisi à la main selon le contrat de la société.
   const normalize = (s?: string) => (s || '').trim().toUpperCase();
 
   // State for Regrouping Sub-Societés Modal
@@ -128,7 +128,6 @@ export const SocietesView: React.FC<SocietesViewProps> = ({
   const handleOpenCreate = () => {
     setEditingSociete(null);
     setCodeTouched(false);
-    setTauxTouched(false);
     setFormData({
       nom: '',
       code: '',
@@ -149,7 +148,6 @@ export const SocietesView: React.FC<SocietesViewProps> = ({
   const handleOpenEdit = (s: Societe) => {
     setEditingSociete(s);
     setCodeTouched(false);
-    setTauxTouched(false);
     setFormData({
       ...s,
       nom: maskNom(s.nom || ''),
@@ -781,7 +779,6 @@ export const SocietesView: React.FC<SocietesViewProps> = ({
                         onClick={() => setFormData(p => ({
                           ...p,
                           modePaiement: mode.value,
-                          tauxCouvertureDefaut: tauxTouched ? p.tauxCouvertureDefaut : (mode.value === 'global' ? 100 : 80),
                         }))}
                         className={`text-left p-2.5 rounded-xl border transition cursor-pointer ${
                           actif
@@ -794,6 +791,11 @@ export const SocietesView: React.FC<SocietesViewProps> = ({
                           <span className={`font-bold ${actif ? 'text-indigo-800' : 'text-ink'}`}>{mode.label}</span>
                         </div>
                         <p className="mt-1 text-[10px] text-ink-muted leading-snug">{mode.description}</p>
+                        {actif && (
+                          <p className="mt-1 text-[10px] text-indigo-700 font-semibold leading-snug">
+                            Taux de couverture libre — repère usuel : {mode.value === 'global' ? '100 %' : '80 %'} (à confirmer au contrat).
+                          </p>
+                        )}
                       </button>
                     );
                   })}
@@ -840,7 +842,7 @@ export const SocietesView: React.FC<SocietesViewProps> = ({
                     min="1"
                     max="100"
                     value={formData.tauxCouvertureDefaut || 80}
-                    onChange={(e) => { setTauxTouched(true); setFormData(p => ({ ...p, tauxCouvertureDefaut: Number(e.target.value) })); }}
+                    onChange={(e) => setFormData(p => ({ ...p, tauxCouvertureDefaut: Number(e.target.value) }))}
                     className="w-full p-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none font-semibold text-emerald-700"
                   />
                 </div>

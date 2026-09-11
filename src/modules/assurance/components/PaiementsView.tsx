@@ -43,6 +43,7 @@ import { DecompteImportModal } from './DecompteImportModal';
 import { RelierPaiementModal } from './paiements/RelierPaiementModal';
 import { SaisieReglementModal } from './paiements/SaisieReglementModal';
 import * as XLSX from 'xlsx';
+import { Select } from '../../../components/Select';
 
 type PaiementSortField = 'datePaiement' | 'dateSaisie' | 'numeroBordereau' | 'societe' | 'modePaiement' | 'totalReclame' | 'totalPaye' | 'totalModerateur' | 'totalExclu' | 'statut';
 type GroupSortField = 'dateSoins' | 'nomAgent' | 'codeActe' | 'societe' | 'totalReclame' | 'totalPaye' | 'ticketModerateur' | 'totalExclu' | 'nombreLignes';
@@ -1396,7 +1397,7 @@ export const PaiementsView: React.FC<PaiementsViewProps> = ({
               <label className="block text-[11px] font-semibold text-ink-secondary mb-1">
                 Société / Garant
               </label>
-              <select
+              <Select
                 value={filterSocieteId}
                 onChange={(e) => setFilterSocieteId(e.target.value)}
                 className="w-full text-xs py-1.5 px-2.5 rounded-lg border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -1405,7 +1406,7 @@ export const PaiementsView: React.FC<PaiementsViewProps> = ({
                 {societes.map(s => (
                   <option key={s.id} value={s.id}>{s.nom}</option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             {/* Statut Bordereau */}
@@ -1413,7 +1414,7 @@ export const PaiementsView: React.FC<PaiementsViewProps> = ({
               <label className="block text-[11px] font-semibold text-ink-secondary mb-1">
                 Statut du bordereau
               </label>
-              <select
+              <Select
                 value={filterStatut}
                 onChange={(e) => setFilterStatut(e.target.value)}
                 className="w-full text-xs py-1.5 px-2.5 rounded-lg border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -1423,7 +1424,7 @@ export const PaiementsView: React.FC<PaiementsViewProps> = ({
                 <option value="En attente">En attente</option>
                 <option value="Partiel">Partiel</option>
                 <option value="Rejeté">Rejeté</option>
-              </select>
+              </Select>
             </div>
 
             {/* Exclusion Filter */}
@@ -1431,7 +1432,7 @@ export const PaiementsView: React.FC<PaiementsViewProps> = ({
               <label className="block text-[11px] font-semibold text-ink-secondary mb-1">
                 Exclusions & Rejets
               </label>
-              <select
+              <Select
                 value={filterExclusion}
                 onChange={(e) => setFilterExclusion(e.target.value as any)}
                 className="w-full text-xs py-1.5 px-2.5 rounded-lg border border-line bg-surface focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -1439,7 +1440,7 @@ export const PaiementsView: React.FC<PaiementsViewProps> = ({
                 <option value="ALL">Tous les bordereaux</option>
                 <option value="AVEC_EXCLUSION">Avec exclusions (&gt; 0)</option>
                 <option value="SANS_EXCLUSION">Sans exclusion (100% admis)</option>
-              </select>
+              </Select>
             </div>
 
             {/* Date Range & Presets */}
@@ -1448,7 +1449,7 @@ export const PaiementsView: React.FC<PaiementsViewProps> = ({
                 <label className="block text-[11px] font-semibold text-ink-secondary">
                   Période de référence
                 </label>
-                <select
+                <Select
                   value={dateFilterField}
                   onChange={(e) => setDateFilterField(e.target.value as 'datePaiement' | 'dateSaisie')}
                   className="text-[10px] py-0.5 px-1.5 rounded border border-line bg-surface focus:outline-none focus:ring-1 focus:ring-emerald-500"
@@ -1456,7 +1457,7 @@ export const PaiementsView: React.FC<PaiementsViewProps> = ({
                 >
                   <option value="datePaiement">Date règlement</option>
                   <option value="dateSaisie">Date import / saisie</option>
-                </select>
+                </Select>
               </div>
               <div className="flex items-center gap-1.5">
                 <input

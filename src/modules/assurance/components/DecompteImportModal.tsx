@@ -67,6 +67,7 @@ import {
   type MontantConfrontation,
 } from '../utils/montantConfrontation';
 import * as XLSX from 'xlsx';
+import { Select } from '../../../components/Select';
 
 interface DecompteImportModalProps {
   isOpen: boolean;
@@ -2188,7 +2189,7 @@ export const DecompteImportModal: React.FC<DecompteImportModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 rounded-xl border border-line bg-surface-muted p-4 text-xs">
                 <div>
                   <span className="text-ink-muted block mb-1">Organisme / Garant</span>
-                  <select
+                  <Select
                     value={
                       activeSocietesList.find(s => s.nom.toLowerCase() === (parsedDoc.clientDoit || '').toLowerCase())?.id || 
                       selectedInsurance || ''
@@ -2212,7 +2213,7 @@ export const DecompteImportModal: React.FC<DecompteImportModalProps> = ({
                     {!activeSocietesList.some(s => s.nom.toLowerCase() === (parsedDoc.clientDoit || '').toLowerCase()) && (
                       <option value="">{parsedDoc.clientDoit || 'Autre Organisme'}</option>
                     )}
-                  </select>
+                  </Select>
                 </div>
                 <div>
                   <span className="text-ink-muted block">Réf Bordereau</span>
@@ -2338,7 +2339,7 @@ export const DecompteImportModal: React.FC<DecompteImportModalProps> = ({
                     {/* Sort Selector */}
                     <div className="flex items-center gap-1.5 bg-surface border border-line rounded-xl px-2.5 py-1.5 shadow-2xs">
                       <span className="text-ink-muted text-[11px] font-medium">Trier par :</span>
-                      <select
+                      <Select
                         value={sortBy}
                         onChange={(e) => setSortBy(e.target.value as any)}
                         className="bg-transparent text-xs font-semibold text-ink focus:outline-none cursor-pointer"
@@ -2348,7 +2349,7 @@ export const DecompteImportModal: React.FC<DecompteImportModalProps> = ({
                         <option value="DATE">Date Soins</option>
                         <option value="PATIENT">Nom Patient</option>
                         <option value="AMOUNT">Montant Net</option>
-                      </select>
+                      </Select>
                       {sortBy !== 'DEFAULT' && (
                         <button
                           onClick={() => setSortOrder(prev => prev === 'ASC' ? 'DESC' : 'ASC')}
@@ -3328,7 +3329,7 @@ export const DecompteImportModal: React.FC<DecompteImportModalProps> = ({
 
             <div className="space-y-1.5 pt-1">
               <label className="block text-xs font-bold text-ink">Rattacher à une société existante (optionnel) :</label>
-              <select
+              <Select
                 value={selectedOverrideSocId}
                 onChange={(e) => setSelectedOverrideSocId(e.target.value)}
                 className="w-full bg-surface text-xs font-semibold rounded-xl p-2.5 border border-line-strong focus:ring-2 focus:ring-indigo-500 focus:outline-none"
@@ -3339,7 +3340,7 @@ export const DecompteImportModal: React.FC<DecompteImportModalProps> = ({
                     {s.nom} ({s.code})
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             <div className="flex flex-col gap-2 pt-2">

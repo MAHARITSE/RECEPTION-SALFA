@@ -25,6 +25,7 @@ import { FacturesRejetsGroupedTable, GroupedRejetFacture, RejetFactureSortField 
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { Select } from '../../../components/Select';
 
 export type RejetViewMode = 'bordereau' | 'detaillee';
 
@@ -769,7 +770,7 @@ export const RejetsView: React.FC<RejetsViewProps> = ({
         {/* Organisme / Assurance */}
         <div>
           <label className="block text-ink-muted font-medium mb-1">Tiers-Payeur / Société</label>
-          <select
+          <Select
             value={selectedSocieteId !== 'ALL' ? selectedSocieteId : filterSociete}
             onChange={(e) => setFilterSociete(e.target.value)}
             disabled={selectedSocieteId !== 'ALL'}
@@ -781,13 +782,13 @@ export const RejetsView: React.FC<RejetsViewProps> = ({
                 {s.nom}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         {/* Type de Rejet */}
         <div>
           <label className="block text-ink-muted font-medium mb-1">Type de Rejet</label>
-          <select
+          <Select
             value={filterType}
             onChange={(e) => setFilterType(e.target.value)}
             className="w-full p-1.5 rounded-lg border border-line focus:ring-2 focus:ring-rose-500 focus:outline-none"
@@ -796,7 +797,7 @@ export const RejetsView: React.FC<RejetsViewProps> = ({
             <option value="prestation_complete">Facture intégrale rejetée</option>
             <option value="acte_isole">Acte spécifique rejeté</option>
             <option value="exclusion_decompte">Exclusion sur décompte</option>
-          </select>
+          </Select>
         </div>
 
         {/* Dates */}

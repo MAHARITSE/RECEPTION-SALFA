@@ -16,6 +16,7 @@ import {
   Building2, Plus, Search, Edit2, Trash2, Check, X, Star, Landmark,
   BadgeCheck, Upload, Image as ImageIcon, Printer, MapPin, Phone, Mail, User as UserIcon,
 } from 'lucide-react';
+import { Select } from './Select';
 
 interface Props {
   state: AppState;
@@ -278,9 +279,9 @@ export default function TableEtablissements({ state, setState, showToast }: Prop
               </div>
               <div>
                 <label className={labelCls}>Nature de l'entité</label>
-                <select value={form.type || 'hopital'} onChange={(e) => set({ type: e.target.value as EtablissementType })} className={`${inputCls} bg-surface cursor-pointer`}>
+                <Select value={form.type || 'hopital'} onChange={(e) => set({ type: e.target.value as EtablissementType })} className={`${inputCls} bg-surface cursor-pointer`}>
                   {ETABLISSEMENT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                </select>
+                </Select>
               </div>
               <div>
                 <label className={labelCls}>Forme juridique</label>
@@ -471,14 +472,14 @@ export default function TableEtablissements({ state, setState, showToast }: Prop
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold text-ink-muted">Nature :</span>
-          <select
+          <Select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
             className="px-3 py-1.5 border rounded-xl text-xs bg-surface cursor-pointer outline-none"
           >
             <option value="all">Toutes ({etablissements.length})</option>
             {ETABLISSEMENT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-          </select>
+          </Select>
         </div>
       </div>
 

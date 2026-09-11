@@ -32,6 +32,7 @@ import {
 } from '../../types';
 import { formatMoney, formatDate, formatDateTime, generateId, getCurrentTimestamp } from '../../utils/formatters';
 import { maskNom } from '../../utils/inputMasks';
+import { Select } from '../../../../components/Select';
 
 interface SaisieReglementModalProps {
   isOpen: boolean;
@@ -695,7 +696,7 @@ export const SaisieReglementModal: React.FC<SaisieReglementModalProps> = ({
                 <label className="block text-ink font-semibold mb-1">
                   Société / Assureur *
                 </label>
-                <select
+                <Select
                   id="select-societe-bordereau"
                   autoFocus
                   value={societeId}
@@ -708,7 +709,7 @@ export const SaisieReglementModal: React.FC<SaisieReglementModalProps> = ({
                       {s.nom} ({s.code}) - {s.tauxCouvertureDefaut}%
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               {/* N° Bordereau */}
@@ -758,7 +759,7 @@ export const SaisieReglementModal: React.FC<SaisieReglementModalProps> = ({
                 <label className="block text-ink font-semibold mb-1">
                   Mode de Règlement
                 </label>
-                <select
+                <Select
                   value={modePaiement}
                   onChange={(e) => setModePaiement(e.target.value as any)}
                   className="w-full p-2 border border-line-strong rounded-lg text-ink focus:ring-2 focus:ring-emerald-500 focus:outline-none"
@@ -768,7 +769,7 @@ export const SaisieReglementModal: React.FC<SaisieReglementModalProps> = ({
                   <option value="Espèces">Espèces</option>
                   <option value="Mobile Money">Mobile Money</option>
                   <option value="Autre">Autre</option>
-                </select>
+                </Select>
               </div>
 
               {/* Référence Transaction / Chèque */}
@@ -1078,7 +1079,7 @@ export const SaisieReglementModal: React.FC<SaisieReglementModalProps> = ({
 
                   <div>
                     <label className="block text-ink font-semibold mb-1">Code & Type d'Acte</label>
-                    <select
+                    <Select
                       value={manualCodeActe}
                       onChange={(e) => {
                         const code = e.target.value;
@@ -1097,7 +1098,7 @@ export const SaisieReglementModal: React.FC<SaisieReglementModalProps> = ({
                       <option value="DENT">DENT - Soins dentaires</option>
                       <option value="HOSP">HOSP - Hospitalisation</option>
                       <option value="ECHO">ECHO - Échographie</option>
-                    </select>
+                    </Select>
                   </div>
 
                   <div>

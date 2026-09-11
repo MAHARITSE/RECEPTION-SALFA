@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Famille } from '../types';
 import { Check, ArrowRight, Sparkles, Tag, HelpCircle, Layers, BookmarkCheck } from 'lucide-react';
 import { formatMoney } from '../utils/formatters';
+import { Select } from '../../../components/Select';
 
 interface ActMappingModalProps {
   isOpen: boolean;
@@ -118,7 +119,7 @@ export const ActMappingModal: React.FC<ActMappingModalProps> = ({
 
                 <div className="flex items-center space-x-2 shrink-0">
                   <ArrowRight className="w-4 h-4 text-slate-300 hidden sm:block" />
-                  <select
+                  <Select
                     value={currentSelected}
                     onChange={(e) => handleSelectFamille(act.rawCode, e.target.value)}
                     className="px-3 py-2 bg-surface-muted border border-line-strong rounded-xl text-xs font-semibold text-ink focus:outline-hidden focus:ring-2 focus:ring-indigo-500 min-w-[220px]"
@@ -128,7 +129,7 @@ export const ActMappingModal: React.FC<ActMappingModalProps> = ({
                         {f.code} - {f.libelle}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
               </div>
             );

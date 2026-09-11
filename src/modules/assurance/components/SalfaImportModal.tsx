@@ -28,6 +28,7 @@ import { formatMoney, generateId, normalizeDateISO } from '../utils/formatters';
 import { downloadPrestationsExcelTemplate } from '../utils/excelTemplates';
 import { findBestMatchingSociete } from '../utils/societyMatcher';
 import * as XLSX from 'xlsx';
+import { Select } from '../../../components/Select';
 
 interface SalfaImportModalProps {
   isOpen: boolean;
@@ -1113,7 +1114,7 @@ export const SalfaImportModal: React.FC<SalfaImportModalProps> = ({
                     <label className="block text-[11px] font-semibold text-ink-secondary mb-1">
                       Organisme / Client <span className="text-red-500">*</span>
                     </label>
-                    <select
+                    <Select
                       value={
                         societes.find(s => s.nom.toLowerCase() === (parsedInvoice.clientDoit || '').toLowerCase())?.nom || 
                         parsedInvoice.clientDoit || ''
@@ -1132,7 +1133,7 @@ export const SalfaImportModal: React.FC<SalfaImportModalProps> = ({
                           {parsedInvoice.clientDoit} (Détecté dans fichier)
                         </option>
                       )}
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label className="block text-[11px] font-semibold text-ink-secondary mb-1">
@@ -1387,7 +1388,7 @@ export const SalfaImportModal: React.FC<SalfaImportModalProps> = ({
 
             <div className="space-y-1.5 pt-1">
               <label className="block text-xs font-bold text-ink">Rattacher à une société existante (optionnel) :</label>
-              <select
+              <Select
                 value={selectedOverrideSocId}
                 onChange={(e) => setSelectedOverrideSocId(e.target.value)}
                 className="w-full bg-surface text-xs font-semibold rounded-xl p-2.5 border border-line-strong focus:ring-2 focus:ring-indigo-500 focus:outline-none"
@@ -1398,7 +1399,7 @@ export const SalfaImportModal: React.FC<SalfaImportModalProps> = ({
                     {s.nom} ({s.code})
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             <div className="flex flex-col gap-2 pt-2">

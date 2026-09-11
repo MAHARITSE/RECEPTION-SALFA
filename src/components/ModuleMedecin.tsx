@@ -21,6 +21,7 @@ import {
   Send, Search, Edit2, RotateCcw, Save, FlaskConical, Scan, Plus, X, Droplets,
   Users, Printer, Eye, CheckCircle2, RefreshCw,
 } from 'lucide-react';
+import { Select } from './Select';
 
 export type { EchoExamCatalog };
 export const ECHO_CATALOG: EchoExamCatalog[] = DEFAULT_ECHO_CATALOG;
@@ -1503,7 +1504,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-ink mb-1">Groupe Sanguin</label>
-                    <select
+                    <Select
                       value={patientEditForm.bloodGroup}
                       onChange={(e) => setPatientEditForm({ ...patientEditForm, bloodGroup: e.target.value })}
                       className="w-full px-3 py-2 bg-surface border border-line-strong rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-semibold text-rose-700 dark:text-rose-400"
@@ -1517,7 +1518,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                       <option value="AB-">AB-</option>
                       <option value="O+">O+</option>
                       <option value="O-">O-</option>
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-ink mb-1">Allergies (séparées par virgules)</label>
@@ -1572,7 +1573,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-ink mb-1">Lien Familial dans le Foyer</label>
-                    <select
+                    <Select
                       value={patientEditForm.lienFamilial}
                       onChange={(e) => setPatientEditForm({ ...patientEditForm, lienFamilial: e.target.value })}
                       className="w-full px-3 py-2 bg-surface border border-line-strong rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
@@ -1583,7 +1584,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                       <option value="Enfant">Enfant</option>
                       <option value="Parent (Père/Mère)">Parent (Père/Mère)</option>
                       <option value="Autre ayant droit">Autre ayant droit</option>
-                    </select>
+                    </Select>
                   </div>
                 </div>
 

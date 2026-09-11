@@ -4,6 +4,7 @@ import type { Article, TransferCategory } from '../types';
 import { familyLabel, formatAr, formatNum, transferCategoryLabel, transferCategoryColor, TRANSFER_CATEGORIES } from '../store';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
 import { Plus, Trash2, Save, X, Send, Edit3 } from 'lucide-react';
+import { Select } from './Select';
 
 export interface ReqLine {
   id: string;
@@ -241,7 +242,7 @@ export default function DemandeAchatForm({
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-ink mb-1">🏷️ Type d'achat *</label>
-                    <select
+                    <Select
                       value={reqCategory}
                       onChange={e => setReqCategory(e.target.value as TransferCategory)}
                       className={`w-full px-3 py-1.5 border border-line-strong rounded-lg outline-none focus:ring-2 ${styles.ring} bg-surface text-sm text-ink-strong cursor-pointer`}
@@ -249,7 +250,7 @@ export default function DemandeAchatForm({
                       {TRANSFER_CATEGORIES.map(c => (
                         <option key={c} value={c}>{transferCategoryLabel(c)}</option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-ink mb-1">👤 Fournisseur *</label>

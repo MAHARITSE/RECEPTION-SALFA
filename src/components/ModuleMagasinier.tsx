@@ -20,6 +20,7 @@ import {
   Building2, Settings2, Layers, Tag, DollarSign, Edit2, ShieldAlert,
   Calendar, CreditCard, ShoppingBag, Barcode, Bell, BellOff
 } from 'lucide-react';
+import { Select } from './Select';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
 type Tab = 'stock' | 'articles' | 'familles' | 'fournisseurs' | 'appro' | 'requests' | 'inventory' | 'movements' | 'services';
@@ -1212,7 +1213,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                   </div>
                   <div className="flex items-center gap-1">
                     <Filter className="w-4 h-4 text-ink-faint" />
-                    <select
+                    <Select
                       value={familyCatalogFilter}
                       onChange={(e) => setFamilyCatalogFilter(e.target.value)}
                       className="px-2.5 py-1.5 border border-line-strong rounded-lg text-xs bg-surface outline-none cursor-pointer font-medium text-ink"
@@ -1222,7 +1223,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                         const count = state.articles.filter(a => normalizeFamilyCode(a.family) === normalizeFamilyCode(f.code)).length;
                         return <option key={f.code} value={f.code}>{f.name} ({f.code}) — {count}</option>;
                       })}
-                    </select>
+                    </Select>
                   </div>
                 </div>
                 <button onClick={openNewArticleModal} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 cursor-pointer text-xs font-semibold shadow">
@@ -1314,9 +1315,9 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                         </div>
                         <div>
                           <label className="font-bold block text-ink mb-1">Famille d'articles *</label>
-                          <select value={artForm.family} onChange={e => setArtForm({ ...artForm, family: e.target.value as ArticleFamily })} className="w-full px-3 py-2 border rounded-lg text-sm bg-surface outline-none cursor-pointer">
+                          <Select value={artForm.family} onChange={e => setArtForm({ ...artForm, family: e.target.value as ArticleFamily })} className="w-full px-3 py-2 border rounded-lg text-sm bg-surface outline-none cursor-pointer">
                             {articleFamilies.map(f => <option key={f.code} value={f.code}>{f.name}</option>)}
-                          </select>
+                          </Select>
                         </div>
                         <div>
                           <label className="font-bold block text-ink mb-1">Unité de conditionnement *</label>
@@ -1613,10 +1614,10 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-ink mb-1">👤 Sélectionner le Fournisseur *</label>
-                    <select value={selectedSupplierId} onChange={(e) => setSelectedSupplierId(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm bg-surface cursor-pointer">
+                    <Select value={selectedSupplierId} onChange={(e) => setSelectedSupplierId(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm bg-surface cursor-pointer">
                       <option value="">— Choisir dans la base fournisseurs —</option>
                       {fournisseurs.map(f => <option key={f.id} value={f.id}>{f.name} {f.phone ? `(${f.phone})` : ''}</option>)}
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-ink mb-1">📄 N° BL / Bon de Livraison / Facture *</label>
@@ -1799,9 +1800,9 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <label className="block text-xs font-bold mb-1">Emplacement à compter</label>
-                      <select value={invLocation} onChange={(e) => setInvLocation(e.target.value)} className="w-full px-3 py-1.5 border rounded-lg text-xs bg-surface cursor-pointer">
+                      <Select value={invLocation} onChange={(e) => setInvLocation(e.target.value)} className="w-full px-3 py-1.5 border rounded-lg text-xs bg-surface cursor-pointer">
                         {locationOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                      </select>
+                      </Select>
                     </div>
                     <div className="sm:col-span-2">
                       <label className="block text-xs font-bold mb-1">Observation / Motif</label>
@@ -1875,10 +1876,10 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                   <div className="space-y-2 text-xs">
                     <div>
                       <label className="font-bold block mb-1">Article à transférer</label>
-                      <select value={dispArticleId} onChange={(e) => setDispArticleId(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-surface">
+                      <Select value={dispArticleId} onChange={(e) => setDispArticleId(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-surface">
                         <option value="">— Sélectionner article —</option>
                         {state.articles.filter((a) => managesStockForFamily(a.family)).map((a) => <option key={a.id} value={a.id}>{a.name} (central: {a.stockCentral})</option>)}
-                      </select>
+                      </Select>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
@@ -1887,9 +1888,9 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                       </div>
                       <div>
                         <label className="font-bold block mb-1">Service destinataire</label>
-                        <select value={dispServiceId} onChange={(e) => setDispServiceId(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-surface">
+                        <Select value={dispServiceId} onChange={(e) => setDispServiceId(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-surface">
                           {activeServices.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                        </select>
+                        </Select>
                       </div>
                     </div>
                     <div>
@@ -1907,17 +1908,17 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                   <div className="space-y-2 text-xs">
                     <div>
                       <label className="font-bold block mb-1">Article concerné</label>
-                      <select value={exitArticleId} onChange={(e) => setExitArticleId(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-surface">
+                      <Select value={exitArticleId} onChange={(e) => setExitArticleId(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-surface">
                         <option value="">— Sélectionner article —</option>
                         {state.articles.filter((a) => managesStockForFamily(a.family)).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                      </select>
+                      </Select>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="font-bold block mb-1">Depuis</label>
-                        <select value={exitFrom} onChange={(e) => setExitFrom(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-surface">
+                        <Select value={exitFrom} onChange={(e) => setExitFrom(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-surface">
                           {locationOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                        </select>
+                        </Select>
                       </div>
                       <div>
                         <label className="font-bold block mb-1">Quantité à déduire</label>
@@ -1991,9 +1992,9 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                   </div>
                   <div>
                     <label className="block text-xs font-bold mb-1">Couleur</label>
-                    <select value={newSvc.color} onChange={(e) => setNewSvc({ ...newSvc, color: e.target.value })} className="w-full px-3 py-1.5 border rounded-lg text-xs bg-surface cursor-pointer">
+                    <Select value={newSvc.color} onChange={(e) => setNewSvc({ ...newSvc, color: e.target.value })} className="w-full px-3 py-1.5 border rounded-lg text-xs bg-surface cursor-pointer">
                       {SERVICE_COLORS.map((c) => <option key={c} value={c}>{c}</option>)}
-                    </select>
+                    </Select>
                   </div>
                 </div>
                 <button onClick={addService} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold cursor-pointer flex items-center gap-1">

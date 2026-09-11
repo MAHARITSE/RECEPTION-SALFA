@@ -15,6 +15,7 @@ import {
   FlaskConical, CheckCircle, AlertTriangle, Send, Microscope, FileSearch,
   Plus, Search, Printer, Check, Edit2,
 } from 'lucide-react';
+import { Select } from './Select';
 
 interface Props {
   state: AppState;
@@ -468,10 +469,10 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
           <Search className="absolute left-3 top-2.5 w-4 h-4 text-ink-faint" />
           <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-9 pr-3 py-2 border border-line-strong rounded-lg outline-none focus:ring-2 focus:ring-cyan-500 text-sm" placeholder={tab === 'completed' ? 'Rechercher une personne dans les résultats...' : 'Rechercher patient ou examen...'} />
         </div>
-        <select value={filterCat} onChange={(e) => setFilterCat(e.target.value)} className="px-3 py-2 border border-line-strong rounded-lg text-sm cursor-pointer">
+        <Select value={filterCat} onChange={(e) => setFilterCat(e.target.value)} className="px-3 py-2 border border-line-strong rounded-lg text-sm cursor-pointer">
           <option value="all">Toutes catégories</option>
           {LAB_CATEGORIES.map((c) => <option key={c} value={c}>{labCategoryLabel(c)}</option>)}
-        </select>
+        </Select>
       </div>
 
       {/* Tabs */}
@@ -742,9 +743,9 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
                       <input value={newPat.firstName} onChange={(e) => setNewPat({ ...newPat, firstName: e.target.value })} placeholder="Prénom *" className="px-2 py-1.5 border rounded uppercase outline-none" />
                       <input type="date" value={newPat.dateOfBirth} onChange={(e) => setNewPat({ ...newPat, dateOfBirth: e.target.value })} className="px-2 py-1.5 border rounded outline-none" />
                       <PhoneInput value={newPat.contact} onChange={(v) => setNewPat({ ...newPat, contact: v })} placeholder="Téléphone" className="px-2 py-1.5 border rounded outline-none" />
-                      <select value={newPat.gender} onChange={(e) => setNewPat({ ...newPat, gender: e.target.value as 'M' | 'F' })} className="px-2 py-1.5 border rounded cursor-pointer">
+                      <Select value={newPat.gender} onChange={(e) => setNewPat({ ...newPat, gender: e.target.value as 'M' | 'F' })} className="px-2 py-1.5 border rounded cursor-pointer">
                         <option value="F">Femme</option><option value="M">Homme</option>
-                      </select>
+                      </Select>
                       <select value={newPat.clientType} onChange={(e) => setNewPat({ ...newPat, clientType: e.target.value as ClientType })} className="px-2 py-1.5 border rounded cursor-pointer">
                         <option value="comptoir">Comptoir</option><option value="societe">Société</option><option value="externe">Externe</option>
                       </select>
@@ -894,9 +895,9 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-ink-secondary mb-1">Catégorie</label>
-                  <select value={examForm.category} onChange={(e) => setExamForm({ ...examForm, category: e.target.value as LabCategory })} className="w-full px-2 py-1.5 border rounded cursor-pointer">
+                  <Select value={examForm.category} onChange={(e) => setExamForm({ ...examForm, category: e.target.value as LabCategory })} className="w-full px-2 py-1.5 border rounded cursor-pointer">
                     {LAB_CATEGORIES.map((c) => <option key={c} value={c}>{labCategoryLabel(c)}</option>)}
-                  </select>
+                  </Select>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-ink-secondary mb-1">Prélèvement</label>

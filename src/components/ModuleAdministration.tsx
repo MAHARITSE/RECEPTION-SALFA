@@ -26,6 +26,7 @@ import {
   Menu, LayoutDashboard, AlertTriangle, ArrowRight, HardDrive, FileSpreadsheet, Lock, Unlock, CheckCircle2,
   Landmark, Ban, ShieldCheck, Undo2
 } from 'lucide-react';
+import { Select } from './Select';
 
 interface Props {
   state: AppState;
@@ -1430,7 +1431,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div>
                             <label className="text-xs font-bold text-ink block mb-1">Devise monétaire principale</label>
-                            <select
+                            <Select
                               value={state.ticketSettings.currency}
                               onChange={e => updateTicket({ currency: e.target.value as any })}
                               className="w-full px-3.5 py-2 border rounded-xl text-sm bg-surface cursor-pointer outline-none"
@@ -1439,7 +1440,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
                               <option value="€">Euro (€)</option>
                               <option value="$">Dollar ($)</option>
                               <option value="Fc">Franc Congolais (Fc)</option>
-                            </select>
+                            </Select>
                           </div>
                           <div>
                             <label className="text-xs font-bold text-ink block mb-1">Titre principal du reçu</label>
@@ -1677,25 +1678,25 @@ export default function ModuleAdministration({ state, setState }: Props) {
                             <div className="grid grid-cols-2 gap-3">
                               <div>
                                 <label className="text-[10px] font-bold text-ink-muted uppercase tracking-wider mb-1 block">Type de partenaire</label>
-                                <select
+                                <Select
                                   value={newCompany.type}
                                   onChange={(e) => setNewCompany({ ...newCompany, type: e.target.value as 'payeur' | 'assurance' })}
                                   className="w-full px-3 py-2 border rounded-xl text-sm bg-surface outline-none cursor-pointer"
                                 >
                                   <option value="payeur">Payeur global</option>
                                   <option value="assurance">Assurance</option>
-                                </select>
+                                </Select>
                               </div>
                               <div>
                                 <label className="text-[10px] font-bold text-ink-muted uppercase tracking-wider mb-1 block">Sous-mode de règlement</label>
-                                <select
+                                <Select
                                   value={newCompany.settlementMode}
                                   onChange={(e) => setNewCompany({ ...newCompany, settlementMode: e.target.value as CompanySettlementMode })}
                                   className="w-full px-3 py-2 border rounded-xl text-sm bg-surface outline-none cursor-pointer"
                                 >
                                   <option value="monthly_global">Règlement global mensuel</option>
                                   <option value="per_invoice">Règlement individuel par facture</option>
-                                </select>
+                                </Select>
                               </div>
                             </div>
                           </div>
@@ -1835,14 +1836,14 @@ export default function ModuleAdministration({ state, setState }: Props) {
                                     </td>
                                     <td className="p-2.5">
                                       <div className="space-y-1.5">
-                                        <select
+                                        <Select
                                           value={editCompany.type}
                                           onChange={e => setEditCompany({ ...editCompany, type: e.target.value as 'payeur' | 'assurance' })}
                                           className="w-full px-2 py-1.5 border rounded-xl text-xs bg-surface cursor-pointer"
                                         >
                                           <option value="payeur">Payeur global</option>
                                           <option value="assurance">Assurance</option>
-                                        </select>
+                                        </Select>
                                         {editCompany.type === 'assurance' && (
                                           <div className="flex items-center gap-1 text-[11px]">
                                             <span className="text-ink-muted">Couverture :</span>
@@ -1860,14 +1861,14 @@ export default function ModuleAdministration({ state, setState }: Props) {
                                       </div>
                                     </td>
                                     <td className="p-2.5">
-                                      <select
+                                      <Select
                                         value={editCompany.settlementMode}
                                         onChange={e => setEditCompany({ ...editCompany, settlementMode: e.target.value as CompanySettlementMode })}
                                         className="w-full px-2 py-1.5 border rounded-xl text-xs bg-surface cursor-pointer"
                                       >
                                         <option value="monthly_global">Règlement global mensuel</option>
                                         <option value="per_invoice">Règlement individuel par facture</option>
-                                      </select>
+                                      </Select>
                                     </td>
                                     <td className="p-2.5 text-right space-x-1">
                                       <button onClick={saveEditCompany} className="px-3 py-1 bg-emerald-600 text-white rounded-lg text-xs font-semibold cursor-pointer">

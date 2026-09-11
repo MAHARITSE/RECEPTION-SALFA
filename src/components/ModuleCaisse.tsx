@@ -23,6 +23,7 @@ import ConfirmModal from './ConfirmModal';
 import AlerteArticleIndisponible from './AlerteArticleIndisponible';
 import { PhoneInput } from './PhoneInput';
 import type { ArticleAlertInfo } from './AlerteArticleIndisponible';
+import { Select } from './Select';
 
 /** Patient factice utilisé pour imprimer les bons d'analyse / d'échographie des ventes
  *  externes (un client externe n'a pas de dossier ouvert en réception). */
@@ -2275,14 +2276,14 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-ink mb-1">Format Papier Thermique</label>
-                  <select
+                  <Select
                     value={tempPrinterSettings.paperWidth}
                     onChange={e => setTempPrinterSettings({ ...tempPrinterSettings, paperWidth: Number(e.target.value) })}
                     className="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium bg-surface"
                   >
                     <option value={80}>80 mm (Standard POS)</option>
                     <option value={58}>58 mm (Étroit / Portable)</option>
-                  </select>
+                  </Select>
                 </div>
                 <div>
                   <label className="block font-semibold text-ink mb-1">Nombre d'exemplaires</label>

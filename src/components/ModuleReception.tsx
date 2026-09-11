@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { PhoneInput } from './PhoneInput';
 import { motion, AnimatePresence } from 'motion/react';
+import { Select } from './Select';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; onStaffLogin: () => void; onOpenMessaging: () => void; }
 type ModalType = 'none' | 'add' | 'edit' | 'vitals' | 'blacklistConfirm' | 'blacklistReason' | 'blacklistList' | 'unblacklistConfirm' | 'deleteConfirm' | 'patientInfo';
@@ -1008,7 +1009,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                       <div className="flex items-center justify-between">
                         <label className="font-bold text-ink">{f.label}</label>
                         {f.key === 'tdr' ? (
-                          <select value={vitalsForm.tdr || ''} disabled={vitalsReadOnly} onChange={(e) => setVitalsForm({ ...vitalsForm, tdr: e.target.value })} className="w-24 bg-surface border border-line-control rounded px-2 py-1.5 text-center focus:outline-none focus:border-emerald-500 cursor-pointer"><option value="">—</option><option value="Positif">Positif</option><option value="Négatif">Négatif</option></select>
+                          <Select value={vitalsForm.tdr || ''} disabled={vitalsReadOnly} onChange={(e) => setVitalsForm({ ...vitalsForm, tdr: e.target.value })} className="w-24 bg-surface border border-line-control rounded px-2 py-1.5 text-center focus:outline-none focus:border-emerald-500 cursor-pointer"><option value="">—</option><option value="Positif">Positif</option><option value="Négatif">Négatif</option></Select>
                         ) : (
                           <div className="flex items-center gap-1">
                             <input

@@ -25,6 +25,7 @@ import { formatMoney, formatDate } from '../utils/formatters';
 import { maskNom } from '../utils/inputMasks';
 import { getStoredEnteteConfig } from '../utils/enteteStorage';
 import * as XLSX from 'xlsx';
+import { Select } from '../../../components/Select';
 
 interface EtatsViewProps {
   prestations: Prestation[];
@@ -502,7 +503,7 @@ export const EtatsView: React.FC<EtatsViewProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
           <div>
             <label className="block text-ink-muted font-medium mb-1">Organisme / Assurance</label>
-            <select
+            <Select
               value={filterSocId}
               onChange={(e) => setFilterSocId(e.target.value)}
               className="w-full px-3 py-2 rounded-lg border border-line bg-surface font-medium text-ink focus:ring-2 focus:ring-indigo-500 focus:outline-none"
@@ -511,7 +512,7 @@ export const EtatsView: React.FC<EtatsViewProps> = ({
               {societes.map(s => (
                 <option key={s.id} value={s.id}>{s.nom} ({s.code})</option>
               ))}
-            </select>
+            </Select>
           </div>
 
           <div>
