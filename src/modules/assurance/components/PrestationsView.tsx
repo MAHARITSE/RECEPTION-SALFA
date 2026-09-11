@@ -107,6 +107,10 @@ export interface PrestationsViewProps {
   selectedSubSocieteId?: string;
   onSavePrestation: (prestation: Prestation) => void;
   onDeletePrestation: (id: string) => void;
+  /** Fusion facturier : absorbe une autre prescription de la même société. */
+  onFusionPrescription?: (supprimee: Prestation, conserveId: string, libelle?: string) => void;
+  /** Annule la dernière fusion reçue par la prescription et restitue l'absorbée. */
+  onAnnulerFusion?: (conserveId: string) => void;
   onDeleteFacture?: (numeroFacture: string) => void;
   onImportPrestations?: (newPrestations: Prestation[], newSocietes?: Societe[], newPersonnes?: Personne[]) => void;
   onSavePaiement?: (paiement: Paiement, updatedPrestations: Prestation[]) => void;
@@ -140,6 +144,8 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
   selectedSubSocieteId,
   onSavePrestation,
   onDeletePrestation,
+  onFusionPrescription,
+  onAnnulerFusion,
   onDeleteFacture,
   onImportPrestations,
   onSavePaiement,

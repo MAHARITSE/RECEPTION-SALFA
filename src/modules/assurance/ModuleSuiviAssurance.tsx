@@ -12,7 +12,7 @@ import { PersonnesView } from './components/PersonnesView';
 import { FamillesView } from './components/FamillesView';
 import { EtatsView } from './components/EtatsView';
 import { EnteteView } from './components/EnteteView';
-import { readSharedTable, writeSharedTable, sharedTransactions, sharedSocietes, sharedPersonnes, sharedFamilles } from './sharedData';
+import { readSharedTable, writeSharedTable, sharedTransactions, sharedSocietes, sharedPersonnes, sharedFamilles, fusionnerPrescription, annulerFusionPrescription } from './sharedData';
 import { getCurrentTimestamp } from './utils/formatters';
 import type { AppState } from '../../store';
 import { addAuditLog } from '../../store';
@@ -127,6 +127,33 @@ export default function ModuleSuiviAssurance({ state, setState }: Props) {
       });
     } catch (err: any) {
       alert(`Erreur d'enregistrement : ${err.message || err}`);
+    }
+  };
+
+  /** Fusion du facturier : une prescription liée à une facture Caisse absorbe
+   * une autre prescription de la même société (patient revenu deux fois). */
+  const handleFusionPrescription = (supprimee: Prestation, conserveId: string, libelle?: string) => {
+    try {
+      commitChange(prev => {
+        const courantes = sharedTransactions(prev).prestations;
+        const fusionnees = fusionnerPrescription(courantes, supprimee, conserveId, libelle);
+        return writeSharedTable(prev, 'assurancePrestations', fusionnees);
+      });
+    } catch (err: any) {
+      alert(`Fusion impossible : ${err.message || err}`);
+    }
+  };
+
+  /** Annule la dernière fusion d'une prescription et restitue l'absorbée. */
+  const handleAnnulerFusion = (conserveId: string) => {
+    try {
+      commitChange(prev => {
+        const courantes = sharedTransactions(prev).prestations;
+        const { prestations: next } = annulerFusionPrescription(courantes, conserveId);
+        return writeSharedTable(prev, 'assurancePrestations', next);
+      });
+    } catch (err: any) {
+      alert(`Annulation impossible : ${err.message || err}`);
     }
   };
 
@@ -624,6 +651,8 @@ export default function ModuleSuiviAssurance({ state, setState }: Props) {
             selectedSubSocieteId={selectedSubSocieteId}
             onSavePrestation={handleSavePrestation}
             onDeletePrestation={handleDeletePrestation}
+            onFusionPrescription={handleFusionPrescription}
+            onAnnulerFusion={handleAnnulerFusion}
             onDeleteFacture={handleDeleteFacture}
             onImportPrestations={handleImportPrestations}
             onSavePaiement={handleSavePaiement}

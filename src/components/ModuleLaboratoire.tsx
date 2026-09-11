@@ -1,11 +1,11 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { LabRequest, Patient, ClientType, LabExamCatalog, LabCategory, Article } from '../types';
 import type { AppState } from '../store';
 import type { Societe } from '../modules/assurance/types';
 import { allocateFactureNumber, applySocieteUpsert, collectExistingFactureNumbers } from '../store';
 import { SearchableSelect, optionsFromValues } from './SearchableSelect';
-import { SuggestionInput, suggestionsFrom } from './SuggestionInput';
+import { SuggestionInput, classerSuggestions, motsIdentite } from './SuggestionInput';
 import {
   addAuditLog, addNotification, addJourneyEvent, LAB_NORMS,
   labCategoryLabel, LAB_CATEGORIES, normalizeDossierNumber, isDossierTaken, calculateAge, formatAr, getLabCatalog, companyIsBlocked, companyOptions, sousSocietesConnues,
@@ -51,10 +51,25 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
   const [showNew, setShowNew] = useState(false);
   const [patSearch, setPatSearch] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
-  const suggestionsNomsPatients = useMemo(() => suggestionsFrom(state.patients.map(p => p.lastName)), [state.patients]);
-  const suggestionsPrenomsPatients = useMemo(() => suggestionsFrom(state.patients.map(p => p.firstName)), [state.patients]);
-
   const [newPat, setNewPat] = useState({ dossier: '', lastName: '', firstName: '', gender: 'F' as 'M' | 'F', dateOfBirth: '', contact: '', clientType: 'comptoir' as ClientType, company: '' });
+
+  // Saisie assistée : valeurs déjà connues dans la base
+  // (appariement : noms/prénoms déjà portés ensemble passent en tête).
+  // Assistance identité : chaque mot du Nom / Prénom est complété à partir des
+  // mots connus de la base (noms ET prénoms confondus). Appariement : les mots
+  // déjà portés avec ce qui est saisi passent en tête (RAVELO → AINA, NAINA → RAZAFY).
+  const apparieIdentite = useCallback((mot: string) => {
+    const M = mot.trim().toUpperCase();
+    const saisis = new Set([...motsIdentite(newPat.lastName), ...motsIdentite(newPat.firstName)]);
+    if (!M || saisis.size === 0) return false;
+    return state.patients.some(p => {
+      const identite = [...motsIdentite(p.lastName), ...motsIdentite(p.firstName)];
+      return identite.includes(M) && identite.some(m => m !== M && saisis.has(m));
+    });
+  }, [state.patients, newPat.lastName, newPat.firstName]);
+  const suggestionsIdentite = useMemo(() => classerSuggestions(
+    state.patients.flatMap(p => [p.lastName, p.firstName]), apparieIdentite,
+  ), [state.patients, apparieIdentite]);
   // Edition société — toujours visible quand patient choisi (comme hospit/bloc)
   const [labEditClientType, setLabEditClientType] = useState<ClientType>('comptoir');
   const [labEditCompany, setLabEditCompany] = useState('');
@@ -743,8 +758,8 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
                   <div className="mt-3 p-3 bg-surface-muted rounded-lg border">
                     <div className="text-xs font-bold text-ink-secondary mb-2">Ou créer un nouveau patient (externe / ponctuel)</div>
                     <div className="grid grid-cols-2 gap-2 text-xs">
-                      <SuggestionInput id="labo-nouveau-nom" value={newPat.lastName} onChange={(v) => setNewPat({ ...newPat, lastName: v })} suggestions={suggestionsNomsPatients} placeholder="Nom *" ariaLabel="Nom" className="px-2 py-1.5 border rounded uppercase outline-none" />
-                      <SuggestionInput id="labo-nouveau-prenom" value={newPat.firstName} onChange={(v) => setNewPat({ ...newPat, firstName: v })} suggestions={suggestionsPrenomsPatients} placeholder="Prénom *" ariaLabel="Prénom" className="px-2 py-1.5 border rounded uppercase outline-none" />
+                      <SuggestionInput id="labo-nouveau-nom" value={newPat.lastName} onChange={(v) => setNewPat({ ...newPat, lastName: v })} suggestions={suggestionsIdentite} placeholder="Nom *" ariaLabel="Nom" className="px-2 py-1.5 border rounded uppercase outline-none" />
+                      <SuggestionInput id="labo-nouveau-prenom" value={newPat.firstName} onChange={(v) => setNewPat({ ...newPat, firstName: v })} suggestions={suggestionsIdentite} placeholder="Prénom *" ariaLabel="Prénom" className="px-2 py-1.5 border rounded uppercase outline-none" />
                       <input type="date" value={newPat.dateOfBirth} onChange={(e) => setNewPat({ ...newPat, dateOfBirth: e.target.value })} className="px-2 py-1.5 border rounded outline-none" />
                       <PhoneInput value={newPat.contact} onChange={(v) => setNewPat({ ...newPat, contact: v })} placeholder="Téléphone" className="px-2 py-1.5 border rounded outline-none" />
                       <Select value={newPat.gender} onChange={(e) => setNewPat({ ...newPat, gender: e.target.value as 'M' | 'F' })} className="px-2 py-1.5 border rounded cursor-pointer">
@@ -811,7 +826,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
                       </div>
                       <div>
                         <label className="block font-bold text-ink mb-0.5">Sous-société</label>
-                        <SearchableSelect value={labEditSubCompany} onChange={setLabEditSubCompany} options={optionsFromValues(sousSocietesConnues(state, labEditCompany))} placeholder={"— Sous-société de " + (labEditCompany || "la société") + " —"} ariaLabel="Sous-société" inputClassName="w-full px-2 py-1.5 border rounded outline-none bg-surface uppercase" />
+                        <SuggestionInput mode="contient" value={labEditSubCompany} onChange={setLabEditSubCompany} suggestions={classerSuggestions(sousSocietesConnues(state, labEditCompany))} placeholder={"Sous-société" + (labEditCompany ? " de " + labEditCompany : "") + " — saisie libre"} ariaLabel="Sous-société" className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" />
                       </div>
                     </div>
                   )}

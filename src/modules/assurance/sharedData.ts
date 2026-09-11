@@ -1,6 +1,6 @@
 import type { AppState } from '../../store';
 import type { Company, Patient, Invoice } from '../../types';
-import type { Societe, Personne, Famille, Prestation, Paiement, LignePaiement } from './types';
+import type { Societe, Personne, Famille, Prestation, Paiement, LignePaiement, LignePrestation } from './types';
 import { societeDiminutive } from '../../utils/factureNumber';
 import { reconcilePrestationsWithPaiements } from './utils/reconcile';
 
@@ -139,12 +139,124 @@ function paymentLine(id: string, p: Prestation | undefined, paid: number, reject
     totalPaye: paid, ticketModerateur: 0, montantExclu: rejected };
 }
 
+const arrondi2 = (n: number) => Math.round((n || 0) * 100) / 100;
+let seqFusion = 0;
+
+/**
+ * Fusionne dans « conserve » une autre prescription de la MÊME société
+ * (le patient est revenu deux fois en peu de temps) :
+ *  - les lignes Caisse de l'absorbée restent sur sa facture d'origine, mais sa
+ *    contribution financière (brut, ticket, à rembourser) s'ajoute à la fusion ;
+ *  - les ajouts du facturier de l'absorbée (omissions / ordonnances externes)
+ *    migrent dans la prescription conservée ;
+ *  - réversible : `fusionsAnnulees` garde une copie de l'absorbée, l'annulation
+ *    restitue les deux prescriptions initiales (via `annulerFusionPrescription`) ;
+ *  - traçabilité : le numéro absorbé reste lisible dans le commentaire.
+ */
+export function fusionnerPrescription(conserves: Prestation[], supprimee: Prestation, conserveId: string, libelle?: string): Prestation[] {
+  const estCaisse = (p: Prestation) => !!(p.sourceInvoiceId || sourceId(p.id));
+  const modDe = (p: Prestation) => p.ticketModerateur ?? p.participation ?? 0;
+  const ajoutsDe = (p: Prestation): LignePrestation[] =>
+    [...(p.ajouts || []), ...(p.lignes || []).filter(l => l.origine === 'omission' || l.origine === 'ordonnance_externe')]
+      .map(l => ({ ...l, id: `${p.id}:fus:${l.id}:${++seqFusion}` }));
+  const tracer = (p: Prestation) => [p.numeroFacture, ...(p.commentaires || '').split(' ; ')].filter(Boolean);
+
+  if (!estCaisse(supprimee)) {
+    throw new Error('Seule une prescription liée à une facture Caisse peut être fusionnée (les prescriptions saisies dans le suivi se suppriment directement).');
+  }
+  const conserve = conserves.find(p => p.id === conserveId);
+  if (!conserve) throw new Error('Prescription cible introuvable.');
+  if (supprimee.id === conserveId) throw new Error('Choisissez deux prescriptions différentes.');
+  if (supprimee.societeId !== conserve.societeId) throw new Error('La fusion exige une même société (garant) pour les deux prescriptions.');
+  if (estCaisse(conserve)) throw new Error('La cible doit être une prescription saisie dans le suivi assurance (la facture Caisse ne peut pas absorber une autre facture).');
+
+  const absorbées = [supprimee, ...(supprimee.fusionsAnnulees || [])];
+  const ajoutsFusionnés = [...(conserve.ajouts || []), ...absorbées.flatMap(ajoutsDe)];
+  const totalPrestation = arrondi2(conserve.totalPrestation + absorbées.reduce((s, p) => s + p.totalPrestation, 0));
+  const participation = arrondi2(conserve.participation + absorbées.reduce((s, p) => s + modDe(p), 0));
+  const conserveeFusionnee: Prestation = {
+    ...conserve,
+    lignes: [...(conserve.lignes || []), ...absorbées.flatMap(ajoutsDe)],
+    ajouts: ajoutsFusionnés,
+    sousSociete: conserve.sousSociete ?? absorbées.map(p => p.sousSociete).find(Boolean),
+    nomAgent: conserve.nomAgent ?? absorbées.map(p => p.nomAgent).find(Boolean),
+    matricule: conserve.matricule ?? absorbées.map(p => p.matricule).find(Boolean),
+    totalPrestation, montantTotal: totalPrestation,
+    participation, ticketModerateur: participation,
+    montantARembourser: arrondi2(totalPrestation - participation),
+    fusionsAnnulees: [...(conserve.fusionsAnnulees || []),
+      ...absorbées.map(({ lignes: _l, ajouts: _a, ...reste }) => ({ ...reste, lignes: [], ajouts: [], fusionsAnnulees: reste.fusionsAnnulees } as Prestation))],
+    commentaires: [...tracer(conserve), ...absorbées.flatMap(tracer), ...(libelle ? [libelle] : [])]
+      .filter((v, i, t) => t.indexOf(v) === i).join(' ; ') || undefined,
+  };
+  return conserves.map(p => (p.id === conserveId ? conserveeFusionnee : p));
+}
+
+/** Annule une fusion : restitue la prescription absorbée et retire ses montants et ajouts. */
+export function annulerFusionPrescription(prestations: Prestation[], conserveId: string): { prestations: Prestation[]; restituee: Prestation } {
+  const conserve = prestations.find(p => p.id === conserveId);
+  const absorbée = conserve?.fusionsAnnulees?.[(conserve.fusionsAnnulees?.length || 1) - 1];
+  if (!conserve || !absorbée) throw new Error('Aucune fusion à annuler sur cette prescription.');
+  const modDe = (p: Prestation) => p.ticketModerateur ?? p.participation ?? 0;
+  const idempotents = new Set(absorbée ? [] : []);
+  void idempotents;
+  const retirables = new Set((conserve.ajouts || []).concat(conserve.lignes || [])
+    .filter(l => l.id.startsWith(`${absorbée.id}:fus:`)).map(l => l.id));
+  const nettoie = (lignes: LignePrestation[] = []) => lignes.filter(l => !retirables.has(l.id));
+  const totalPrestation = arrondi2(conserve.totalPrestation - absorbée.totalPrestation);
+  const participation = arrondi2(conserve.participation - modDe(absorbée));
+  const precedentes = (absorbée.fusionsAnnulees || []);
+  const restituee: Prestation = precedentes.length
+    ? fusionnerPrescription([{ ...absorbée, fusionsAnnulees: [] }], precedentes[precedentes.length - 1], absorbée.id).find(p => p.id === absorbée.id)!
+    : { ...absorbée, lignes: absorbée.lignes, ajouts: absorbée.ajouts || [] };
+  const majConservee: Prestation = {
+    ...conserve,
+    lignes: nettoie(conserve.lignes),
+    ajouts: nettoie(conserve.ajouts),
+    totalPrestation, montantTotal: totalPrestation,
+    participation, ticketModerateur: participation,
+    montantARembourser: arrondi2(totalPrestation - participation),
+    fusionsAnnulees: (conserve.fusionsAnnulees || []).slice(0, -1),
+    commentaires: (conserve.commentaires || '').split(' ; ')
+      .filter(v => v.trim() && v.trim() !== (absorbée.numeroFacture || '').trim()).join(' ; ') || undefined,
+  };
+  return {
+    prestations: prestations.map(p => (p.id === conserveId ? majConservee : p)).concat(restituee),
+    restituee,
+  };
+}
+const sommeLignes = (lignes: LignePrestation[], champ: 'totalPrestation' | 'ticketModerateur' | 'montantARembourser') =>
+  arrondi2(lignes.reduce((s, l) => s + (l[champ] || 0), 0));
+
 export function sharedTransactions(state: AppState) {
   const sources = caissePrestations(state);
   // A source invoice is never copied into the assurance table.
-  const manual = (state.assurancePrestations || []).filter(p => !p.sourceInvoiceId && !sourceId(p.id));
+  const persisted = state.assurancePrestations || [];
+  // Compléments du facturier (omissions / ordonnances externes) superposés à
+  // la prescription Caisse : les lignes originales et leurs montants restent
+  // ceux de la facture, les ajouts s'empilent au-dessus.
+  const complements = new Map(persisted.filter(p => p.sourceInvoiceId || sourceId(p.id)).map(p => [p.id, p]));
+  const caissesFusionnees = new Set(persisted.filter(p => (p.fusionsAnnulees || []).some(f => f.sourceInvoiceId || sourceId(f.id))).flatMap(p => (p.fusionsAnnulees || []).map(f => f.id)));
+  const sourcesCompletes = sources.map(s => {
+    // Prescription Caisse absorbée par une fusion : retirée de la liste (sa
+    // trace vit dans fusionsAnnulees de la cible, annulation comprise).
+    if (caissesFusionnees.has(s.id)) return null;
+    const o = complements.get(s.id);
+    if (!o) return s;
+    const ajouts = (o.ajouts || []).map(a => ({ ...a, prestationId: s.id, origine: a.origine || 'omission' as const }));
+    const brut = arrondi2(s.totalPrestation + sommeLignes(ajouts, 'totalPrestation'));
+    const mod = arrondi2(s.participation + sommeLignes(ajouts, 'ticketModerateur'));
+    return { ...s,
+      nomAgent: o.nomAgent ?? s.nomAgent, matricule: o.matricule ?? s.matricule,
+      sousSociete: o.sousSociete ?? s.sousSociete, commentaires: o.commentaires ?? s.commentaires,
+      lignes: [...s.lignes, ...ajouts],
+      totalPrestation: brut, montantTotal: brut,
+      participation: mod, ticketModerateur: mod,
+      montantARembourser: arrondi2(brut - mod) };
+  });
+  const manual = persisted.filter(p => !p.sourceInvoiceId && !sourceId(p.id));
   const paiements = [...historicalPaiements(state, sources), ...(state.assurancePaiements || []).filter(p => !p.sourceReadonly)];
-  const prestations = reconcilePrestationsWithPaiements([...sources, ...manual], paiements);
+  const prestations = reconcilePrestationsWithPaiements(sourcesCompletes.filter((p): p is Prestation => !!p).concat(manual), paiements);
   return { prestations, paiements };
 }
 
@@ -228,19 +340,55 @@ export function writeSharedTable(state: AppState, table: SharedTable, value: Non
   let next = state;
   if (table === 'assurancePrestations') {
     const rows = value as Prestation[];
+    const coeurLigne = (l: LignePrestation) => [l.id, l.code, l.libelle ?? '', l.totalPrestation, l.ticketModerateur ?? 0];
+    const complements: Prestation[] = [];
+    const fusionees = new Set(rows.flatMap(r => (r.fusionsAnnulees || []).map(f => f.id)));
     for (const source of current.prestations.filter(p => p.sourceInvoiceId)) {
       const changed = rows.find(r => r.id === source.id);
-      if (!changed) throw new Error('Une facture de Caisse ne peut pas être supprimée depuis le suivi assurance.');
-      const core = (p: Prestation) => [p.numeroFacture, p.date, p.societeId, p.personneId, p.totalPrestation, p.participation,
-        p.lignes.map(l => [l.id, l.code, l.libelle, l.totalPrestation, l.ticketModerateur])];
-      if (!same(core(source), core(changed))) throw new Error('Les montants, actes et bénéficiaires des factures Caisse sont en lecture seule. Corrigez la facture dans son module d’origine.');
+      if (!changed && !fusionees.has(source.id)) throw new Error('Une facture de Caisse ne peut pas être supprimée depuis le suivi assurance.');
+      if (!changed) continue; // absorbée par une fusion : sa trace vit dans fusionsAnnulees de la cible.
+      if (!same([source.numeroFacture, source.date, source.societeId, source.personneId],
+        [changed.numeroFacture, changed.date, changed.societeId, changed.personneId])) {
+        throw new Error('Le numéro, la date, la société et l\'assuré d\'une facture Caisse ne changent pas depuis la facturation.');
+      }
+      // Les lignes originales de la facture Caisse restent STRICTEMENT inchangées ;
+      // le facturier ne fait qu'empiler des omissions / ordonnances externes.
+      const parId = new Map((changed.lignes || []).map(l => [l.id, l]));
+      for (const originale of source.lignes) {
+        const ligne = parId.get(originale.id);
+        if (!ligne || !same(coeurLigne(originale), coeurLigne(ligne))) {
+          throw new Error('Les actes de la facture Caisse restent inchangés : le facturier ajoute des omissions ou des ordonnances externes, il ne modifie pas la facture.');
+        }
+      }
+      const ajouts = (changed.lignes || []).filter(l => !source.lignes.some(s => s.id === l.id));
+      for (const a of ajouts) {
+        if (!['omission', 'ordonnance_externe'].includes(a.origine || '')) throw new Error('Une ligne ajoutée doit être une omission ou une ordonnance externe remboursée.');
+        if (!(a.totalPrestation >= 0) || (a.ticketModerateur ?? 0) < 0 || (a.ticketModerateur ?? 0) > a.totalPrestation) throw new Error(`Montant invalide sur la ligne ajoutée « ${a.libelle || a.code || a.id} ».`);
+      }
+      const ecartBrut = arrondi2(changed.totalPrestation - source.totalPrestation);
+      const ecartMod = arrondi2(changed.participation - source.participation);
+      if (ecartBrut !== sommeLignes(ajouts, 'totalPrestation')) throw new Error('Le total de la prescription ne correspond pas aux lignes ajoutées.');
+      if (ecartMod !== sommeLignes(ajouts, 'ticketModerateur')) throw new Error('Le ticket modérateur ne correspond pas aux lignes ajoutées.');
+      const nomModifie = (changed.nomAgent || '') !== (source.nomAgent || '') || (changed.matricule || '') !== (source.matricule || '');
+      const noteModifiee = (changed.commentaires || '') !== (source.commentaires || '');
+      if (!ajouts.length && !nomModifie && !noteModifiee) continue; // rien à conserver
+      complements.push({
+        id: source.id, sourceInvoiceId: source.sourceInvoiceId, numeroFacture: source.numeroFacture,
+        date: source.date, dateCreation: source.dateCreation, societeId: source.societeId,
+        personneId: source.personneId, sousSociete: changed.sousSociete,
+        nomAgent: nomModifie ? changed.nomAgent : undefined, matricule: nomModifie ? changed.matricule : undefined,
+        ajouts: ajouts.map(a => ({ ...a, origine: a.origine || 'omission' })),
+        commentaires: noteModifiee ? changed.commentaires : undefined,
+        totalPrestation: source.totalPrestation, participation: source.participation,
+        montantARembourser: source.montantARembourser, statut: source.statut, lignes: [],
+      });
     }
     const manual = rows.filter(p => !p.sourceInvoiceId && !sourceId(p.id));
     for (const p of manual) {
       if (!sharedSocietes(state).some(s => s.id === p.societeId) || !sharedPersonnes(state).some(s => s.id === p.personneId)) throw new Error('La prestation doit référencer une société et un assuré de la base commune.');
       if (current.prestations.some(s => s.sourceInvoiceId && s.societeId === p.societeId && key(s.numeroFacture) === key(p.numeroFacture))) throw new Error('Cette facture existe déjà dans la Caisse : utilisez la prestation liée, sans la réimporter.');
     }
-    next = { ...state, assurancePrestations: manual, invoices: state.invoices.map(invoice => {
+    next = { ...state, assurancePrestations: [...manual, ...complements], invoices: state.invoices.map(invoice => {
       const row = rows.find(p => p.sourceInvoiceId === invoice.id || sourceId(p.id) === invoice.id);
       if (!row || (row.commentaires || '') === (invoice.assuranceSuivi?.note || '')) return invoice;
       return { ...invoice, assuranceSuivi: { ...invoice.assuranceSuivi, note: row.commentaires || '' } };

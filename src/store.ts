@@ -1470,7 +1470,17 @@ export function sousSocietesConnues(state: AppState, companyName?: string): stri
       subCompany: p.sousSociete,
     })),
   ];
-  return subCompaniesOf(rows, companyName);
+  const usage = subCompaniesOf(rows, companyName);
+  // Sous-sociétés déclarées sur la fiche de la société cible (suivi assurance) :
+  // les suggestions restent STRICTEMENT limitées à la société sélectionnée.
+  const cle = (companyName || '').trim().toUpperCase();
+  if (!cle) return usage;
+  const fiche = (state.assuranceSocietes || []).find(s =>
+    (s.nom || '').trim().toUpperCase() === cle
+    || nomSociete.some(c => c.id === s.id && (c.name || '').trim().toUpperCase() === cle));
+  const declarees = (fiche?.sousSocietes || []).map(s => (s || '').trim()).filter(Boolean);
+  const vues = new Set(usage.map(u => u.trim().toUpperCase()));
+  return [...usage, ...declarees.filter(d => !vues.has(d.toUpperCase()))];
 }
 
 /** Garantit que chaque société a un type ('payeur' par défaut) et un taux de couverture. */

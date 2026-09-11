@@ -29,7 +29,7 @@ const roleLabels: Record<string, string> = {
   pharmacy: 'Pharmacie',
   magasinier: 'Magasinier',
   laboratory: 'Laboratoire',
-  billing: 'Responsable assurance',
+  billing: 'Responsable Facturation',
   admin: 'Administrateur',
 };
 

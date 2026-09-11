@@ -1,10 +1,10 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Patient, VitalSigns, ClientType, PatientStatus } from '../types';
 import type { AppState } from '../store';
 import { normalizeDossierNumber, isDossierTaken, calculateAge, addAuditLog, addNotification, addJourneyEvent, companyIsBlocked, companyOptions, sousSocietesConnues } from '../store';
 import { SearchableSelect, optionsFromValues } from './SearchableSelect';
-import { SuggestionInput } from './SuggestionInput';
+import { SuggestionInput, classerSuggestions, motsIdentite } from './SuggestionInput';
 import { printQueueTicket } from '../utils/printTicket';
 import {
   Search, Plus, Edit, Trash2, UserX, Activity,
@@ -216,12 +216,25 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
   const waitingCount = state.patients.filter((p) => p.status === 'waiting_consultation').length;
   const todayCount = state.patients.filter((p) => new Date(p.registeredAt).toDateString() === new Date().toDateString()).length;
   // Saisie assistée : valeurs déjà connues dans la base (dossiers, noms, prénoms, adresses).
-  const optionsDossiers = useMemo(() => optionsFromValues(state.patients.map(p => p.dossier)), [state.patients]);
-  const optionsNoms = useMemo(() => optionsFromValues(state.patients.map(p => p.lastName)), [state.patients]);
-  const optionsPrenoms = useMemo(() => optionsFromValues(state.patients.map(p => p.firstName)), [state.patients]);
-  const optionsAdresses = useMemo(() => optionsFromValues(state.patients.map(p => p.address)), [state.patients]);
-  const optionsSousSocietes = useMemo(() => optionsFromValues(sousSocietesConnues(state, patientForm.company)), [state, patientForm.company]);
-  const optionsSousSocietesVitals = useMemo(() => optionsFromValues(sousSocietesConnues(state, vitalsCompany)), [state, vitalsCompany]);
+  const optionsDossiers = useMemo(() => classerSuggestions(state.patients.map(p => p.dossier)), [state.patients]);
+  // Assistance identité : chaque mot du Nom / Prénom est complété à partir des
+  // mots connus de la base (noms ET prénoms confondus). Appariement : les mots
+  // déjà portés avec ce qui est saisi passent en tête (RAVELO → AINA, NAINA → RAZAFY).
+  const apparieIdentite = useCallback((mot: string) => {
+    const M = mot.trim().toUpperCase();
+    const saisis = new Set([...motsIdentite(patientForm.lastName), ...motsIdentite(patientForm.firstName)]);
+    if (!M || saisis.size === 0) return false;
+    return state.patients.some(p => {
+      const identite = [...motsIdentite(p.lastName), ...motsIdentite(p.firstName)];
+      return identite.includes(M) && identite.some(m => m !== M && saisis.has(m));
+    });
+  }, [state.patients, patientForm.lastName, patientForm.firstName]);
+  const suggestionsIdentite = useMemo(() => classerSuggestions(
+    state.patients.flatMap(p => [p.lastName, p.firstName]), apparieIdentite,
+  ), [state.patients, apparieIdentite]);
+  const optionsAdresses = useMemo(() => classerSuggestions(state.patients.map(p => p.address)), [state.patients]);
+  const optionsSousSocietes = useMemo(() => classerSuggestions(sousSocietesConnues(state, patientForm.company)), [state, patientForm.company]);
+  const optionsSousSocietesVitals = useMemo(() => classerSuggestions(sousSocietesConnues(state, vitalsCompany)), [state, vitalsCompany]);
 
   const blacklistedPatients = state.patients.filter((p) => p.blacklisted);
 
@@ -678,7 +691,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                     value={patientForm.dossier}
                     onChange={(v) => setPatientForm({ ...patientForm, dossier: v.toUpperCase() })}
                     onBlur={() => setPatientTouched((t) => ({ ...t, dossier: true }))}
-                    suggestions={optionsDossiers.map((o) => o.value)}
+                    suggestions={optionsDossiers}
                     placeholder="SAISIE MANUELLE — MAJUSCULES"
                     ariaLabel="Numéro de dossier"
                     className={`w-full h-9 bg-surface border rounded px-2 uppercase font-mono font-bold tracking-wide focus:outline-none ${ (patientTouched.dossier || patientSubmitted) && patientErrors.dossier ? 'border-rose-500 bg-rose-50/50 dark:bg-rose-500/4 focus:border-rose-600' : 'border-line-control focus:border-accent'}`}
@@ -702,7 +715,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                     value={patientForm.lastName}
                     onChange={(v) => setPatientForm({ ...patientForm, lastName: v })}
                     onBlur={() => setPatientTouched((t) => ({ ...t, lastName: true }))}
-                    suggestions={optionsNoms.map((o) => o.value)}
+                    suggestions={suggestionsIdentite}
                     placeholder="Nom de famille"
                     ariaLabel="Nom"
                     className={`w-full h-9 bg-surface border rounded px-2 uppercase font-medium focus:outline-none ${ (patientTouched.lastName || patientSubmitted) && patientErrors.lastName ? 'border-rose-500 bg-rose-50/50 dark:bg-rose-500/4 focus:border-rose-600' : 'border-line-control focus:border-accent'}`}
@@ -718,7 +731,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                     value={patientForm.firstName}
                     onChange={(v) => setPatientForm({ ...patientForm, firstName: v })}
                     onBlur={() => setPatientTouched((t) => ({ ...t, firstName: true }))}
-                    suggestions={optionsPrenoms.map((o) => o.value)}
+                    suggestions={suggestionsIdentite}
                     placeholder="Prénom"
                     ariaLabel="Prénom"
                     className={`w-full h-9 bg-surface border rounded px-2 uppercase font-medium focus:outline-none ${ (patientTouched.firstName || patientSubmitted) && patientErrors.firstName ? 'border-rose-500 bg-rose-50/50 dark:bg-rose-500/4 focus:border-rose-600' : 'border-line-control focus:border-accent'}`}
@@ -770,7 +783,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                     value={patientForm.address}
                     onChange={(v) => setPatientForm({ ...patientForm, address: v })}
                     onBlur={() => setPatientTouched((t) => ({ ...t, address: true }))}
-                    suggestions={optionsAdresses.map((o) => o.value)}
+                    suggestions={optionsAdresses}
                     placeholder="Adresse du patient"
                     ariaLabel="Adresse"
                     className={`w-full h-9 bg-surface border rounded px-2 uppercase focus:outline-none ${ (patientTouched.address || patientSubmitted) && patientErrors.address ? 'border-rose-500 bg-rose-50/50 dark:bg-rose-500/4 focus:border-rose-600' : 'border-line-control focus:border-accent'}`}
@@ -819,13 +832,14 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                 {patientForm.clientType === 'societe' && (
                   <div className="flex flex-col">
                     <label className="block font-bold text-ink h-4 leading-4 mb-1">Sous-société / Service</label>
-                    <SearchableSelect
+                    <SuggestionInput
+                      mode="contient"
                       value={patientForm.subCompany}
                       onChange={(v) => setPatientForm({ ...patientForm, subCompany: v })}
-                      options={optionsSousSocietes}
-                      placeholder={"— Sous-société de " + (patientForm.company || "la société") + " —"}
+                      suggestions={optionsSousSocietes}
+                      placeholder={"Sous-société / Service" + (patientForm.company ? " de " + patientForm.company : "") + " — saisie libre"}
                       ariaLabel="Sous-société"
-                      inputClassName="w-full h-9 bg-surface border border-line-control rounded px-2 uppercase focus:outline-none focus:border-accent"
+                      className="w-full h-9 bg-surface border border-line-control rounded px-2 uppercase focus:outline-none focus:border-accent"
                     />
                   </div>
                 )}
@@ -1058,7 +1072,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                     )}
                   </div>}
                 </div>
-                {vitalsClientType === 'societe' && <div className="mt-3"><label className="block font-bold text-ink text-xs mb-1">Sous-société (libre)</label><SearchableSelect value={vitalsSubCompany} onChange={setVitalsSubCompany} options={optionsSousSocietesVitals} placeholder={"— Sous-société de " + (vitalsCompany || "la société") + " —"} ariaLabel="Sous-société" inputClassName="w-full bg-surface border border-amber-400 rounded px-2 py-1.5 uppercase focus:outline-none focus:border-amber-500" /></div>}
+                {vitalsClientType === 'societe' && <div className="mt-3"><label className="block font-bold text-ink text-xs mb-1">Sous-société (libre)</label><SuggestionInput mode="contient" value={vitalsSubCompany} onChange={setVitalsSubCompany} suggestions={optionsSousSocietesVitals} placeholder={"Sous-société" + (vitalsCompany ? " de " + vitalsCompany : "") + " — saisie libre"} ariaLabel="Sous-société" className="w-full bg-surface border border-amber-400 rounded px-2 py-1.5 uppercase focus:outline-none focus:border-amber-500" /></div>}
                 <p className="text-[10px] text-ink-muted mt-2 italic">Remise saisie par le médecin</p>
               </div>
 

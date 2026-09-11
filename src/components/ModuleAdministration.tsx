@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
-import type { UserRole, TicketSettings, Company, CompanySettlementMode, User } from '../types';
-import { formatAr, addAuditLog, ensureEtablissements, migrateLegacyToVentes, createInitialState, familyManagesStock, prepareLoadedState, companyTypeLabel, companyTypeBadge, companyIsBlocked, companyBlockLabel, companyBlockBadge } from '../store';
+import type { UserRole, TicketSettings, User } from '../types';
+import { formatAr, addAuditLog, ensureEtablissements, migrateLegacyToVentes, createInitialState, familyManagesStock, prepareLoadedState } from '../store';
 import { IS_WAMP_BUILD } from '../wamp';
 import { credentialAutofillOptOut, passwordInputOptOut } from '../utils/credentialAutofill';
 import type { AppState } from '../store';
@@ -11,9 +11,6 @@ import ModulePharmacie from './ModulePharmacie';
 import ModuleMagasinier from './ModuleMagasinier';
 import ModuleLaboratoire from './ModuleLaboratoire';
 import ModuleSuiviAssurance from '../modules/assurance/ModuleSuiviAssurance';
-import { SocietesView } from '../modules/assurance/components/SocietesView';
-import type { Societe } from '../modules/assurance/types';
-import { sharedPersonnes, sharedFamilles, sharedSocietes, sharedTransactions, writeSharedTable } from '../modules/assurance/sharedData';
 import ModuleDossierMedical from './ModuleDossierMedical';
 import TableEtablissements from './TableEtablissements';
 import EnTeteFactureEditor from './EnTeteFactureEditor';
@@ -24,7 +21,7 @@ import {
   CreditCard, AlertCircle, Search, RefreshCw, Copy, Activity,
   Key, Edit2, Hospital, Stethoscope, Pill, Package, FlaskConical,
   Menu, LayoutDashboard, AlertTriangle, ArrowRight, HardDrive, FileSpreadsheet, Lock, Unlock, CheckCircle2,
-  Landmark, Ban, ShieldCheck, Undo2
+  Landmark
 } from 'lucide-react';
 import { Select } from './Select';
 
@@ -33,7 +30,7 @@ interface Props {
   setState: React.Dispatch<React.SetStateAction<AppState>>;
 }
 
-type Tab = 'dashboard' | 'etablissements' | 'tickets' | 'invoiceHeader' | 'users' | 'companies' | 'audit' | 'backup' | 'system';
+type Tab = 'dashboard' | 'etablissements' | 'tickets' | 'invoiceHeader' | 'users' | 'audit' | 'backup' | 'system';
 type AppModuleKey = 'reception' | 'doctor' | 'medicalRecords' | 'cashier' | 'pharmacy' | 'magasinier' | 'laboratory' | 'billing';
 
 const roleLabels: Record<string, string> = {
@@ -42,7 +39,7 @@ const roleLabels: Record<string, string> = {
   pharmacy: 'Pharmacie',
   magasinier: 'Magasinier',
   laboratory: 'Laboratoire',
-  billing: 'Responsable assurance',
+  billing: 'Responsable Facturation',
   admin: 'Admin'
 };
 
@@ -54,7 +51,6 @@ const TABS: { key: Tab; label: string; icon: any; desc: string }[] = [
   { key: 'tickets', label: 'Tickets POS & Format', icon: Printer, desc: 'Format 58/80mm, options & aperçu direct' },
   { key: 'invoiceHeader', label: 'En-tête Facture', icon: FileText, desc: 'En-tête des factures A4/A5 (texte & images) — hors tickets POS' },
   { key: 'users', label: 'Personnel & Accès', icon: Users, desc: 'Comptes utilisateurs, rôles & sécurisation' },
-  { key: 'companies', label: 'Sociétés & Conventions', icon: CreditCard, desc: 'Entreprises & modes de règlement' },
   { key: 'audit', label: 'Journal d\'audit', icon: Shield, desc: 'Traçabilité complète des événements' },
   { key: 'backup', label: 'Sauvegarde & Restauration', icon: Database, desc: 'Export JSON, réinitialisation & maintenance' },
   { key: 'system', label: 'Diagnostics Système', icon: HardDrive, desc: 'État du stockage & statistiques tables' },
@@ -68,7 +64,7 @@ const APP_MODULES: { key: AppModuleKey; label: string; icon: any; desc: string }
   { key: 'pharmacy', label: 'Pharmacie & Dispensation', icon: Pill, desc: 'Vente directe & délivrance des ordonnances' },
   { key: 'magasinier', label: 'Gestion des Stocks', icon: Package, desc: 'Stock central, entrées, achats & transferts' },
   { key: 'laboratory', label: 'Analyses Laboratoire', icon: FlaskConical, desc: 'Prélèvements, paillasse & compte-rendu' },
-  { key: 'billing', label: 'Suivi assurance', icon: Building2, desc: 'Prestations, règlements, rejets et rapports' },
+  { key: 'billing', label: 'Facturation', icon: Building2, desc: 'Factures, prescriptions, règlements et rapports' },
 ];
 
 interface ConfirmModalState {
@@ -124,28 +120,8 @@ export default function ModuleAdministration({ state, setState }: Props) {
   const [searchUser, setSearchUser] = useState('');
   const [userRoleFilter, setUserRoleFilter] = useState<string>('all');
 
-  const [searchCompany, setSearchCompany] = useState('');
-  const [companyTypeFilter, setCompanyTypeFilter] = useState<string>('all');
-  const [companySettlementFilter, setCompanySettlementFilter] = useState<string>('all');
-
   const [searchAudit, setSearchAudit] = useState('');
   const [auditCategoryFilter, setAuditCategoryFilter] = useState<string>('all');
-
-  // Sociétés / Clients conventionnés
-  const [addCompany, setAddCompany] = useState(false);
-  const [newCompany, setNewCompany] = useState({ name: '', settlementMode: 'monthly_global' as CompanySettlementMode, type: 'payeur' as 'payeur' | 'assurance', tauxCouverture: '' });
-  const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null);
-  const [editCompany, setEditCompany] = useState<{ name: string; settlementMode: CompanySettlementMode; type: 'payeur' | 'assurance'; tauxCouverture: string }>({ name: '', settlementMode: 'monthly_global', type: 'payeur', tauxCouverture: '' });
-
-  // Sociétés : « Fiches » = gestion complète comme dans le suivi assurance,
-  // « Tableau » = vue synthétique (nom, type, sous-mode de règlement).
-  const [companyView, setCompanyView] = useState<'fiches' | 'tableau'>('fiches');
-  // Liste noire des sociétés (impayé, suspension temporaire…)
-  const [showCompanyBlacklist, setShowCompanyBlacklist] = useState(false);
-  const [companyToBlock, setCompanyToBlock] = useState<Company | null>(null);
-  const [companyBlockReason, setCompanyBlockReason] = useState('');
-  const [companyBlockUntil, setCompanyBlockUntil] = useState('');
-  const [companyToRestore, setCompanyToRestore] = useState<Company | null>(null);
 
   // Aperçu Ticket
   const [showPreview, setShowPreview] = useState(false);
@@ -317,200 +293,6 @@ export default function ModuleAdministration({ state, setState }: Props) {
     });
     showToast(`✅ Mot de passe mis à jour pour ${user.id}`);
     setResetPasswordModal((rpm) => ({ ...rpm, isOpen: false }));
-  };
-
-  // ============ COMPANIES MANAGEMENT ============
-  const saveCompany = () => {
-    const name = newCompany.name.trim().toUpperCase();
-    if (!name) { showToast('⚠️ Veuillez saisir le nom de la société'); return; }
-    if (state.companies.some(c => c.name === name)) { showToast('⚠️ Cette société existe déjà'); return; }
-    const isAssurance = newCompany.type === 'assurance';
-    const taux = Number(newCompany.tauxCouverture);
-    const company: Company = {
-      id: `comp-${Date.now()}`,
-      name,
-      paymentMode: 'Crédit',
-      settlementMode: newCompany.settlementMode,
-      type: newCompany.type,
-      tauxCouverture: isAssurance && !isNaN(taux) && taux > 0 ? taux : undefined,
-      createdAt: new Date().toISOString(),
-    };
-    setState((prev) => {
-      const next = { ...prev, companies: [...prev.companies, company] };
-      addAuditLog(next, 'AJOUT_SOCIETE_PARTENAIRE', `${name} (${newCompany.type === 'assurance' ? 'Assurance' : 'Payeur global'}${company.tauxCouverture ? ` — ${company.tauxCouverture}%` : ''})`);
-      return next;
-    });
-    setNewCompany({ name: '', settlementMode: 'monthly_global', type: 'payeur', tauxCouverture: '' });
-    setAddCompany(false);
-    showToast(isAssurance ? 'Assurance enregistrée — référentiel Réception mis à jour' : 'Payeur global enregistré');
-  };
-
-  const startEditCompany = (c: Company) => {
-    setEditingCompanyId(c.id);
-    setEditCompany({
-      name: c.name,
-      settlementMode: c.settlementMode,
-      type: (c.type === 'assurance' ? 'assurance' : 'payeur'),
-      tauxCouverture: c.tauxCouverture ? String(c.tauxCouverture) : '',
-    });
-  };
-
-  const saveEditCompany = () => {
-    if (!editingCompanyId) return;
-    const name = editCompany.name.trim().toUpperCase();
-    if (!name) { showToast('⚠️ Nom invalide'); return; }
-    if (state.companies.some(c => c.name === name && c.id !== editingCompanyId)) { showToast('⚠️ Une autre société porte déjà ce nom'); return; }
-    const isAssurance = editCompany.type === 'assurance';
-    const taux = Number(editCompany.tauxCouverture);
-    setState((prev) => {
-      const next = {
-        ...prev,
-        companies: prev.companies.map(c => c.id === editingCompanyId ? {
-          ...c,
-          name,
-          settlementMode: editCompany.settlementMode,
-          type: editCompany.type,
-          tauxCouverture: isAssurance && !isNaN(taux) && taux > 0 ? taux : undefined,
-        } : c),
-      };
-      addAuditLog(next, 'MODIFICATION_SOCIETE_PARTENAIRE', `${name} — ${editCompany.type === 'assurance' ? 'Assurance' : 'Payeur global'}${isAssurance && !isNaN(taux) && taux > 0 ? ` — ${taux}%` : ''}`);
-      return next;
-    });
-    setEditingCompanyId(null);
-    showToast('Société partenaire mise à jour');
-  };
-
-  const deleteCompany = (id: string, name: string) => {
-    setConfirmModal({
-      isOpen: true,
-      title: 'Supprimer la société partenaire ?',
-      message: `Confirmez-vous la suppression de la société "${name}" ? Les factures existantes associées ne seront pas effacées.`,
-      confirmText: 'Supprimer la société',
-      variant: 'danger',
-      onConfirm: () => {
-        setState((prev) => ({ ...prev, companies: prev.companies.filter((c) => c.id !== id) }));
-        showToast('Société supprimée');
-        setConfirmModal((cm) => ({ ...cm, isOpen: false }));
-      },
-    });
-  };
-
-  // ============ FICHES SOCIÉTÉS (base commune, comme le suivi assurance) ============
-  const assuranceSocietes = sharedSocietes(state);
-  const assurancePersonnes = sharedPersonnes(state);
-  const assuranceFamilles = sharedFamilles(state);
-  const assurancePrestations = sharedTransactions(state).prestations;
-
-  /** Applique une modification de société dans la base commune (validation avant écriture). */
-  const applySocietes = (rows: Societe[], logAction: string, logDetails: string, message: string) => {
-    try {
-      writeSharedTable(state, 'assuranceSocietes', rows); // valide avant toute écriture
-      setState((prev) => {
-        const next = { ...writeSharedTable(prev, 'assuranceSocietes', rows), auditLogs: [...prev.auditLogs] };
-        addAuditLog(next, logAction, logDetails);
-        return next;
-      });
-      showToast(message);
-    } catch (err) {
-      showToast(`⚠️ ${(err as Error).message}`);
-    }
-  };
-
-  const handleSaveSocieteFiche = (societe: Societe) => {
-    const exists = assuranceSocietes.some((c) => c.id === societe.id);
-    const rows = exists
-      ? assuranceSocietes.map((c) => (c.id === societe.id ? societe : c))
-      : [...assuranceSocietes, societe];
-    applySocietes(rows, exists ? 'MODIFICATION_SOCIETE_PARTENAIRE' : 'AJOUT_SOCIETE_PARTENAIRE',
-      `${societe.nom} (${societe.code})`, exists ? `✅ ${societe.nom} mise à jour` : `✅ ${societe.nom} enregistrée`);
-  };
-
-  const handleDeleteSocieteFiche = (id: string) => {
-    const societe = assuranceSocietes.find((c) => c.id === id);
-    if (!societe) return;
-    applySocietes(assuranceSocietes.filter((c) => c.id !== id), 'SUPPRESSION_SOCIETE_PARTENAIRE',
-      `${societe.nom} (${societe.code})`, `🗑️ ${societe.nom} supprimée`);
-  };
-
-  /** Regroupement des sous-sociétés : patients, ventes et prestations assurance. */
-  const handleMergeSubSocietes = (societeId: string, sourceNames: string[], targetName: string) => {
-    const cleanTarget = targetName.trim();
-    if (!cleanTarget || !sourceNames.length) return;
-    const sources = new Set(sourceNames.map((n) => n.trim().toLowerCase()));
-    const societe = assuranceSocietes.find((c) => c.id === societeId);
-    if (!societe) return;
-    try {
-      setState((prev) => {
-        const next = { ...prev, auditLogs: [...prev.auditLogs] };
-        const societes = sharedSocietes(next);
-        const societeIdParNom = new Map(societes.map((c) => [c.nom.trim().toUpperCase(), c.id]));
-        const concerne = (nom?: string, id?: string) =>
-          (id && id === societeId) || (!!nom && societeIdParNom.get(nom.trim().toUpperCase()) === societeId);
-        next.patients = prev.patients.map((p) =>
-          concerne(p.company, p.company ? societeIdParNom.get(p.company.trim().toUpperCase()) : undefined) &&
-          p.subCompany && sources.has(p.subCompany.trim().toLowerCase())
-            ? { ...p, subCompany: cleanTarget } : p);
-        next.ventes = prev.ventes.map((v) =>
-          concerne(v.company, v.company ? societeIdParNom.get(v.company.trim().toUpperCase()) : undefined) &&
-          v.subCompany && sources.has(v.subCompany.trim().toLowerCase())
-            ? { ...v, subCompany: cleanTarget } : v);
-        next.assurancePrestations = (prev.assurancePrestations || []).map((pr) =>
-          concerne(pr.societeNom, pr.societeId) && pr.sousSociete && sources.has(pr.sousSociete.trim().toLowerCase())
-            ? { ...pr, sousSociete: cleanTarget } : pr);
-        addAuditLog(next, 'REGROUPEMENT_SOUS_SOCIETE', `${societe.nom} : ${sourceNames.join(', ')} → ${cleanTarget}`);
-        return next;
-      });
-      showToast(`✅ Sous-sociétés regroupées sous « ${cleanTarget} »`);
-    } catch (err) {
-      showToast(`⚠️ ${(err as Error).message}`);
-    }
-  };
-
-  // ============ LISTE NOIRE DES SOCIÉTÉS ============
-  const startBlockCompany = (c: Company) => {
-    setCompanyToBlock(c);
-    setCompanyBlockReason('');
-    setCompanyBlockUntil('');
-  };
-
-  const saveCompanyBlacklist = () => {
-    if (!companyToBlock || !companyBlockReason.trim()) return;
-    const target = companyToBlock;
-    const motif = companyBlockReason.trim();
-    const until = companyBlockUntil.trim() || undefined;
-    setState((prev) => {
-      const next = {
-        ...prev,
-        companies: prev.companies.map((c) => c.id === target.id ? {
-          ...c,
-          blacklisted: true,
-          blacklistReason: motif,
-          blacklistDate: new Date().toISOString(),
-          blacklistUntil: until,
-        } : c),
-      };
-      addAuditLog(next, 'SOCIETE_LISTE_NOIRE', `${target.name} — Motif : ${motif}${until ? ` (jusqu'au ${until})` : ''}`);
-      return next;
-    });
-    showToast(`🚫 ${target.name} placée en liste noire — consultations bloquées`);
-    setCompanyToBlock(null);
-  };
-
-  const confirmRestoreCompany = () => {
-    if (!companyToRestore) return;
-    const target = companyToRestore;
-    setState((prev) => {
-      const next = {
-        ...prev,
-        companies: prev.companies.map((c) => c.id === target.id ? {
-          ...c, blacklisted: false, blacklistReason: undefined, blacklistDate: undefined, blacklistUntil: undefined,
-        } : c),
-      };
-      addAuditLog(next, 'SOCIETE_RETABLE', `${target.name} rétablie dans la liste normale`);
-      return next;
-    });
-    showToast(`✅ ${target.name} rétablie — prise en charge à nouveau possible`);
-    setCompanyToRestore(null);
   };
 
   // ============ BACKUP & RESTORE ============
@@ -720,16 +502,6 @@ export default function ModuleAdministration({ state, setState }: Props) {
       roleLabels[u.role]?.toLowerCase().includes(searchUser.toLowerCase());
     const matchesRole = userRoleFilter === 'all' || u.role === userRoleFilter;
     return matchesSearch && matchesRole;
-  });
-
-  const blockedCompanies = state.companies.filter((c) => companyIsBlocked(c));
-
-  const filteredCompanies = state.companies.filter((c) => {
-    const matchesSearch = c.name.toLowerCase().includes(searchCompany.toLowerCase());
-    const matchesType = companyTypeFilter === 'all'
-      || (companyTypeFilter === 'bloquees' ? companyIsBlocked(c) : (c.type || 'payeur') === companyTypeFilter);
-    const matchesSettlement = companySettlementFilter === 'all' || c.settlementMode === companySettlementFilter;
-    return matchesSearch && matchesType && matchesSettlement;
   });
 
   const filteredAuditLogs = state.auditLogs.filter((log) => {
@@ -1258,18 +1030,11 @@ export default function ModuleAdministration({ state, setState }: Props) {
                             <span>Nouveau Compte</span>
                           </button>
                           <button
-                            onClick={() => { selectAdminTab('companies'); setAddCompany(true); }}
-                            className="p-3 bg-surface-muted hover:bg-indigo-50 dark:hover:bg-indigo-500/8 hover:border-indigo-300 dark:hover:border-indigo-500/40 border rounded-xl text-xs font-semibold text-ink hover:text-indigo-800 dark:hover:text-indigo-300 transition flex flex-col items-center gap-2 cursor-pointer text-center"
-                          >
-                            <Building2 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                            <span>Société Partenaire</span>
-                          </button>
-                          <button
                             onClick={() => selectAppModule('billing')}
                             className="p-3 bg-surface-muted hover:bg-accent-soft border rounded-xl text-xs font-semibold text-ink transition flex flex-col items-center gap-2 cursor-pointer text-center"
                           >
                             <Shield className="w-5 h-5 text-accent" />
-                            <span>Suivi assurance</span>
+                            <span>Facturation</span>
                           </button>
                           <button
                             onClick={exportBackup}
@@ -1596,543 +1361,6 @@ export default function ModuleAdministration({ state, setState }: Props) {
                           </tbody>
                         </table>
                       </div>
-                    </div>
-                  )}
-
-                  {/* ===== TAB 5: COMPANIES & CONVENTIONS ===== */}
-                  {tab === 'companies' && (
-                    <div className="space-y-5">
-                      <div className="flex justify-between items-center flex-wrap gap-3">
-                        <div>
-                          <h3 className="font-bold text-ink-strong text-xl flex items-center gap-2.5">
-                            <Building2 className="w-6 h-6 text-indigo-600 dark:text-indigo-400" /> Sociétés Partenaires & Clients Conventionnés
-                          </h3>
-                          <p className="text-xs text-ink-muted mt-0.5">Les partenaires sont répartis en deux types — <strong>Payeur global</strong> (réglé via relevé global mensuel) et <strong>Assurance</strong> (suivi par facture, remboursement &amp; relances).</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="px-2.5 py-1 rounded-full bg-indigo-100 dark:bg-indigo-500/15 text-indigo-800 dark:text-indigo-300 text-[11px] font-bold">{state.companies.filter(c => companyTypeLabel(c) === 'Payeur global').length} payeur(s)</span>
-                          <span className="px-2.5 py-1 rounded-full bg-sky-100 dark:bg-sky-500/15 text-sky-800 dark:text-sky-300 text-[11px] font-bold">{state.companies.filter(c => companyTypeLabel(c) === 'Assurance').length} assurance(s)</span>
-                          <div className="flex items-center p-0.5 bg-surface-hover rounded-xl">
-                            <button
-                              onClick={() => setCompanyView('fiches')}
-                              className={`px-3 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer ${
-                                companyView === 'fiches' ? 'bg-surface text-indigo-700 dark:text-indigo-300 shadow-xs' : 'text-ink-muted hover:text-ink'
-                              }`}
-                            >
-                              🏢 Fiches sociétés
-                            </button>
-                            <button
-                              onClick={() => setCompanyView('tableau')}
-                              className={`px-3 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer ${
-                                companyView === 'tableau' ? 'bg-surface text-indigo-700 dark:text-indigo-300 shadow-xs' : 'text-ink-muted hover:text-ink'
-                              }`}
-                            >
-                              📋 Tableau
-                            </button>
-                          </div>
-                          <button
-                            onClick={() => setShowCompanyBlacklist(true)}
-                            className="px-3.5 py-2.5 bg-slate-700 text-white rounded-xl hover:bg-slate-800 flex items-center gap-2 cursor-pointer text-xs font-bold shadow-md"
-                            title="Sociétés bloquées : consultations et prises en charge suspendues"
-                          >
-                            <Ban className="w-4 h-4" /> Liste noire
-                            {blockedCompanies.length > 0 && (
-                              <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] leading-none">{blockedCompanies.length}</span>
-                            )}
-                          </button>
-                          <button
-                            onClick={() => { setCompanyView('tableau'); setAddCompany(true); }}
-                            className="px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 flex items-center gap-2 cursor-pointer text-xs font-bold shadow-md"
-                          >
-                            <Plus className="w-4 h-4" /> Nouvelle société partenaire
-                          </button>
-                        </div>
-                      </div>
-
-                      {companyView === 'fiches' && (
-                        <div className="border border-line rounded-2xl p-4 bg-surface shadow-xs">
-                          <SocietesView
-                            societes={assuranceSocietes}
-                            prestations={assurancePrestations}
-                            personnes={assurancePersonnes}
-                            familles={assuranceFamilles}
-                            onSaveSociete={handleSaveSocieteFiche}
-                            onDeleteSociete={handleDeleteSocieteFiche}
-                            onMergeSubSocietes={handleMergeSubSocietes}
-                          />
-                        </div>
-                      )}
-
-                      {/* Add company form */}
-                      {companyView === 'tableau' && addCompany && (
-                        <div className="p-4 bg-indigo-50/70 dark:bg-indigo-500/6 border border-indigo-200 dark:border-indigo-500/25 rounded-2xl space-y-3 animate-in fade-in">
-                          <h4 className="font-bold text-sm text-indigo-950 dark:text-indigo-300">Enregistrer une entreprise partenaire</h4>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <input
-                              type="text"
-                              value={newCompany.name}
-                              onChange={(e) => setNewCompany({ ...newCompany, name: e.target.value })}
-                              className="px-3.5 py-2 border rounded-xl text-sm uppercase bg-surface outline-none"
-                              placeholder="Nom de la société (ex: ORANGE MADAGASCAR, JIRAMA)"
-                            />
-                            <div className="grid grid-cols-2 gap-3">
-                              <div>
-                                <label className="text-[10px] font-bold text-ink-muted uppercase tracking-wider mb-1 block">Type de partenaire</label>
-                                <Select
-                                  value={newCompany.type}
-                                  onChange={(e) => setNewCompany({ ...newCompany, type: e.target.value as 'payeur' | 'assurance' })}
-                                  className="w-full px-3 py-2 border rounded-xl text-sm bg-surface outline-none cursor-pointer"
-                                >
-                                  <option value="payeur">Payeur global</option>
-                                  <option value="assurance">Assurance</option>
-                                </Select>
-                              </div>
-                              <div>
-                                <label className="text-[10px] font-bold text-ink-muted uppercase tracking-wider mb-1 block">Sous-mode de règlement</label>
-                                <Select
-                                  value={newCompany.settlementMode}
-                                  onChange={(e) => setNewCompany({ ...newCompany, settlementMode: e.target.value as CompanySettlementMode })}
-                                  className="w-full px-3 py-2 border rounded-xl text-sm bg-surface outline-none cursor-pointer"
-                                >
-                                  <option value="monthly_global">Règlement global mensuel</option>
-                                  <option value="per_invoice">Règlement individuel par facture</option>
-                                </Select>
-                              </div>
-                            </div>
-                          </div>
-                          {newCompany.type === 'assurance' && (
-                            <div className="flex items-center gap-3 bg-sky-50/60 dark:bg-sky-500/8 border border-sky-200 dark:border-sky-500/20 rounded-xl px-3 py-2.5">
-                              <span className="text-xs text-sky-900 dark:text-sky-300 font-semibold">Taux de couverture pris en charge :</span>
-                              <input
-                                type="number"
-                                min={0}
-                                max={100}
-                                value={newCompany.tauxCouverture}
-                                onChange={(e) => setNewCompany({ ...newCompany, tauxCouverture: e.target.value })}
-                                className="w-24 px-3 py-1.5 border rounded-lg text-sm outline-none text-right"
-                                placeholder="100"
-                              />
-                              <span className="text-xs font-bold text-sky-800 dark:text-sky-300">%</span>
-                              <span className="text-[10px] text-sky-600 dark:text-sky-400 italic">% remboursé à l'assuré (facture payée par l'assurance).</span>
-                            </div>
-                          )}
-                          <div className="flex justify-end gap-2">
-                            <button
-                              onClick={() => { setAddCompany(false); setNewCompany({ name: '', settlementMode: 'monthly_global', type: 'payeur', tauxCouverture: '' }); }}
-                              className="px-3.5 py-2 bg-surface-active text-ink rounded-xl cursor-pointer font-semibold text-xs"
-                            >
-                              Annuler
-                            </button>
-                            <button
-                              onClick={saveCompany}
-                              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl cursor-pointer font-bold text-xs flex items-center gap-1.5 shadow-sm"
-                            >
-                              <Check className="w-4 h-4" /> Enregistrer la société
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-{companyView === 'tableau' && (<>
-                      {/* Filter Bar */}
-                      <div className="bg-surface p-3.5 border border-line rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-xs">
-                        <div className="relative flex-1 min-w-[240px] max-w-md">
-                          <Search className="absolute left-3.5 top-2.5 w-4 h-4 text-ink-faint" />
-                          <input
-                            type="text"
-                            value={searchCompany}
-                            onChange={(e) => setSearchCompany(e.target.value)}
-                            className="w-full pl-9 pr-3.5 py-1.5 border rounded-xl text-xs outline-none"
-                            placeholder="Filtrer les sociétés par nom..."
-                          />
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-xs font-semibold text-ink-muted">Type :</span>
-                          <button
-                            onClick={() => setCompanyTypeFilter('all')}
-                            className={`px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer ${
-                              companyTypeFilter === 'all' ? 'bg-slate-800 text-white' : 'bg-surface-hover text-ink-secondary'
-                            }`}
-                          >
-                            Tous ({state.companies.length})
-                          </button>
-                          <button
-                            onClick={() => setCompanyTypeFilter('payeur')}
-                            className={`px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer ${
-                              companyTypeFilter === 'payeur' ? 'bg-indigo-600 text-white' : 'bg-surface-hover text-ink-secondary'
-                            }`}
-                          >
-                            💳 Payeur global
-                          </button>
-                          <button
-                            onClick={() => setCompanyTypeFilter('assurance')}
-                            className={`px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer ${
-                              companyTypeFilter === 'assurance' ? 'bg-sky-600 text-white' : 'bg-surface-hover text-ink-secondary'
-                            }`}
-                          >
-                            🛡️ Assurance (suivi)
-                          </button>
-                          <button
-                            onClick={() => setCompanyTypeFilter('bloquees')}
-                            className={`px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer ${
-                              companyTypeFilter === 'bloquees' ? 'bg-red-600 text-white' : 'bg-surface-hover text-ink-secondary'
-                            }`}
-                          >
-                            🚫 Bloquées ({blockedCompanies.length})
-                          </button>
-                          <span className="text-xs font-semibold text-ink-muted ml-2">Sous-mode :</span>
-                          <button
-                            onClick={() => setCompanySettlementFilter('all')}
-                            className={`px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer ${
-                              companySettlementFilter === 'all' ? 'bg-slate-800 text-white' : 'bg-surface-hover text-ink-secondary'
-                            }`}
-                          >
-                            Tous
-                          </button>
-                          <button
-                            onClick={() => setCompanySettlementFilter('monthly_global')}
-                            className={`px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer ${
-                              companySettlementFilter === 'monthly_global' ? 'bg-indigo-600 text-white' : 'bg-surface-hover text-ink-secondary'
-                            }`}
-                          >
-                            📅 Mensuel global
-                          </button>
-                          <button
-                            onClick={() => setCompanySettlementFilter('per_invoice')}
-                            className={`px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer ${
-                              companySettlementFilter === 'per_invoice' ? 'bg-indigo-600 text-white' : 'bg-surface-hover text-ink-secondary'
-                            }`}
-                          >
-                            🧾 Par facture
-                          </button>
-                        </div>
-                      </div>
-
-</>
-)}                      {/* Companies Table */}
-                      <div className="border border-line rounded-2xl overflow-hidden bg-surface shadow-xs">
-                        <table className="w-full text-xs text-left">
-                          <thead className="bg-surface-muted border-b text-ink-secondary font-bold">
-                            <tr>
-                              <th className="p-3.5">Nom de la société partenaire</th>
-                              <th className="p-3.5 text-center">Type</th>
-                              <th className="p-3.5 text-center">Sous-mode de Règlement</th>
-                              <th className="p-3.5 text-right">Actions</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y border-line-soft">
-                            {filteredCompanies.map((c) => (
-                              <tr key={c.id} className="hover:bg-surface-muted/80 transition">
-                                {editingCompanyId === c.id ? (
-                                  <>
-                                    <td className="p-2.5">
-                                      <input
-                                        type="text"
-                                        value={editCompany.name}
-                                        onChange={e => setEditCompany({ ...editCompany, name: e.target.value })}
-                                        className="w-full px-3 py-1.5 border rounded-xl text-xs font-bold uppercase outline-none"
-                                      />
-                                    </td>
-                                    <td className="p-2.5">
-                                      <div className="space-y-1.5">
-                                        <Select
-                                          value={editCompany.type}
-                                          onChange={e => setEditCompany({ ...editCompany, type: e.target.value as 'payeur' | 'assurance' })}
-                                          className="w-full px-2 py-1.5 border rounded-xl text-xs bg-surface cursor-pointer"
-                                        >
-                                          <option value="payeur">Payeur global</option>
-                                          <option value="assurance">Assurance</option>
-                                        </Select>
-                                        {editCompany.type === 'assurance' && (
-                                          <div className="flex items-center gap-1 text-[11px]">
-                                            <span className="text-ink-muted">Couverture :</span>
-                                            <input
-                                              type="number"
-                                              min={0}
-                                              max={100}
-                                              value={editCompany.tauxCouverture}
-                                              onChange={e => setEditCompany({ ...editCompany, tauxCouverture: e.target.value })}
-                                              className="w-14 px-2 py-1 border rounded-lg text-xs outline-none text-right"
-                                            />
-                                            <span className="text-ink-muted">%</span>
-                                          </div>
-                                        )}
-                                      </div>
-                                    </td>
-                                    <td className="p-2.5">
-                                      <Select
-                                        value={editCompany.settlementMode}
-                                        onChange={e => setEditCompany({ ...editCompany, settlementMode: e.target.value as CompanySettlementMode })}
-                                        className="w-full px-2 py-1.5 border rounded-xl text-xs bg-surface cursor-pointer"
-                                      >
-                                        <option value="monthly_global">Règlement global mensuel</option>
-                                        <option value="per_invoice">Règlement individuel par facture</option>
-                                      </Select>
-                                    </td>
-                                    <td className="p-2.5 text-right space-x-1">
-                                      <button onClick={saveEditCompany} className="px-3 py-1 bg-emerald-600 text-white rounded-lg text-xs font-semibold cursor-pointer">
-                                        Enregistrer
-                                      </button>
-                                      <button onClick={() => setEditingCompanyId(null)} className="px-3 py-1 bg-surface-active text-ink rounded-lg text-xs font-semibold cursor-pointer">
-                                        Annuler
-                                      </button>
-                                    </td>
-                                  </>
-                                ) : (
-                                  <>
-                                    <td className="p-3.5 font-bold text-ink-strong">
-                                      <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="flex items-center gap-2">
-                                          <Building2 className={`w-4 h-4 ${c.type === 'assurance' ? 'text-sky-600 dark:text-sky-400' : 'text-indigo-600 dark:text-indigo-400'}`} /> {c.name}
-                                        </span>
-                                        {companyIsBlocked(c) && (
-                                          <span
-                                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${companyBlockBadge(c)}`}
-                                            title={c.blacklistReason || 'Société en liste noire'}
-                                          >
-                                            🚫 {companyBlockLabel(c)}
-                                          </span>
-                                        )}
-                                      </div>
-                                      {companyIsBlocked(c) && c.blacklistReason && (
-                                        <p className="text-[10px] text-red-700 dark:text-red-400 font-medium mt-0.5">Motif : {c.blacklistReason}</p>
-                                      )}
-                                    </td>
-                                    <td className="p-3.5 text-center">
-                                      <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold inline-flex flex-col items-center ${companyTypeBadge(c)}`}>
-                                        {companyTypeLabel(c)}
-                                        {c.type === 'assurance' && c.tauxCouverture ? (
-                                          <span className="text-[10px] font-semibold opacity-80">{c.tauxCouverture}% couvert</span>
-                                        ) : null}
-                                      </span>
-                                    </td>
-                                    <td className="p-3.5 text-center">
-                                      {c.settlementMode === 'monthly_global' ? (
-                                        <span className="px-2.5 py-1 rounded-full bg-blue-100 dark:bg-cyan-500/15 text-blue-800 dark:text-cyan-300 text-[11px] font-semibold">
-                                          📅 Global mensuel
-                                        </span>
-                                      ) : (
-                                        <span className="px-2.5 py-1 rounded-full bg-purple-100 dark:bg-purple-500/15 text-purple-800 dark:text-purple-300 text-[11px] font-semibold">
-                                          🧾 Individuel par facture
-                                        </span>
-                                      )}
-                                    </td>
-                                    <td className="p-3.5 text-right space-x-1">
-                                      <button
-                                        onClick={() => companyIsBlocked(c) ? setCompanyToRestore(c) : startBlockCompany(c)}
-                                        className={`p-1.5 cursor-pointer rounded-lg ${
-                                          companyIsBlocked(c)
-                                            ? 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-500/8'
-                                            : 'text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-500/8'
-                                        }`}
-                                        title={companyIsBlocked(c) ? 'Rétablir la société' : 'Mettre en liste noire'}
-                                      >
-                                        {companyIsBlocked(c) ? <ShieldCheck className="w-4 h-4" /> : <Ban className="w-4 h-4" />}
-                                      </button>
-                                      <button onClick={() => startEditCompany(c)} className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 p-1.5 cursor-pointer rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-500/8" title="Modifier">
-                                        <Edit2 className="w-4 h-4" />
-                                      </button>
-                                      <button onClick={() => deleteCompany(c.id, c.name)} className="text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-300 p-1.5 cursor-pointer rounded-lg hover:bg-rose-50 dark:hover:bg-rose-500/8" title="Supprimer">
-                                        <Trash2 className="w-4 h-4" />
-                                      </button>
-                                    </td>
-                                  </>
-                                )}
-                              </tr>
-                            ))}
-                            {filteredCompanies.length === 0 && (
-                              <tr>
-                                <td colSpan={4} className="p-8 text-center text-ink-faint italic">
-                                  Aucune société partenaire trouvée.
-                                </td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      {/* Modale : motif de mise en liste noire */}
-                      {companyToBlock && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in">
-                          <div className="bg-surface rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4 border border-line">
-                            <div className="flex items-center justify-between border-b border-line pb-3">
-                              <h3 className="font-bold text-ink-strong text-lg flex items-center gap-2">
-                                <Ban className="w-5 h-5 text-red-600 dark:text-red-400" /> Bloquer cette société
-                              </h3>
-                              <button onClick={() => setCompanyToBlock(null)} className="text-ink-faint hover:text-ink cursor-pointer">
-                                <X className="w-5 h-5" />
-                              </button>
-                            </div>
-
-                            <div className="bg-red-50/70 dark:bg-red-500/8 border border-red-200 dark:border-red-500/25 rounded-xl p-3 text-xs text-red-800 dark:text-red-300 space-y-1">
-                              <p className="font-bold uppercase">{companyToBlock.name}</p>
-                              <p>Aucune consultation ni prise en charge ne sera plus ouverte aux frais de cette société. Si un acte est nécessaire, le patient passe en <strong>client comptoir</strong>.</p>
-                            </div>
-
-                            <div className="space-y-2">
-                              <label className="text-xs font-bold text-ink block">Motif du blocage *</label>
-                              <div className="flex flex-wrap gap-1.5">
-                                {['Impayé', 'Suspension temporaire', 'Contentieux', 'Convention expirée', 'Dépôt de bilan'].map((motif) => (
-                                  <button
-                                    key={motif}
-                                    type="button"
-                                    onClick={() => setCompanyBlockReason(motif)}
-                                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer border ${
-                                      companyBlockReason === motif
-                                        ? 'bg-red-600 text-white border-red-600'
-                                        : 'bg-surface hover:bg-surface-hover text-ink-secondary border-line'
-                                    }`}
-                                  >
-                                    {motif}
-                                  </button>
-                                ))}
-                              </div>
-                              <textarea
-                                autoFocus
-                                value={companyBlockReason}
-                                onChange={(e) => setCompanyBlockReason(e.target.value)}
-                                placeholder="Ex. Impayé de 3 mois, suspension temporaire de la convention..."
-                                className="min-h-24 w-full rounded-xl border border-line-strong p-3 text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 dark:focus:ring-red-500/25 bg-surface"
-                              />
-                            </div>
-
-                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                              <label className="text-xs font-bold text-ink whitespace-nowrap">Fin de suspension (optionnel)</label>
-                              <input
-                                type="date"
-                                value={companyBlockUntil}
-                                onChange={(e) => setCompanyBlockUntil(e.target.value)}
-                                className="px-3 py-2 rounded-xl border border-line-strong text-sm outline-none bg-surface"
-                              />
-                              {companyBlockUntil && (
-                                <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">
-                                  Suspendue jusqu'au {companyBlockUntil} — rétablie automatiquement après cette date
-                                </span>
-                              )}
-                            </div>
-
-                            <div className="flex justify-end gap-2 pt-3 border-t border-line">
-                              <button onClick={() => setCompanyToBlock(null)} className="px-4 py-2 rounded-xl text-ink-secondary font-semibold hover:bg-surface-hover cursor-pointer">
-                                Annuler
-                              </button>
-                              <button
-                                onClick={saveCompanyBlacklist}
-                                disabled={!companyBlockReason.trim()}
-                                className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
-                              >
-                                <Ban className="w-4 h-4" /> Bloquer la société
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Modale : liste noire des sociétés */}
-                      {showCompanyBlacklist && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in">
-                          <div className="bg-surface rounded-2xl shadow-2xl max-w-3xl w-full p-6 space-y-4 border border-line">
-                            <div className="flex items-center justify-between border-b border-line pb-3">
-                              <h3 className="font-bold text-ink-strong text-lg flex items-center gap-2">
-                                <Ban className="w-5 h-5 text-red-600 dark:text-red-400" /> Sociétés bloquées ({blockedCompanies.length})
-                              </h3>
-                              <button onClick={() => setShowCompanyBlacklist(false)} className="text-ink-faint hover:text-ink cursor-pointer">
-                                <X className="w-5 h-5" />
-                              </button>
-                            </div>
-
-                            <p className="text-xs text-ink-muted">
-                              Une société bloquée ne peut plus ouvrir de consultation ni de prise en charge à ses frais
-                              (impayé, suspension temporaire, contentieux…). Les actes nécessaires sont facturés en client comptoir.
-                            </p>
-
-                            <div className="max-h-[55vh] overflow-auto rounded-xl border border-line">
-                              {blockedCompanies.length > 0 ? (
-                                <table className="w-full min-w-[640px] text-left text-xs">
-                                  <thead className="sticky top-0 bg-red-50 dark:bg-red-500/8 text-red-800 dark:text-red-300">
-                                    <tr>
-                                      <th className="p-3">Société</th>
-                                      <th className="p-3">Type</th>
-                                      <th className="p-3">Motif</th>
-                                      <th className="p-3">Depuis</th>
-                                      <th className="p-3">Fin de suspension</th>
-                                      <th className="p-3 text-right">Action</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {blockedCompanies.map((c) => (
-                                      <tr key={c.id} className="border-t border-line-soft text-ink hover:bg-surface-muted/70">
-                                        <td className="p-3 font-bold uppercase">{c.name}</td>
-                                        <td className="p-3">
-                                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${companyTypeBadge(c)}`}>{companyTypeLabel(c)}</span>
-                                        </td>
-                                        <td className="p-3 max-w-xs whitespace-normal">{c.blacklistReason || 'Motif non renseigné'}</td>
-                                        <td className="p-3 whitespace-nowrap">{c.blacklistDate ? new Date(c.blacklistDate).toLocaleDateString('fr-FR') : '—'}</td>
-                                        <td className="p-3 whitespace-nowrap">{c.blacklistUntil ? new Date(c.blacklistUntil).toLocaleDateString('fr-FR') : 'Indéterminée'}</td>
-                                        <td className="p-3 text-right">
-                                          <button
-                                            onClick={() => setCompanyToRestore(c)}
-                                            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-emerald-600 px-3 py-2 text-[11px] font-bold text-white shadow-sm hover:bg-emerald-700 cursor-pointer"
-                                            title="Rétablir dans la liste normale"
-                                          >
-                                            <Undo2 className="h-3.5 w-3.5" /> Rétablir
-                                          </button>
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              ) : (
-                                <div className="p-10 text-center text-ink-muted">
-                                  <Building2 className="mx-auto mb-2 h-10 w-10 text-slate-300" />
-                                  <p className="font-medium">Aucune société en liste noire.</p>
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="flex justify-end pt-3 border-t border-line">
-                              <button onClick={() => setShowCompanyBlacklist(false)} className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold cursor-pointer">
-                                Fermer
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Modale : rétablissement d'une société */}
-                      {companyToRestore && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in">
-                          <div className="bg-surface rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-line">
-                            <div className="flex items-center justify-between border-b border-line pb-3">
-                              <h3 className="font-bold text-ink-strong text-lg flex items-center gap-2">
-                                <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" /> Rétablir la société
-                              </h3>
-                              <button onClick={() => setCompanyToRestore(null)} className="text-ink-faint hover:text-ink cursor-pointer">
-                                <X className="w-5 h-5" />
-                              </button>
-                            </div>
-
-                            <p className="text-sm text-ink">
-                              Rétablir <strong className="uppercase">{companyToRestore.name}</strong> dans la liste normale ?
-                              Les consultations et prises en charge seront à nouveau possibles.
-                            </p>
-                            {companyToRestore.blacklistReason && (
-                              <div className="p-2.5 bg-amber-50 dark:bg-amber-500/8 border border-amber-200 dark:border-amber-500/25 rounded-xl text-xs text-amber-800 dark:text-amber-300">
-                                <strong>Motif du blocage actuel :</strong> {companyToRestore.blacklistReason}
-                              </div>
-                            )}
-
-                            <div className="flex justify-end gap-2 pt-3 border-t border-line">
-                              <button onClick={() => setCompanyToRestore(null)} className="px-4 py-2 rounded-xl text-ink-secondary font-semibold hover:bg-surface-hover cursor-pointer">
-                                Annuler
-                              </button>
-                              <button onClick={confirmRestoreCompany} className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer flex items-center gap-2">
-                                <ShieldCheck className="w-4 h-4" /> Rétablir
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   )}
 
