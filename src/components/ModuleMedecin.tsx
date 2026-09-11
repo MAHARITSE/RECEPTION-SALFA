@@ -5,6 +5,7 @@ import type { AppState } from '../store';
 import type { Societe } from '../modules/assurance/types';
 import { allocateFactureNumber, applySocieteUpsert, collectExistingFactureNumbers } from '../store';
 import { SearchableSelect, optionsFromValues } from './SearchableSelect';
+import { SuggestionInput, classerSuggestions } from './SuggestionInput';
 import {
   addAuditLog, addNotification, formatAr, formatNum, roundTo2, getPrice, addJourneyEvent,
   labCategoryLabel, purgePatientFromQueue, isPrescriptionPaid, isMedicationEntryFamily,
@@ -1081,7 +1082,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                   </div>
                   <div>
                     <label className="block font-bold text-ink mb-0.5">Sous-société</label>
-                    <SearchableSelect value={medEditSubCompany} onChange={setMedEditSubCompany} options={optionsFromValues(sousSocietesConnues(state, medEditCompany))} placeholder={"— Sous-société de " + (medEditCompany || "la société") + " —"} ariaLabel="Sous-société" inputClassName="w-full px-2 py-1.5 border rounded outline-none bg-surface uppercase" />
+                    <SuggestionInput mode="contient" value={medEditSubCompany} onChange={setMedEditSubCompany} suggestions={classerSuggestions(sousSocietesConnues(state, medEditCompany))} placeholder="Sous-société — saisie libre (assistance de la base)" ariaLabel="Sous-société" className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" />
                   </div>
                 </div>
               )}

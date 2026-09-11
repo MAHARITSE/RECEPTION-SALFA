@@ -5,11 +5,20 @@ interface Props {
   onChange: (value: string) => void;
   /** Valeurs existantes de la base, utilisées pour compléter la saisie (jamais imposées). */
   suggestions?: string[];
+  /**
+   * 'suite' (défaut) : complétion en ligne mot à mot (noms, prénoms, dossiers).
+   * 'contient' : assistance par recherche — la liste des valeurs de la base qui
+   * CONTIENNENT le texte tapé s'affiche sous le champ (FRITO → COPEFRITO) ;
+   * la saisie reste libre et une valeur hors liste est acceptée telle quelle.
+   */
+  mode?: 'suite' | 'contient';
   onBlur?: () => void;
   placeholder?: string;
   ariaLabel?: string;
   className?: string;
   id?: string;
+  /** Nombre maximum de suggestions affichées sous le champ (mode 'contient'). */
+  maxSuggestions?: number;
 }
 
 /** Texte normalisé pour la comparaison : minuscules et sans accents. */
@@ -30,32 +39,33 @@ export function motsIdentite(s: string | undefined | null): string[] {
 }
 
 /**
- * Champ de **saisie assistée mot par mot** — aucune liste déroulante :
- *  - l'opérateur tape mot après mot ; chaque mot en cours de frappe est complété
- *    DANS le champ (en sélection) par le premier mot connu de la base qui commence
- *    comme lui — la liste reçue est déjà classée par l'appelant (appariement,
- *    fréquence, alphabétique) ;
- *  - la frappe suivante remplace la sélection et la complétion se recalcule ;
- *  - Entrée / Tab / → valident le mot proposé (Tab passe aussi au champ suivant) ;
- *    Échap, un clic dans le champ ou la sortie abandonnent la proposition :
- *    seul le texte réellement tapé est conservé ;
- *  - la saisie reste 100 % libre (RAVELO NAINA à partir de RAVELO AINA et
- *    RAZAFY NAINA fonctionne : chaque mot est repris de la base).
+ * Champ de **saisie assistée** — pas une combobox fermée :
+ *  - mode 'suite' : chaque mot en cours de frappe est complété DANS le champ
+ *    (en sélection) par le premier mot connu de la base qui commence comme lui ;
+ *    Entrée / Tab / → valident (Tab fait aussi passer au champ suivant quand
+ *    aucune proposition n'est en cours) ; Échap / clic abandonnent ;
+ *  - mode 'contient' : les valeurs de la base qui contiennent le texte tapé
+ *    sont proposées sous le champ (clic ou ↑↓ + Entrée/Tab) ; la saisie reste
+ *  - dans tous les cas **100 % libre** : une valeur inédite est acceptée telle quelle.
  */
 export function SuggestionInput({
-  value, onChange, suggestions = [], onBlur, placeholder, ariaLabel, className, id,
+  value, onChange, suggestions = [], mode = 'suite', onBlur, placeholder, ariaLabel, className, id, maxSuggestions = 8,
 }: Props) {
   const genere = useId();
   const champId = id || `sugg-${genere}`;
+  const listeId = `${champId}-assistance`;
   const inputRef = useRef<HTMLInputElement>(null);
   // Valeur pour laquelle la complétion a été explicitement abandonnée
   // (Échap, clic dans le champ, sortie) ou déjà validée : elle ne revient
   // pas tant que la saisie n'a pas changé.
   const [annule, setAnnule] = useState<string | null>(null);
+  // Mode 'contient' : visibilité de la liste d'assistance + index survolé.
+  const [listeOuverte, setListeOuverte] = useState(false);
+  const [indexActif, setIndexActif] = useState(-1);
 
-  // Complétion du mot en cours : préfixe déjà tapé (mots antérieurs + espace)
-  // + premier mot connu de la base qui commence comme le mot tapé.
+  /* ===== Mode 'suite' : complétion en ligne du mot en cours ===== */
   const completion = useMemo(() => {
+    if (mode !== 'suite') return null;
     if (!value || annule === value) return null;
     const coupe = value.lastIndexOf(' ');
     const avant = value.slice(0, coupe + 1);
@@ -68,7 +78,7 @@ export function SuggestionInput({
       if (norm(candidat).startsWith(mot)) return avant + candidat;
     }
     return null;
-  }, [value, suggestions, annule]);
+  }, [mode, value, suggestions, annule]);
 
   const affiche = completion ?? value;
 
@@ -79,6 +89,34 @@ export function SuggestionInput({
     if (document.activeElement === el) el.setSelectionRange(value.length, completion.length);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [completion, affiche]);
+
+  /* ===== Mode 'contient' : liste des valeurs qui contiennent la saisie ===== */
+  const filtres = useMemo(() => {
+    if (mode !== 'contient') return [];
+    const saisie = norm(value);
+    if (!saisie) return [];
+    const exact = saisie.toUpperCase();
+    const out: string[] = [];
+    for (const brute of suggestions) {
+      const candidat = (brute || '').trim();
+      if (!candidat || candidat.toUpperCase() === exact) continue;
+      if (norm(candidat).includes(saisie)) {
+        out.push(candidat);
+        if (out.length >= maxSuggestions) break;
+      }
+    }
+    return out;
+  }, [mode, value, suggestions, maxSuggestions]);
+
+  const listeVisible = mode === 'contient' && listeOuverte && filtres.length > 0;
+
+  const choisirListe = (v: string) => {
+    onChange(v);
+    setListeOuverte(false);
+    setIndexActif(-1);
+    const el = inputRef.current;
+    if (el) requestAnimationFrame(() => { el.setSelectionRange(v.length, v.length); if (document.activeElement === el) el.focus(); });
+  };
 
   const accepter = (laisserPasser: boolean) => {
     const complet = completion as string;
@@ -95,58 +133,97 @@ export function SuggestionInput({
   };
 
   return (
-    <input
-      ref={inputRef}
-      id={champId}
-      type="text"
-      value={affiche}
-      onChange={(e) => {
-        // Avec la sélection de complétion en place, la frappe ne touche que la
-        // partie tapée : la valeur reçue est déjà propre.
-        setAnnule(null);
-        onChange(e.target.value);
-      }}
-      onSelect={() => {
-        // Clic ou déplacement du curseur : la complétion affichée est abandonnée,
-        // seul le texte réellement tapé reste.
-        const el = inputRef.current;
-        if (!el || !completion) return;
-        const enPlace = el.selectionStart === value.length && el.selectionEnd === el.value.length;
-        if (!enPlace) {
-          setAnnule(value);
-          el.value = value;
-        }
-      }}
-      onKeyDown={(e) => {
-        if (!completion) return;
-        const el = inputRef.current;
-        const enPlace = !!el && el.selectionStart === value.length && el.selectionEnd === el.value.length;
-        if (!enPlace) return;
-        if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'End') {
-          e.preventDefault();
-          accepter(false);
-        } else if (e.key === 'Tab') {
-          // Valide le mot proposé et RESTE dans le champ
-          // (un second Tab, sans proposition, repassera au champ suivant).
-          e.preventDefault();
-          accepter(false);
-        } else if (e.key === 'Escape') {
-          e.preventDefault();
-          setAnnule(value);
-          if (el) { el.value = value; el.setSelectionRange(value.length, value.length); }
-        }
-      }}
-      onBlur={() => {
-        // Une complétion non validée n'est jamais enregistrée.
-        if (completion) { setAnnule(value); if (inputRef.current) inputRef.current.value = value; }
-        onBlur?.();
-      }}
-      placeholder={placeholder}
-      aria-label={ariaLabel}
-      aria-autocomplete="inline"
-      autoComplete="off"
-      className={className}
-    />
+    <div className="relative">
+      <input
+        ref={inputRef}
+        id={champId}
+        type="text"
+        value={affiche}
+        onChange={(e) => {
+          // Avec la sélection de complétion en place, la frappe ne touche que la
+          // partie tapée : la valeur reçue est déjà propre.
+          setAnnule(null);
+          if (mode === 'contient') { setListeOuverte(true); setIndexActif(-1); }
+          onChange(e.target.value);
+        }}
+        onFocus={() => { if (mode === 'contient') setListeOuverte(true); }}
+        onSelect={() => {
+          // Clic ou déplacement du curseur : la complétion affichée est abandonnée,
+          // seul le texte réellement tapé reste.
+          const el = inputRef.current;
+          if (!el || !completion) return;
+          const enPlace = el.selectionStart === value.length && el.selectionEnd === el.value.length;
+          if (!enPlace) {
+            setAnnule(value);
+            el.value = value;
+          }
+        }}
+        onKeyDown={(e) => {
+          if (mode === 'contient') {
+            if (!listeVisible) return;
+            if (e.key === 'ArrowDown') { e.preventDefault(); setIndexActif((i) => (i + 1) % filtres.length); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); setIndexActif((i) => (i - 1 + filtres.length) % filtres.length); }
+            else if (e.key === 'Enter' && indexActif >= 0 && indexActif < filtres.length) { e.preventDefault(); choisirListe(filtres[indexActif]); }
+            else if (e.key === 'Tab' && indexActif >= 0 && indexActif < filtres.length) { e.preventDefault(); choisirListe(filtres[indexActif]); }
+            else if (e.key === 'Escape') { setListeOuverte(false); setIndexActif(-1); }
+            return;
+          }
+          if (!completion) return;
+          const el = inputRef.current;
+          const enPlace = !!el && el.selectionStart === value.length && el.selectionEnd === el.value.length;
+          if (!enPlace) return;
+          if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'End') {
+            e.preventDefault();
+            accepter(false);
+          } else if (e.key === 'Tab') {
+            // Valide le mot proposé et RESTE dans le champ
+            // (un second Tab, sans proposition, repassera au champ suivant).
+            e.preventDefault();
+            accepter(false);
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            setAnnule(value);
+            if (el) { el.value = value; el.setSelectionRange(value.length, value.length); }
+          }
+        }}
+        onBlur={() => {
+          // Une complétion non validée n'est jamais enregistrée.
+          if (completion) { setAnnule(value); if (inputRef.current) inputRef.current.value = value; }
+          setListeOuverte(false);
+          setIndexActif(-1);
+          onBlur?.();
+        }}
+        placeholder={placeholder}
+        aria-label={ariaLabel}
+        aria-autocomplete={mode === 'contient' ? 'list' : 'inline'}
+        aria-expanded={listeVisible}
+        aria-controls={listeVisible ? listeId : undefined}
+        autoComplete="off"
+        className={className}
+      />
+      {listeVisible && (
+        <ul
+          id={listeId}
+          role="listbox"
+          aria-label={ariaLabel ? `Suggestions — ${ariaLabel}` : 'Suggestions de la base'}
+          className="absolute left-0 right-0 top-full z-30 mt-0.5 max-h-56 overflow-auto rounded-lg border border-line bg-surface py-1 shadow-lg"
+        >
+          {filtres.map((s, i) => (
+            <li
+              key={`${s}-${i}`}
+              role="option"
+              aria-selected={i === indexActif}
+              // mousedown + preventDefault : choisit la suggestion sans perdre le focus du champ.
+              onMouseDown={(e) => { e.preventDefault(); choisirListe(s); }}
+              onMouseEnter={() => setIndexActif(i)}
+              className={`cursor-pointer px-3 py-1.5 text-xs ${i === indexActif ? 'bg-accent-soft font-semibold text-ink-strong' : 'text-ink'}`}
+            >
+              {s}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

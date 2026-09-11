@@ -1669,7 +1669,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                     </div>
                     <div>
                       <label className="block font-bold text-ink mb-0.5">Sous-société</label>
-                      <SearchableSelect value={hbNewPat.subCompany} onChange={v => setHbNewPat({...hbNewPat, subCompany: v})} options={optionsFromValues(sousSocietesConnues(state, hbNewPat.company))} placeholder={"— Sous-société de " + (hbNewPat.company || "la société") + " —"} ariaLabel="Sous-société" inputClassName="w-full px-2 py-1.5 border rounded outline-none bg-surface uppercase" />
+                      <SuggestionInput mode="contient" value={hbNewPat.subCompany} onChange={v => setHbNewPat({...hbNewPat, subCompany: v})} suggestions={classerSuggestions(sousSocietesConnues(state, hbNewPat.company))} placeholder="Sous-société — saisie libre (assistance de la base)" ariaLabel="Sous-société" className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" />
                     </div>
                   </div>
                 )}
@@ -1718,7 +1718,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                     </div>
                     <div>
                       <label className="block font-bold text-ink mb-0.5">Sous-société</label>
-                      <SearchableSelect value={hbEditSubCompany} onChange={setHbEditSubCompany} options={optionsFromValues(sousSocietesConnues(state, hbEditCompany))} placeholder={"— Sous-société de " + (hbEditCompany || "la société") + " —"} ariaLabel="Sous-société" inputClassName="w-full px-2 py-1.5 border rounded outline-none bg-surface uppercase" />
+                      <SuggestionInput mode="contient" value={hbEditSubCompany} onChange={setHbEditSubCompany} suggestions={classerSuggestions(sousSocietesConnues(state, hbEditCompany))} placeholder="Sous-société — saisie libre (assistance de la base)" ariaLabel="Sous-société" className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" />
                     </div>
                   </div>
                 )}
@@ -2148,7 +2148,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                     </div>
                     <div>
                       <label className="block font-bold text-ink mb-0.5">Sous-société</label>
-                      <SearchableSelect value={payEditSubCompany} onChange={setPayEditSubCompany} options={optionsFromValues(sousSocietesConnues(state, payEditCompany))} placeholder={"— Sous-société de " + (payEditCompany || "la société") + " —"} ariaLabel="Sous-société" inputClassName="w-full px-2 py-1.5 border rounded outline-none bg-surface uppercase" />
+                      <SuggestionInput mode="contient" value={payEditSubCompany} onChange={setPayEditSubCompany} suggestions={classerSuggestions(sousSocietesConnues(state, payEditCompany))} placeholder="Sous-société — saisie libre (assistance de la base)" ariaLabel="Sous-société" className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" />
                     </div>
                   </div>
                 )}

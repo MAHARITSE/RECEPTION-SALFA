@@ -233,8 +233,8 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
     state.patients.flatMap(p => [p.lastName, p.firstName]), apparieIdentite,
   ), [state.patients, apparieIdentite]);
   const optionsAdresses = useMemo(() => classerSuggestions(state.patients.map(p => p.address)), [state.patients]);
-  const optionsSousSocietes = useMemo(() => optionsFromValues(sousSocietesConnues(state, patientForm.company)), [state, patientForm.company]);
-  const optionsSousSocietesVitals = useMemo(() => optionsFromValues(sousSocietesConnues(state, vitalsCompany)), [state, vitalsCompany]);
+  const optionsSousSocietes = useMemo(() => classerSuggestions(sousSocietesConnues(state, patientForm.company)), [state, patientForm.company]);
+  const optionsSousSocietesVitals = useMemo(() => classerSuggestions(sousSocietesConnues(state, vitalsCompany)), [state, vitalsCompany]);
 
   const blacklistedPatients = state.patients.filter((p) => p.blacklisted);
 
@@ -832,13 +832,14 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                 {patientForm.clientType === 'societe' && (
                   <div className="flex flex-col">
                     <label className="block font-bold text-ink h-4 leading-4 mb-1">Sous-société / Service</label>
-                    <SearchableSelect
+                    <SuggestionInput
+                      mode="contient"
                       value={patientForm.subCompany}
                       onChange={(v) => setPatientForm({ ...patientForm, subCompany: v })}
-                      options={optionsSousSocietes}
-                      placeholder={"— Sous-société de " + (patientForm.company || "la société") + " —"}
+                      suggestions={optionsSousSocietes}
+                      placeholder="Sous-société / Service — saisie libre (assistance de la base)"
                       ariaLabel="Sous-société"
-                      inputClassName="w-full h-9 bg-surface border border-line-control rounded px-2 uppercase focus:outline-none focus:border-accent"
+                      className="w-full h-9 bg-surface border border-line-control rounded px-2 uppercase focus:outline-none focus:border-accent"
                     />
                   </div>
                 )}
@@ -1071,7 +1072,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                     )}
                   </div>}
                 </div>
-                {vitalsClientType === 'societe' && <div className="mt-3"><label className="block font-bold text-ink text-xs mb-1">Sous-société (libre)</label><SearchableSelect value={vitalsSubCompany} onChange={setVitalsSubCompany} options={optionsSousSocietesVitals} placeholder={"— Sous-société de " + (vitalsCompany || "la société") + " —"} ariaLabel="Sous-société" inputClassName="w-full bg-surface border border-amber-400 rounded px-2 py-1.5 uppercase focus:outline-none focus:border-amber-500" /></div>}
+                {vitalsClientType === 'societe' && <div className="mt-3"><label className="block font-bold text-ink text-xs mb-1">Sous-société (libre)</label><SuggestionInput mode="contient" value={vitalsSubCompany} onChange={setVitalsSubCompany} suggestions={optionsSousSocietesVitals} placeholder="Sous-société — saisie libre (assistance de la base)" ariaLabel="Sous-société" className="w-full bg-surface border border-amber-400 rounded px-2 py-1.5 uppercase focus:outline-none focus:border-amber-500" /></div>}
                 <p className="text-[10px] text-ink-muted mt-2 italic">Remise saisie par le médecin</p>
               </div>
 
