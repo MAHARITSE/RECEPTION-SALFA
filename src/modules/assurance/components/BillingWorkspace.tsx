@@ -6,7 +6,7 @@ import type { ClientType } from '../../../types';
 import { IS_WAMP_BUILD } from '../../../wamp';
 import { issueMonthlyInvoiceInBrowser } from '../../../browserDb';
 import { PrestationsView, type PrestationsViewProps } from './PrestationsView';
-import { billingTotals, categoryLabels, collectBillingDocuments, documentsForScope, monthlyGroups, monthlyScopeId, preserveMonthlyInvoices, type BillingDocument, type MonthlyScope } from '../monthlyBilling';
+import { billingTotals, categoryLabels, collectBillingDocuments, documentsForScope, monthlyGroups, monthlyScopeId, preserveMonthlyInvoices, type MonthlyScope } from '../monthlyBilling';
 import { auditArticleFamilies } from '../billingFamilies';
 import { printIndividualBillingDocument, printMonthlyInvoice } from '../printBilling';
 import { PrescriptionEditModal } from './billing/PrescriptionEditModal';
@@ -51,7 +51,6 @@ export function BillingWorkspace({ state, setState, onFusionPrescription, onAnnu
   const groups = [...scopes.values()].filter(matches).sort((a, b) => b.month.localeCompare(a.month) || monthlyScopeId(a).localeCompare(monthlyScopeId(b)));
   const visibleIds = new Set(visible.map(d => d.id));
   const visiblePrestations = details.prestations.filter(p => visibleIds.has(p.id));
-  const otherDocuments = visible.filter(d => !details.prestations.some(p => p.id === d.id));
 
   useEffect(() => {
     if (details.isCreateModalOpen) setMode('detaillee');
@@ -99,22 +98,6 @@ export function BillingWorkspace({ state, setState, onFusionPrescription, onAnnu
     } catch (cause) {
       setError(`Enregistrement refusé : ${(cause as Error).message}`);
     }
-  }
-
-  function renderDetailTable(rows: BillingDocument[]) {
-    return <div className="overflow-x-auto rounded-xl border border-line bg-surface">
-      <table className="w-full text-left text-xs" aria-label="Factures détaillées clients">
-        <thead className="bg-surface-muted text-ink-secondary"><tr>{['Date', 'Facture', 'Client / Dossier', 'Détail des actes', 'Montant', 'Payé', 'Solde', 'Impression'].map(label => <th className="p-3" key={label}>{label}</th>)}</tr></thead>
-        <tbody>{rows.map(d => <tr key={d.id} className="border-t border-line hover:bg-surface-hover">
-          <td className="p-3 whitespace-nowrap">{d.date}</td><td className="p-3 font-mono font-semibold">{d.number}</td>
-          <td className="p-3">{d.client}{d.dossier && <span className="block text-ink-muted">{d.dossier}</span>}</td>
-          <td className="p-3"><details><summary className="cursor-pointer">{d.items.length} acte(s)</summary><ul className="mt-2 space-y-1">{d.items.map((item, index) => <li key={index}>{item.description} — {formatMoney(item.amount)}</li>)}</ul></details></td>
-          <td className="p-3 whitespace-nowrap">{formatMoney(d.total)}</td><td className="p-3 whitespace-nowrap">{formatMoney(d.paid)}</td><td className="p-3 whitespace-nowrap">{formatMoney(Math.max(0, d.payable - d.paid - d.rejected))}</td>
-          <td className="p-3"><button type="button" onClick={() => printIndividualBillingDocument(state, d)} aria-label={`Imprimer la facture ${d.number}`} className="inline-flex items-center gap-1.5 rounded-lg border border-line-strong px-3 py-2 hover:bg-accent-soft text-accent"><Printer size={15} />Imprimer</button></td>
-        </tr>)}</tbody>
-      </table>
-      {!rows.length && <p className="p-6 text-center text-sm text-ink-muted">Aucune facture pour cette sélection.</p>}
-    </div>;
   }
 
   return <section className="space-y-4" aria-label="Facturation clients">
@@ -186,10 +169,7 @@ export function BillingWorkspace({ state, setState, onFusionPrescription, onAnnu
         })}</tbody>
       </table>{!groups.length && <p className="p-6 text-center text-sm text-ink-muted">Aucune facture pour cette sélection.</p>}</div>
     </div> : <div data-testid="billing-detail-view">
-      <>
-        <PrestationsView {...details} prestations={visiblePrestations} hideViewSwitcher onFusionPrescription={onFusionPrescription} onAnnulerFusion={onAnnulerFusion} onPrintPrestation={p => { const doc = documents.find(d => d.id === p.id); if (doc) printIndividualBillingDocument(state, doc); }} />
-        {otherDocuments.length > 0 && <div className="mt-4"><h3 className="mb-2 font-semibold">Autres factures de la base commune</h3>{renderDetailTable(otherDocuments)}</div>}
-      </>
+      <PrestationsView {...details} prestations={visiblePrestations} hideViewSwitcher onFusionPrescription={onFusionPrescription} onAnnulerFusion={onAnnulerFusion} onPrintPrestation={p => { const doc = documents.find(d => d.id === p.id); if (doc) printIndividualBillingDocument(state, doc); }} />
     </div>}
 
     {/* ===== MODAL : vue détaillée du destinataire de la facture mensuelle ===== */}
