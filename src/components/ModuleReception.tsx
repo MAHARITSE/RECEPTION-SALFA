@@ -6,6 +6,7 @@ import { normalizeDossierNumber, isDossierTaken, calculateAge, addAuditLog, addN
 import { SearchableSelect, optionsFromValues } from './SearchableSelect';
 import { SuggestionInput, classerSuggestions, motsIdentite } from './SuggestionInput';
 import { printQueueTicket } from '../utils/printTicket';
+import { correspondRechercheMultiMots } from '../utils/recherche';
 import {
   Search, Plus, Edit, Trash2, UserX, Activity,
   X, Check, Ban, Users, LogIn, Hospital,
@@ -203,14 +204,11 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
     }
   }, [selectedPatient?.id, selectedPatient?.clientType, selectedPatient?.company, selectedPatient?.subCompany]);
 
-  // Ordre décroissant : dernier enregistré / dernier arrivé en haut
+  // Ordre décroissant : dernier enregistré / dernier arrivé en haut.
+  // Recherche multi-mots sur l'identité complète (prénom + nom), le dossier et le
+  // matricule : « RAVELO N » retrouve « RAVELO NAINA » — casse et accents ignorés.
   const filteredPatients = state.patients
-    .filter((p) => {
-      const q = searchQuery.toLowerCase();
-      const ms = p.firstName.toLowerCase().includes(q) || p.lastName.toLowerCase().includes(q) ||
-        p.dossier.toLowerCase().includes(q) || (p.matricule && p.matricule.toLowerCase().includes(q));
-      return ms;
-    })
+    .filter((p) => correspondRechercheMultiMots(`${p.firstName} ${p.lastName} ${p.dossier} ${p.matricule || ''}`, searchQuery))
     .sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime());
 
   const waitingCount = state.patients.filter((p) => p.status === 'waiting_consultation').length;
@@ -552,7 +550,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
         <div className="flex flex-wrap items-center justify-between gap-2.5">
           <div className="relative w-full max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-faint" />
-            <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} aria-label="Rechercher un patient" className="w-full pl-9 pr-9 py-2 bg-field text-ink border border-line rounded-lg text-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/25" placeholder="Rechercher : nom, dossier, matricule…" />
+            <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value.toUpperCase())} autoCapitalize="characters" aria-label="Rechercher un patient" className="w-full pl-9 pr-9 py-2 bg-field text-ink border border-line rounded-lg text-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/25" placeholder="Rechercher : nom, dossier, matricule…" />
             {searchQuery && (
               <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink-secondary cursor-pointer" aria-label="Effacer la recherche"><X className="h-4 w-4" /></button>
             )}

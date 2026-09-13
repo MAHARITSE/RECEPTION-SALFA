@@ -141,12 +141,18 @@ La présence des tableaux ne prouve pas leur persistance : vérifier création, 
 
 ## Facturation Comptoir, Externes et factures mensuelles
 
-Dans **Suivi assurance → Facturation** :
+Les clients **Comptoir** et **Externes** disposent de l'onglet dédié **Suivi assurance → Comptoir & Externe** : leur règlement étant encaissé au moment de la validation à la Caisse, ils ne figurent ni dans la Facturation (réservée aux sociétés) ni dans les Règlements (bordereaux sociétés). L'onglet sert à l'archivage et à l'édition de leurs factures mensuelles :
 
-- Les pièces **Sociétés**, **Comptoir** et **Externes** sont consultées dans la même vue, sans onglets ni compteurs par catégorie. Les ventes autonomes sont également incluses ; les miroirs d’anciennes factures et les ventes annulées ne sont pas comptés deux fois.
-- **Vue par Facture** présente les regroupements mensuels : une facture globale Comptoir/mois, une globale Externes/mois, une par société/mois (toutes ses sous-entités). Son compteur indique le nombre de regroupements, pas le nombre de dossiers.
-- **Vue Détaillée (Dossiers)** présente les pièces d’origine et leur impression individuelle. La gestion des prestations sociétés est conservée ; les pièces Comptoir/Externes sont consultées sans les transformer en comptes assurance.
-- Le filtre **Société / Garant** du haut pilote les deux vues et leurs compteurs : un garant sélectionné affiche uniquement ses propres pièces et factures mensuelles, y compris parmi les instantanés déjà émis. **Tous les Garants** / **Réinitialiser** rétablit la vue globale, incluant les Comptoir/Externes, sans effacer de données ni modifier les numéros émis. Le champ **Mois** reste un filtre complémentaire (vide : tous les mois) et n’est pas effacé par la réinitialisation du garant. Le filtre sous-entité s’applique aux dossiers sociétés, pas au regroupement mensuel global de la société.
+- **Vue par Facture** : une facture globale Comptoir/mois et une globale Externes/mois, avec impression/réimpression (numéro figé à la première impression, même mécanique que les sociétés).
+- **Vue Détaillée (Dossiers)** : les pièces d'origine et leur impression individuelle. Le champ **Mois** filtre les deux vues.
+- La colonne **Encaissé** est informative (déjà perçu à la Caisse) ; aucune action de règlement n'est proposée ici.
+
+Dans **Suivi assurance → Facturation** (sociétés uniquement) :
+
+- Les pièces **Sociétés** sont consultées dans les deux vues, avec le filtre **Société / Garant** et le filtre sous-entité. Les ventes autonomes société sont également incluses ; les miroirs d'anciennes factures et les ventes annulées ne sont pas comptés deux fois.
+- **Vue par Facture** présente les regroupements mensuels : une facture par société/mois (toutes ses sous-entités). Son compteur indique le nombre de regroupements, pas le nombre de dossiers.
+- **Vue Détaillée (Dossiers)** présente les prescriptions sociétés et leur impression individuelle.
+- Le filtre **Société / Garant** du haut pilote les deux vues et leurs compteurs : un garant sélectionné affiche uniquement ses propres pièces et factures mensuelles, y compris parmi les instantanés déjà émis. **Tous les Garants** / **Réinitialiser** rétablit la vue globale, sans effacer de données ni modifier les numéros émis. Le champ **Mois** reste un filtre complémentaire (vide : tous les mois) et n’est pas effacé par la réinitialisation du garant. Le filtre sous-entité s’applique aux dossiers sociétés, pas au regroupement mensuel global de la société.
 
 ### Première impression et réimpressions
 

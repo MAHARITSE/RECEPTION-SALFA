@@ -106,6 +106,19 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const payingRef = useRef(false);
   const [lastReceipt, setLastReceipt] = useState<ReceiptSnapshot | null>(null);
+  // Vente externe : médecin prescripteur (facultatif) — généralement un médecin
+  // HORS de notre centre. La saisie assistée est alimentée d'abord par les
+  // prescripteurs déjà saisis (base prescripteursExternes), puis par les
+  // médecins de l'hôpital ; une valeur libre est acceptée. Le champ reste
+  // rempli d'une vente à l'autre (plusieurs clients du même prescripteur).
+  const [extPrescripteur, setExtPrescripteur] = useState('');
+  const suggestionsPrescripteurs = useMemo(() => {
+    const externes = state.prescripteursExternes || [];
+    const deja = new Set(externes.map(n => (n || '').trim().toUpperCase()));
+    return classerSuggestions(externes, v => deja.has(v.trim().toUpperCase()))
+      .concat(classerSuggestions(state.users.filter(u => u.role === 'doctor').map(u => u.name))
+        .filter(n => !deja.has(n.trim().toUpperCase())));
+  }, [state.prescripteursExternes, state.users]);
 
   const prepareReceipts = (invoices: Invoice[], invoice: Invoice, exams = getExamReceipts(invoices, state.consultations, state.labRequests)): ReceiptSnapshot => {
     const consultation = state.consultations.find(c => invoices.some(i => i.consultationId === c.id && (!i.patientId || i.patientId === c.patientId)));
@@ -728,11 +741,13 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
     const invId = uuidv4();
     const now = new Date().toISOString();
-    const extDoctor: User = {
-      id: 'CASHIER',
-      name: state.currentUser?.name ? `Vente Externe (${state.currentUser.name})` : 'Vente Externe',
-      role: 'cashier',
-    };
+    // Prescripteur saisi : rattaché au médecin de la base quand il existe
+    // (identifiant réel), sinon conservé tel quel ; à défaut, libellé caisse.
+    const prescripteurSaisi = extPrescripteur.trim();
+    const medecinBase = prescripteurSaisi ? state.users.find(u => u.role === 'doctor' && u.name.trim().toLowerCase() === prescripteurSaisi.toLowerCase()) : undefined;
+    const extDoctor: User = prescripteurSaisi
+      ? { id: medecinBase?.id || 'EXTERNE', name: prescripteurSaisi, role: 'doctor' }
+      : { id: 'CASHIER', name: state.currentUser?.name ? `Vente Externe (${state.currentUser.name})` : 'Vente Externe', role: 'cashier' };
 
     // ---- Demandes d'analyses du client externe : la vente étant encaissée, elles
     // sont créées directement au statut 'paid' et arrivent donc dans la file
@@ -842,11 +857,17 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
           articles[idx] = { ...articles[idx], stockPharmacie: Math.max(0, articles[idx].stockPharmacie - l.quantity) };
         }
       });
+      // Le prescripteur saisi (hors centre) rejoint la base de la saisie assistée.
+      const prescripteurs = prev.prescripteursExternes || [];
+      const prescripteursExternes = prescripteurSaisi && !prescripteurs.some(n => (n || '').trim().toLowerCase() === prescripteurSaisi.toLowerCase())
+        ? [...prescripteurs, prescripteurSaisi]
+        : prescripteurs;
       const next = {
         ...prev,
         invoices: [...prev.invoices, inv],
         consultations: [...prev.consultations, ...newConsultations],
         labRequests: [...prev.labRequests, ...newLabRequests],
+        prescripteursExternes,
         articles
       };
       const parts = [
@@ -1421,6 +1442,14 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
               {/* VENTE DIRECTE — CLIENT EXTERNE (affichée à la place du détail de facturation) */}
               <div className="lg:col-span-2 space-y-3">
                 <div className="p-3 bg-purple-50 dark:bg-purple-500/8 border border-purple-200 dark:border-purple-500/25 rounded-lg"><h3 className="font-bold text-purple-800 dark:text-purple-300"><ShoppingCart className="w-5 h-5 inline" /> Vente Directe — Client Externe</h3></div>
+                <div className="flex items-end gap-2 -mt-1">
+                  <div className="flex-1">
+                    <label className="block text-[9px] text-ink-muted" title="Généralement un médecin hors de notre centre. Saisie assistée par les prescripteurs déjà enregistrés (la base s'enrichit à chaque vente) et les médecins de l'hôpital — une valeur libre est acceptée.">Médecin prescripteur (facultatif — hors centre)</label>
+                    <SuggestionInput mode="contient" value={extPrescripteur} onChange={setExtPrescripteur} suggestions={suggestionsPrescripteurs}
+                      ariaLabel="Médecin prescripteur" placeholder="Ex : Dr RAKOTOARISOA (Clinique Fanihy)" maxSuggestions={8}
+                      className="w-full bg-surface border border-purple-300 dark:border-purple-500/40 rounded px-2 py-1 text-xs outline-none focus:border-accent" />
+                  </div>
+                </div>
                 <div className="bg-surface-muted border border-line-strong rounded">
                   <div className="bg-surface-hover border-b border-line-strong p-1.5 m-2 mb-0 rounded shadow-inner">
                     <div className="flex flex-wrap items-end gap-1">

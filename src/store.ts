@@ -634,6 +634,9 @@ export interface AppState {
    *  (factures en attente supprimées, purge de file d'attente…). Un numéro
    *  attribué n'est JAMAIS réutilisé, même après suppression de sa facture. */
   issuedFactureNumbers?: string[];
+  /** Médecins prescripteurs des ventes externes — généralement hors de notre
+   *  centre. Alimenté à chaque vente, il sert de base à la saisie assistée. */
+  prescripteursExternes?: string[];
 }
 
 /**
@@ -1360,6 +1363,8 @@ export function prepareLoadedState(state: AppState): AppState {
   // Registre des numéros déjà attribués : présent par défaut, y compris pour
   // les bases sauvegardées avant son introduction (promesse de non-réutilisation).
   state.issuedFactureNumbers = state.issuedFactureNumbers || [];
+  // Prescripteurs hors centre des ventes externes : base de la saisie assistée.
+  state.prescripteursExternes = state.prescripteursExternes || [];
   const normalized = ensureEtablissements(
     normalizeFamilyBases(ensureConsultationArrays(normalizeInvoiceItemCategories({
       ...state,

@@ -28,7 +28,7 @@ test('le suivi ouvre directement les filtres et les dix vues sans les anciens ba
   for (const name of ['Consulter les archives', 'Exporter l’historique (JSON)', 'Télécharger la sauvegarde commune JSON']) {
     await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
   }
-  for (const id of ['prestations', 'paiements', 'rejets', 'historique', 'societes', 'personnes', 'familles', 'etats', 'entete', 'dashboard']) {
+  for (const id of ['prestations', 'comptoir', 'paiements', 'rejets', 'historique', 'societes', 'personnes', 'familles', 'etats', 'entete', 'dashboard']) {
     await page.locator(`#nav-tab-${id}`).click();
     await expect(page.locator(`#nav-tab-${id}`)).toHaveAttribute('aria-current', 'page');
     await expect(page.getByText('Une erreur est survenue', { exact: true })).toHaveCount(0);

@@ -4,14 +4,15 @@ import type { Prestation } from '../../types';
 import { formatDate } from '../../utils/formatters';
 
 interface Props {
-  /** Prescription liée à une facture Caisse qui va absorber la cible. */
+  /** Prescription conservée (celle sur laquelle la fusion est lancée) : elle garde son numéro. */
   source: Prestation;
-  /** Prescriptions de la même société pouvant être absorbées. */
+  /** Autres prescriptions de la même société, dont une sera absorbée. */
   candidates: Prestation[];
   societeNom: string;
   formatMoney: (value: number) => string;
   onClose: () => void;
-  onConfirm: (conserveId: string, libelle?: string) => void;
+  /** Reçoit l'identifiant de la prescription à ABSORBER + le libellé facultatif. */
+  onConfirm: (absorbeId: string, libelle?: string) => void;
 }
 
 /**
@@ -36,22 +37,22 @@ export function FusionPrescriptionModal({ source, candidates, societeNom, format
             <div className="p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/25 text-indigo-700 dark:text-indigo-300"><Merge className="w-6 h-6" /></div>
             <div>
               <h3 className="text-lg font-bold text-ink-strong">Fusionner deux prescriptions</h3>
-              <p className="text-xs text-ink-muted mt-0.5">{societeNom} — le patient est revenu deux fois en peu de temps.</p>
+              <p className="text-xs text-ink-muted mt-0.5">{societeNom} — regrouper deux factures (même à des dates différentes) en une seule.</p>
             </div>
           </div>
           <button onClick={onClose} aria-label="Fermer" className="p-2 rounded-xl text-ink-faint hover:text-ink hover:bg-surface-hover transition cursor-pointer"><X className="w-5 h-5" /></button>
         </div>
 
         <p className="text-xs text-ink-muted">
-          La prescription <strong>absorbée</strong> disparaît de la liste et ses montants s'ajoutent à la prescription
-          <strong> conservée</strong> (saisie dans le suivi assurance). Son numéro reste lisible dans le commentaire et
-          l'opération est <strong>annulable</strong> : la prescription absorbée est restituée à l'identique.
+          La prescription <strong>absorbée</strong> disparaît de la liste : ses lignes et ses montants s'ajoutent à la
+          prescription <strong>conservée</strong>, qui garde son numéro de facture (les deux dates restent tracées dans
+          le commentaire). L'opération est <strong>annulable</strong> : la prescription absorbée est restituée à l'identique.
         </p>
 
         <div className="grid sm:grid-cols-2 gap-3">
-          {/* Source (facture Caisse, conserve le numéro de la facture) */}
+          {/* Source : la prescription conservée (elle garde son numéro de facture) */}
           <div className="rounded-xl border-2 border-emerald-300 dark:border-emerald-500/40 bg-emerald-50/60 dark:bg-emerald-500/6 p-3 space-y-1.5">
-            <span className="inline-block px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-bold">CONSERVÉ · Facture Caisse</span>
+            <span className="inline-block px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-bold">CONSERVÉE · {source.sourceInvoiceId || source.id.startsWith('caisse:') ? 'Facture Caisse' : 'Suivi assurance'}</span>
             <div className="font-mono font-bold text-sm text-ink-strong">{source.numeroFacture}</div>
             <div className="text-xs text-ink">{source.nomAgent || '—'}{source.matricule ? ` · ${source.matricule}` : ''}</div>
             <div className="text-xs text-ink-muted">{formatDate(source.date)} · {source.lignes?.length || 0} ligne(s)</div>
@@ -64,7 +65,7 @@ export function FusionPrescriptionModal({ source, candidates, societeNom, format
             {candidates.length > 0 ? (
               <select aria-label="Prescription à absorber" value={cibleId} onChange={e => setCibleId(e.target.value)}
                 className="w-full p-2 border border-line-strong rounded-lg bg-surface text-xs cursor-pointer">
-                <option value="">— Choisir la prescription à fusionner —</option>
+                <option value="">— Choisir la facture à absorber —</option>
                 {candidates.map(p => (
                   <option key={p.id} value={p.id}>
                     {p.numeroFacture} · {formatDate(p.date)} · {p.nomAgent || '—'} · {new Intl.NumberFormat('fr-FR').format(p.totalPrestation)}
@@ -76,7 +77,7 @@ export function FusionPrescriptionModal({ source, candidates, societeNom, format
             )}
             {cible && (
               <div className="text-xs text-ink space-y-0.5">
-                <div className="text-ink-muted">{cible.lignes?.length || 0} ligne(s){(cible.ajouts?.length || 0) > 0 ? ` · ${cible.ajouts?.length} ajout(s) facturier` : ''}</div>
+                <div className="text-ink-muted">{cible.lignes?.length || 0} ligne(s){(() => { const ajouts = (cible.lignes || []).filter(l => l.origine === 'omission' || l.origine === 'ordonnance_externe').length; return ajouts > 0 ? ` · ${ajouts} ajout(s) facturier` : ''; })()}</div>
                 {cible.commentaires && <div className="text-ink-muted italic">« {cible.commentaires} »</div>}
               </div>
             )}

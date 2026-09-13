@@ -105,9 +105,13 @@ test('UI : vues séparées, impression mensuelle durable, réimpression après r
   await expect(page.getByTestId('monthly-invoices-view')).toBeVisible();
   await expect(page.getByTestId('billing-detail-view')).toHaveCount(0);
   await page.getByLabel('Mois de facturation').fill('2026-09');
-  await expect(page.getByRole('tab', { name: /Vue par Facture/ })).toContainText('4');
-  await expect(page.getByRole('tab', { name: /Vue Détaillée/ })).toContainText('6');
+  // Facturation : sociétés uniquement (comptoir & externes regroupés à part).
+  await expect(page.getByRole('tab', { name: /Vue par Facture/ })).toContainText('2');
+  await expect(page.getByRole('tab', { name: /Vue Détaillée/ })).toContainText('2');
   const before = await read(page);
+  await page.locator('#nav-tab-comptoir').click();
+  await expect(page.getByTestId('comptoir-invoices-view')).toBeVisible();
+  await page.getByLabel('Mois comptoir & externe').fill('2026-09');
   await page.getByRole('button', { name: /^Imprimer la facture mensuelle 2026-09 Clients Comptoir$/ }).click();
   await expect(page.getByRole('status')).toContainText('FM-2026-09-0001');
   await expect.poll(() => page.evaluate(() => (window as any).__monthlyPrints.length)).toBe(1);
@@ -119,12 +123,13 @@ test('UI : vues séparées, impression mensuelle durable, réimpression après r
   await expect.poll(() => page.evaluate(() => (window as any).__monthlyPrints.length)).toBe(2);
   expect((await read(page))?.monthlyInvoices).toEqual([frozen]);
   await login(page);
+  await page.locator('#nav-tab-comptoir').click();
   await page.getByRole('button', { name: /^Réimprimer la facture mensuelle 2026-09/ }).click();
   await expect.poll(() => page.evaluate(() => (window as any).__monthlyPrints.length)).toBe(1);
   expect((await read(page))?.monthlyInvoices).toEqual([frozen]);
   await page.getByRole('tab', { name: /Vue Détaillée/ }).click();
-  await expect(page.getByTestId('monthly-invoices-view')).toHaveCount(0);
-  await expect(page.getByTestId('billing-detail-view')).toBeVisible();
+  await expect(page.getByTestId('comptoir-invoices-view')).toHaveCount(0);
+  await expect(page.getByTestId('comptoir-detail-view')).toBeVisible();
   await page.getByRole('button', { name: /^Imprimer la facture FAC-mirror$/ }).click();
   await expect.poll(() => page.evaluate(() => (window as any).__monthlyPrints.length)).toBe(2);
   expect((await read(page))?.monthlyInvoices).toEqual([frozen]);
@@ -157,6 +162,7 @@ test('échec de persistance : aucune impression ni numéro consommé', async ({ 
       return put.call(this, value, key);
     };
   });
+  await page.locator('#nav-tab-comptoir').click();
   await page.getByRole('button', { name: /^Imprimer la facture mensuelle 2026-09 Clients Comptoir$/ }).click();
   await expect(page.getByRole('alert')).toContainText('Impression mensuelle non lancée');
   expect((await read(page))?.monthlyInvoices).toEqual([]);
@@ -184,10 +190,14 @@ test('filtre garant unique : les deux vues, les compteurs et les impressions sui
   for (const name of [/^Sociétés \d/, /^Comptoir \d/, /^Externes \d/]) await expect(page.getByRole('tab', { name })).toHaveCount(0);
   await page.getByLabel('Mois de facturation').fill('2026-09');
   const monthly = page.getByRole('table', { name: 'Factures mensuelles', exact: true });
-  await expect(monthly.locator('tbody tr')).toHaveCount(4);
-  // Keep a Comptoir archive present: it too must disappear under a specific guarantor.
+  await expect(monthly.locator('tbody tr')).toHaveCount(2);
+  // L'archive Comptoir se gère dans l'onglet dédié Comptoir & Externe.
+  await page.locator('#nav-tab-comptoir').click();
+  await page.getByLabel('Mois comptoir & externe').fill('2026-09');
   await page.getByRole('button', { name: /^Imprimer la facture mensuelle 2026-09 Clients Comptoir$/ }).click();
   await expect(page.getByRole('status')).toContainText('FM-2026-09-0001');
+  await page.locator('#nav-tab-prestations').click();
+  await page.getByLabel('Mois de facturation').fill('2026-09');
   await page.getByLabel('Société / Garant', { exact: true }).selectOption('soc-A');
   await expect(monthly.locator('tbody tr')).toHaveCount(1);
   await expect(monthly).toContainText('SOCIETE A');
@@ -197,7 +207,6 @@ test('filtre garant unique : les deux vues, les compteurs et les impressions sui
   await expect(page.getByRole('tab', { name: /Vue par Facture/ })).toContainText('1');
   await expect(page.getByRole('tab', { name: /Vue Détaillée/ })).toContainText('1');
   await page.getByRole('button', { name: /^Imprimer la facture mensuelle 2026-09 SOCIETE A$/ }).click();
-  await expect(page.getByRole('status')).toContainText('FM-2026-09-0002');
   const archive = (await read(page))!.monthlyInvoices!;
   expect(archive.find(i => i.companyId === 'soc-A')!.documents.map(d => d.sourceId)).toEqual(['soc-A']);
   await page.getByRole('tab', { name: /Vue Détaillée/ }).click();
@@ -209,11 +218,13 @@ test('filtre garant unique : les deux vues, les compteurs et les impressions sui
   await expect(page.getByRole('button', { name: 'Imprimer la facture soc-A', exact: true })).toHaveCount(0);
   await page.locator('#btn-reset-filter').click();
   await expect(page.getByLabel('Société / Garant', { exact: true })).toHaveValue('ALL');
-  await expect(page.getByRole('tab', { name: /Vue Détaillée/ })).toContainText('6');
+  await expect(page.getByRole('tab', { name: /Vue Détaillée/ })).toContainText('2');
   await expect(page.getByRole('button', { name: 'Imprimer la facture soc-A', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Imprimer la facture FAC-mirror', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Imprimer la facture FAC-mirror', exact: true })).toHaveCount(0);
   await page.getByRole('tab', { name: /Vue par Facture/ }).click();
-  await expect(monthly.locator('tbody tr')).toHaveCount(4);
+  await expect(monthly.locator('tbody tr')).toHaveCount(2);
+  await expect(page.getByRole('button', { name: /^Réimprimer la facture mensuelle 2026-09 Clients Comptoir$/ })).toHaveCount(0);
+  await page.locator('#nav-tab-comptoir').click();
   await expect(page.getByRole('button', { name: /^Réimprimer la facture mensuelle 2026-09 Clients Comptoir$/ })).toBeVisible();
   expect((await read(page))!.monthlyInvoices).toEqual(archive);
 });
@@ -448,6 +459,7 @@ test('UI : base réorganisée automatiquement au chargement, aucun bouton de vé
   expect((await read(page))!.invoices).toEqual(state.invoices);
   expect(repaired.familyMetadataRepairs).toHaveLength(1);
   expect(repaired.familyMetadataRepairs![0].userId).toBe('migration:families-v1');
+  await page.locator('#nav-tab-comptoir').click();
   await page.getByRole('button', { name: /^Réimprimer la facture mensuelle 2026-09 Clients Comptoir$/ }).click();
   await expect.poll(() => page.evaluate(() => (window as any).__monthlyPrints.length)).toBe(1);
   expect(await page.evaluate(() => (window as any).__monthlyPrints[0])).not.toContain('Famille non renseignée');

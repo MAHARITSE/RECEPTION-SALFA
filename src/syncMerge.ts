@@ -154,6 +154,23 @@ export function mergeStates(base: AppState | null, local: AppState, remote: AppS
     merged[key] = Math.max(l, r);
   }
 
+  // Prescripteurs externes (ventes) : union sans doublon (casse ignorée),
+  // chaque poste conserve ses ajouts et récupère ceux de l'autre.
+  const unionNoms = (a: unknown, b: unknown): string[] => {
+    const vus = new Set<string>();
+    const out: string[] = [];
+    for (const brut of [...(Array.isArray(a) ? a : []), ...(Array.isArray(b) ? b : [])]) {
+      if (typeof brut !== 'string') continue;
+      const nom = brut.trim();
+      const cle = nom.toUpperCase();
+      if (!nom || vus.has(cle)) continue;
+      vus.add(cle);
+      out.push(nom);
+    }
+    return out;
+  };
+  merged.prescripteursExternes = unionNoms(localRec.prescripteursExternes, remoteRec.prescripteursExternes);
+
   if (remote.assuranceStorageSupported !== undefined) merged.assuranceStorageSupported = remote.assuranceStorageSupported;
 
   merged.monthlyInvoices = preserveMonthlyInvoices(remote.monthlyInvoices, local.monthlyInvoices);
