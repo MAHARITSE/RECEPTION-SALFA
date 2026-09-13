@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Printer, Receipt, FileText, Info, Search, X } from 'lucide-react';
 import type { AppState } from '../../../store';
-import { addAuditLog } from '../../../store';
 import { IS_WAMP_BUILD } from '../../../wamp';
 import { issueMonthlyInvoiceInBrowser } from '../../../browserDb';
 import { billingTotals, categoryLabels, collectBillingDocuments, documentsForScope, monthlyGroups, monthlyScopeId, preserveMonthlyInvoices, type BillingDocument, type MonthlyScope } from '../monthlyBilling';
@@ -85,20 +84,9 @@ export function ComptoirExterneView({ state, setState }: Props) {
     const doc = factureNom;
     const nom = nomFacture.trim();
     if (!doc || !nom) return;
-    // Le nom est enregistré sur la pièce (facture Caisse ou vente) : les
-    // réimpressions et la vue reprennent ce nom.
-    setState(prev => {
-      const next = {
-        ...prev,
-        invoices: prev.invoices.map(i => i.id === doc.sourceId ? { ...i, clientName: nom } : i),
-        ventes: prev.ventes.map(v => v.id === doc.sourceId ? { ...v, clientName: nom } : v),
-        auditLogs: [...prev.auditLogs],
-      };
-      addAuditLog(next, 'SUIVI_ASSURANCE', `Facture ${doc.number} — nom du client inscrit : ${nom}`);
-      return next;
-    });
+    // Le nom saisi ne fait qu'être imprimé sur la facture : la base n'est
+    // PAS modifiée (la pièce garde son libellé générique et ses données).
     setFactureNom(null);
-    setClientOuvert(null);
     printIndividualBillingDocument(state, { ...doc, client: nom });
   }
 
@@ -263,7 +251,7 @@ export function ComptoirExterneView({ state, setState }: Props) {
             </div>
           </div>
           <div className="p-6 space-y-3">
-            <p className="text-sm text-ink-secondary">La personne réclame sa facture : saisissez le nom à y inscrire. Il sera enregistré sur la pièce et repris lors des réimpressions.</p>
+            <p className="text-sm text-ink-secondary">La personne réclame sa facture : saisissez le nom à imprimer dessus. Ce nom n'est pas enregistré dans la base — les données de la pièce restent inchangées.</p>
             <input
               autoFocus
               type="text"

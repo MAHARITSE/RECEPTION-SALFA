@@ -62,6 +62,10 @@ async function setup(page: Page) {
   state.monthlyInvoices = [];
   await page.addInitScript(() => {
     window.print = () => {
+      const html = document.documentElement.outerHTML;
+      const cible = (window === window.parent ? window : window.parent) as unknown as { __printsHtml: string[] };
+      cible.__printsHtml = cible.__printsHtml || [];
+      cible.__printsHtml.push(html);
       window.dispatchEvent(new Event('beforeprint'));
       setTimeout(() => window.dispatchEvent(new Event('afterprint')), 10);
     };
@@ -135,10 +139,14 @@ test("UI : le nom du client est demandé dans le dossier, à l'impression d'une 
   await modal.getByLabel('Nom à mettre sur la facture').fill('RAKOTO Jeanne');
   await modal.getByRole('button', { name: /Imprimer la facture/ }).click();
   await expect(modal).toHaveCount(0);
-  // Le nom est enregistré sur la pièce et le dossier se referme (la pièce change de nom).
-  await expect(fiche).toHaveCount(0);
   await expect(page.locator('iframe[data-salfa-print]')).toHaveCount(1);
-  await expect.poll(async () => (await read(page))?.ventes.find(v => v.id === 'standalone')?.clientName).toBe('RAKOTO Jeanne');
+  // Le nom est imprimé sur la facture SEULEMENT : la base n'est pas modifiée.
+  await expect.poll(async () => page.evaluate(() => ((window as unknown as { __printsHtml?: string[] }).__printsHtml || []).join(''))).toContain('RAKOTO Jeanne');
+  const venteApres = (await read(page))?.ventes.find(v => v.id === 'standalone');
+  expect(venteApres?.clientName ?? '').not.toBe('RAKOTO Jeanne'); // libellé générique conservé en base
+  // La fiche reste ouverte (la pièce garde son libellé générique).
+  await expect(fiche).toBeVisible();
+  await fiche.getByRole('button', { name: 'Fermer' }).click();
 
   // Dossier avec nom propre : la facture s'imprime directement depuis la fiche.
   await dossiers.getByRole('cell', { name: 'RAKOTO TEST' }).dblclick();
