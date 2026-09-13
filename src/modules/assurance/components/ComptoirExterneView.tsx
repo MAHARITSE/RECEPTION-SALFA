@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Printer, Receipt, FileText, Info } from 'lucide-react';
+import { Printer, Receipt, FileText, Info, Search, X } from 'lucide-react';
 import type { AppState } from '../../../store';
 import { IS_WAMP_BUILD } from '../../../wamp';
 import { issueMonthlyInvoiceInBrowser } from '../../../browserDb';
 import { billingTotals, categoryLabels, collectBillingDocuments, documentsForScope, monthlyGroups, monthlyScopeId, preserveMonthlyInvoices, type BillingDocument, type MonthlyScope } from '../monthlyBilling';
 import { auditArticleFamilies } from '../billingFamilies';
 import { printIndividualBillingDocument, printMonthlyInvoice } from '../printBilling';
+import { documentCorrespondRecherche } from '../utils/rechercheDocument';
 import { formatDate } from '../utils/formatters';
 
 type Props = { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>> };
@@ -20,6 +21,8 @@ export function ComptoirExterneView({ state, setState }: Props) {
   const formatMoney = (value: number, currency = state.ticketSettings.currency) => `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(value)} ${currency}`;
   const [mode, setMode] = useState<'factures' | 'detaillee'>('factures');
   const [month, setMonth] = useState('');
+  // Recherche par nom de client ou numéro de facture (insensible à la casse et aux accents).
+  const [recherche, setRecherche] = useState('');
   const articleIssues = useMemo(() => auditArticleFamilies(state), [state]);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -28,8 +31,8 @@ export function ComptoirExterneView({ state, setState }: Props) {
   // Clients comptoir & externes uniquement : les sociétés restent dans Facturation.
   const documents = useMemo(() => collectBillingDocuments(state).filter(d => d.category !== 'societe'), [state]);
   const snapshots = state.monthlyInvoices || [];
-  const visible = documents.filter(d => !month || d.date.slice(0, 7) === month);
-  const groups = monthlyGroups(documents).filter(g => !month || g.month === month);
+  const visible = documents.filter(d => (!month || d.date.slice(0, 7) === month) && documentCorrespondRecherche(d, recherche));
+  const groups = monthlyGroups(visible);
 
   useEffect(() => { setError(''); setNotice(''); }, [month]);
 
@@ -84,6 +87,17 @@ export function ComptoirExterneView({ state, setState }: Props) {
       </div>
       <label className="text-sm text-ink">Mois <input aria-label="Mois comptoir & externe" type="month" value={month} onChange={event => setMonth(event.target.value)} className="ml-2 rounded-lg border border-line bg-field p-2" /></label>
       {month && <button type="button" className="text-xs text-accent underline" onClick={() => setMonth('')}>Tous les mois</button>}
+      <label className="text-sm text-ink">Recherche
+        <span className="relative inline-block ml-2 align-middle">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 w-3.5 h-3.5 -translate-y-1/2 text-ink-faint" />
+          <input aria-label="Rechercher un nom ou un numéro de facture" type="text" value={recherche}
+            onChange={event => setRecherche(event.target.value)} placeholder="Nom client ou n° facture…"
+            title="Recherche par nom de client, numéro de facture, dossier ou matricule"
+            className="w-56 rounded-lg border border-line bg-field py-2 pl-8 pr-8" />
+          {recherche && <button type="button" aria-label="Effacer la recherche" onClick={() => setRecherche('')}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink transition cursor-pointer"><X className="w-3.5 h-3.5" /></button>}
+        </span>
+      </label>
     </div>
     <p className="flex items-start gap-2 rounded-xl border border-line bg-surface-muted p-3 text-sm text-ink-secondary">
       <Info className="w-4 h-4 shrink-0 mt-0.5 text-accent" />
@@ -100,7 +114,7 @@ export function ComptoirExterneView({ state, setState }: Props) {
         <thead className="bg-surface-muted text-ink-secondary"><tr>{['Date', 'Facture', 'Client / Dossier', 'Détail des actes', 'Montant', 'Encaissé', 'Impression'].map(label => <th className="p-3" key={label}>{label}</th>)}</tr></thead>
         <tbody>{groups.map(scope => {
           const id = monthlyScopeId(scope), saved = snapshots.find(i => i.id === id);
-          const rows = documentsForScope(documents, scope);
+          const rows = documentsForScope(documents, scope).filter(d => documentCorrespondRecherche(d, recherche));
           const totaux = saved ?? billingTotals(rows);
           const missing = saved?.documents.reduce((sum, d) => sum + d.items.filter(i => !i.actCode?.trim()).length, 0) || 0;
           const recipient = saved?.recipient || `Clients ${categoryLabels[scope.category]}`;
