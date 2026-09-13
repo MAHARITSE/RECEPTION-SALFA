@@ -37,6 +37,8 @@ test('nom générique : Client Externe / Clients Comptoir réclament un nom, un 
   expect(nomClientGenerique('Clients Externes')).toBe(true);
   expect(nomClientGenerique('client externe')).toBe(true);
   expect(nomClientGenerique('Clients Comptoir')).toBe(true);
+  expect(nomClientGenerique('Externes')).toBe(true);   // libellé nu
+  expect(nomClientGenerique('Comptoir')).toBe(true);   // libellé nu
   expect(nomClientGenerique('')).toBe(true);
   expect(nomClientGenerique(undefined)).toBe(true);
   expect(nomClientGenerique('RAKOTO Jean')).toBe(false);
@@ -83,23 +85,28 @@ async function login(page: Page) {
 
 test('UI : la recherche filtre les deux vues par nom ou numéro de facture', async ({ page }) => {
   await setup(page); await login(page);
-  const compteurDetaille = page.getByRole('tab', { name: /Vue Détaillée/ });
-  await expect(compteurDetaille).toContainText('5');
+  // Vue Détaillée : un dossier par nom de client (RAKOTO TEST + libellé « Externes »).
+  const compteurDossiers = page.getByRole('tab', { name: /Vue Détaillée/ });
+  await expect(compteurDossiers).toContainText('2');
   const recherche = page.getByLabel('Rechercher un nom ou un numéro de facture');
 
-  // Par numéro de facture, insensible à la casse : une seule pièce.
+  // Par numéro de facture, insensible à la casse : un seul dossier.
   await recherche.fill('fac-mirror');
-  await expect(compteurDetaille).toContainText('1');
+  await expect(compteurDossiers).toContainText('1');
   await page.getByRole('tab', { name: /Vue Détaillée/ }).click();
-  const table = page.getByRole('table', { name: 'Factures détaillées clients' });
-  await expect(table).toContainText('FAC-mirror');
-  await expect(table).not.toContainText('FAC-standalone');
+  const dossiers = page.getByRole('table', { name: 'Dossiers clients comptoir & externes' });
+  await expect(dossiers).toContainText('RAKOTO TEST');
+  await expect(dossiers).not.toContainText('Externes');
 
-  // Par nom de client : les pièces du dossier RAKOTO TEST, tous mois et catégories confondus.
-  await recherche.fill('rakoto');
-  await expect(compteurDetaille).toContainText('4');
+  // Le dossier du client liste toutes ses factures, avec leur date.
+  await dossiers.getByRole('cell', { name: 'RAKOTO TEST' }).first().dblclick();
+  const fiche = page.getByRole('dialog', { name: 'Factures de RAKOTO TEST' });
+  await expect(fiche).toBeVisible();
+  await expect(fiche).toContainText('FAC-mirror');
+  await expect(fiche).not.toContainText('comptoir-2'); // la recherche filtre aussi la fiche
 
   // Vue par Facture : seuls les regroupements contenant une pièce correspondante restent.
+  await fiche.getByRole('button', { name: 'Fermer' }).click();
   await page.getByRole('tab', { name: /Vue par Facture/ }).click();
   const mensuelles = page.getByRole('table', { name: 'Factures mensuelles comptoir & externes' });
   await expect(mensuelles.locator('tbody tr')).toHaveCount(3);
@@ -109,32 +116,36 @@ test('UI : la recherche filtre les deux vues par nom ou numéro de facture', asy
   // Effacer rétablit la liste complète.
   await page.getByRole('button', { name: 'Effacer la recherche' }).click();
   await expect(mensuelles.locator('tbody tr')).toHaveCount(3);
-  await expect(compteurDetaille).toContainText('5');
+  await expect(compteurDossiers).toContainText('2');
 });
 
-test("UI : le nom du client est demandé à la facturation quand la personne réclame une facture sans nom propre", async ({ page }) => {
+test("UI : le nom du client est demandé dans le dossier, à l'impression d'une facture sans nom propre", async ({ page }) => {
   await setup(page); await login(page);
   await page.getByRole('tab', { name: /Vue Détaillée/ }).click();
-  const table = page.getByRole('table', { name: 'Factures détaillées clients' });
+  const dossiers = page.getByRole('table', { name: 'Dossiers clients comptoir & externes' });
 
-  // Pièce SANS nom propre (vente externe « Clients Externes ») : le nom est demandé avant l'impression.
-  await page.getByRole('button', { name: 'Imprimer la facture FAC-standalone', exact: true }).click();
+  // Dossier « Externes » (sans nom propre) : impression → demande du nom.
+  await dossiers.getByRole('cell', { name: 'Externes' }).dblclick();
+  const fiche = page.getByRole('dialog', { name: 'Factures de Externes' });
+  await expect(fiche).toBeVisible();
+  await fiche.getByRole('button', { name: 'Imprimer la facture FAC-standalone', exact: true }).click();
   const modal = page.getByRole('dialog', { name: 'Nom du client pour la facture' });
   await expect(modal).toBeVisible();
-  await expect(modal).toContainText('FAC-standalone');
   await expect(page.locator('iframe[data-salfa-print]')).toHaveCount(0);
-
   await modal.getByLabel('Nom à mettre sur la facture').fill('RAKOTO Jeanne');
   await modal.getByRole('button', { name: /Imprimer la facture/ }).click();
   await expect(modal).toHaveCount(0);
+  // Le nom est enregistré sur la pièce et le dossier se referme (la pièce change de nom).
+  await expect(fiche).toHaveCount(0);
   await expect(page.locator('iframe[data-salfa-print]')).toHaveCount(1);
-
-  // Le nom est enregistré sur la pièce : la vue et la base le reprennent.
-  await expect(table).toContainText('RAKOTO Jeanne');
   await expect.poll(async () => (await read(page))?.ventes.find(v => v.id === 'standalone')?.clientName).toBe('RAKOTO Jeanne');
 
-  // Pièce AVEC nom propre : impression directe, aucune demande.
-  await page.getByRole('button', { name: 'Imprimer la facture FAC-mirror', exact: true }).click();
+  // Dossier avec nom propre : la facture s'imprime directement depuis la fiche.
+  await dossiers.getByRole('cell', { name: 'RAKOTO TEST' }).dblclick();
+  const ficheRakoto = page.getByRole('dialog', { name: 'Factures de RAKOTO TEST' });
+  await expect(ficheRakoto).toBeVisible();
+  await ficheRakoto.getByRole('button', { name: 'Imprimer la facture FAC-mirror', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Nom du client pour la facture' })).toHaveCount(0);
+  await expect(ficheRakoto).toBeVisible(); // la fiche reste ouverte pour imprimer d'autres factures
   await expect(page.locator('iframe[data-salfa-print]')).toHaveCount(2);
 });

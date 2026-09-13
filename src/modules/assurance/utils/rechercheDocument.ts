@@ -30,5 +30,5 @@ export function documentCorrespondRecherche(doc: DocumentRecherchable, requete: 
 export function nomClientGenerique(client?: string): boolean {
   const valeur = (client || '').trim();
   if (!valeur) return true;
-  return /^clients?\s+(externes?|comptoir)$/i.test(valeur);
+  return /^(clients?\s+)?(externes?|comptoir)$/i.test(valeur);
 }

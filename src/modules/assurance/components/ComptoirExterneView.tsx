@@ -7,7 +7,7 @@ import { issueMonthlyInvoiceInBrowser } from '../../../browserDb';
 import { billingTotals, categoryLabels, collectBillingDocuments, documentsForScope, monthlyGroups, monthlyScopeId, preserveMonthlyInvoices, type BillingDocument, type MonthlyScope } from '../monthlyBilling';
 import { auditArticleFamilies } from '../billingFamilies';
 import { printIndividualBillingDocument, printMonthlyInvoice } from '../printBilling';
-import { documentCorrespondRecherche, nomClientGenerique } from '../utils/rechercheDocument';
+import { documentCorrespondRecherche, nomClientGenerique, normaliserRecherche } from '../utils/rechercheDocument';
 import { formatDate } from '../utils/formatters';
 
 type Props = { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>> };
@@ -28,6 +28,9 @@ export function ComptoirExterneView({ state, setState }: Props) {
   // (« Client Externe »…), le nom à inscrire est demandé avant l'impression.
   const [factureNom, setFactureNom] = useState<BillingDocument | null>(null);
   const [nomFacture, setNomFacture] = useState('');
+  // Vue Détaillée : un dossier par nom de client ; le double-clic ouvre
+  // la liste complète de ses factures (dates + impression).
+  const [clientOuvert, setClientOuvert] = useState<{ cle: string; nom: string } | null>(null);
   const articleIssues = useMemo(() => auditArticleFamilies(state), [state]);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -38,6 +41,20 @@ export function ComptoirExterneView({ state, setState }: Props) {
   const snapshots = state.monthlyInvoices || [];
   const visible = documents.filter(d => (!month || d.date.slice(0, 7) === month) && documentCorrespondRecherche(d, recherche));
   const groups = monthlyGroups(visible);
+  // Dossiers : une ligne par nom de client (noms regroupés sans casse ni accents),
+  // factures triées de la plus récente à la plus ancienne.
+  const groupesClients = useMemo(() => {
+    const map = new Map<string, { cle: string; nom: string; docs: BillingDocument[] }>();
+    for (const d of visible) {
+      const cle = normaliserRecherche(d.client) || 'sans-nom';
+      const groupe = map.get(cle);
+      if (groupe) groupe.docs.push(d);
+      else map.set(cle, { cle, nom: d.client || 'Client sans nom', docs: [d] });
+    }
+    return [...map.values()]
+      .map(g => ({ ...g, docs: g.docs.slice().sort((a, b) => b.date.localeCompare(a.date) || a.number.localeCompare(b.number)) }))
+      .sort((a, b) => a.nom.localeCompare(b.nom));
+  }, [visible]);
 
   useEffect(() => { setError(''); setNotice(''); }, [month]);
 
@@ -81,22 +98,35 @@ export function ComptoirExterneView({ state, setState }: Props) {
       return next;
     });
     setFactureNom(null);
+    setClientOuvert(null);
     printIndividualBillingDocument(state, { ...doc, client: nom });
   }
 
-  function renderDetailTable(rows: BillingDocument[]) {
-    return <div className="overflow-x-auto rounded-xl border border-line bg-surface">
-      <table className="w-full text-left text-xs" aria-label="Factures détaillées clients">
-        <thead className="bg-surface-muted text-ink-secondary"><tr>{['Date', 'Facture', 'Client / Dossier', 'Détail des actes', 'Montant', 'Encaissé', 'Impression'].map(label => <th className="p-3" key={label}>{label}</th>)}</tr></thead>
-        <tbody>{rows.map(d => <tr key={d.id} className="border-t border-line hover:bg-surface-hover">
-          <td className="p-3 whitespace-nowrap">{d.date}</td><td className="p-3 font-mono font-semibold">{d.number}</td>
-          <td className="p-3">{d.client}{d.dossier && <span className="block text-ink-muted">{d.dossier}</span>}</td>
-          <td className="p-3"><details><summary className="cursor-pointer">{d.items.length} acte(s)</summary><ul className="mt-2 space-y-1">{d.items.map((item, index) => <li key={index}>{item.description} — {formatMoney(item.amount)}</li>)}</ul></details></td>
-          <td className="p-3 whitespace-nowrap">{formatMoney(d.total)}</td><td className="p-3 whitespace-nowrap">{formatMoney(d.paid)}</td>
-          <td className="p-3"><button type="button" onClick={() => demanderFacture(d)} aria-label={`Imprimer la facture ${d.number}`} title={nomClientGenerique(d.client) ? 'Le nom du client à inscrire sur la facture vous sera demandé' : undefined} className="inline-flex items-center gap-1.5 rounded-lg border border-line-strong px-3 py-2 hover:bg-accent-soft text-accent"><Printer size={15} />Imprimer</button></td>
-        </tr>)}</tbody>
+  function renderDossiersTable() {
+    return <div className="overflow-x-auto rounded-xl border border-line bg-surface" data-testid="comptoir-dossiers-table">
+      <table className="w-full text-left text-xs" aria-label="Dossiers clients comptoir & externes">
+        <thead className="bg-surface-muted text-ink-secondary"><tr>{['Client / Dossier', 'Factures', 'Période', 'Total', 'Encaissé'].map(label => <th className="p-3" key={label}>{label}</th>)}</tr></thead>
+        <tbody>{groupesClients.map(g => {
+          const totaux = billingTotals(g.docs);
+          const dates = g.docs.map(d => d.date).sort();
+          const periode = dates[0] === dates[dates.length - 1] ? dates[0] : `${dates[0]} → ${dates[dates.length - 1]}`;
+          const premiere = g.docs[0];
+          return <tr key={g.cle} className="border-t border-line cursor-pointer hover:bg-surface-hover"
+            title="Double-clic : voir toutes les factures de ce client"
+            onDoubleClick={() => setClientOuvert({ cle: g.cle, nom: g.nom })}>
+            <td className="p-3 font-semibold text-indigo-700 dark:text-indigo-300 underline decoration-dotted underline-offset-2">
+              {g.nom}
+              {premiere.dossier && <span className="block text-ink-muted font-normal">{premiere.dossier}</span>}
+              {nomClientGenerique(g.nom) && <span className="block text-[10px] text-amber-700 font-normal">Nom à demander à l'impression</span>}
+            </td>
+            <td className="p-3 text-center font-bold">{g.docs.length}</td>
+            <td className="p-3 whitespace-nowrap">{periode}</td>
+            <td className="p-3 whitespace-nowrap">{formatMoney(totaux.total)}</td>
+            <td className="p-3 whitespace-nowrap">{formatMoney(totaux.paid)}</td>
+          </tr>;
+        })}</tbody>
       </table>
-      {!rows.length && <p className="p-6 text-center text-sm text-ink-muted">Aucune facture pour cette sélection.</p>}
+      {!groupesClients.length && <p className="p-6 text-center text-sm text-ink-muted">Aucune facture pour cette sélection.</p>}
     </div>;
   }
 
@@ -113,7 +143,7 @@ export function ComptoirExterneView({ state, setState }: Props) {
           className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${mode === 'detaillee' ? 'bg-surface text-indigo-700 shadow-2xs' : 'text-ink-secondary hover:text-ink-strong'}`}>
           <FileText className="w-3.5 h-3.5 text-ink-secondary" />
           <span>Vue Détaillée (Dossiers)</span>
-          <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-surface-active text-ink font-bold">{visible.length}</span>
+          <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-surface-active text-ink font-bold">{groupesClients.length}</span>
         </button>
       </div>
       <label className="text-sm text-ink">Mois <input aria-label="Mois comptoir & externe" type="month" value={month} onChange={event => setMonth(event.target.value)} className="ml-2 rounded-lg border border-line bg-field p-2" /></label>
@@ -164,8 +194,62 @@ export function ComptoirExterneView({ state, setState }: Props) {
         })}</tbody>
       </table>{!groups.length && <p className="p-6 text-center text-sm text-ink-muted">Aucune facture pour cette sélection.</p>}</div>
     </div> : <div data-testid="comptoir-detail-view">
-      {renderDetailTable(visible)}
+      {renderDossiersTable()}
+      <p className="text-xs text-ink-muted">Double-cliquez sur le nom d'un client pour ouvrir la liste complète de ses factures et les imprimer.</p>
     </div>}
+
+    {/* ===== MODAL : liste complète des factures d'un client (double-clic sur son nom) ===== */}
+    {clientOuvert && (() => {
+      const groupe = groupesClients.find(g => g.cle === clientOuvert.cle);
+      if (!groupe) return null;
+      const totaux = billingTotals(groupe.docs);
+      return (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200" onMouseDown={e => { if (e.target === e.currentTarget) setClientOuvert(null); }}>
+          <div className="bg-surface rounded-2xl max-w-3xl w-full shadow-2xl flex flex-col max-h-[92vh]" role="dialog" aria-label={`Factures de ${groupe.nom}`}>
+            <div className="flex items-start justify-between gap-3 border-b border-line-soft px-6 py-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/25 text-indigo-700 dark:text-indigo-300"><FileText className="w-6 h-6" /></div>
+                <div>
+                  <h3 className="text-lg font-bold text-ink-strong">{groupe.nom}</h3>
+                  <p className="text-xs text-ink-muted mt-0.5">{groupe.docs.length} facture(s) — toutes les dates</p>
+                </div>
+              </div>
+              <button onClick={() => setClientOuvert(null)} aria-label="Fermer" className="p-2 rounded-xl text-ink-faint hover:text-ink hover:bg-surface-hover transition cursor-pointer"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="px-6 py-4 overflow-y-auto">
+              <div className="overflow-x-auto rounded-xl border border-line">
+                <table className="w-full text-left text-xs" aria-label={`Factures de ${groupe.nom}`}>
+                  <thead className="bg-surface-muted text-ink-secondary"><tr>{['Date', 'Facture', 'Catégorie', 'Montant', 'Encaissé', 'Impression'].map(label => <th className="p-2.5" key={label}>{label}</th>)}</tr></thead>
+                  <tbody>
+                    {groupe.docs.map(d => (
+                      <tr key={d.id} className="border-t border-line hover:bg-surface-hover">
+                        <td className="p-2.5 whitespace-nowrap">{formatDate(d.date)}</td>
+                        <td className="p-2.5 font-mono font-semibold">{d.number}</td>
+                        <td className="p-2.5">{categoryLabels[d.category]}</td>
+                        <td className="p-2.5 whitespace-nowrap font-mono">{formatMoney(d.total)}</td>
+                        <td className="p-2.5 whitespace-nowrap font-mono">{formatMoney(d.paid)}</td>
+                        <td className="p-2.5">
+                          <button type="button" onClick={() => demanderFacture(d)} aria-label={`Imprimer la facture ${d.number}`}
+                            title={nomClientGenerique(d.client) ? 'Le nom du client à inscrire sur la facture vous sera demandé' : undefined}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-line-strong px-3 py-2 hover:bg-accent-soft text-accent">
+                            <Printer size={14} />Imprimer
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {!groupe.docs.length && <tr><td colSpan={6} className="p-6 text-center text-ink-muted italic">Aucune facture pour cette sélection.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="flex items-center justify-between border-t border-line-soft px-6 py-3">
+              <span className="text-sm font-bold text-ink-strong">Total : {formatMoney(totaux.total)}</span>
+              <span className="text-xs text-ink-muted">Encaissé : {formatMoney(totaux.paid)}</span>
+            </div>
+          </div>
+        </div>
+      );
+    })()}
 
     {/* Demande du nom lorsque la personne réclame sa facture (pièce sans nom propre) */}
     {factureNom && (
