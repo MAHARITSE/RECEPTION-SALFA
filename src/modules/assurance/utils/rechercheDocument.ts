@@ -1,12 +1,6 @@
-/** Recherche insensible à la casse, aux accents et aux espaces superflus. */
-export function normaliserRecherche(valeur: string): string {
-  return (valeur || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim();
-}
+import { correspondRechercheMultiMots, normaliserRecherche } from '../../../utils/recherche';
+
+export { normaliserRecherche };
 
 export interface DocumentRecherchable {
   number: string;
@@ -17,13 +11,12 @@ export interface DocumentRecherchable {
 
 /**
  * Correspondance d'une pièce de facturation avec la recherche de l'utilisateur :
- * nom du client, numéro de facture, dossier ou matricule (contient la requête).
+ * nom du client, numéro de facture, dossier ou matricule. Chaque mot saisi doit
+ * se retrouver (champs confondus) : « RAVELO N » retrouve « RAVELO NAINA ».
  */
 export function documentCorrespondRecherche(doc: DocumentRecherchable, requete: string): boolean {
-  const q = normaliserRecherche(requete);
-  if (!q) return true;
-  return [doc.number, doc.client, doc.dossier, doc.matricule]
-    .some(champ => normaliserRecherche(champ || '').includes(q));
+  const cible = [doc.number, doc.client, doc.dossier, doc.matricule].filter(Boolean).join(' ');
+  return correspondRechercheMultiMots(cible, requete);
 }
 
 /** Nom générique (« Client Externe », « Clients Comptoir »…) : la pièce n'a pas de nom propre. */

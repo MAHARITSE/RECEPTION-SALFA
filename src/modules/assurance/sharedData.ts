@@ -393,8 +393,8 @@ export function writeSharedTable(state: AppState, table: SharedTable, value: Non
       const retirees = source.lignes.filter(l => prefixesFusion.some(marker => l.id.includes(marker)) && !(changed.lignes || []).some(c => c.id === l.id));
       const ecartBrut = arrondi2(changed.totalPrestation - source.totalPrestation);
       const ecartMod = arrondi2(changed.participation - source.participation);
-      if (ecartBrut !== arrondi2(sommeLignes(ajouts, 'totalPrestation') - sommeLignes(retirees, 'totalPrestation'))) throw new Error('Le total de la prescription ne correspond pas aux lignes ajoutées ou retirées.');
-      if (ecartMod !== arrondi2(sommeLignes(ajouts, 'ticketModerateur') - sommeLignes(retirees, 'ticketModerateur'))) throw new Error('Le ticket modérateur ne correspond pas aux lignes ajoutées ou retirées.');
+      if (ecartBrut !== arrondi2(sommeLignes(ajouts, 'totalPrestation') - sommeLignes(retirees, 'totalPrestation'))) throw new Error('Le total de la prescription ne correspond pas aux lignes ajoutées ou retirées ; les actes de la facture Caisse restent en lecture seule.');
+      if (ecartMod !== arrondi2(sommeLignes(ajouts, 'ticketModerateur') - sommeLignes(retirees, 'ticketModerateur'))) throw new Error('Le ticket modérateur ne correspond pas aux lignes ajoutées ou retirées ; les actes de la facture Caisse restent en lecture seule.');
       const nomModifie = (changed.nomAgent || '') !== (source.nomAgent || '') || (changed.matricule || '') !== (source.matricule || '');
       const noteModifiee = (changed.commentaires || '') !== (source.commentaires || '');
       if (!ajouts.length && !nomModifie && !noteModifiee) continue; // rien à conserver
