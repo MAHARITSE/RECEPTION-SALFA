@@ -381,6 +381,12 @@ test('une nouvelle vente externe imprime les deux bons et ne décompte pas de st
     await page.getByRole('button', { name: 'Enreg.', exact: true }).click();
   }
   const total = 2 * labArticle.priceExterne + echoArticle.priceExterne;
+  // Prescripteur (facultatif) : champ de saisie assistée lié à la base des médecins.
+  const medecinBase = seed.users.find((u: { role: string }) => u.role === 'doctor');
+  const champPrescripteur = page.getByLabel('Médecin prescripteur');
+  await champPrescripteur.fill(medecinBase.name.slice(0, 6));
+  await champPrescripteur.press('Escape'); // referme la liste d'assistance sans changer la valeur
+  await champPrescripteur.fill(medecinBase.name);
   await page.getByRole('button', { name: `Encaisser ${total.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Ar`, exact: true }).click();
   await expectJobs(page, 1);
   await closePrint(page);
@@ -395,6 +401,10 @@ test('une nouvelle vente externe imprime les deux bons et ne décompte pas de st
   await expect.poll(async () => (await browserState(page)).invoices.length).toBe(1);
   const saved = await browserState(page);
   expect(saved.invoices[0]).toMatchObject({ isExternal: true, status: 'paid', patientCharge: total });
+  // Le prescripteur saisi est repris sur les bons et dans la base (consultation externe).
+  expect(attempts[1].text).toContain(medecinBase.name);
+  expect(attempts[2].text).toContain(medecinBase.name);
+  expect(saved.consultations[0].doctorName).toBe(medecinBase.name);
   expect(saved.labRequests).toHaveLength(2);
   expect(saved.labRequests.every((request) => request.status === 'paid' && request.invoiceId === saved.invoices[0].id)).toBe(true);
   expect(saved.consultations[0].echoRequests?.[0].status).toBe('paid');
