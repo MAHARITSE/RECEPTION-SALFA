@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Printer, Receipt, FileText, Info, Search, X } from 'lucide-react';
 import type { AppState } from '../../../store';
+import { addAuditLog } from '../../../store';
 import { IS_WAMP_BUILD } from '../../../wamp';
 import { issueMonthlyInvoiceInBrowser } from '../../../browserDb';
 import { billingTotals, categoryLabels, collectBillingDocuments, documentsForScope, monthlyGroups, monthlyScopeId, preserveMonthlyInvoices, type BillingDocument, type MonthlyScope } from '../monthlyBilling';
 import { auditArticleFamilies } from '../billingFamilies';
 import { printIndividualBillingDocument, printMonthlyInvoice } from '../printBilling';
-import { documentCorrespondRecherche } from '../utils/rechercheDocument';
+import { documentCorrespondRecherche, nomClientGenerique } from '../utils/rechercheDocument';
 import { formatDate } from '../utils/formatters';
 
 type Props = { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>> };
@@ -23,6 +24,10 @@ export function ComptoirExterneView({ state, setState }: Props) {
   const [month, setMonth] = useState('');
   // Recherche par nom de client ou numéro de facture (insensible à la casse et aux accents).
   const [recherche, setRecherche] = useState('');
+  // Demande de facture par la personne : si la pièce n'a pas de nom propre
+  // (« Client Externe »…), le nom à inscrire est demandé avant l'impression.
+  const [factureNom, setFactureNom] = useState<BillingDocument | null>(null);
+  const [nomFacture, setNomFacture] = useState('');
   const articleIssues = useMemo(() => auditArticleFamilies(state), [state]);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -53,6 +58,32 @@ export function ComptoirExterneView({ state, setState }: Props) {
     } finally { printing.current = false; setBusy(null); }
   }
 
+  function demanderFacture(doc: BillingDocument) {
+    if (!nomClientGenerique(doc.client)) { printIndividualBillingDocument(state, doc); return; }
+    setNomFacture('');
+    setFactureNom(doc);
+  }
+
+  function confirmerNomFacture() {
+    const doc = factureNom;
+    const nom = nomFacture.trim();
+    if (!doc || !nom) return;
+    // Le nom est enregistré sur la pièce (facture Caisse ou vente) : les
+    // réimpressions et la vue reprennent ce nom.
+    setState(prev => {
+      const next = {
+        ...prev,
+        invoices: prev.invoices.map(i => i.id === doc.sourceId ? { ...i, clientName: nom } : i),
+        ventes: prev.ventes.map(v => v.id === doc.sourceId ? { ...v, clientName: nom } : v),
+        auditLogs: [...prev.auditLogs],
+      };
+      addAuditLog(next, 'SUIVI_ASSURANCE', `Facture ${doc.number} — nom du client inscrit : ${nom}`);
+      return next;
+    });
+    setFactureNom(null);
+    printIndividualBillingDocument(state, { ...doc, client: nom });
+  }
+
   function renderDetailTable(rows: BillingDocument[]) {
     return <div className="overflow-x-auto rounded-xl border border-line bg-surface">
       <table className="w-full text-left text-xs" aria-label="Factures détaillées clients">
@@ -62,7 +93,7 @@ export function ComptoirExterneView({ state, setState }: Props) {
           <td className="p-3">{d.client}{d.dossier && <span className="block text-ink-muted">{d.dossier}</span>}</td>
           <td className="p-3"><details><summary className="cursor-pointer">{d.items.length} acte(s)</summary><ul className="mt-2 space-y-1">{d.items.map((item, index) => <li key={index}>{item.description} — {formatMoney(item.amount)}</li>)}</ul></details></td>
           <td className="p-3 whitespace-nowrap">{formatMoney(d.total)}</td><td className="p-3 whitespace-nowrap">{formatMoney(d.paid)}</td>
-          <td className="p-3"><button type="button" onClick={() => printIndividualBillingDocument(state, d)} aria-label={`Imprimer la facture ${d.number}`} className="inline-flex items-center gap-1.5 rounded-lg border border-line-strong px-3 py-2 hover:bg-accent-soft text-accent"><Printer size={15} />Imprimer</button></td>
+          <td className="p-3"><button type="button" onClick={() => demanderFacture(d)} aria-label={`Imprimer la facture ${d.number}`} title={nomClientGenerique(d.client) ? 'Le nom du client à inscrire sur la facture vous sera demandé' : undefined} className="inline-flex items-center gap-1.5 rounded-lg border border-line-strong px-3 py-2 hover:bg-accent-soft text-accent"><Printer size={15} />Imprimer</button></td>
         </tr>)}</tbody>
       </table>
       {!rows.length && <p className="p-6 text-center text-sm text-ink-muted">Aucune facture pour cette sélection.</p>}
@@ -135,5 +166,41 @@ export function ComptoirExterneView({ state, setState }: Props) {
     </div> : <div data-testid="comptoir-detail-view">
       {renderDetailTable(visible)}
     </div>}
+
+    {/* Demande du nom lorsque la personne réclame sa facture (pièce sans nom propre) */}
+    {factureNom && (
+      <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-200" onMouseDown={e => { if (e.target === e.currentTarget) setFactureNom(null); }}>
+        <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-indigo-100 dark:border-indigo-500/25" role="dialog" aria-label="Nom du client pour la facture">
+          <div className="px-6 py-4 bg-indigo-50 dark:bg-indigo-500/10 border-b border-indigo-100 dark:border-indigo-500/25 flex items-center gap-2.5">
+            <Receipt className="w-5 h-5 text-indigo-700 dark:text-indigo-300" />
+            <div>
+              <h3 className="text-base font-bold text-indigo-900 dark:text-indigo-200">Nom sur la facture</h3>
+              <p className="text-xs text-indigo-700 dark:text-indigo-300 font-medium">{factureNom.number} — {formatMoney(factureNom.total)}</p>
+            </div>
+          </div>
+          <div className="p-6 space-y-3">
+            <p className="text-sm text-ink-secondary">La personne réclame sa facture : saisissez le nom à y inscrire. Il sera enregistré sur la pièce et repris lors des réimpressions.</p>
+            <input
+              autoFocus
+              type="text"
+              value={nomFacture}
+              onChange={e => setNomFacture(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); confirmerNomFacture(); } }}
+              aria-label="Nom à mettre sur la facture"
+              placeholder="Ex : RAKOTO Jeanne / Société X"
+              className="w-full rounded-xl border border-line bg-field p-3 text-sm outline-none focus:border-accent"
+            />
+            {!nomFacture.trim() && <p className="text-xs text-ink-muted">Le nom est obligatoire pour imprimer la facture.</p>}
+          </div>
+          <div className="px-6 py-4 border-t border-line-soft flex justify-end gap-3">
+            <button type="button" onClick={() => setFactureNom(null)} className="px-4 py-2 rounded-xl text-xs font-semibold border border-line hover:bg-surface-hover transition cursor-pointer">Annuler</button>
+            <button type="button" disabled={!nomFacture.trim()} onClick={confirmerNomFacture}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+              <Printer className="w-4 h-4" /> Imprimer la facture
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
   </section>;
 }

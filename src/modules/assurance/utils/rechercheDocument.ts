@@ -25,3 +25,10 @@ export function documentCorrespondRecherche(doc: DocumentRecherchable, requete: 
   return [doc.number, doc.client, doc.dossier, doc.matricule]
     .some(champ => normaliserRecherche(champ || '').includes(q));
 }
+
+/** Nom générique (« Client Externe », « Clients Comptoir »…) : la pièce n'a pas de nom propre. */
+export function nomClientGenerique(client?: string): boolean {
+  const valeur = (client || '').trim();
+  if (!valeur) return true;
+  return /^clients?\s+(externes?|comptoir)$/i.test(valeur);
+}

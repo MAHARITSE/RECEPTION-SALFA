@@ -106,10 +106,6 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const payingRef = useRef(false);
   const [lastReceipt, setLastReceipt] = useState<ReceiptSnapshot | null>(null);
-  // Vente externe : le nom à mettre sur la facture est demandé AVANT l'impression
-  // (aucun « Client Externe » n'est inscrit automatiquement sur le document).
-  const [extClientModalOpen, setExtClientModalOpen] = useState(false);
-  const [extClientName, setExtClientName] = useState('');
 
   const prepareReceipts = (invoices: Invoice[], invoice: Invoice, exams = getExamReceipts(invoices, state.consultations, state.labRequests)): ReceiptSnapshot => {
     const consultation = state.consultations.find(c => invoices.some(i => i.consultationId === c.id && (!i.patientId || i.patientId === c.patientId)));
@@ -664,7 +660,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     }
     else if (e.key === 'Escape') setExtSearch('');
   };
-  const extPay = (nomClient: string) => {
+  const extPay = () => {
     if (extLines.length === 0) return;
     // Ne pas valider l'encaissement si une ligne de vente est en cours de saisie mais non enregistrée
     if (blockIfUnsavedDraftLine(extLineForm, extLines, { entityLabel: 'l\'article' })) return;
@@ -819,7 +815,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     const inv: Invoice = {
       id: invId,
       consultationId: extConsultId,
-      clientName: nomClient,
+      clientName: 'Client Externe',
       clientType: 'externe',
       numeroFacture: extNumero,
       items: extLines.map(l => {
@@ -858,7 +854,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         newLabRequests.length > 0 ? 'analyses' : '',
         newEchoRequests.length > 0 ? 'échographies' : '',
       ].filter(Boolean).join(' + ');
-      addAuditLog(next, 'VENTE_EXTERNE', `${nomClient} — ${formatAr(extTotal)}${parts ? ` (${parts})` : ''}${medicamentLines.length > 0 ? ' — ordonnance ajoutée à la file d\'attente pharmacie' : ''}`);
+      addAuditLog(next, 'VENTE_EXTERNE', `Client Externe — ${formatAr(extTotal)}${parts ? ` (${parts})` : ''}${medicamentLines.length > 0 ? ' — ordonnance ajoutée à la file d\'attente pharmacie' : ''}`);
       return next;
     });
     const receipt = prepareReceipts([inv], inv, getExamReceipts([inv], newConsultations, newLabRequests));
@@ -1476,7 +1472,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                     </table>
                   </div>
                 </div>
-                <button onClick={() => { setExtClientName(''); setExtClientModalOpen(true); }} disabled={extLines.length === 0} className="w-full py-3 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 disabled:opacity-40 cursor-pointer flex items-center justify-center gap-2"><CreditCard className="w-5 h-5" /> Encaisser {formatAr(extTotal)}</button>
+                <button onClick={extPay} disabled={extLines.length === 0} className="w-full py-3 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 disabled:opacity-40 cursor-pointer flex items-center justify-center gap-2"><CreditCard className="w-5 h-5" /> Encaisser {formatAr(extTotal)}</button>
 
               </div>
             </div>
@@ -2384,42 +2380,6 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         alert={articleAlert}
         onClose={() => { setArticleAlert(null); setTimeout(() => extSearchRef.current?.focus(), 50); }}
       />
-
-      {/* Nom à mettre sur la facture de vente externe : demandé avant l'encaissement / l'impression */}
-      {extClientModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-200" onMouseDown={e => { if (e.target === e.currentTarget) setExtClientModalOpen(false); }}>
-          <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-purple-100 dark:border-purple-500/25" role="dialog" aria-label="Nom du client pour la facture">
-            <div className="px-6 py-4 bg-purple-50 dark:bg-purple-500/10 border-b border-purple-100 dark:border-purple-500/25 flex items-center gap-2.5">
-              <ShoppingCart className="w-5 h-5 text-purple-700 dark:text-purple-300" />
-              <div>
-                <h3 className="text-base font-bold text-purple-900 dark:text-purple-200">Nom sur la facture</h3>
-                <p className="text-xs text-purple-700 dark:text-purple-300 font-medium">Vente externe — {formatAr(extTotal)}</p>
-              </div>
-            </div>
-            <div className="p-6 space-y-3">
-              <p className="text-sm text-ink-secondary">Saisissez le nom du client à inscrire sur la facture avant l'impression. Il restera attaché à la facture pour les réimpressions.</p>
-              <input
-                autoFocus
-                type="text"
-                value={extClientName}
-                onChange={e => setExtClientName(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const nom = extClientName.trim(); if (nom) { setExtClientModalOpen(false); extPay(nom); } } }}
-                aria-label="Nom à mettre sur la facture"
-                placeholder="Ex : RAKOTO Jeanne / Société X"
-                className="w-full rounded-xl border border-line bg-field p-3 text-sm outline-none focus:border-accent"
-              />
-              {!extClientName.trim() && <p className="text-xs text-ink-muted">Le nom est obligatoire : la facture ne mentionnera plus « Client Externe » automatiquement.</p>}
-            </div>
-            <div className="px-6 py-4 border-t border-line-soft flex justify-end gap-3">
-              <button type="button" onClick={() => setExtClientModalOpen(false)} className="px-4 py-2 rounded-xl text-xs font-semibold border border-line hover:bg-surface-hover transition cursor-pointer">Annuler</button>
-              <button type="button" disabled={!extClientName.trim()} onClick={() => { const nom = extClientName.trim(); setExtClientModalOpen(false); extPay(nom); }}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-purple-600 text-white hover:bg-purple-700 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
-                <CreditCard className="w-4 h-4" /> Encaisser {formatAr(extTotal)}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );

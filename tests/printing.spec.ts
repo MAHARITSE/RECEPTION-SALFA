@@ -382,26 +382,19 @@ test('une nouvelle vente externe imprime les deux bons et ne décompte pas de st
   }
   const total = 2 * labArticle.priceExterne + echoArticle.priceExterne;
   await page.getByRole('button', { name: `Encaisser ${total.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Ar`, exact: true }).click();
-  // Le nom à mettre sur la facture est demandé AVANT l'impression — plus de « Client Externe » par défaut.
-  const nomModal = page.getByRole('dialog', { name: 'Nom du client pour la facture' });
-  await expect(nomModal).toBeVisible();
-  await expect(page.locator('iframe[data-salfa-print]')).toHaveCount(0);
-  await nomModal.getByLabel('Nom à mettre sur la facture').fill('RAKOTO Jeanne');
-  await nomModal.getByRole('button', { name: `Encaisser ${total.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Ar` }).click();
   await expectJobs(page, 1);
   await closePrint(page);
   await expectJobs(page, 2);
   await closePrint(page);
   await expectJobs(page, 3);
   const attempts = await page.evaluate(() => window.__printAttempts);
-  expect(attempts[0].text).toContain('RAKOTO Jeanne');
   expect(attempts[1].text).toContain(`${labArticle.name} × 2`);
   expect(attempts[2].text).toContain(echoArticle.name);
-  expect(attempts[2].text).toContain('RAKOTO Jeanne');
+  expect(attempts[2].text).toContain('Client Externe');
   await closePrint(page);
   await expect.poll(async () => (await browserState(page)).invoices.length).toBe(1);
   const saved = await browserState(page);
-  expect(saved.invoices[0]).toMatchObject({ isExternal: true, status: 'paid', patientCharge: total, clientName: 'RAKOTO Jeanne' });
+  expect(saved.invoices[0]).toMatchObject({ isExternal: true, status: 'paid', patientCharge: total });
   expect(saved.labRequests).toHaveLength(2);
   expect(saved.labRequests.every((request) => request.status === 'paid' && request.invoiceId === saved.invoices[0].id)).toBe(true);
   expect(saved.consultations[0].echoRequests?.[0].status).toBe('paid');

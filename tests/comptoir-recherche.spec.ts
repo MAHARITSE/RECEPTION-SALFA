@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import type { BillingDocument } from '../src/modules/assurance/monthlyBilling';
-import { documentCorrespondRecherche } from '../src/modules/assurance/utils/rechercheDocument';
+import { documentCorrespondRecherche, nomClientGenerique } from '../src/modules/assurance/utils/rechercheDocument';
 
 const doc = (overrides: Partial<BillingDocument> = {}): BillingDocument => ({
   id: 'doc-1', sourceId: 'src-1', category: 'comptoir',
@@ -32,6 +32,17 @@ test('recherche : accent dans le nom du client normalisé des deux côtés', () 
   expect(documentCorrespondRecherche(piece, 'Râsoânâivô')).toBe(true);
 });
 
+test('nom générique : Client Externe / Clients Comptoir réclament un nom, un nom propre non', () => {
+  expect(nomClientGenerique('Client Externe')).toBe(true);
+  expect(nomClientGenerique('Clients Externes')).toBe(true);
+  expect(nomClientGenerique('client externe')).toBe(true);
+  expect(nomClientGenerique('Clients Comptoir')).toBe(true);
+  expect(nomClientGenerique('')).toBe(true);
+  expect(nomClientGenerique(undefined)).toBe(true);
+  expect(nomClientGenerique('RAKOTO Jean')).toBe(false);
+  expect(nomClientGenerique('Société X')).toBe(false);
+});
+
 /* ===== Test UI : champ de recherche dans l'onglet Comptoir & Externe ===== */
 
 async function setup(page: Page) {
@@ -47,11 +58,20 @@ async function setup(page: Page) {
   const sale = (id: string, clientType: 'comptoir' | 'externe' = 'comptoir'): object => ({ id, numeroFacture: `FAC-${id}`, clientType, type: 'consultation', subtotal: 4000, montantFacture: 4000, montantPaye: 1000, status: 'partiel', isExterne: clientType === 'externe', source: 'caisse', dateVente: '2026-09-12', createdAt: '2026-09-12' });
   state.ventes = [{ ...sale('mirror'), legacyInvoiceId: 'comptoir-1' }, sale('standalone', 'externe')];
   state.monthlyInvoices = [];
+  await page.addInitScript(() => {
+    window.print = () => {
+      window.dispatchEvent(new Event('beforeprint'));
+      setTimeout(() => window.dispatchEvent(new Event('afterprint')), 10);
+    };
+  });
   await page.route('**/', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body>Tests</body></html>' }));
   await page.goto('/'); await page.unroute('**/');
   await page.evaluate(async s => { const db = await import('/src/browserDb.ts'); await db.saveStateToBrowser(s); }, state);
 }
 
+async function read(page: Page) {
+  return page.evaluate(async () => (await import('/src/browserDb.ts')).loadStateFromBrowser());
+}
 async function login(page: Page) {
   await page.goto('/');
   await page.getByRole('button', { name: /Personnel/ }).click();
@@ -90,4 +110,31 @@ test('UI : la recherche filtre les deux vues par nom ou numéro de facture', asy
   await page.getByRole('button', { name: 'Effacer la recherche' }).click();
   await expect(mensuelles.locator('tbody tr')).toHaveCount(3);
   await expect(compteurDetaille).toContainText('5');
+});
+
+test("UI : le nom du client est demandé à la facturation quand la personne réclame une facture sans nom propre", async ({ page }) => {
+  await setup(page); await login(page);
+  await page.getByRole('tab', { name: /Vue Détaillée/ }).click();
+  const table = page.getByRole('table', { name: 'Factures détaillées clients' });
+
+  // Pièce SANS nom propre (vente externe « Clients Externes ») : le nom est demandé avant l'impression.
+  await page.getByRole('button', { name: 'Imprimer la facture FAC-standalone', exact: true }).click();
+  const modal = page.getByRole('dialog', { name: 'Nom du client pour la facture' });
+  await expect(modal).toBeVisible();
+  await expect(modal).toContainText('FAC-standalone');
+  await expect(page.locator('iframe[data-salfa-print]')).toHaveCount(0);
+
+  await modal.getByLabel('Nom à mettre sur la facture').fill('RAKOTO Jeanne');
+  await modal.getByRole('button', { name: /Imprimer la facture/ }).click();
+  await expect(modal).toHaveCount(0);
+  await expect(page.locator('iframe[data-salfa-print]')).toHaveCount(1);
+
+  // Le nom est enregistré sur la pièce : la vue et la base le reprennent.
+  await expect(table).toContainText('RAKOTO Jeanne');
+  await expect.poll(async () => (await read(page))?.ventes.find(v => v.id === 'standalone')?.clientName).toBe('RAKOTO Jeanne');
+
+  // Pièce AVEC nom propre : impression directe, aucune demande.
+  await page.getByRole('button', { name: 'Imprimer la facture FAC-mirror', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Nom du client pour la facture' })).toHaveCount(0);
+  await expect(page.locator('iframe[data-salfa-print]')).toHaveCount(2);
 });
