@@ -78,13 +78,15 @@ export function BillingWorkspace({ state, setState, onFusionPrescription, onAnnu
   const prestationDe = (docId: string) => details.prestations.find(p => p.id === docId);
   const estCaisse = (p: Prestation) => !!(p.sourceInvoiceId || p.id.startsWith('caisse:'));
   const nbFusions = (p: Prestation) => p.fusionsAnnulees?.length || 0;
+  // Toute prescription de la même société est fusionnable (facture Caisse incluse),
+  // même à des dates différentes : celle d'où l'on lance est conservée, l'autre absorbée.
   const candidatesFusion = (source: Prestation) => details.prestations
-    .filter(p => p.id !== source.id && p.societeId === source.societeId && !estCaisse(p))
+    .filter(p => p.id !== source.id && p.societeId === source.societeId)
     .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
-  function confirmerFusion(conserveId: string, libelle?: string) {
+  function confirmerFusion(absorbeId: string, libelle?: string) {
     if (!fusionSource || !onFusionPrescription) return;
-    onFusionPrescription(fusionSource, conserveId, libelle);
+    onFusionPrescription(absorbeId, fusionSource.id, libelle); // l'absorbée disparaît, la source est conservée
     setFusionSource(null);
     setSocieteDetail(null);
   }
@@ -169,7 +171,7 @@ export function BillingWorkspace({ state, setState, onFusionPrescription, onAnnu
         })}</tbody>
       </table>{!groups.length && <p className="p-6 text-center text-sm text-ink-muted">Aucune facture pour cette sélection.</p>}</div>
     </div> : <div data-testid="billing-detail-view">
-      <PrestationsView {...details} prestations={visiblePrestations} hideViewSwitcher onFusionPrescription={onFusionPrescription} onAnnulerFusion={onAnnulerFusion} onPrintPrestation={p => { const doc = documents.find(d => d.id === p.id); if (doc) printIndividualBillingDocument(state, doc); }} />
+      <PrestationsView {...details} prestations={visiblePrestations} hideViewSwitcher onFusionPrescription={onFusionPrescription} onFusionner={p => setFusionSource(p)} onAnnulerFusion={onAnnulerFusion} onPrintPrestation={p => { const doc = documents.find(d => d.id === p.id); if (doc) printIndividualBillingDocument(state, doc); }} />
     </div>}
 
     {/* ===== MODAL : vue détaillée du destinataire de la facture mensuelle ===== */}

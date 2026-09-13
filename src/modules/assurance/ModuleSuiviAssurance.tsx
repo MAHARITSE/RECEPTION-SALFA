@@ -131,13 +131,16 @@ export default function ModuleSuiviAssurance({ state, setState }: Props) {
     }
   };
 
-  /** Fusion du facturier : une prescription liée à une facture Caisse absorbe
-   * une autre prescription de la même société (patient revenu deux fois). */
-  const handleFusionPrescription = (supprimee: Prestation, conserveId: string, libelle?: string) => {
+  /** Fusion du facturier : deux prescriptions de la même société (facture Caisse
+   * ou saisie du suivi, même à des dates différentes) n'en font qu'une — la
+   * conservée garde son numéro, l'absorbée disparaît (annulable). */
+  const handleFusionPrescription = (absorbeId: string, conserveId: string, libelle?: string) => {
     try {
       commitChange(prev => {
         const courantes = sharedTransactions(prev).prestations;
-        const fusionnees = fusionnerPrescription(courantes, supprimee, conserveId, libelle);
+        const absorbe = courantes.find(p => p.id === absorbeId);
+        if (!absorbe) throw new Error('Prescription à absorber introuvable.');
+        const fusionnees = fusionnerPrescription(courantes, absorbe, conserveId, libelle);
         return writeSharedTable(prev, 'assurancePrestations', fusionnees);
       });
     } catch (err: any) {

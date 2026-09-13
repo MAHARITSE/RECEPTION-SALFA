@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Printer,
+  Merge,
   Plus, 
   Search, 
   Eye, 
@@ -108,7 +109,9 @@ export interface PrestationsViewProps {
   onSavePrestation: (prestation: Prestation) => void;
   onDeletePrestation: (id: string) => void;
   /** Fusion facturier : absorbe une autre prescription de la même société. */
-  onFusionPrescription?: (supprimee: Prestation, conserveId: string, libelle?: string) => void;
+  onFusionPrescription?: (absorbeId: string, conserveId: string, libelle?: string) => void;
+  /** Ouvre la fusion depuis une prescription (elle devient la conservée). */
+  onFusionner?: (prestation: Prestation) => void;
   /** Annule la dernière fusion reçue par la prescription et restitue l'absorbée. */
   onAnnulerFusion?: (conserveId: string) => void;
   onDeleteFacture?: (numeroFacture: string) => void;
@@ -145,6 +148,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
   onSavePrestation,
   onDeletePrestation,
   onFusionPrescription,
+  onFusionner,
   onAnnulerFusion,
   onDeleteFacture,
   onImportPrestations,
@@ -2359,6 +2363,16 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
                         <td className="py-3 px-3 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end space-x-1">
                             {onPrintPrestation && <button type="button" onClick={() => onPrintPrestation(prestation)} title="Imprimer la facture" aria-label={`Imprimer la facture ${prestation.numeroFacture}`} className="p-1.5 text-accent hover:bg-accent-soft rounded-lg"><Printer className="w-3.5 h-3.5" /></button>}
+                            {onFusionner && (
+                              <button
+                                onClick={() => onFusionner(prestation)}
+                                title="Fusionner avec une autre facture (regrouper deux factures, même à des dates différentes, en une seule)"
+                                aria-label={`Fusionner la facture ${prestation.numeroFacture}`}
+                                className="p-1.5 text-ink-faint hover:text-indigo-600 hover:bg-indigo-50 rounded-lg cursor-pointer"
+                              >
+                                <Merge className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                             <button
                               onClick={() => setViewingPrestation(prestation)}
                               title="Visualiser détails"

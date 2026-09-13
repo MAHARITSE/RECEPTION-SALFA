@@ -154,29 +154,27 @@ let seqFusion = 0;
  *  - traçabilité : le numéro absorbé reste lisible dans le commentaire.
  */
 export function fusionnerPrescription(conserves: Prestation[], supprimee: Prestation, conserveId: string, libelle?: string): Prestation[] {
-  const estCaisse = (p: Prestation) => !!(p.sourceInvoiceId || sourceId(p.id));
   const modDe = (p: Prestation) => p.ticketModerateur ?? p.participation ?? 0;
+  // Toutes les lignes de l'absorbée migrent vers la conservée (actes de la
+  // facture et ajouts du facturier) : la facture unique les liste toutes.
   const ajoutsDe = (p: Prestation): LignePrestation[] =>
-    [...(p.ajouts || []), ...(p.lignes || []).filter(l => l.origine === 'omission' || l.origine === 'ordonnance_externe')]
+    [...(p.lignes || []), ...(p.ajouts || [])]
       .map(l => ({ ...l, id: `${p.id}:fus:${l.id}:${++seqFusion}` }));
-  const tracer = (p: Prestation) => [p.numeroFacture, ...(p.commentaires || '').split(' ; ')].filter(Boolean);
+  const tracer = (p: Prestation) => [`${p.numeroFacture}${p.date ? ` du ${p.date}` : ''}`, ...(p.commentaires || '').split(' ; ')].filter(Boolean);
 
-  if (!estCaisse(supprimee)) {
-    throw new Error('Seule une prescription liée à une facture Caisse peut être fusionnée (les prescriptions saisies dans le suivi se suppriment directement).');
-  }
+  if (supprimee.id === conserveId) throw new Error('Choisissez deux prescriptions différentes.');
   const conserve = conserves.find(p => p.id === conserveId);
   if (!conserve) throw new Error('Prescription cible introuvable.');
-  if (supprimee.id === conserveId) throw new Error('Choisissez deux prescriptions différentes.');
   if (supprimee.societeId !== conserve.societeId) throw new Error('La fusion exige une même société (garant) pour les deux prescriptions.');
-  if (estCaisse(conserve)) throw new Error('La cible doit être une prescription saisie dans le suivi assurance (la facture Caisse ne peut pas absorber une autre facture).');
 
   const absorbées = [supprimee, ...(supprimee.fusionsAnnulees || [])];
-  const ajoutsFusionnés = [...(conserve.ajouts || []), ...absorbées.flatMap(ajoutsDe)];
+  const migrees = absorbées.flatMap(ajoutsDe);
+  const ajoutsFusionnés = [...(conserve.ajouts || []), ...migrees];
   const totalPrestation = arrondi2(conserve.totalPrestation + absorbées.reduce((s, p) => s + p.totalPrestation, 0));
   const participation = arrondi2(conserve.participation + absorbées.reduce((s, p) => s + modDe(p), 0));
   const conserveeFusionnee: Prestation = {
     ...conserve,
-    lignes: [...(conserve.lignes || []), ...absorbées.flatMap(ajoutsDe)],
+    lignes: [...(conserve.lignes || []), ...migrees],
     ajouts: ajoutsFusionnés,
     sousSociete: conserve.sousSociete ?? absorbées.map(p => p.sousSociete).find(Boolean),
     nomAgent: conserve.nomAgent ?? absorbées.map(p => p.nomAgent).find(Boolean),
@@ -184,12 +182,24 @@ export function fusionnerPrescription(conserves: Prestation[], supprimee: Presta
     totalPrestation, montantTotal: totalPrestation,
     participation, ticketModerateur: participation,
     montantARembourser: arrondi2(totalPrestation - participation),
+    // Trace complète pour les absorbées saisies dans le suivi (restaurables à
+    // l'identique) ; les absorbées Caisse se re-dérivent de leur facture, leurs
+    // lignes sont inutiles dans la trace.
     fusionsAnnulees: [...(conserve.fusionsAnnulees || []),
-      ...absorbées.map(({ lignes: _l, ajouts: _a, ...reste }) => ({ ...reste, lignes: [], ajouts: [], fusionsAnnulees: reste.fusionsAnnulees } as Prestation))],
+      ...absorbées.map(p => estCaissePrescription(p)
+        ? ({ ...p, lignes: [], ajouts: [], fusionsAnnulees: p.fusionsAnnulees } as Prestation)
+        : ({ ...p } as Prestation))],
     commentaires: [...tracer(conserve), ...absorbées.flatMap(tracer), ...(libelle ? [libelle] : [])]
       .filter((v, i, t) => t.indexOf(v) === i).join(' ; ') || undefined,
   };
-  return conserves.map(p => (p.id === conserveId ? conserveeFusionnee : p));
+  // L'absorbée quitte la liste : une ligne persistée du suivi est retirée,
+  // une prescription Caisse est masquée par la trace (fusionsAnnulees).
+  return conserves.filter(p => p.id !== supprimee.id).map(p => (p.id === conserveId ? conserveeFusionnee : p));
+}
+
+/** Vrai pour une prescription issue d'une facture Caisse (jamais modifiée). */
+export function estCaissePrescription(p: Prestation): boolean {
+  return !!(p.sourceInvoiceId || sourceId(p.id));
 }
 
 /** Annule une fusion : restitue la prescription absorbée et retire ses montants et ajouts. */
@@ -198,8 +208,6 @@ export function annulerFusionPrescription(prestations: Prestation[], conserveId:
   const absorbée = conserve?.fusionsAnnulees?.[(conserve.fusionsAnnulees?.length || 1) - 1];
   if (!conserve || !absorbée) throw new Error('Aucune fusion à annuler sur cette prescription.');
   const modDe = (p: Prestation) => p.ticketModerateur ?? p.participation ?? 0;
-  const idempotents = new Set(absorbée ? [] : []);
-  void idempotents;
   const retirables = new Set((conserve.ajouts || []).concat(conserve.lignes || [])
     .filter(l => l.id.startsWith(`${absorbée.id}:fus:`)).map(l => l.id));
   const nettoie = (lignes: LignePrestation[] = []) => lignes.filter(l => !retirables.has(l.id));
@@ -218,10 +226,18 @@ export function annulerFusionPrescription(prestations: Prestation[], conserveId:
     montantARembourser: arrondi2(totalPrestation - participation),
     fusionsAnnulees: (conserve.fusionsAnnulees || []).slice(0, -1),
     commentaires: (conserve.commentaires || '').split(' ; ')
-      .filter(v => v.trim() && v.trim() !== (absorbée.numeroFacture || '').trim()).join(' ; ') || undefined,
+      .filter(v => {
+        const t = v.trim();
+        if (!t) return false;
+        const num = (absorbée.numeroFacture || '').trim();
+        return !(num && t.startsWith(num));
+      }).join(' ; ') || undefined,
   };
+  const suivantes = prestations.map(p => (p.id === conserveId ? majConservee : p));
+  // Une absorbée Caisse se re-dérive de sa facture une fois la trace retirée :
+  // inutile de la réécrire. Une absorbée du suivi doit être restituée tel quel.
   return {
-    prestations: prestations.map(p => (p.id === conserveId ? majConservee : p)).concat(restituee),
+    prestations: suivantes.concat(restituee), // la restituée est retirée des manuelles à l'écriture si Caisse
     restituee,
   };
 }
@@ -249,6 +265,7 @@ export function sharedTransactions(state: AppState) {
     return { ...s,
       nomAgent: o.nomAgent ?? s.nomAgent, matricule: o.matricule ?? s.matricule,
       sousSociete: o.sousSociete ?? s.sousSociete, commentaires: o.commentaires ?? s.commentaires,
+      fusionsAnnulees: o.fusionsAnnulees,
       lignes: [...s.lignes, ...ajouts],
       totalPrestation: brut, montantTotal: brut,
       participation: mod, ticketModerateur: mod,
@@ -343,6 +360,10 @@ export function writeSharedTable(state: AppState, table: SharedTable, value: Non
     const coeurLigne = (l: LignePrestation) => [l.id, l.code, l.libelle ?? '', l.totalPrestation, l.ticketModerateur ?? 0];
     const complements: Prestation[] = [];
     const fusionees = new Set(rows.flatMap(r => (r.fusionsAnnulees || []).map(f => f.id)));
+    // Lignes migrées depuis une prescription absorbée (fusion) : identifiées par
+    // le marqueur « :fus: » de leur id (posé uniquement par fusionnerPrescription,
+    // y compris lors d'une annulation où fusionsAnnulees a déjà disparu).
+    const prefixesFusion = [':fus:'];
     for (const source of current.prestations.filter(p => p.sourceInvoiceId)) {
       const changed = rows.find(r => r.id === source.id);
       if (!changed && !fusionees.has(source.id)) throw new Error('Une facture de Caisse ne peut pas être supprimée depuis le suivi assurance.');
@@ -353,22 +374,27 @@ export function writeSharedTable(state: AppState, table: SharedTable, value: Non
       }
       // Les lignes originales de la facture Caisse restent STRICTEMENT inchangées ;
       // le facturier ne fait qu'empiler des omissions / ordonnances externes.
+      const originales = source.lignes.filter(l => !prefixesFusion.some(marker => l.id.includes(marker)));
       const parId = new Map((changed.lignes || []).map(l => [l.id, l]));
-      for (const originale of source.lignes) {
+      for (const originale of originales) {
         const ligne = parId.get(originale.id);
         if (!ligne || !same(coeurLigne(originale), coeurLigne(ligne))) {
           throw new Error('Les actes de la facture Caisse restent inchangés : le facturier ajoute des omissions ou des ordonnances externes, il ne modifie pas la facture.');
         }
       }
-      const ajouts = (changed.lignes || []).filter(l => !source.lignes.some(s => s.id === l.id));
+      const ajouts = (changed.lignes || []).filter(l => !originales.some(s => s.id === l.id));
       for (const a of ajouts) {
-        if (!['omission', 'ordonnance_externe'].includes(a.origine || '')) throw new Error('Une ligne ajoutée doit être une omission ou une ordonnance externe remboursée.');
+        const migree = prefixesFusion.some(marker => a.id.includes(marker));
+        if (!migree && !['omission', 'ordonnance_externe'].includes(a.origine || '')) throw new Error('Une ligne ajoutée doit être une omission, une ordonnance externe remboursée ou une ligne de fusion.');
         if (!(a.totalPrestation >= 0) || (a.ticketModerateur ?? 0) < 0 || (a.ticketModerateur ?? 0) > a.totalPrestation) throw new Error(`Montant invalide sur la ligne ajoutée « ${a.libelle || a.code || a.id} ».`);
       }
+      // Lignes de fusion présentes dans la source dérivée mais retirées de la
+      // prescription (annulation d'une fusion) : elles expliquent un écart négatif.
+      const retirees = source.lignes.filter(l => prefixesFusion.some(marker => l.id.includes(marker)) && !(changed.lignes || []).some(c => c.id === l.id));
       const ecartBrut = arrondi2(changed.totalPrestation - source.totalPrestation);
       const ecartMod = arrondi2(changed.participation - source.participation);
-      if (ecartBrut !== sommeLignes(ajouts, 'totalPrestation')) throw new Error('Le total de la prescription ne correspond pas aux lignes ajoutées.');
-      if (ecartMod !== sommeLignes(ajouts, 'ticketModerateur')) throw new Error('Le ticket modérateur ne correspond pas aux lignes ajoutées.');
+      if (ecartBrut !== arrondi2(sommeLignes(ajouts, 'totalPrestation') - sommeLignes(retirees, 'totalPrestation'))) throw new Error('Le total de la prescription ne correspond pas aux lignes ajoutées ou retirées.');
+      if (ecartMod !== arrondi2(sommeLignes(ajouts, 'ticketModerateur') - sommeLignes(retirees, 'ticketModerateur'))) throw new Error('Le ticket modérateur ne correspond pas aux lignes ajoutées ou retirées.');
       const nomModifie = (changed.nomAgent || '') !== (source.nomAgent || '') || (changed.matricule || '') !== (source.matricule || '');
       const noteModifiee = (changed.commentaires || '') !== (source.commentaires || '');
       if (!ajouts.length && !nomModifie && !noteModifiee) continue; // rien à conserver
@@ -378,6 +404,7 @@ export function writeSharedTable(state: AppState, table: SharedTable, value: Non
         personneId: source.personneId, sousSociete: changed.sousSociete,
         nomAgent: nomModifie ? changed.nomAgent : undefined, matricule: nomModifie ? changed.matricule : undefined,
         ajouts: ajouts.map(a => ({ ...a, origine: a.origine || 'omission' })),
+        fusionsAnnulees: changed.fusionsAnnulees?.length ? changed.fusionsAnnulees : undefined,
         commentaires: noteModifiee ? changed.commentaires : undefined,
         totalPrestation: source.totalPrestation, participation: source.participation,
         montantARembourser: source.montantARembourser, statut: source.statut, lignes: [],
