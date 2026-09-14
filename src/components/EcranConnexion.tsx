@@ -217,6 +217,9 @@ export default function EcranConnexion({ users, onLogin, onBack, onPasswordUpgra
         <p className="text-center text-ink-faint text-xs mt-6">
           © 2026 MediCare HIS
         </p>
+        <p className="text-center text-ink-faint text-xs mt-1">
+          MAHARITSE Hyacinthe Bertrand — Tél : <a href="tel:+261383409261" className="hover:text-accent transition-colors">+261 38 34 092 61</a>
+        </p>
       </div>
     </div>
   );
