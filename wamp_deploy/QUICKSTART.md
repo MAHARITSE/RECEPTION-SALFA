@@ -51,6 +51,12 @@
 12. **SÉCURITÉ (obligatoire)** : Administration → Utilisateurs →
     **changer TOUS les mots de passe** (8 caractères minimum, voir `SECURITE.md`).
 
+**Réflexe quotidien sur chaque poste** : bouton **Sauvegarder** de la barre
+supérieure → l'application télécharge un fichier `.sql` réimportable
+(`reception_salfa_sauvegarde_AAMMJJ-HHMM.sql`). Si personne n'a exporté de la
+journée, le fichier est produit automatiquement **à la déconnexion** ; il ne
+faut pas le ranger dans `Téléchargements` : le copier sur le disque de sauvegarde.
+
 Ensuite : planifier `outils\sauvegarder.bat` chaque jour
 (Planificateur de tâches Windows, 23h00) + **copie chiffrée hors du PC serveur** +
 test de restauration mensuel (`PERFORMANCE.md` §6).

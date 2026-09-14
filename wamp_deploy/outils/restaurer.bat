@@ -1,8 +1,16 @@
 @echo off
 REM ==========================================================================
-REM  RECEPTION SALFA - Restauration MySQL
+REM  RECEPTION SALFA - Application d'un fichier .sql dans la base MySQL
 REM  Usage : restaurer.bat chemin\vers\sauvegarde.sql
-REM  DANGER : ecrase TOUTE la base actuelle. Ne jamais lancer sans reflechir.
+REM  Ce script applique le fichier sur la base existante (il ne la vide pas) :
+REM   - dump mysqldump (sauvegarder.bat) : contient CREATE TABLE/DROP, il remplace
+REM     donc les tables concernees -> restauration complete possible ;
+REM   - fichier .sql telecharge par l'application (bouton Sauvegarder) : INSERT ...
+REM     ON DUPLICATE KEY UPDATE uniquement -> il AJOUTE ou MET A JOUR les lignes,
+REM     il ne supprime rien. Sur une base vide, importer d'abord
+REM     database\schema.sql, puis ce fichier.
+REM  Dans les deux cas : hors heures d'ouverture, postes déconnectés, et sauvegarde
+REM  immédiate de la base AVANT (sauvegarder.bat). Ne jamais lancer sans réfléchir.
 REM ==========================================================================
 chcp 65001 >nul
 setlocal

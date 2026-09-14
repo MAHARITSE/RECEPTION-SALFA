@@ -1,15 +1,26 @@
 RECEPTION SALFA - Application compilée pour WAMP (index.html)
 ================================================================
 Build du       : 2026-09-14
-Commit source  : 7c9a685 (branche arena/01a09ec8-reception-salfa)
+Commit source  : suite de 6a86ac0 (branche arena/01a09ec8-reception-salfa),
+                 incluant la sauvegarde .sql côté application (audit S12)
 Commande       : npm run build:wamp   (VITE_WAMP_MODE=1 via .env.wamp)
 Mode vérifié   : WAMP / MySQL (ternaire replié dans le bundle)
-Taille         : 3,66 Mo (monofichier, gzip ~988 Ko)
-Contenu        : inclut les correctifs « audit WAMP 100 passages/jour » :
-                 sonde action=poll + envoi différentiel + contrôle de révision
-                 if_rev (409), déconnexion révocante (action=logout),
-                 persistance monthlyInvoices / prescripteursExternes.
-Vérifications  : npx tsc --noEmit OK, npm run build:wamp OK.
+Taille         : 3,67 Mo (monofichier, gzip ~990 Ko)
+Contenu        : correctifs « audit WAMP 100 passages/jour » (sonde action=poll,
+                 envoi différentiel, contrôle de révision if_rev/409, déconnexion
+                 révocante, persistance monthlyInvoices / prescripteursExternes)
+                 + SAUVEGARDE .sql : bouton « Sauvegarder » dans la barre
+                 supérieure et Administration -> Données, fichier
+                 reception_salfa_sauvegarde_AAMMJJ-HHMM.sql au format du schéma
+                 (tables en français, donnees JSON, INSERT ... ON DUPLICATE KEY
+                 UPDATE par paquets de 600 Ko, journal d'audit en INSERT IGNORE,
+                 mots de passe en clair jamais écrits, hachage serveur non écrasé
+                 à l'import), export automatique à la déconnexion si la journée
+                 n'a rien produit, refus au-dessus de 150 Mo estimés.
+Vérifications  : npx tsc --noEmit OK, npm run build:wamp OK, script de contrôle du
+                 .sql généré (colonnes vs schema.sql, équilibre des quotes et
+                 parenthèses, miroir exact de salfa_tables()) OK - voir
+                 docs/AUDIT_WAMP_100_PAR_JOUR.md S12.
                  (Les specs Playwright nécessitent un navigateur d'automatisation :
                   à lancer sur un poste qui les a - `npm run test`.)
 

@@ -154,6 +154,14 @@ explicitement listées, et ne peut pas être « trompée » par une base allég�
    d'historique). Le disque resté branché à côté du serveur ne compte pas comme sauvegarde.
 6. `seed.sql` **supprimé** du dossier déployé après installation (il contient les comptes
    par défaut) — ou laissé, mais alors vérifier le test `curl` du §7.
+7. **Ne pas compter sur `mysqldump` seul** : le bouton **Sauvegarder** de l'application
+   produit le même type de fichier côté poste (`reception_salfa_sauvegarde_*.sql`,
+   tables en français, colonne `donnees` JSON, `INSERT ... ON DUPLICATE KEY UPDATE`
+   par paquets de 600 Ko pour rester sous `max_allowed_packet`). C'est la sauvegarde
+   **de secours** quand le serveur est en panne ou inaccessible — et une protection
+   contre l'oubli du `forfiles`. Elle est refusée au-delà de 150 Mo estimés (limitation
+   du navigateur) : à ce volume, seul le §6.1 sauvegarde tout. Une déconnexion sans
+   export de la journée déclenche cet export automatiquement, jamais à chaque frappe.
 
 ---
 

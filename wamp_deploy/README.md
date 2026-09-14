@@ -141,6 +141,18 @@ Garanties (voir code pour le détail) :
 - Tester la restauration **une fois par mois** sur un PC d'essai
   (`outils\restaurer.bat sauvegarde.sql`).
 - Sans sauvegarde externe, une panne disque = perte de tout l'historique.
+- **Côté application** : le bouton **Sauvegarder** de la barre supérieure (et
+  Administration → Données) télécharge un fichier `reception_salfa_sauvegarde_*.sql`
+  au **même format que le schéma** (tables en français, colonne `donnees` JSON) :
+  il s'importe donc directement dans `reception_salfa`
+  (`outils\restaurer.bat mon_fichier.sql`, ou phpMyAdmin → Importer). Idempotent et
+  sans `DELETE` : il ajoute ou met à jour, il ne supprime rien — un fichier ancien
+  restauré sur une base récente fait donc réapparaître des lignes supprimées depuis.
+  Au-delà de ~150 Mo estimés, l'onglet refuse de produire le fichier et renvoie
+  vers `mysqldump` (le navigateur ne peut pas sérialiser l'état entier).
+- Un export fait par un **administrateur** contient les hachages de mots de passe
+  (ils vivent dans `utilisateurs.donnees`) : ces fichiers sont confidentiels, comme
+  les dumps `mysqldump`. Aucun mot de passe en clair n'est jamais écrit.
 
 ## Régénérer `index.html` après une mise à jour du code
 

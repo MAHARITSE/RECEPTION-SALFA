@@ -143,6 +143,10 @@ en s'inspirant de [LogBara](https://github.com/MAHARITSE/LogBara)
   (santé PHP/MySQL, volumes, doublons n° facture / n° dossier) ;
 - Scripts fournis : déploiement, **sauvegarde quotidienne** + rotation,
   restauration (avec confirmation) ;
+- Bouton **Sauvegarder** dans l'application : télécharge un fichier `.sql`
+  réimportable dans `reception_salfa` (mêmes tables, mêmes colonnes que le
+  schéma) ; relance automatique de ce fichier à la déconnexion si la journée
+  n'a rien exporté ;
 - Aucune donnée applicative dans `localStorage` ni dans un fichier JSON local.
 
 ➡️ Voir [`wamp_deploy/README.md`](./wamp_deploy/README.md),

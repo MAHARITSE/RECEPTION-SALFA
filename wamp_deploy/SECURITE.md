@@ -99,6 +99,19 @@
 - **Chiffrement** : activer le chiffrement du disque Windows (BitLocker) sur
   le PC serveur + un mot de passe de session. Les sauvegardes `.sql`
   contiennent toutes les données : disque externe **chiffré et verrouillé**.
+- **Le fichier `.sql` téléchargé par l'application** (bouton *Sauvegarder*,
+  Administration, ou automatique à la déconnexion) = une copie complète du
+  dossier médical et de la caisse. Même régime que `mysqldump` :
+  - il ne contient **jamais** de mot de passe en clair (les mots de passe de
+    l'application Web sont filtrés à l'écriture ; un hachage serveur bcrypt/
+    `sha256:` n'est conservé que si le poste le détient, et une importation ne
+    remplace **pas** le mot de passe déjà en base) ;
+  - il contient **tout le reste** (noms, diagnostics, factures, messages) →
+    ne pas le laisser sur le Bureau ni dans un dossier partagé, le ranger sur le
+    disque chiffré et le supprimer après restauration ;
+  - une restauration se fait **hors heures d'ouverture** (le fichier fige l'état
+    d'un instant donné ; les postes qui continuent d'écrire après l'export
+    verraient leurs lignes écrasées par l'import).
 
 ## 🟢 Routine d'exploitation
 
