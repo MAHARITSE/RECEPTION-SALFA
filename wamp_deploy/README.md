@@ -23,7 +23,8 @@ wamp_deploy/
 │   ├── lib.php           # fonctions partagées (tables, PDO, journal)
 │   └── logs/             # journaux d'erreurs (inaccessibles via HTTP)
 ├── database/
-│   ├── schema.sql        # schéma : 35 tables métier + parametres + compteurs
+│   ├── schema.sql        # schéma v2 : 35 tables métier + parametres + compteurs + sequences + sessions
+│   ├── migrations/       # mises à jour des BASES EXISTANTES (v1 → v2 : 002_sequences.sql)
 │   └── seed.sql          # comptes par défaut + référentiels (familles, services…)
 ├── outils/
 │   ├── deployer.bat      # copie vers C:\wamp64\www\reception-salfa
@@ -35,7 +36,8 @@ wamp_deploy/
 ## Architecture de la base
 
 - **Une table par entité**, noms en français (`patients`, `ventes`, `articles`,
-  `utilisateurs`, `journal_audit`…) : 35 tables + `parametres` + `compteurs`.
+  `utilisateurs`, `journal_audit`…) : 35 tables + `parametres` + `compteurs` +
+  `sequences` (numérotation atomique) + `sessions` (jetons de connexion 12 h).
 - Chaque ligne = `id` (PK) + `donnees` (JSON complet, même structure que
   l'application) + références extraites (`numero_ref`, `dossier_ref`) pour les
   requêtes et la détection de doublons + `mis_a_jour` automatique.
@@ -83,6 +85,17 @@ Garanties (voir code pour le détail) :
 5. Vérifier : `http://localhost/reception-salfa/api/diagnostic.php` (tout vert).
 6. Ouvrir : `http://localhost/reception-salfa/` — se connecter
    (`USR-ADMIN` / `admin123`) puis **changer les mots de passe aussitôt**.
+
+## Mise à jour d'une base existante (v1 → v2)
+
+1. **Sauvegarder** : `outils\sauvegarder.bat` (puis vérifier la sauvegarde).
+2. Dans phpMyAdmin (base `reception_salfa`), importer
+   `database\migrations\002_sequences.sql` (crée `sequences` + `sessions`,
+   passe `schema_version` à 2 ; réimportable sans risque).
+3. Redéployer l'API + le nouveau `index.html`, puis ouvrir
+   `api/diagnostic.php` : « Version du schéma (v2) » doit être ✅ vert.
+4. Chaque compte est migré vers bcrypt **à sa prochaine connexion**
+   (les mots de passe actuels continuent de fonctionner).
 
 ## Multi-postes (réseau local)
 

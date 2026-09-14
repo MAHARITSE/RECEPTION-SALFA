@@ -657,7 +657,7 @@ export interface HbRecord {
   subCompany?: string;
   type: 'hospit' | 'bloc';
   lines: HbLine[];
-  payments: { amount: number; paidBy: string; date: string; paidByUserId?: string; receivedBy?: 'caisse' | 'pharmacie' }[];
+  payments: { id?: string; amount: number; paidBy: string; date: string; paidByUserId?: string; receivedBy?: 'caisse' | 'pharmacie' }[];
   /** Numéro de facture officiel attribué à l'ouverture (26FA0427102 / FA-07/BSA/26-014). */
   numeroFacture?: string;
   /** Date d'ouverture du dossier. */

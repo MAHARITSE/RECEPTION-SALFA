@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, Component, type ReactNode, type ErrorInfo } from 'react';
 import type { User } from './types';
 import { createInitialState, prepareLoadedState, migrateLegacyToVentes, normalizeFamilyBases, addAuditLog, addNotification, type AppState } from './store';
-import { loadStateFromBrowser, saveStateToBrowser, subscribeBrowserState } from './browserDb';
+import { loadStateFromBrowser, saveStateToBrowser, subscribeBrowserState, readBrowserMeta } from './browserDb';
 import { mergeStates, sameBusinessData } from './syncMerge';
 import {
   IS_WAMP_BUILD,
@@ -12,8 +12,11 @@ import {
   syncStateWithMysql,
   refreshStateFromMysql,
   setSyncBaseline,
+  onWampUnauthorized,
+  clearWampSession,
   type WampSyncState,
 } from './wamp';
+import { daysSinceBackup } from './utils/sauvegarde';
 import PrintFeedback from './components/PrintFeedback';
 import ModuleReception from './components/ModuleReception';
 import EcranConnexion from './components/EcranConnexion';
@@ -68,6 +71,34 @@ function WampSyncBadge({ wamp }: { wamp: WampSyncState }) {
     >
       <span className="leading-none">{icon}</span>
       <span>{label}</span>
+    </div>
+  );
+}
+
+/* ─── Rappel de sauvegarde JSON ───
+   En mode navigateur, la base vit DANS ce navigateur : sans export régulier,
+   une panne disque = tout perdu. En WAMP, MySQL est la référence (sauvegardée
+   par outils/sauvegarder.bat) mais un export JSON reste une 2ᵉ sécurité.
+   Affiché après 7 jours sans sauvegarde (ou jamais), masquable jusqu'au prochain export. */
+function BackupReminderBanner({ state }: { state: AppState }) {
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed) return null;
+  const days = daysSinceBackup(state.lastBackupAt);
+  const hasData = state.patients.length > 0 || state.invoices.length > 0 || state.ventes.length > 0;
+  if (!hasData) return null;
+  if (days !== null && days < 7) return null;
+  return (
+    <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[9990] flex items-center gap-3 rounded-xl border border-amber-300 dark:border-amber-500/40 bg-amber-50/95 dark:bg-amber-500/10 px-4 py-2 text-xs font-semibold text-amber-900 dark:text-amber-200 shadow-lg backdrop-blur">
+      <span>
+        💾 {days === null ? 'Aucune sauvegarde JSON exportée.' : `Dernière sauvegarde JSON il y a ${days} jour${days > 1 ? 's' : ''}.`}{' '}
+        Pensez à exporter (module Administration).
+      </span>
+      <button
+        onClick={() => setDismissed(true)}
+        className="shrink-0 px-2 py-1 rounded-lg border border-amber-300 dark:border-amber-500/40 hover:bg-amber-100 dark:hover:bg-amber-500/20 cursor-pointer"
+      >
+        Masquer
+      </button>
     </div>
   );
 }
@@ -139,7 +170,8 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, EBState> {
 
 function AppInner() {
   const [state, setState] = useState<AppState>(createInitialState);
-  const [view, setView] = useState<AppView>('reception');
+  // WAMP : la réception elle-même exige une session → on démarre sur la connexion.
+  const [view, setView] = useState<AppView>(IS_WAMP_BUILD ? 'login' : 'reception');
   const [showMessaging, setShowMessaging] = useState(false);
   const [messagingRecipientId, setMessagingRecipientId] = useState<string | null>(null);
   const [medicalRecordPatientId, setMedicalRecordPatientId] = useState<string | null>(null);
@@ -166,38 +198,27 @@ function AppInner() {
   // Mode navigateur : dernière version connue de la base locale (référence de fusion)
   const browserBaseline = useRef<AppState | null>(null);
   const browserSyncInFlight = useRef(false);
+  // Dernier `meta` vu (sonde légère : évite les relectures complètes inutiles).
+  const browserMeta = useRef<{ savedAt: number; tabId: string } | null>(null);
+  // WAMP : chargement post-connexion effectué (une seule fois par session).
+  const wampLoaded = useRef(false);
 
-  /* ─── WAMP : au démarrage, TOUTES les données sont chargées depuis MySQL.
-     Si MySQL ne contient encore rien, l'état local initial y est écrit
-     immédiatement pour que la base serve de référence unique. ─── */
+  /* ─── WAMP : les données sont chargées APRÈS connexion (handleLogin) ───
+     read_all exige un jeton de session, délivré uniquement par login : aucun
+     pré-chargement anonyme. Ici, on sort juste de l'état « chargement ». */
   useEffect(() => {
-    if (!IS_WAMP_BUILD) {
-      setWamp((s) => ({ ...s, loading: false }));
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      const stored = await loadStateFromMysql();
-      if (cancelled) return;
-      if (stored) {
-        const loaded = prepareLoadedState(stored);
-        // Point de départ de la fusion multi-postes : ce que ce poste sait déjà en base.
-        setSyncBaseline(loaded);
-        setState(loaded);
-        setWamp((s) => ({ ...s, loading: false, usingMysql: true, lastSavedAt: Date.now() }));
-      } else {
-        setWamp((s) => ({ ...s, loading: false }));
-        // Aucun état en base : on y écrit l'état initial (seed) sans tarder
-        const ok = await saveStateToMysql(prepareLoadedState(seedRef.current));
-        if (!cancelled && ok) {
-          setWamp((s) => ({ ...s, usingMysql: true, lastSavedAt: Date.now() }));
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    setWamp((s) => ({ ...s, loading: false }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* ─── WAMP : session expirée ou refusée (401) → retour à la connexion ─── */
+  useEffect(() => {
+    if (!IS_WAMP_BUILD) return;
+    onWampUnauthorized(() => {
+      setState((prev) => ({ ...prev, currentUser: null }));
+      setView('login');
+      setWamp((s) => ({ ...s, error: 'Session expirée : reconnectez-vous.' }));
+    });
   }, []);
 
   /* ─── MODE NAVIGATEUR : base locale IndexedDB ───
@@ -213,12 +234,14 @@ function AppInner() {
         const loaded = prepareLoadedState(stored);
         // Point de départ de la fusion entre onglets : ce que la base contient déjà.
         browserBaseline.current = loaded;
+        browserMeta.current = await readBrowserMeta();
         setState(loaded);
       } else {
         // Première ouverture : initialise la base locale avec le jeu de départ.
         const seed = prepareLoadedState(seedRef.current);
         browserBaseline.current = seed;
         await saveStateToBrowser(seed);
+        browserMeta.current = await readBrowserMeta();
       }
       if (!cancelled) setBrowserDbLoading(false);
     })();
@@ -235,9 +258,13 @@ function AppInner() {
     }
     const timer = window.setTimeout(() => {
       const snapshot = state;
-      void saveStateToBrowser(snapshot).then((ok) => {
+      // Écriture DIFFÉRENTIELLE : seules les collections modifiées depuis la
+      // dernière sauvegarde confirmée sont réécrites (référence de fusion).
+      void saveStateToBrowser(snapshot, browserBaseline.current).then(async (ok) => {
         // La base contient désormais cet état : il devient la référence de fusion.
-        if (ok) browserBaseline.current = snapshot;
+        if (!ok) return;
+        browserBaseline.current = snapshot;
+        browserMeta.current = await readBrowserMeta();
       });
     }, 500);
     return () => window.clearTimeout(timer);
@@ -255,9 +282,16 @@ function AppInner() {
 
     const refreshFromBrowserDb = async () => {
       if (browserSyncInFlight.current) return;
+      // Sonde légère AVANT toute relecture : un seul enregistrement méta
+      // (quelques octets). Base inchangée → on ne relit RIEN (fini les
+      // relectures complètes de plusieurs secondes à chaque cycle).
+      const meta = await readBrowserMeta();
+      const last = browserMeta.current;
+      if (meta && last && meta.savedAt === last.savedAt && meta.tabId === last.tabId) return;
       browserSyncInFlight.current = true;
       try {
         const stored = await loadStateFromBrowser();
+        browserMeta.current = await readBrowserMeta();
         if (!stored) return;
         const remote = prepareLoadedState(stored);
         const merged = mergeStates(browserBaseline.current, stateRef.current, remote);
@@ -289,7 +323,12 @@ function AppInner() {
   /* Une dernière écriture est demandée à la fermeture de l'onglet. */
   useEffect(() => {
     if (IS_WAMP_BUILD) return;
-    const flush = () => { void saveStateToBrowser(stateRef.current); };
+    const flush = () => {
+      const snapshot = stateRef.current;
+      void saveStateToBrowser(snapshot, browserBaseline.current).then((ok) => {
+        if (ok) browserBaseline.current = snapshot;
+      });
+    };
     window.addEventListener('pagehide', flush);
     return () => window.removeEventListener('pagehide', flush);
   }, []);
@@ -302,6 +341,7 @@ function AppInner() {
   useEffect(() => {
     if (!IS_WAMP_BUILD) return;
     if (wamp.loading) return; // pendant le chargement initial on ne réécrit pas la base
+    if (!stateRef.current.currentUser) return; // déconnecté : rien à synchroniser
     if (skipFirstSave.current) {
       // L'état vient d'être chargé depuis MySQL (ou écrit au démarrage) : rien à sauver
       skipFirstSave.current = false;
@@ -338,6 +378,7 @@ function AppInner() {
     const timer = window.setInterval(() => {
       if (syncInFlight.current) return;
       if (document.hidden) return; // onglet en arrière-plan : inutile de solliciter MySQL
+      if (!stateRef.current.currentUser) return; // déconnecté : la re-connexion recharge
       syncInFlight.current = true;
       refreshStateFromMysql(stateRef.current)
         .then((merged) => {
@@ -359,7 +400,7 @@ function AppInner() {
   useEffect(() => {
     if (!IS_WAMP_BUILD) return;
     const flush = () => {
-      if (!wampRef.current.loading) flushStateToMysql(stateRef.current);
+      if (!wampRef.current.loading && stateRef.current.currentUser) flushStateToMysql(stateRef.current);
     };
     window.addEventListener('pagehide', flush);
     window.addEventListener('beforeunload', flush);
@@ -397,14 +438,53 @@ function AppInner() {
     });
   }, []);
 
+  /** Migration transparente (navigateur) : un mot de passe historique en clair
+   *  accepté à la connexion devient aussitôt une empreinte dans la base. */
+  const handlePasswordUpgraded = (userId: string, hash: string) => {
+    setState((prev) => ({
+      ...prev,
+      users: prev.users.map((u) => (u.id === userId ? { ...u, password: hash } : u)),
+    }));
+  };
+
   const handleLogin = (user: User) => {
     setState((prev) => ({ ...prev, currentUser: user }));
     setView('staff');
+    // WAMP : premier chargement depuis MySQL (jeton obtenu à l'instant).
+    // Base vierge → le jeu initial y est écrit (premier administrateur).
+    if (IS_WAMP_BUILD && !wampLoaded.current) {
+      wampLoaded.current = true;
+      setWamp((s) => ({ ...s, loading: true, error: null }));
+      (async () => {
+        const stored = await loadStateFromMysql();
+        if (stored) {
+          const loaded = prepareLoadedState(stored);
+          setSyncBaseline(loaded);
+          skipFirstSave.current = true;
+          setState({ ...loaded, currentUser: user });
+          setWamp((s) => ({ ...s, loading: false, usingMysql: true, lastSavedAt: Date.now() }));
+        } else {
+          const seed = prepareLoadedState(seedRef.current);
+          setSyncBaseline(seed);
+          const ok = await saveStateToMysql(seed);
+          skipFirstSave.current = true;
+          setState({ ...seed, currentUser: user });
+          setWamp((s) => ({
+            ...s,
+            loading: false,
+            usingMysql: ok,
+            lastSavedAt: ok ? Date.now() : s.lastSavedAt,
+            error: ok ? null : 'MySQL injoignable — initialisation impossible, réessayez.',
+          }));
+        }
+      })();
+    }
   };
 
   const handleLogout = () => {
+    if (IS_WAMP_BUILD) clearWampSession();
     setState((prev) => ({ ...prev, currentUser: null }));
-    setView('reception');
+    setView(IS_WAMP_BUILD ? 'login' : 'reception');
   };
 
   const handleOpenMedicalRecord = (patientId?: string) => {
@@ -449,7 +529,8 @@ function AppInner() {
       if (browserSyncInFlight.current) return;
       browserSyncInFlight.current = true;
       void loadStateFromBrowser()
-        .then((stored) => {
+        .then(async (stored) => {
+          browserMeta.current = await readBrowserMeta();
           if (!stored) return;
           const merged = mergeStates(browserBaseline.current, stateRef.current, prepareLoadedState(stored));
           if (!sameBusinessData(stateRef.current, merged)) setState(merged);
@@ -476,11 +557,12 @@ function AppInner() {
     setMessagingRecipientId(null);
   };
 
-  /* ─── Vue Réception ─── */
-  if (view === 'reception') {
+  /* ─── Vue Réception ─── (WAMP : session obligatoire — sans utilisateur, on tombe sur la connexion) */
+  if (view === 'reception' && (!IS_WAMP_BUILD || state.currentUser)) {
     return (
       <>
         <ModuleReception state={state} setState={setState} onStaffLogin={() => setView('login')} onOpenMessaging={() => handleOpenMessagingWithRecipient(null)} />
+        <BackupReminderBanner key={state.lastBackupAt || 'never'} state={state} />
         {showMessaging && <Messagerie state={state} setState={setState} onClose={handleCloseMessaging} initialRecipientId={messagingRecipientId} />}
         <WampSyncBadge wamp={wamp} />
       </>
@@ -491,7 +573,7 @@ function AppInner() {
   if (view === 'login') {
     return (
       <>
-        <EcranConnexion users={state.users} onLogin={handleLogin} onBack={() => setView('reception')} />
+        <EcranConnexion users={state.users} onLogin={handleLogin} onBack={() => setView('reception')} onPasswordUpgraded={handlePasswordUpgraded} />
         <WampSyncBadge wamp={wamp} />
       </>
     );
@@ -500,7 +582,7 @@ function AppInner() {
   if (!state.currentUser) {
     return (
       <>
-        <EcranConnexion users={state.users} onLogin={handleLogin} onBack={() => setView('reception')} />
+        <EcranConnexion users={state.users} onLogin={handleLogin} onBack={() => setView('reception')} onPasswordUpgraded={handlePasswordUpgraded} />
         <WampSyncBadge wamp={wamp} />
       </>
     );
@@ -541,6 +623,7 @@ function AppInner() {
       case 'laboratory': return <ModuleLaboratoire state={state} setState={setState} />;
       case 'admin': return <ModuleAdministration state={state} setState={setState} />;
       case 'billing': return <ModuleSuiviAssurance state={state} setState={setState} />;
+      case 'receptionist': return <ModuleReception state={state} setState={setState} onStaffLogin={() => { /* déjà dans l'espace personnel */ }} onOpenMessaging={() => handleOpenMessagingWithRecipient(null)} />;
     }
   };
 
@@ -555,6 +638,7 @@ function AppInner() {
         </ModuleErrorBoundary>
       </MiseEnPage>
       {showMessaging && <Messagerie state={state} setState={setState} onClose={handleCloseMessaging} initialRecipientId={messagingRecipientId} />}
+      <BackupReminderBanner key={state.lastBackupAt || 'never'} state={state} />
       <WampSyncBadge wamp={wamp} />
     </>
   );

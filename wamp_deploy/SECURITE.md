@@ -22,6 +22,20 @@
 - `api/index.php` : requêtes préparées PDO, liste fermée de tables,
   validation des identifiants, sauvegarde **transactionnelle**, compteurs
   monotones, corps limité (413), journal `api/logs/`, aucun détail SQL exposé.
+- **Mots de passe JAMAIS en clair** : bcrypt côté serveur (migration
+  paresseuse depuis les empreintes `sha256:` du client et l'historique en
+  clair, dès la première connexion de chaque compte). `read_all` et
+  `utilisateurs` ne transmettent **jamais** les mots de passe, même aux
+  admins ; `sync_all` préserve toujours celui en base ; les changements
+  passent par `action=password` (admin connecté uniquement).
+- **Sessions** : `read_all`, `sync_all` et `numero` exigent un jeton de
+  session valide (12 h, délivré par `action=login`, table `sessions`) —
+  en-tête `X-Session-Token`. Sans session : 401. Même la réception se
+  connecte (compte Réception).
+- **Numérotation atomique** : `action=numero` attribue les n° de facture sous
+  verrou (`SELECT … FOR UPDATE`, table `sequences`) — deux caisses
+  n'obtiennent jamais le même numéro. Schéma v2 requis
+  (`migrations/002_sequences.sql`) ; à défaut, message explicite.
 - `.htaccess` : `database/*.sql` et `api/logs/*` **inaccessibles via HTTP** ;
   pas de listage dans `api/`.
 - `api/config.local.php` (vos identifiants) : **jamais versionné, jamais écrasé**
@@ -29,16 +43,14 @@
 - `database/seed.sql` contient les comptes par défaut : ne pas le laisser
   traîner sur un poste partagé après installation.
 
-## 🟡 Limites connues (Phase 1 — voir `docs/AUDIT_10_ANS.md`)
+## 🟡 Limites connues (résiduelles)
 
-- **Mots de passe stockés en clair** (compatibilité avec le client actuel) :
-  toute personne accédant à MySQL, aux sauvegardes `.sql` ou aux exports
-  JSON peut les lire. Prévu : hachage bcrypt + écran de connexion serveur.
-- **Pas d'authentification sur l'API** : tout poste du réseau local peut lire
-  et écrire la base. C'est acceptable sur un réseau de confiance (switch du
-  centre, Wi-Fi avec mot de passe fort), jamais sur un réseau ouvert.
-  Préparé : `SALFA_API_KEY` dans la config exige l'en-tête `X-API-Key`
-  (à activer avec le client Phase 1 qui l'enverra).
+- **Réseau local de confiance requis** : l'API exige désormais une session,
+  mais le trafic reste en HTTP (WAMP) : un attaquant SUR le réseau pourrait
+  intercepter un jeton. Restez sur le switch du centre / un Wi-Fi à mot de
+  passe fort, jamais sur un réseau ouvert. Renfort possible : `SALFA_API_KEY`
+  (en-tête `X-API-Key` exigé en plus — le client actuel ne l'envoie pas
+  encore : à activer avec un client adapté).
 - **Journal d'audit modifiable** par un administrateur (même base) :
   la preuve d'antériorité repose sur les **sauvegardes quotidiennes externes**.
 - **Chiffrement** : activer le chiffrement du disque Windows (BitLocker) sur

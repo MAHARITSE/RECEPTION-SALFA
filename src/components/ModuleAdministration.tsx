@@ -1,8 +1,10 @@
 import { useState, useRef } from 'react';
 import type { UserRole, TicketSettings, User } from '../types';
 import { formatAr, addAuditLog, ensureEtablissements, migrateLegacyToVentes, createInitialState, familyManagesStock, prepareLoadedState } from '../store';
-import { IS_WAMP_BUILD } from '../wamp';
+import { IS_WAMP_BUILD, setWampPassword } from '../wamp';
 import { credentialAutofillOptOut, passwordInputOptOut } from '../utils/credentialAutofill';
+import { downloadJsonBackup } from '../utils/sauvegarde';
+import { hashPassword } from '../utils/motDePasse';
 import type { AppState } from '../store';
 import ModuleReception from './ModuleReception';
 import ModuleMedecin from './ModuleMedecin';
@@ -187,7 +189,29 @@ export default function ModuleAdministration({ state, setState }: Props) {
     });
   };
 
-  const saveUserModal = () => {
+  /**
+   * Pousse un mot de passe vers MySQL (WAMP, admin uniquement : bcrypt serveur).
+   * À la CRÉATION d'un compte, la synchronisation de la ligne peut ne pas avoir
+   * encore eu lieu → on réessaie quelques secondes en cas de « compte introuvable ».
+   */
+  const pushWampPassword = async (id: string, clear: string): Promise<boolean> => {
+    for (let attempt = 0; attempt < 6; attempt++) {
+      try {
+        await setWampPassword(id, clear);
+        return true;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Mot de passe non enregistré';
+        if (!/introuvable/.test(msg) || attempt === 5) {
+          showToast(`⚠️ ${msg}`);
+          return false;
+        }
+        await new Promise((r) => setTimeout(r, 1200));
+      }
+    }
+    return false;
+  };
+
+  const saveUserModal = async () => {
     const { mode, user } = userModal;
     const cleanId = user.id.trim().toUpperCase();
     const cleanName = user.name.trim();
@@ -207,21 +231,28 @@ export default function ModuleAdministration({ state, setState }: Props) {
         showToast('⚠️ Cet identifiant ID existe déjà');
         return;
       }
+      const clearPwd = user.password?.trim() || 'pass123';
       const newU: User = {
         id: cleanId,
         name: cleanName,
         role: user.roles[0],
         roles: user.roles,
-        password: user.password?.trim() || 'pass123',
+        // Navigateur : haché dès la saisie. WAMP : AUCUN mot de passe en mémoire
+        // (le serveur bcrypt via action=password ; les lectures sont expurgées).
+        ...(!IS_WAMP_BUILD ? { password: await hashPassword(clearPwd) } : {}),
       };
       setState((prev) => {
         const next = { ...prev, users: [...prev.users, newU] };
         addAuditLog(next, 'AJOUT_UTILISATEUR', `${newU.name} (${newU.id}) — ${roleLabels[newU.role]}`);
         return next;
       });
+      if (IS_WAMP_BUILD) await pushWampPassword(cleanId, clearPwd);
       showToast(`✅ Utilisateur ${cleanId} créé avec succès`);
     } else {
-      // Edit mode
+      // Edit mode — champ vide = inchangé. WAMP : le mot de passe part vers
+      // action=password (jamais stocké en mémoire) ; navigateur : haché ici.
+      const clearEdit = user.password?.trim() || '';
+      const hashedEdit = !IS_WAMP_BUILD && clearEdit ? await hashPassword(clearEdit) : undefined;
       setState((prev) => {
         const next = {
           ...prev,
@@ -232,7 +263,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
                 name: cleanName,
                 role: user.roles![0],
                 roles: user.roles,
-                ...(user.password?.trim() ? { password: user.password.trim() } : {}),
+                ...(hashedEdit ? { password: hashedEdit } : {}),
               };
             }
             return u;
@@ -241,6 +272,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
         addAuditLog(next, 'MODIFICATION_UTILISATEUR', `${cleanName} (${cleanId}) — ${roleLabels[user.roles![0]]}`);
         return next;
       });
+      if (IS_WAMP_BUILD && clearEdit) await pushWampPassword(cleanId, clearEdit);
       showToast(`✅ Utilisateur ${cleanId} mis à jour`);
     }
 
@@ -280,44 +312,55 @@ export default function ModuleAdministration({ state, setState }: Props) {
     });
   };
 
-  const saveResetPassword = () => {
+  const saveResetPassword = async () => {
     const { user, newPassword } = resetPasswordModal;
     if (!user || !newPassword.trim()) return;
-    setState((prev) => {
-      const next = {
-        ...prev,
-        users: prev.users.map((u) => (u.id === user.id ? { ...u, password: newPassword.trim() } : u)),
-      };
-      addAuditLog(next, 'RESET_PASSWORD', `${user.name} (${user.id})`);
-      return next;
-    });
+    const clear = newPassword.trim();
+    if (IS_WAMP_BUILD) {
+      // Le compte existe déjà : pas d'attente de synchronisation, une tentative suffit.
+      try {
+        await setWampPassword(user.id, clear);
+      } catch (e) {
+        showToast(`⚠️ ${e instanceof Error ? e.message : 'Mot de passe non modifié'}`);
+        return;
+      }
+      setState((prev) => {
+        const next = { ...prev };
+        addAuditLog(next, 'RESET_PASSWORD', `${user.name} (${user.id})`);
+        return next;
+      });
+    } else {
+      const hashedReset = await hashPassword(clear);
+      setState((prev) => {
+        const next = {
+          ...prev,
+          users: prev.users.map((u) => (u.id === user.id ? { ...u, password: hashedReset } : u)),
+        };
+        addAuditLog(next, 'RESET_PASSWORD', `${user.name} (${user.id})`);
+        return next;
+      });
+    }
     showToast(`✅ Mot de passe mis à jour pour ${user.id}`);
     setResetPasswordModal((rpm) => ({ ...rpm, isOpen: false }));
   };
 
   // ============ BACKUP & RESTORE ============
   const exportBackup = () => {
-    const data = {
-      version: '2.0-LOGBARA-SALFA',
-      exportedAt: new Date().toISOString(),
-      exportedBy: state.currentUser?.id || 'ADM001',
-      stats: {
-        patientsCount: state.patients.length,
-        invoicesCount: state.invoices.length,
-        articlesCount: state.articles.length,
-        usersCount: state.users.length,
-      },
-      state: { ...state, currentUser: null },
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `HIS-salfa-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    setState((prev) => { const next = { ...prev }; addAuditLog(next, 'EXPORT_BACKUP', a.download); return next; });
-    showToast('✅ Fichier de sauvegarde JSON exporté');
+    try {
+      const fileName = downloadJsonBackup(state);
+      setState((prev) => {
+        const next = {
+          ...prev,
+          lastBackupAt: new Date().toISOString(),
+          lastBackupBy: prev.currentUser?.id || 'ADM001',
+        };
+        addAuditLog(next, 'EXPORT_BACKUP', fileName);
+        return next;
+      });
+      showToast(`✅ Fichier de sauvegarde JSON exporté (${fileName})`);
+    } catch {
+      showToast('⚠️ Export de sauvegarde impossible');
+    }
   };
 
   const handleBackupFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -378,14 +421,48 @@ export default function ModuleAdministration({ state, setState }: Props) {
     setRestoreModal({ isOpen: false, fileName: '', parsedState: null });
   };
 
+  // Étape 2 d'une réinitialisation : sauvegarde téléchargée, saisie exigée.
+  const [resetTyped, setResetTyped] = useState<{ isOpen: boolean; text: string; action: 'operational' | 'total' | null; backupFile: string }>(
+    { isOpen: false, text: '', action: null, backupFile: '' },
+  );
+
+  /**
+   * GARDE-FOU : aucune réinitialisation sans sauvegarde préalable.
+   * Télécharge immédiatement une sauvegarde JSON complète, horodate
+   * l'export, puis exige la saisie de « SUPPRIMER » (2ᵉ fenêtre).
+   */
+  const beginReset = (action: 'operational' | 'total') => {
+    let backupFile = '';
+    try {
+      backupFile = downloadJsonBackup(state);
+    } catch {
+      showToast('⚠️ Sauvegarde impossible : réinitialisation annulée');
+      return;
+    }
+    setState((prev) => ({
+      ...prev,
+      lastBackupAt: new Date().toISOString(),
+      lastBackupBy: prev.currentUser?.id || 'ADM001',
+    }));
+    setResetTyped({ isOpen: true, text: '', action, backupFile });
+    showToast(`💾 Sauvegarde téléchargée (${backupFile}) — confirmez par saisie`);
+  };
+
   const resetSystem = () => {
     setConfirmModal({
       isOpen: true,
       title: 'Réinitialiser les données opérationnelles ?',
-      message: 'ATTENTION : Cette action supprimera TOUS les dossiers patients, factures, consultations, ordonnances et mouvements de stock. Les comptes utilisateurs, les articles et les sociétés seront conservés.',
-      confirmText: 'Réinitialiser les données',
+      message: 'ATTENTION : Cette action supprimera TOUS les dossiers patients, factures, consultations, ordonnances et mouvements de stock. Les comptes utilisateurs, les articles et les sociétés seront conservés. Une sauvegarde JSON sera téléchargée AVANT, et la saisie de « SUPPRIMER » sera exigée.',
+      confirmText: 'Étape suivante : sauvegarde + saisie',
       variant: 'warning',
       onConfirm: () => {
+        setConfirmModal((cm) => ({ ...cm, isOpen: false }));
+        beginReset('operational');
+      },
+    });
+  };
+
+  const executeOperationalReset = () => {
         setState((prev) => {
           const fresh: AppState = {
             ...prev,
@@ -413,9 +490,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
           return fresh;
         });
         showToast('Données opérationnelles réinitialisées');
-        setConfirmModal((cm) => ({ ...cm, isOpen: false }));
-      },
-    });
+        setResetTyped({ isOpen: false, text: '', action: null, backupFile: '' });
   };
 
   const resetAllDatabase = () => {
@@ -425,10 +500,17 @@ export default function ModuleAdministration({ state, setState }: Props) {
     setConfirmModal({
       isOpen: true,
       title: '⛔ RÉINITIALISATION TOTALE DE LA BASE ?',
-      message: `ATTENTION EXTRÊME : Cette action est IRREVOCABLE. Toutes les données saisies (patients, factures, ventes, catalogue d'articles, sociétés) seront EFFACÉES.${wampHint}`,
-      confirmText: 'Confirmer la réinitialisation TOTALE',
+      message: `ATTENTION EXTRÊME : Cette action est IRREVOCABLE. Toutes les données saisies (patients, factures, ventes, catalogue d'articles, sociétés) seront EFFACÉES.${wampHint} Une sauvegarde JSON sera téléchargée AVANT, et la saisie de « SUPPRIMER » sera exigée.`,
+      confirmText: 'Étape suivante : sauvegarde + saisie',
       variant: 'danger',
       onConfirm: () => {
+        setConfirmModal((cm) => ({ ...cm, isOpen: false }));
+        beginReset('total');
+      },
+    });
+  };
+
+  const executeTotalReset = () => {
         try { localStorage.clear(); } catch { /* ignore */ }
         // prepareLoadedState : normalise les familles et intègre la base unifiée
         // des articles (familles LABO / ECHO / HOSP) dès la réinitialisation.
@@ -450,9 +532,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
           return freshState;
         });
         showToast('✅ Base de données entièrement réinitialisée');
-        setConfirmModal((cm) => ({ ...cm, isOpen: false }));
-      },
-    });
+        setResetTyped({ isOpen: false, text: '', action: null, backupFile: '' });
   };
 
   // CSV Export for Audit Logs
@@ -665,6 +745,54 @@ export default function ModuleAdministration({ state, setState }: Props) {
                 }`}
               >
                 {confirmModal.confirmText || 'Confirmer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Saisie de confirmation d'une réinitialisation (sauvegarde déjà téléchargée) */}
+      {resetTyped.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in">
+          <div className="bg-surface rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-line">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-xl bg-red-100 dark:bg-red-500/15 text-red-600 dark:text-red-400">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <h3 className="font-bold text-ink-strong text-lg">Dernière étape : tapez SUPPRIMER</h3>
+            </div>
+            <p className="text-sm text-ink-secondary leading-relaxed">
+              💾 Sauvegarde téléchargée : <code className="bg-surface-active px-1 rounded text-xs">{resetTyped.backupFile || '—'}</code>
+              <br />
+              {resetTyped.action === 'total'
+                ? 'La RÉINITIALISATION TOTALE va effacer toutes les données saisies.'
+                : 'La réinitialisation va effacer toutes les données opérationnelles.'}{' '}
+              Pour confirmer, tapez <strong className="text-ink">SUPPRIMER</strong> en majuscules :
+            </p>
+            <input
+              type="text"
+              value={resetTyped.text}
+              onChange={(e) => setResetTyped((r) => ({ ...r, text: e.target.value }))}
+              placeholder="SUPPRIMER"
+              autoFocus
+              className="w-full px-4 py-3 bg-field border border-line rounded-lg text-ink font-mono tracking-widest focus:ring-2 focus:ring-red-500/30 focus:border-red-500 outline-none"
+            />
+            <div className="flex justify-end gap-2 pt-2 border-t">
+              <button
+                onClick={() => setResetTyped({ isOpen: false, text: '', action: null, backupFile: '' })}
+                className="px-4 py-2 bg-surface-hover hover:bg-surface-active text-ink rounded-xl text-xs font-semibold cursor-pointer"
+              >
+                Annuler (données intactes)
+              </button>
+              <button
+                disabled={resetTyped.text.trim() !== 'SUPPRIMER'}
+                onClick={() => {
+                  if (resetTyped.action === 'total') executeTotalReset();
+                  else executeOperationalReset();
+                }}
+                className="px-4 py-2 text-white rounded-xl text-xs font-bold shadow cursor-pointer bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Effacer définitivement
               </button>
             </div>
           </div>

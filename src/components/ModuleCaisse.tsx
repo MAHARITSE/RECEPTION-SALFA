@@ -6,12 +6,12 @@
 import { useState, useRef, useMemo, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription, Article, Patient } from '../types';
-import type { AppState } from '../store';
+import type { AppState, FactureNumberAllocation, FactureNumberSpec } from '../store';
 import type { Societe } from '../modules/assurance/types';
 import {
   addAuditLog, addNotification, formatAr, formatNum, roundTo2, getPrice, calculateAge,
   normalizeDossierNumber, isDossierTaken, addJourneyEvent, generatePharmaClosingNumber, purgePatientFromQueue,
-  familyManagesStock, isLabFamily, isEchoFamily, allocateFactureNumber, applySocieteUpsert, collectExistingFactureNumbers, companyIsBlocked, companyOptions, sousSocietesConnues,
+  familyManagesStock, isLabFamily, isEchoFamily, allocateFactureNumber, allocateFactureNumberAsync, allocateFactureNumbersAsync, applySocieteUpsert, collectExistingFactureNumbers, companyIsBlocked, companyOptions, sousSocietesConnues,
 } from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText, RefreshCw } from 'lucide-react';
 import { SearchableSelect, optionsFromValues } from './SearchableSelect';
@@ -201,15 +201,19 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   };
 
   /** Numéro de facture officiel d'un nouveau dossier hospit/bloc :
-   *  FA-MM/CODE/YY-NNN pour les sociétés, AAFAMMJJ + ordre du jour sinon. */
-  const hbNumeroFacture = (clientType: ClientType, company?: string): string => {
-    const allocated = allocateFactureNumber(state, {
+   *  FA-MM/CODE/YY-NNN pour les sociétés, AAFAMMJJ + ordre du jour sinon.
+   *  Réservé atomiquement : JETTE une erreur si la numérotation échoue. */
+  const hbNumeroFacture = async (clientType: ClientType, company?: string): Promise<string> => {
+    const allocated = await allocateFactureNumberAsync(state, {
       clientType,
       company,
       invoiceDate: new Date().toISOString(),
       prescriptionDate: new Date().toISOString(),
     });
-    if (allocated.societeUpsert) setState(prev => applySocieteUpsert(prev, allocated.societeUpsert));
+    if (allocated.societeUpsert) {
+      const upsert = allocated.societeUpsert;
+      setState(prev => applySocieteUpsert(prev, upsert));
+    }
     return allocated.numeroFacture;
   };
   const [hbSelRecordId, setHbSelRecordId] = useState<string | null>(null);
@@ -431,7 +435,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     setSelConsultId(null);
   };
 
-  const handlePayment = () => {
+  const handlePayment = async () => {
     if (!selPatient) return;
     // Garde anti double-paiement
     if (payingRef.current) return;
@@ -449,22 +453,13 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     //  - client société → FA-MM/CODE/YY-NNN (mois des prescriptions, code société) ;
     //  - autres clients → AAFAMMJJ + ordre du jour (ex: 26FA0427102).
     // Les factures de services (labo/écho) en attente reçoivent leur numéro dans
-    // l'ordre chronologique, puis la facture médicaments.
-    const numbers = collectExistingFactureNumbers(state);
-    const societeUpserts: Societe[] = [];
+    // l'ordre chronologique, puis la facture médicaments — le tout en UN SEUL
+    // lot atomique (attribué plus bas, après le cas « passage sans facturation »).
+    const servicesToNumber = [...serviceInvoices]
+      .sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''))
+      .filter(svc => !svc.numeroFacture);
     const allocatedNumbers = new Map<string, string>();
-    const allocateFor = (clientType: ClientType, company: string | undefined, invoiceDate: string, prescriptionDate?: string): string => {
-      const allocated = allocateFactureNumber(state, { clientType, company, invoiceDate, prescriptionDate, numbers });
-      if (allocated.societeUpsert) societeUpserts.push(allocated.societeUpsert);
-      numbers.push(allocated.numeroFacture);
-      return allocated.numeroFacture;
-    };
-    for (const svc of [...serviceInvoices].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''))) {
-      if (svc.numeroFacture) { numbers.push(svc.numeroFacture); continue; }
-      const svcPatient = svc.patientId ? state.patients.find(p => p.id === svc.patientId) : undefined;
-      const svcConsultDate = svc.consultationId ? state.consultations.find(c => c.id === svc.consultationId)?.date : undefined;
-      allocatedNumbers.set(svc.id, allocateFor(svc.clientType, svcPatient?.company, svc.createdAt || new Date().toISOString(), svcConsultDate || svc.createdAt));
-    }
+    const societeUpserts: Societe[] = [];
     // Déduplication des items service par description + montant (sécurité anti-doublon)
     const seen = new Set<string>();
     const dedupedServiceItems = serviceItems.filter(item => {
@@ -501,9 +496,41 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     // attente : celles-ci sont soldées directement ci-dessous. Cela évite le double
     // comptage dans la facturation sociétés (crédit société).
     const medsTotal = medicationItems.reduce((sum, item) => sum + item.amount, 0);
-    const medsNumero = medicationItems.length > 0
-      ? allocateFor(selPatient.clientType, selPatient.company, paidAt, unpaidConsults[0]?.date || paidAt)
-      : undefined;
+    // LOT UNIQUE atomique : services à numéroter + facture médicaments.
+    // Échec (réseau/base) → on alerte et on n'encaisse RIEN : facturer sans
+    // numéro réservé créerait un doublon avec une autre caisse.
+    const specs: FactureNumberSpec[] = [
+      ...servicesToNumber.map((svc) => {
+        const svcPatient = svc.patientId ? state.patients.find(p => p.id === svc.patientId) : undefined;
+        const svcConsultDate = svc.consultationId ? state.consultations.find(c => c.id === svc.consultationId)?.date : undefined;
+        return {
+          clientType: svc.clientType, company: svcPatient?.company,
+          invoiceDate: svc.createdAt || paidAt, prescriptionDate: svcConsultDate || svc.createdAt || paidAt,
+        };
+      }),
+      ...(medicationItems.length > 0
+        ? [{
+            clientType: selPatient.clientType, company: selPatient.company,
+            invoiceDate: paidAt, prescriptionDate: unpaidConsults[0]?.date || paidAt,
+          }]
+        : []),
+    ];
+    let allocated: FactureNumberAllocation[];
+    try {
+      allocated = await allocateFactureNumbersAsync(state, specs);
+    } catch (e) {
+      showAlert(e instanceof Error ? e.message : 'Numérotation impossible.', 'Numérotation impossible', 'danger');
+      payingRef.current = false;
+      return;
+    }
+    servicesToNumber.forEach((svc, i) => {
+      allocatedNumbers.set(svc.id, allocated[i].numeroFacture);
+      const upsert = allocated[i].societeUpsert;
+      if (upsert) societeUpserts.push(upsert);
+    });
+    const medsAlloc = medicationItems.length > 0 ? allocated[servicesToNumber.length] : undefined;
+    if (medsAlloc?.societeUpsert) societeUpserts.push(medsAlloc.societeUpsert);
+    const medsNumero = medsAlloc?.numeroFacture;
     const inv: Invoice | null = medicationItems.length > 0 ? {
       id: uuidv4(), patientId: selPatient.id, consultationId: unpaidConsults[0]?.id, clientType: selPatient.clientType,
       items: medicationItems, totalAmount: medsTotal, patientCharge: medsTotal, numeroFacture: medsNumero,
@@ -673,7 +700,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     }
     else if (e.key === 'Escape') setExtSearch('');
   };
-  const extPay = () => {
+  const extPay = async () => {
     if (extLines.length === 0) return;
     // Ne pas valider l'encaissement si une ligne de vente est en cours de saisie mais non enregistrée
     if (blockIfUnsavedDraftLine(extLineForm, extLines, { entityLabel: 'l\'article' })) return;
@@ -826,7 +853,14 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
     // Numérotation officielle : les ventes externes sont des factures « comptoir »
     // → AAFAMMJJ + numéro d'ordre du jour (ex: 26FA0427102).
-    const extNumero = allocateFactureNumber(state, { clientType: 'externe', invoiceDate: now }).numeroFacture;
+    // Réservé atomiquement : échec → on alerte et on n'encaisse RIEN.
+    let extNumero: string;
+    try {
+      extNumero = (await allocateFactureNumberAsync(state, { clientType: 'externe', invoiceDate: now })).numeroFacture;
+    } catch (e) {
+      showAlert(e instanceof Error ? e.message : 'Numérotation impossible.', 'Numérotation impossible', 'danger');
+      return;
+    }
     const inv: Invoice = {
       id: invId,
       consultationId: extConsultId,
@@ -890,16 +924,23 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const hbLineAmt = (l: HbLine) => roundTo2(l.unitPrice * l.quantity * (1 - l.discount / 100));
   const hbPatFiltered = hbPatSearch.length >= 1 ? state.patients.filter(p => `${p.lastName} ${p.firstName}`.toLowerCase().includes(hbPatSearch.toLowerCase()) || p.dossier.toLowerCase().includes(hbPatSearch.toLowerCase())) : [];
 
-  const hbSelectPatient = (patientId: string) => {
+  const hbSelectPatient = async (patientId: string) => {
     const p = state.patients.find(x => x.id === patientId);
     if (!p) return;
     const exists = hbRecords.some(r => r.patientId === p.id && r.type === tab);
     if (exists) { alert('Ce patient est déjà dans la liste'); return; }
     const now = new Date().toISOString();
+    let numeroFacture: string;
+    try {
+      numeroFacture = await hbNumeroFacture(p.clientType, p.company);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Numérotation impossible : dossier non créé.');
+      return;
+    }
     updateHbRecords([...hbRecords, {
       id: uuidv4(), patientId: p.id, patientName: `${p.lastName} ${p.firstName}`,
       clientType: p.clientType, company: p.company, subCompany: p.subCompany,
-      numeroFacture: hbNumeroFacture(p.clientType, p.company),
+      numeroFacture,
       type: tab as 'hospit' | 'bloc', lines: [], payments: [],
       openedAt: now, openedBy: state.currentUser?.name, openedByUserId: state.currentUser?.id,
     }]);
@@ -918,7 +959,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     return name;
   };
 
-  const hbAddNewPatient = () => {
+  const hbAddNewPatient = async () => {
     if (!hbNewPat.lastName || !hbNewPat.firstName) { alert('Nom et prénom requis'); return; }
     const dossier = normalizeDossierNumber(hbNewPat.dossier);
     if (!dossier) { alert('Le numéro de dossier est obligatoire (saisie manuelle, majuscules).'); return; }
@@ -937,11 +978,19 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       registeredAt: new Date().toISOString(), registeredBy: state.currentUser?.id || 'CAISSE', status: 'registered' as const,
     };
     const now = new Date().toISOString();
+    // Numéro réservé AVANT toute création : en cas d'échec, rien n'est créé.
+    let numeroFacture: string;
+    try {
+      numeroFacture = await hbNumeroFacture(np.clientType, np.company);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Numérotation impossible : patient et dossier non créés.');
+      return;
+    }
     setState(prev => ({ ...prev, patients: [...prev.patients, np] }));
     updateHbRecords([...hbRecords, {
       id: uuidv4(), patientId: np.id, patientName: `${np.lastName} ${np.firstName}`,
       clientType: np.clientType, company: np.company, subCompany: np.subCompany,
-      numeroFacture: hbNumeroFacture(np.clientType, np.company),
+      numeroFacture,
       type: tab as 'hospit' | 'bloc', lines: [], payments: [],
       openedAt: now, openedBy: state.currentUser?.name, openedByUserId: state.currentUser?.id,
     }]);
@@ -1095,6 +1144,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     // 💡 On conserve qui a reçu l'argent : caisse ou pharmacie (selon le rôle de l'utilisateur connecté)
     const receivedBy: 'caisse' | 'pharmacie' = state.currentUser?.role === 'pharmacy' ? 'pharmacie' : 'caisse';
     const payment = {
+      id: uuidv4(),
       amount,
       paidBy: state.currentUser?.name || '',
       paidByUserId: state.currentUser?.id,
@@ -1151,36 +1201,54 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   };
 
   // Auto-add from doctor requests
-  const autoAddRequests = () => {
+  const autoAddRequests = async () => {
     const now = new Date().toISOString();
     const openerName = state.currentUser?.name;
     const openerId = state.currentUser?.id;
-    const additions: HbRecord[] = [];
-    // Plusieurs dossiers peuvent être créés d'affilée : les numéros sont attribués
-    // dans une même série pour ne pas se chevaucher.
-    const numbers = collectExistingFactureNumbers(state);
-    const upserts: Societe[] = [];
-    const nextNumero = (clientType: ClientType, company?: string): string => {
-      const allocated = allocateFactureNumber(state, { clientType, company, invoiceDate: now, prescriptionDate: now, numbers });
-      if (allocated.societeUpsert) upserts.push(allocated.societeUpsert);
-      numbers.push(allocated.numeroFacture);
-      return allocated.numeroFacture;
-    };
+    // Plusieurs dossiers peuvent être créés d'affilée : on collecte d'abord
+    // les demandes, puis UN SEUL lot atomique les numérote toutes.
+    const pending: { pat: Patient; type: 'hospit' | 'bloc' }[] = [];
     state.consultations.forEach(c => {
       const pat = state.patients.find(p => p.id === c.patientId);
       if (!pat) return;
-      const name = `${pat.lastName} ${pat.firstName}`;
       if (c.hospitalizeRequested && !hbRecords.some(h => h.patientId === pat.id && h.type === 'hospit'))
-        additions.push({ id: uuidv4(), patientId: pat.id, patientName: name, clientType: pat.clientType, company: pat.company, subCompany: pat.subCompany, numeroFacture: nextNumero(pat.clientType, pat.company), type: 'hospit', lines: [], payments: [], openedAt: now, openedBy: openerName, openedByUserId: openerId });
+        pending.push({ pat, type: 'hospit' });
       if (c.surgeryRequested && !hbRecords.some(h => h.patientId === pat.id && h.type === 'bloc'))
-        additions.push({ id: uuidv4(), patientId: pat.id, patientName: name, clientType: pat.clientType, company: pat.company, subCompany: pat.subCompany, numeroFacture: nextNumero(pat.clientType, pat.company), type: 'bloc', lines: [], payments: [], openedAt: now, openedBy: openerName, openedByUserId: openerId });
+        pending.push({ pat, type: 'bloc' });
     });
-    if (additions.length > 0) {
-      for (const upsert of upserts) setState(prev => applySocieteUpsert(prev, upsert));
-      updateHbRecords(prev => [...prev, ...additions]);
+    if (pending.length === 0) return;
+    let allocated: FactureNumberAllocation[];
+    try {
+      allocated = await allocateFactureNumbersAsync(
+        state,
+        pending.map(({ pat }) => ({ clientType: pat.clientType, company: pat.company, invoiceDate: now, prescriptionDate: now })),
+      );
+    } catch {
+      return; // ajout automatique : échec silencieux, réessayé au prochain onglet
     }
+    setState(prev => {
+      let next = prev;
+      const fresh = prev.hbRecords || [];
+      const additions: HbRecord[] = [];
+      pending.forEach(({ pat, type }, i) => {
+        // Re-vérification anti-doublon au moment d'écrire (l'onglet a pu
+        // recevoir les dossiers d'un autre poste pendant l'allocation).
+        if (fresh.some(h => h.patientId === pat.id && h.type === type)
+          || additions.some(h => h.patientId === pat.id && h.type === type)) return;
+        additions.push({
+          id: uuidv4(), patientId: pat.id, patientName: `${pat.lastName} ${pat.firstName}`,
+          clientType: pat.clientType, company: pat.company, subCompany: pat.subCompany,
+          numeroFacture: allocated[i].numeroFacture, type, lines: [], payments: [],
+          openedAt: now, openedBy: openerName, openedByUserId: openerId,
+        });
+        const upsert = allocated[i].societeUpsert;
+        if (upsert) next = applySocieteUpsert(next, upsert);
+      });
+      if (additions.length === 0) return next === prev ? prev : next;
+      return { ...next, hbRecords: [...(next.hbRecords || []), ...additions] };
+    });
   };
-  const switchTab = (t: Tab) => { setTab(t); if (t === 'hospit' || t === 'bloc') autoAddRequests(); };
+  const switchTab = (t: Tab) => { setTab(t); if (t === 'hospit' || t === 'bloc') void autoAddRequests(); };
 
   // Stats — FILTRÉES PAR LE CAISSIER CONNECTÉ
   // Les paiements se font individuellement et au nom de la personne qui a reçu l'argent.

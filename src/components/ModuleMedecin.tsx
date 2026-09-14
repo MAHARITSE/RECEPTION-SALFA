@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Consultation, VitalSigns, Prescription, LabRequest, ClientType, Invoice, EchoRequest, PatientStatus, Patient, Article } from '../types';
-import type { AppState } from '../store';
+import type { AppState, FactureNumberAllocation, FactureNumberSpec } from '../store';
 import type { Societe } from '../modules/assurance/types';
-import { allocateFactureNumber, applySocieteUpsert, collectExistingFactureNumbers } from '../store';
+import { allocateFactureNumber, allocateFactureNumbersAsync, applySocieteUpsert, collectExistingFactureNumbers } from '../store';
 import { SearchableSelect, optionsFromValues } from './SearchableSelect';
 import { SuggestionInput, classerSuggestions } from './SuggestionInput';
 import {
@@ -758,7 +758,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     });
   };
 
-  const submitConsultation = (force = false) => {
+  const submitConsultation = async (force = false) => {
     if (!selectedPatientId || !selectedPatient || !consultForm.diagnosis) { alert('Diagnostic obligatoire'); return; }
     // Ne pas valider si une ligne d'ordonnance est en cours de saisie mais non enregistrée
     if (blockIfUnsavedDraftLine(lineForm, lines, { entityLabel: 'le médicament' })) return;
@@ -800,18 +800,26 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     const consultId = uuidv4();
     // Numérotation officielle des factures labo / écho créées en attente :
     // FA-MM/CODE/YY-NNN pour les sociétés, AAFAMMJJ + ordre du jour sinon.
-    const factureNumbers = collectExistingFactureNumbers(state);
-    const factureUpserts: Societe[] = [];
-    const allocNumero = (): string => {
-      const allocated = allocateFactureNumber(state, {
-        clientType: ct, company: selectedPatient?.company, invoiceDate: new Date().toISOString(), numbers: factureNumbers,
-      });
-      if (allocated.societeUpsert) factureUpserts.push(allocated.societeUpsert);
-      factureNumbers.push(allocated.numeroFacture);
-      return allocated.numeroFacture;
-    };
-    const labNumeroFacture = labDraft.length > 0 ? allocNumero() : undefined;
-    const echoNumeroFacture = echoDraft.length > 0 ? allocNumero() : undefined;
+    // UN SEUL lot atomique pour les factures labo + écho de cette consultation.
+    // Échec → on alerte et on ne valide RIEN (garde anti double-soumission levée).
+    const numeroSpecs: FactureNumberSpec[] = [
+      ...(labDraft.length > 0 ? [{ clientType: ct, company: selectedPatient?.company, invoiceDate: new Date().toISOString() }] : []),
+      ...(echoDraft.length > 0 ? [{ clientType: ct, company: selectedPatient?.company, invoiceDate: new Date().toISOString() }] : []),
+    ];
+    let numerosAlloues: FactureNumberAllocation[];
+    try {
+      numerosAlloues = await allocateFactureNumbersAsync(state, numeroSpecs);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Numérotation impossible : consultation non validée.');
+      submittingRef.current = false;
+      return;
+    }
+    const factureUpserts: Societe[] = numerosAlloues
+      .map((a) => a.societeUpsert)
+      .filter((u): u is Societe => !!u);
+    let idxNumero = 0;
+    const labNumeroFacture = labDraft.length > 0 ? numerosAlloues[idxNumero++].numeroFacture : undefined;
+    const echoNumeroFacture = echoDraft.length > 0 ? numerosAlloues[idxNumero++].numeroFacture : undefined;
     // ---- Analyses labo -> facture en attente (bon imprimé à la CAISSE après paiement) ----
     const labInvoiceId = labDraft.length > 0 ? uuidv4() : null;
     const newLabRequests: LabRequest[] = labDraft.map((d) => {

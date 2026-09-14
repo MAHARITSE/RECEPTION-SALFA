@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { LabRequest, Patient, ClientType, LabExamCatalog, LabCategory, Article } from '../types';
-import type { AppState } from '../store';
+import type { AppState, FactureNumberAllocation } from '../store';
 import type { Societe } from '../modules/assurance/types';
-import { allocateFactureNumber, applySocieteUpsert, collectExistingFactureNumbers } from '../store';
+import { allocateFactureNumber, allocateFactureNumberAsync, applySocieteUpsert, collectExistingFactureNumbers } from '../store';
 import { SearchableSelect, optionsFromValues } from './SearchableSelect';
 import { SuggestionInput, classerSuggestions, motsIdentite } from './SuggestionInput';
 import {
@@ -383,7 +383,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
     return ct === 'societe' ? exam.priceSociete : ct === 'externe' ? exam.priceExterne : exam.priceComptoir;
   };
 
-  const createRequests = () => {
+  const createRequests = async () => {
     if (!selectedPatientId) { alert('Sélectionnez un patient'); return; }
     if (selectedExamIds.length === 0) { alert('Choisissez au moins un examen'); return; }
     const patient = state.patients.find((p) => p.id === selectedPatientId);
@@ -397,12 +397,17 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
 
     // Numérotation officielle de la facture d'analyses en attente :
     // FA-MM/CODE/YY-NNN pour les sociétés, AAFAMMJJ + ordre du jour sinon.
-    const factureNumbers = collectExistingFactureNumbers(state);
-    let factureUpsert: Societe | undefined;
-    const allocated = allocateFactureNumber(state, {
-      clientType: ct, company: patient.company, invoiceDate: new Date().toISOString(), numbers: factureNumbers,
-    });
-    factureUpsert = allocated.societeUpsert;
+    // Numéro réservé atomiquement : échec → on alerte et on ne crée RIEN.
+    let allocated: FactureNumberAllocation;
+    try {
+      allocated = await allocateFactureNumberAsync(state, {
+        clientType: ct, company: patient.company, invoiceDate: new Date().toISOString(),
+      });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Numérotation impossible : demande non créée.');
+      return;
+    }
+    const factureUpsert = allocated.societeUpsert;
 
     setState((prev) => {
       const base = factureUpsert ? applySocieteUpsert(prev, factureUpsert) : prev;

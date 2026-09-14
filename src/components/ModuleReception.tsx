@@ -207,12 +207,31 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
   // Ordre décroissant : dernier enregistré / dernier arrivé en haut.
   // Recherche multi-mots sur l'identité complète (prénom + nom), le dossier et le
   // matricule : « RAVELO N » retrouve « RAVELO NAINA » — casse et accents ignorés.
-  const filteredPatients = state.patients
+  // Mémorisé : le filtre + tri ne sont recalculés que si les patients ou la recherche changent.
+  const filteredPatients = useMemo(() => state.patients
     .filter((p) => correspondRechercheMultiMots(`${p.firstName} ${p.lastName} ${p.dossier} ${p.matricule || ''}`, searchQuery))
-    .sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime());
+    .sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime()),
+    [state.patients, searchQuery]);
 
-  const waitingCount = state.patients.filter((p) => p.status === 'waiting_consultation').length;
-  const todayCount = state.patients.filter((p) => new Date(p.registeredAt).toDateString() === new Date().toDateString()).length;
+  // PAGINATION : seules les lignes de la page courante sont rendues (50 par
+  // défaut). Sans cela, des dizaines de milliers de lignes DOM figent le navigateur.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  useEffect(() => { setPage(1); }, [searchQuery, pageSize, state.patients.length]);
+  const pageCount = Math.max(1, Math.ceil(filteredPatients.length / pageSize));
+  const safePage = Math.min(page, pageCount);
+  const pagePatients = useMemo(
+    () => filteredPatients.slice((safePage - 1) * pageSize, safePage * pageSize),
+    [filteredPatients, safePage, pageSize]);
+  const pageFrom = filteredPatients.length === 0 ? 0 : (safePage - 1) * pageSize + 1;
+  const pageTo = Math.min(safePage * pageSize, filteredPatients.length);
+
+  const waitingCount = useMemo(
+    () => state.patients.filter((p) => p.status === 'waiting_consultation').length, [state.patients]);
+  const todayCount = useMemo(() => {
+    const today = new Date().toDateString();
+    return state.patients.filter((p) => new Date(p.registeredAt).toDateString() === today).length;
+  }, [state.patients]);
   // Saisie assistée : valeurs déjà connues dans la base (dossiers, noms, prénoms, adresses).
   const optionsDossiers = useMemo(() => classerSuggestions(state.patients.map(p => p.dossier)), [state.patients]);
   // Assistance identité : chaque mot du Nom / Prénom est complété à partir des
@@ -595,7 +614,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
               </thead>
               <tbody>
                 <AnimatePresence initial={false}>
-                {filteredPatients.map((patient, index) => {
+                {pagePatients.map((patient, index) => {
                   const isSel = selectedPatient?.id === patient.id;
                   const hv = patient.vitalSigns && (patient.vitalSigns.temperature || patient.vitalSigns.weight);
                   return (
@@ -607,7 +626,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                       transition={{ duration: 0.3, type: 'spring', bounce: 0 }}
                       onClick={() => setSelectedPatient(patient)} onDoubleClick={() => handleRowDoubleClick(patient)}
                       className={`cursor-pointer border-b transition-colors ${patient.blacklisted ? (isSel ? 'bg-red-200 dark:bg-red-500/25 hover:bg-red-300 dark:hover:bg-red-500/35 border-red-300 dark:border-red-500/40 text-red-900 dark:text-red-300' : 'bg-red-50 dark:bg-red-500/8 hover:bg-red-100 dark:hover:bg-red-500/15 border-red-200 dark:border-red-500/25 text-red-700 dark:text-red-400') : isSel ? 'bg-accent-soft hover:bg-accent-hover border-line' : index % 2 === 0 ? 'bg-surface hover:bg-surface-hover border-line' : 'bg-surface-muted hover:bg-surface-hover border-line'}`}>
-                      <td className="p-2 border-r border-line text-center text-ink-faint font-mono">{index + 1}</td>
+                      <td className="p-2 border-r border-line text-center text-ink-faint font-mono">{(safePage - 1) * pageSize + index + 1}</td>
                       <td className="p-2 border-r border-line text-center">
                         <button
                           onClick={(e) => { e.stopPropagation(); handleBlacklistToggle(patient); }}
@@ -644,6 +663,48 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                 {filteredPatients.length === 0 && <tr><td colSpan={13} className="p-12 text-center text-ink-faint"><Users className="w-12 h-12 mx-auto mb-2 opacity-30" /><p className="font-medium">Aucun patient trouvé</p></td></tr>}
               </tbody>
             </table>
+          </div>
+
+          {/* Pagination : jamais plus de `pageSize` lignes DOM à la fois */}
+          <div className="border-t border-line px-4 py-2 flex flex-wrap items-center justify-between gap-2 bg-surface-muted text-xs text-ink-muted">
+            <span>Affichage <strong className="text-ink tabular-nums">{pageFrom}–{pageTo}</strong> sur <strong className="text-ink tabular-nums">{filteredPatients.length}</strong> dossier(s)</span>
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1.5">
+                Par page :
+                <select
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  className="bg-field border border-line rounded px-1.5 py-1 text-ink outline-none cursor-pointer"
+                >
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </label>
+              <button
+                onClick={() => setPage(1)}
+                disabled={safePage <= 1}
+                title="Première page"
+                className="px-2 py-1 rounded border border-line bg-surface hover:bg-surface-hover disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+              >⏮</button>
+              <button
+                onClick={() => setPage(safePage - 1)}
+                disabled={safePage <= 1}
+                className="px-2.5 py-1 rounded border border-line bg-surface hover:bg-surface-hover disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+              >← Précédent</button>
+              <span className="tabular-nums font-semibold text-ink">Page {safePage} / {pageCount}</span>
+              <button
+                onClick={() => setPage(safePage + 1)}
+                disabled={safePage >= pageCount}
+                className="px-2.5 py-1 rounded border border-line bg-surface hover:bg-surface-hover disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+              >Suivant →</button>
+              <button
+                onClick={() => setPage(pageCount)}
+                disabled={safePage >= pageCount}
+                title="Dernière page"
+                className="px-2 py-1 rounded border border-line bg-surface hover:bg-surface-hover disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+              >⏭</button>
+            </div>
           </div>
         </div>
       </main>

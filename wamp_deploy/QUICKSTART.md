@@ -29,3 +29,8 @@
 
 Ensuite : planifier `outils\sauvegarder.bat` chaque jour
 (Planificateur de tâches Windows, 23h00) + copie sur disque externe.
+
+---
+**Base déjà installée (mise à jour v1 → v2) ?** Sauvegardez (`outils\sauvegarder.bat`),
+puis importez `wamp_deploy\database\migrations\002_sequences.sql` dans phpMyAdmin
+(base `reception_salfa`) AVANT de redéployer. Détail dans `README.md`.

@@ -455,8 +455,34 @@ CREATE TABLE IF NOT EXISTS `compteurs` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------------------------
+-- Séquences de numérotation (attribution atomique multi-caisses, schéma v2)
+-- --------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS `sequences` (
+  `kind` VARCHAR(16) NOT NULL COMMENT 'standard (compteur quotidien AAMMJJ) ou societe (compteur mensuel AAMM, global toutes societes)',
+  `periode` VARCHAR(8) NOT NULL COMMENT 'AAMMJJ (standard) ou AAMM (societe)',
+  `seq` BIGINT NOT NULL DEFAULT 0 COMMENT 'dernier ordre attribue pour la periode',
+  `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`kind`, `periode`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------------------------
+-- Sessions de connexion (jetons 12 h, délivrés par action=login)
+-- --------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS `sessions` (
+  `jeton` VARCHAR(64) NOT NULL COMMENT 'jeton hexadécimal 64 caractères',
+  `utilisateur_id` VARCHAR(64) NOT NULL,
+  `role` VARCHAR(32) NOT NULL DEFAULT '' COMMENT 'rôle principal à la connexion',
+  `expire_le` DATETIME NOT NULL,
+  `cree_le` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`jeton`),
+  KEY `idx_expire` (`expire_le`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------------------------
 -- Valeurs initiales (idempotent : réimportable sans risque)
 -- --------------------------------------------------------------------------
 
-INSERT IGNORE INTO `parametres` (`cle`, `valeur`) VALUES ('schema_version', '1');
+INSERT IGNORE INTO `parametres` (`cle`, `valeur`) VALUES ('schema_version', '2');
 INSERT IGNORE INTO `compteurs` (`cle`, `valeur`) VALUES ('factureCounter', 0), ('pharmaClosingCounter', 0);

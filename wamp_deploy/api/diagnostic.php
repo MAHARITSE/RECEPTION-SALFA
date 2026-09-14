@@ -85,6 +85,8 @@ if ($pdo instanceof PDO) {
     $tables_attendues = salfa_tables();
     $tables_attendues['(paramètres)'] = 'parametres';
     $tables_attendues['(compteurs)'] = 'compteurs';
+    $tables_attendues['(séquences)'] = 'sequences';
+    $tables_attendues['(sessions)'] = 'sessions';
     $manquantes = array();
     $lignes_total = 0;
     foreach ($tables_attendues as $table) {
@@ -99,7 +101,7 @@ if ($pdo instanceof PDO) {
         diag_ajouter('Tables (' . count($tables_attendues) . ' attendues)', 'ok', number_format($lignes_total, 0, ',', ' ') . ' lignes au total.');
     } else {
         diag_ajouter('Tables (' . count($manquantes) . ' manquantes)', 'erreur',
-            'Importez database/schema.sql dans phpMyAdmin. Manquantes : ' . implode(', ', $manquantes));
+            'Base existante : importez database/migrations/002_sequences.sql ; nouvelle base : database/schema.sql. Manquantes : ' . implode(', ', $manquantes));
     }
 
     /* ----------------------------------------- version + compteurs --- */
@@ -110,7 +112,7 @@ if ($pdo instanceof PDO) {
         if ((string) $v === (string) SALFA_SCHEMA_VERSION) {
             diag_ajouter('Version du schéma (v' . $v . ')', 'ok');
         } else {
-            diag_ajouter('Version du schéma', 'avertissement', 'Base en v' . var_export($v, true) . ', API en v' . SALFA_SCHEMA_VERSION . ' : réimportez schema.sql si besoin.');
+            diag_ajouter('Version du schéma', 'avertissement', 'Base en v' . var_export($v, true) . ', API en v' . SALFA_SCHEMA_VERSION . ' : importez database/migrations/002_sequences.sql dans phpMyAdmin, puis rechargez.');
         }
     } catch (Exception $e) { diag_ajouter('Version du schéma', 'avertissement', 'Table `parametres` illisible.'); }
 
