@@ -57,7 +57,7 @@ function individualHtml(invoice: MonthlyInvoice, settings?: TicketSettings): str
   const gross = document.individualGross ?? document.total;
   const net = document.individualNet ?? document.payable;
   const reduction = Math.round((gross - net) * 100) / 100;
-  const payer = document.companyName || (document.category === 'societe' ? invoice.recipient : 'PAYANT DIRECT');
+  const payer = document.companyName || (document.category === 'societe' ? invoice.recipient : 'CLIENT COMPTOIR');
   return shell(invoice.number, 'individual', `
     <h1>FACTURE&nbsp; ${escape(invoice.number)}</h1>
     <div class="identity"><p>Date de consultation :&emsp; ${escape(dateLabel(document.consultationDate || document.date))}</p>
