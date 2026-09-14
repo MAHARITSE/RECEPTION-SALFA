@@ -1,0 +1,62 @@
+# ============================================================================
+#  RECEPTION SALFA — durcissement Apache (dossier déployé)
+#  À vérifier APRÈS déploiement :
+#     curl -i http://SERVEUR/reception-salfa/database/seed.sql   → 403 attendu
+#     curl -i http://SERVEUR/reception-salfa/api/config.local.php → 403 attendu
+#  Si les réponses sont 200, AllowOverride est inactif pour ce dossier :
+#  ajouter dans httpd.conf (ou le vhost) le bloc
+#     <Directory "c:/wamp64/www/reception-salfa">
+#        AllowOverride All
+#        Require ip 192.168.0        # le réseau local du centre uniquement
+#     </Directory>
+# ============================================================================
+
+# Pas de listage de répertoire, pas de négociation de contenu (elle peut
+# faire servir .sql/.md en répondant à /database/seed).
+Options -Indexes -MultiViews
+
+# --------------------------------------------------------------------------
+# Fichiers de service : JAMAIS servis au navigateur.
+# Ils contiennent la structure de la base, les comptes par défaut (seed.sql),
+# les chemins d'installation (outils/*.bat) ou des journaux d'erreurs.
+# --------------------------------------------------------------------------
+<FilesMatch "\.(sql|md|txt|log|ini|conf|cnf|sh|bak|old|save|dist|env)$">
+  Require all denied
+</FilesMatch>
+<FilesMatch "^(config\.local\.php|.*\.local\.php|essais\.json)$">
+  Require all denied
+</FilesMatch>
+<Files "seed.sql">
+  Require all denied
+</Files>
+
+# Sous-dossiers de service.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule ^(database|outils|logs|sauvegardes)(/|$) - [F]
+</IfModule>
+
+# --------------------------------------------------------------------------
+# En-têtes de sécurité (le fichier applicatif est un mono-page : aucune
+# origine externe n'est nécessaire).
+# --------------------------------------------------------------------------
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set Referrer-Policy "same-origin"
+  Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+  # Cache : l'application ne doit jamais être resservie depuis un cache
+  # partagé entre deux postes (données de santé).
+  <FilesMatch "\.php$">
+    Header always set Cache-Control "no-store"
+  </FilesMatch>
+</IfModule>
+
+# --------------------------------------------------------------------------
+# CORPS DE REQUÊTE : l'API lit `php://input` en entier. Une limite Apache trop
+# basse fait échouer la sauvegarde SANS message ; trop haute, elle autorise un
+# POST de plusieurs Go à saturer le PC serveur. 256 Mo = marge confortable au-
+# dessus de la limite applicative (api/config.php → SALFA_MAX_BODY_MB) ET de
+# memory_limit conseillé (voir PERFORMANCE.md : 512M).
+# --------------------------------------------------------------------------
+LimitRequestBody 268435456

@@ -10,3 +10,17 @@ Pour régénérer après modification du code :
   npm run build:wamp
   copy dist\index.html wamp_deploy\index.html
   wamp_deploy\outils\deployer.bat
+
+--------------------------------------------------------------------------
+ATTENTION (14/09/2026) : ce fichier index.html est ANTERIEUR aux correctifs
+"WAMP 100 passages/jour" (src/wamp.ts, src/store.ts, src/App.tsx modifies).
+Il reste compatible avec la nouvelle API (aucun champ requis en moins), mais il
+ne beneficie PAS de la sonde `poll` ni de l'envoi differentiel : la charge
+reseau et memoire decrite dans docs/AUDIT_WAMP_100_PAR_JOUR.md s'applique alors
+integralement. A recopiler avant mise en production :
+
+  npm install
+  npm run build:wamp
+  copy dist\index.html wamp_deploy\index.html
+  wamp_deploy\outils\deployer.bat
+...puis relancer ce BUILD.txt avec la date et le commit reels.

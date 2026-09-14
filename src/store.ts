@@ -915,7 +915,11 @@ export function ensureEtablissements(state: AppState): AppState {
 
 export function addAuditLog(s: AppState, action: string, details: string, patientId?: string): AuditLog {
   const l: AuditLog = { id: uuidv4(), timestamp: new Date().toISOString(), userId: s.currentUser?.id || 'SYSTEM', userName: s.currentUser?.name || 'Système', userRole: s.currentUser?.role || 'receptionist', action, details, patientId };
-  s.auditLogs.unshift(l); return l;
+  // Tableau NEUF (et non `unshift` sur le tableau partagé avec l'état
+  // précédent) : la détection de modification par référence — utilisée par la
+  // sauvegarde différentielle IndexedDB et l'envoi différentiel MySQL — serait
+  // sinon aveugle aux nouvelles lignes d'audit.
+  s.auditLogs = [l, ...(s.auditLogs || [])]; return l;
 }
 export function addNotification(s: AppState, targetRole: UserRole, message: string, type: 'info'|'warning'|'critical' = 'info', targetUserId?: string): Notification | null {
   // RÈGLE : Seules les notifications pour la Pharmacie et le Magasinier (ruptures de stock, réapprovisionnement, alertes stock) sont autorisées
@@ -933,7 +937,9 @@ export function addNotification(s: AppState, targetRole: UserRole, message: stri
   }
 
   const n: Notification = { id: uuidv4(), targetRole, targetUserId, message, type, timestamp: new Date().toISOString(), read: false };
-  s.notifications.unshift(n); return n;
+  // Tableau neuf : même raison que `addAuditLog` (détection de changement par
+  // référence pour la sauvegarde différentielle).
+  s.notifications = [n, ...(s.notifications || [])]; return n;
 }
 
 export const DEFAULT_FAMILLES: Famille[] = [

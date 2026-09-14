@@ -1,0 +1,40 @@
+; ============================================================================
+;  RECEPTION SALFA — bloc à coller dans le php.ini de WAMP
+;  (WAMP → icône → PHP → php.ini, ou C:\wamp64\bin\php\phpX.Y.Z\php.ini —
+;   WAMP recopie ce fichier à chaque changement de version : gardez ce bloc
+;   dans un fichier à part et recollez-le après chaque mise à jour de PHP.)
+;
+;  POURQUOI CES VALEURS (audit 100 passages/jour, 10 ans)
+;  read_all renvoie TOUT l'état : le pic mémoire PHP vaut environ 5 fois le
+;  volume JSON de la base. 128 Mo (défaut WAMP) = la fin de l'application après
+;  3 semaines à 100 passages/jour. Ces valeurs repoussent le mur, elles ne
+;  suppriment pas la cause : voir docs/AUDIT_WAMP_100_PAR_JOUR.md §7.
+; ============================================================================
+
+; Mémoire : 1 Go = marge confortable jusqu'à ~200 Mo de base (≈ 6-8 mois à
+; 100 passages/jour). Sur un PC 8 Go dédié serveur, 1536M est sans risque.
+memory_limit = 1024M
+
+; Corps de requête : la sauvegarde POSTe l'état (ou son différentiel).
+post_max_size = 256M
+upload_max_filesize = 32M
+
+; Exécution : sous Windows/Apache, max_execution_time est peu fiable ; la
+; vraie limite est le Timeout d'Apache (voir PERFORMANCE.md). On aligne tout.
+max_execution_time = 300
+max_input_time = 300
+
+; Le client lit la réponse en une seule fois : on ne coupe pas un flux lent.
+default_socket_timeout = 60
+
+; Journalisation des erreurs à l'écran = OFF (les messages SQL ne doivent
+; jamais atteindre le navigateur).
+display_errors = Off
+log_errors = On
+
+; Les sessions PHP ne sont pas utilisées par l'application (jetons en base) :
+; rien à régler, mais éviter toute extension qui ouvrirait session.auto_start.
+session.auto_start = 0
+
+; Extensions requises par l'API (à cocher dans WAMP → PHP → Extensions si absentes) :
+;   pdo_mysql, mbstring, json (intégré depuis PHP 8), fileinfo (recommandé)

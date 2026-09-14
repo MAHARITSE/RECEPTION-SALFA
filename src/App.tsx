@@ -14,6 +14,7 @@ import {
   setSyncBaseline,
   onWampUnauthorized,
   clearWampSession,
+  logoutFromMysql,
   type WampSyncState,
 } from './wamp';
 import { daysSinceBackup } from './utils/sauvegarde';
@@ -482,7 +483,12 @@ function AppInner() {
   };
 
   const handleLogout = () => {
-    if (IS_WAMP_BUILD) clearWampSession();
+    if (IS_WAMP_BUILD) {
+      // Révocation côté serveur (le jeton de 12 h ne doit pas survivre à la
+      // déconnexion affichée), puis oubli local.
+      void logoutFromMysql();
+      clearWampSession();
+    }
     setState((prev) => ({ ...prev, currentUser: null }));
     setView(IS_WAMP_BUILD ? 'login' : 'reception');
   };

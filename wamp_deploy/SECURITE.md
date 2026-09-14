@@ -36,12 +36,55 @@
   verrou (`SELECT … FOR UPDATE`, table `sequences`) — deux caisses
   n'obtiennent jamais le même numéro. Schéma v2 requis
   (`migrations/002_sequences.sql`) ; à défaut, message explicite.
-- `.htaccess` : `database/*.sql` et `api/logs/*` **inaccessibles via HTTP** ;
-  pas de listage dans `api/`.
+- **Autorisations côté SERVEUR** (pas seulement dans l'écran) : seule une
+  session administratrice peut écrire ou supprimer dans `utilisateurs`
+  (comptes et rôles) — un poste « réception » ne peut donc plus promouvoir son
+  propre compte en `admin` puis redéfinir les mots de passe de tout le monde.
+  Exception : table `utilisateurs` vide (première installation).
+- **Journal d'audit en écriture seule** : `journal_audit` est inséré, jamais
+  réécrit (`INSERT IGNORE`) par quiconque ; sa purge est réservée à
+  l'administration (l'archivage est la bonne pratique : `PERFORMANCE.md` §5).
+- **Anti-force brute** : 5 échecs de connexion par compte+IP → blocage 15 min,
+  avec journalisation des échecs (`api/logs/`). Le vieux `usleep` de 200 ms par
+  essai, qui pouvait lui-même saturer Apache, a été supprimé.
+- **Sessions** : jeton accepté uniquement en en-tête `X-Session-Token` (ou dans
+  le corps pour `sendBeacon`) — **jamais en paramètre d'URL**, donc plus dans
+  `access.log` ni le `Referer`. `action=logout` révoque le jeton ; changer un
+  mot de passe révoque toutes les sessions du compte ; un jeton dont le compte a
+  été supprimé est refusé (contrôle à chaque appel authentifié).
+- **Longueur minimale** : 8 caractères, et refus des mots de passe connus
+  (dont ceux du `seed.sql` livré).
+- **Intégrité multi-postes** : `read_all` s'exécute sous transaction (jamais
+  d'état « déchiré ») et renvoie la révision lue ; `sync_all` accepte `if_rev`
+  et répond 409 si un autre poste a écrit entre-temps (le client relit et rejoue).
+- `.htaccess` : `database/*.sql`, `outils/*.bat`, `api/logs/*`,
+  `api/config.local.php` **inaccessibles via HTTP** ; pas de listage de
+  répertoire ; en-têtes `X-Content-Type-Options`, `X-Frame-Options`,
+  `Referrer-Policy`, `Cache-Control: no-store` ; `LimitRequestBody 256M`.
+  À vérifier après chaque déploiement (recette : `PERFORMANCE.md` §7).
+- `api/diagnostic.php` n'est plus public : PC serveur (127.0.0.1) ou session
+  valide (il expose versions, nom de base, volumes, espace disque).
 - `api/config.local.php` (vos identifiants) : **jamais versionné, jamais écrasé**
   par `deployer.bat`. Ne pas le copier/coller dans des e-mails.
 - `database/seed.sql` contient les comptes par défaut : ne pas le laisser
   traîner sur un poste partagé après installation.
+
+## 🟠 À faire sur le serveur (l'application ne peut pas le faire pour vous)
+
+1. **Verrouiller MySQL** : le WAMP par défaut écoute sur tout le réseau avec
+   `root` **sans mot de passe** — n'importe quel poste du LAN peut alors lire et
+   effacer les dossiers médicaux sans passer par l'application. Exécuter
+   `outils/hygiene_mysql.sql`, renseigner `api/config.local.php`, mettre
+   `bind-address = 127.0.0.1` dans `my.ini`.
+2. **Retirer `seed.sql` du dossier déployé** une fois l'installation faite
+   (il contient les comptes par défaut ; le `.htaccess` le bloque, mais un
+   `AllowOverride` oublié l'exposerait).
+3. **Deuxième copie des sauvegardes hors du PC serveur**, chiffrée, testée par
+   restauration (un `sauvegardes\` sur le même disque ne protège de rien).
+4. Ne pas utiliser le bouton « Sauvegarde SQL » de l'application pour restaurer
+   dans MySQL : ses noms de tables ne correspondent pas au schéma de l'API
+   (détail : `docs/AUDIT_WAMP_100_PAR_JOUR.md` §3, S12). Utiliser
+   `outils/sauvegarder.bat`.
 
 ## 🟡 Limites connues (résiduelles)
 

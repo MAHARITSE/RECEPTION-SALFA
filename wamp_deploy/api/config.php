@@ -35,7 +35,10 @@ $__salfa_defaults = array(
     // (DÉVELOPPEMENT UNIQUEMENT, jamais en production).
     'SALFA_DEBUG'   => false,
     // Taille maximale acceptée pour un sync_all (Mo). Au-delà : HTTP 413.
-    'SALFA_MAX_BODY_MB' => 512,
+    // La limite réellement appliquée est le MINIMUM entre cette valeur,
+    // memory_limit/5 et post_max_size du php.ini (voir salfa_limite_corps()) :
+    // un corps plus gros ferait mourir PHP en erreur opaque au lieu d'un 413.
+    'SALFA_MAX_BODY_MB' => 256,
     // Clé API : si non vide, l'en-tête HTTP X-API-Key devient obligatoire
     // (préparé pour la Phase 1 ; le client actuel ne l'envoie pas : laisser vide).
     'SALFA_API_KEY' => '',

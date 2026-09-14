@@ -1,0 +1,36 @@
+<?php
+/*
+ * RECEPTION SALFA — Modèle de configuration locale.
+ *
+ * 1) Copier ce fichier en `config.local.php` (même dossier) ;
+ * 2) Renseigner les valeurs ci-dessous ;
+ * 3) `config.local.php` n'est jamais versionné (voir .gitignore) et n'est jamais
+ *    écrasé par `outils/deployer.bat`.
+ *
+ * Compte MySQL : NE PAS laisser `root` sans mot de passe (réglage par défaut de
+ * WAMP, utilisable par n'importe quel poste du réseau). Créer le compte
+ * applicatif avec `outils/hygiene_mysql.sql`, puis reprendre son mot de passe ici.
+ */
+
+define('SALFA_DB_HOST', '127.0.0.1');   // jamais 'localhost' sous WAMP (bascule IPv6 ::1)
+define('SALFA_DB_PORT', 3306);
+define('SALFA_DB_NAME', 'reception_salfa');
+define('SALFA_DB_USER', 'salfa');
+define('SALFA_DB_PASS', 'REMPLACER-PAR-MOT-DE-PASSE-FORT');
+
+// true = les détails techniques des erreurs MySQL sont renvoyés au navigateur.
+// À laisser à false en exploitation : un message d'erreur SQL divulgue la
+// structure de la base. Ne l'activer que le temps d'un dépannage, puis remettre
+// false (le détail reste de toute façon écrit dans api/logs/).
+define('SALFA_DEBUG', false);
+
+// Corps maximal accepté par l'API (sauvegarde). La limite réellement appliquée
+// est le MINIMUM entre cette valeur, memory_limit/5 et post_max_size du php.ini :
+// au-delà, le client reçoit un HTTP 413 explicite au lieu d'un plantage PHP.
+define('SALFA_MAX_BODY_MB', 256);
+
+// Clé API partagée (défense contre l'usage direct de l'API depuis un autre
+// logiciel du réseau). LAISSER VIDE : l'application ne sait pas encore envoyer
+// l'en-tête X-API-Key ; définir une valeur bloquerait immédiatement tous les
+// postes (réponse 401). À activer en même temps qu'un client adapté.
+define('SALFA_API_KEY', '');
