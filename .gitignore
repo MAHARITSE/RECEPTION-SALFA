@@ -2,13 +2,17 @@ node_modules/
 dist/
 .DS_Store
 
-# wrangler files
-.wrangler
 .dev.vars*
 !.dev.vars.example
 .env*
 !.env.example
+# Build WAMP : ce fichier DOIT rester versionné (active le mode MySQL).
+!.env.wamp
 
+# WAMP : secrets locaux, journaux et sauvegardes — jamais versionnés.
+wamp_deploy/api/config.local.php
+wamp_deploy/api/logs/*.log
+wamp_deploy/sauvegardes/
 
 # Tests navigateur et outils locaux
 .arena/
