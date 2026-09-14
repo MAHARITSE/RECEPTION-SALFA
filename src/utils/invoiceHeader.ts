@@ -39,11 +39,12 @@ export function sanitizeInvoiceHeader(html: string): string {
 }
 
 /** Shared by Administration preview, individual A5 and company A4 invoices.
- * Descendant typography overrides pasted sizes, but not bold/italic/alignment. */
+ * Base typography for the whole header; inline selection styles (<span style>)
+ * outrank these stylesheet rules, so per-selection fonts/sizes survive. */
 export const INVOICE_HEADER_STYLE = `
 .invoice-header{display:block;position:relative;isolation:isolate;break-inside:avoid;margin:0 0 5mm;padding:0 0 3mm;border-bottom:1px solid #000;color:#000;overflow:hidden}
 .invoice-header-content{position:relative;z-index:1;text-align:center;line-height:1.3}
-.invoice-header-content,.invoice-header-content *{font-family:var(--invoice-header-font,Arial),sans-serif!important;font-size:var(--invoice-header-size,10pt)!important}
+.invoice-header-content,.invoice-header-content *{font-family:var(--invoice-header-font,Arial),sans-serif;font-size:var(--invoice-header-size,10pt)}
 .invoice-header-content p,.invoice-header-content h1,.invoice-header-content h2,.invoice-header-content h3{margin:0;line-height:inherit}
 .invoice-header-content table{width:100%;border-collapse:collapse;table-layout:auto}
 .invoice-header-content td,.invoice-header-content th{border:0;padding:0}
