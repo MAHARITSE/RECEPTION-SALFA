@@ -665,6 +665,14 @@ export interface HbRecord {
   /** Qui a ouvert le dossier (caisse / pharmacie de garde). */
   openedBy?: string;
   openedByUserId?: string;
+  /** Sortie du patient (ISO) : dossier clos, masqué des listes par défaut. */
+  dischargedAt?: string;
+  /** Qui a enregistré la sortie. */
+  dischargedBy?: string;
+  dischargedByUserId?: string;
+  /** Sortie sans paiement complet : motif et donneur d'ordre (obligatoires). */
+  dischargeMotif?: string;
+  dischargeDonneurOrdre?: string;
 }
 
 /* ==========================================================================

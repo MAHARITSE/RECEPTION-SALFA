@@ -46,7 +46,7 @@ interface Props {
 // L'ancien onglet « Comptes sociétés » a été déplacé vers le module dédié
 // du rôle Responsable Facturation (module Facturation).
 type Tab = 'payment' | 'hospit' | 'bloc' | 'closing';
-type HbModal = 'none' | 'add_patient' | 'add_article' | 'edit_client';
+type HbModal = 'none' | 'add_patient' | 'add_article' | 'edit_client' | 'discharge';
 
 type ReceiptKind = 'all' | 'payment' | 'lab' | 'echo';
 interface ReceiptSnapshot {
@@ -222,6 +222,10 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   // 💡 Historique des paiements (affiché via un bouton dédié)
   const [hbHistoryId, setHbHistoryId] = useState<string | null>(null);
   const [hbModal, setHbModal] = useState<HbModal>('none');
+  // Sorties : seules les personnes encore hospitalisées / au bloc sont listées par défaut.
+  const [hbShowDischarged, setHbShowDischarged] = useState(false);
+  const [hbDischargeMotif, setHbDischargeMotif] = useState('');
+  const [hbDischargeDonneur, setHbDischargeDonneur] = useState('');
 
   // HB Modal: patient search/add (ALL fields like reception)
   const [hbPatSearch, setHbPatSearch] = useState('');
@@ -1046,6 +1050,81 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     });
   };
 
+  const openDischarge = (recordId: string) => {
+    setHbSelRecordId(recordId);
+    setHbDischargeMotif('');
+    setHbDischargeDonneur('');
+    setHbModal('discharge');
+  };
+
+  /** Reste à payer arrondi au centime (évite les poussières flottantes affichées « 0,00 Ar »). */
+  const hbReste = (record: HbRecord): number => {
+    const totalFact = record.lines.reduce((s, l) => s + hbLineAmt(l), 0);
+    const totalPaid = record.payments.reduce((s, p) => s + p.amount, 0);
+    return Math.round((totalFact - totalPaid) * 100) / 100;
+  };
+
+  const confirmDischarge = () => {
+    const rec = hbRecords.find(r => r.id === hbSelRecordId);
+    if (!rec || rec.dischargedAt) return;
+    const motif = hbDischargeMotif.trim();
+    const donneur = hbDischargeDonneur.trim();
+    // Hors société (comptoir…) au paiement incomplet : motif + donneur d'ordre obligatoires.
+    if (rec.clientType !== 'societe' && hbReste(rec) > 0 && (!motif || !donneur)) {
+      showAlert('Sortie sans paiement complet : le motif ET le donneur d’ordre sont obligatoires.', 'Sortie impossible', 'danger');
+      return;
+    }
+    const now = new Date().toISOString();
+    const dossierTypeName = rec.type === 'hospit' ? 'hospitalisation' : 'bloc opératoire';
+    const totalFact = rec.lines.reduce((s, l) => s + hbLineAmt(l), 0);
+    const totalPaid = rec.payments.reduce((s, p) => s + p.amount, 0);
+    const reste = hbReste(rec);
+    setState(prev => {
+      const next: AppState = {
+        ...prev,
+        hbRecords: (prev.hbRecords || []).map(r => r.id === rec.id ? {
+          ...r,
+          dischargedAt: now,
+          dischargedBy: prev.currentUser?.name,
+          dischargedByUserId: prev.currentUser?.id,
+          dischargeMotif: motif || undefined,
+          dischargeDonneurOrdre: donneur || undefined,
+        } : r),
+        // La demande est honorée (patient passé par le service puis sorti) :
+        // sans cela, l'ajout automatique recréerait le dossier au prochain onglet.
+        consultations: prev.consultations.map(c => {
+          if (c.patientId !== rec.patientId) return c;
+          if (rec.type === 'hospit' && !c.hospitalizeRequested) return c;
+          if (rec.type === 'bloc' && !c.surgeryRequested) return c;
+          return { ...c, hospitalizeRequested: rec.type === 'hospit' ? false : c.hospitalizeRequested, surgeryRequested: rec.type === 'bloc' ? false : c.surgeryRequested };
+        }),
+      };
+      addAuditLog(next, 'SORTIE_HB', `Sortie d'${dossierTypeName} : ${rec.patientName} — Facture ${formatAr(totalFact)}, payé ${formatAr(totalPaid)}${reste > 0 ? `, RESTE ${formatAr(reste)} (motif : ${motif || '—'} ; donneur d'ordre : ${donneur || '—'})` : ' (soldé)'}`, rec.patientId);
+      if (rec.patientId) {
+        addJourneyEvent(next, { patientId: rec.patientId, department: 'caisse', action: rec.type === 'hospit' ? "Sortie d'hospitalisation" : 'Sortie de bloc', status: 'discharged', details: `Dossier ${rec.type} clos par ${prev.currentUser?.name || 'la caisse'} — ${formatAr(totalPaid)} / ${formatAr(totalFact)}${reste > 0 ? ` — reste ${formatAr(reste)}` : ''}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, hospitalizationId: rec.id });
+      }
+      return next;
+    });
+    setHbModal('none');
+    if (hbSelRecordId === rec.id) setHbSelRecordId(null);
+  };
+
+  const cancelDischarge = (recordId: string) => {
+    const rec = hbRecords.find(r => r.id === recordId);
+    if (!rec || !rec.dischargedAt) return;
+    setState(prev => {
+      const next: AppState = {
+        ...prev,
+        hbRecords: (prev.hbRecords || []).map(r => r.id === recordId ? {
+          ...r, dischargedAt: undefined, dischargedBy: undefined, dischargedByUserId: undefined,
+          dischargeMotif: undefined, dischargeDonneurOrdre: undefined,
+        } : r),
+      };
+      addAuditLog(next, 'ANNULATION_SORTIE_HB', `Sortie annulée (réadmission) : ${rec.patientName} — dossier ${rec.type} rouvert`, rec.patientId);
+      return next;
+    });
+  };
+
   const hbArtSelectArticle = (articleId: string) => {
     const a = state.articles.find(x => x.id === articleId);
     if (!a) return;
@@ -1295,6 +1374,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   // Ordre décroissant : dernier saisi / dernier arrivé en haut (hospitalisation & bloc)
   const curHbRecords = hbRecords
     .filter(h => h.type === tab)
+    .filter(h => hbShowDischarged || !h.dischargedAt)
     .sort((a, b) => new Date((b.openedAt || 0) as string | number).getTime() - new Date((a.openedAt || 0) as string | number).getTime());
   const closingDateKey = new Date().toDateString();
   const existingClosing = state.cashClosings.find(c => new Date(c.date).toDateString() === closingDateKey && c.cashierId === currentCashierId);
@@ -1436,7 +1516,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       <div className="bg-surface rounded-xl shadow-sm border overflow-hidden">
         <div className="flex items-center justify-between border-b overflow-x-auto bg-surface-muted/50 px-2">
           <div className="flex overflow-x-auto">
-            {([['payment','📋 Facturation',pendingPatients.length],['hospit','🏨 Hospit.',hbRecords.filter(h=>h.type==='hospit').length],['bloc','🏥 Bloc',hbRecords.filter(h=>h.type==='bloc').length],['closing','🔒 Clôture',0]] as [Tab,string,number][]).map(([k,l,c]) => (
+            {([['payment','📋 Facturation',pendingPatients.length],['hospit','🏨 Hospit.',hbRecords.filter(h=>h.type==='hospit' && !h.dischargedAt).length],['bloc','🏥 Bloc',hbRecords.filter(h=>h.type==='bloc' && !h.dischargedAt).length],['closing','🔒 Clôture',0]] as [Tab,string,number][]).map(([k,l,c]) => (
               <button key={k} onClick={() => switchTab(k)} className={`flex items-center gap-1 px-4 py-3 text-xs font-medium border-b-2 cursor-pointer whitespace-nowrap ${tab===k?'border-amber-500 text-amber-600 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-500/4':'border-transparent text-ink-muted hover:text-ink-strong'}`}>{l}{c > 0 ? ` (${c})` : ''}</button>
             ))}
           </div>
@@ -1588,11 +1668,18 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                     Peu importe qui saisit (articles/bloc/hosp) — c'est le <strong>paiement</strong> qui fait foi.
                   </p>
                 </div>
-                <button onClick={() => { setHbPatSearch(''); setHbModal('add_patient'); }} className={`px-3 py-1.5 text-white rounded-lg cursor-pointer text-sm flex items-center gap-1 ${tab === 'hospit' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-blue-600 hover:bg-blue-700'}`}><UserPlus className="w-4 h-4" /> Ajouter Patient</button>
+                <div className="flex items-center gap-2 shrink-0">
+                  {hbRecords.some(h => h.type === tab && h.dischargedAt) && (
+                    <button onClick={() => setHbShowDischarged(v => !v)} className="px-3 py-1.5 rounded-lg cursor-pointer text-sm border border-line bg-surface hover:bg-surface-hover text-ink-secondary" title={hbShowDischarged ? 'Masquer les patients sortis' : 'Afficher les patients sortis'}>
+                      {hbShowDischarged ? '🙈 Masquer les sortis' : `👁 Sortis (${hbRecords.filter(h => h.type === tab && h.dischargedAt).length})`}
+                    </button>
+                  )}
+                  <button onClick={() => { setHbPatSearch(''); setHbModal('add_patient'); }} className={`px-3 py-1.5 text-white rounded-lg cursor-pointer text-sm flex items-center gap-1 ${tab === 'hospit' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-blue-600 hover:bg-blue-700'}`}><UserPlus className="w-4 h-4" /> Ajouter Patient</button>
+                </div>
               </div>
 
               {/* Records list */}
-              {curHbRecords.length === 0 ? <div className="text-center py-8 text-ink-faint">Aucun patient</div>
+              {curHbRecords.length === 0 ? <div className="text-center py-8 text-ink-faint">{!hbShowDischarged && hbRecords.some(h => h.type === tab && h.dischargedAt) ? `Aucun patient présent — ${hbRecords.filter(h => h.type === tab && h.dischargedAt).length} sorti(s), affichables via « 👁 Sortis »` : 'Aucun patient'}</div>
                 : curHbRecords.map(record => {
                   const totalFact = record.lines.reduce((s, l) => s + hbLineAmt(l), 0);
                   const totalPaid = record.payments.reduce((s, p) => s + p.amount, 0);
@@ -1617,6 +1704,14 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                             <input type="number" min={1} max={reste} value={hbPayAmounts[record.id] || ''} onChange={e => setHbPayAmounts(prev => ({ ...prev, [record.id]: Math.max(0, Math.min(parseFloat(e.target.value) || 0, reste)) }))} className="w-24 px-2 py-1 border rounded text-xs text-right outline-none" placeholder="Montant" />
                             <button onClick={() => addPartialPay(record.id)} disabled={!hbPayAmounts[record.id] || hbPayAmounts[record.id] > reste} className="px-2 py-1 bg-amber-600 text-white rounded text-xs cursor-pointer disabled:opacity-40">💰 Payer</button>
                           </>}
+                          {!record.dischargedAt ? (
+                            <button onClick={() => openDischarge(record.id)} title="Enregistrer la sortie du patient" className="px-2 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded text-xs cursor-pointer transition font-medium">🚪 Sortie</button>
+                          ) : (
+                            <>
+                              <span className="px-2 py-1 rounded text-xs bg-surface-hover text-ink-secondary" title={`Sortie enregistrée par ${record.dischargedBy || '—'}${record.dischargeDonneurOrdre ? ` — donneur d'ordre : ${record.dischargeDonneurOrdre}` : ''}${record.dischargeMotif ? ` — motif : ${record.dischargeMotif}` : ''}`}>🚪 Sorti le {new Date(record.dischargedAt).toLocaleDateString('fr-FR')}</span>
+                              <button onClick={() => cancelDischarge(record.id)} title="Annuler la sortie (réadmettre le patient)" className="px-2 py-1 border border-line rounded text-xs cursor-pointer hover:bg-surface-hover text-ink-secondary">↩ Réadmettre</button>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -2028,6 +2123,50 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
           </div>
         </div>
       )}
+
+      {/* Modal Sortie (Hospitalisation / Bloc) */}
+      {hbModal === 'discharge' && hbSelRecordId && (() => {
+        const record = hbRecords.find(r => r.id === hbSelRecordId);
+        if (!record || record.dischargedAt) return null;
+        const totalFact = record.lines.reduce((s, l) => s + hbLineAmt(l), 0);
+        const totalPaid = record.payments.reduce((s, p) => s + p.amount, 0);
+        const reste = hbReste(record);
+        // Hors société (comptoir…) au paiement incomplet : motif + donneur d'ordre obligatoires.
+        const exigeJustificatif = record.clientType !== 'societe' && reste > 0;
+        const peutValider = !exigeJustificatif || (hbDischargeMotif.trim() !== '' && hbDischargeDonneur.trim() !== '');
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" onClick={() => setHbModal('none')}>
+            <div className="w-full max-w-md bg-surface rounded-xl shadow-2xl border border-line-strong overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className="bg-teal-600 px-4 py-3 flex justify-between items-center text-white"><span className="font-bold">🚪 Sortie — {record.type === 'hospit' ? 'Hospitalisation' : 'Bloc Opératoire'}</span><button onClick={() => setHbModal('none')} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button></div>
+              <div className="p-4 space-y-3">
+                <div className="text-sm"><strong>{record.patientName}</strong>{record.numeroFacture && <span className="ml-2 font-mono text-xs text-ink-faint">{record.numeroFacture}</span>}</div>
+                <div className="p-3 rounded-lg bg-surface-muted border border-line text-sm flex justify-between gap-2 flex-wrap">
+                  <span>Facture : <strong>{formatAr(totalFact)}</strong></span>
+                  <span>Payé : <strong className="text-green-600 dark:text-green-400">{formatAr(totalPaid)}</strong></span>
+                  <span>Reste : <strong className={reste > 0 ? 'text-red-600 dark:text-red-400' : ''}>{formatAr(reste)}</strong></span>
+                </div>
+                {exigeJustificatif ? (
+                  <>
+                    <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-500/8 border border-amber-200 dark:border-amber-500/25 text-xs text-amber-800 dark:text-amber-300">
+                      ⚠️ <strong>Paiement incomplet</strong> (reste {formatAr(reste)}). La sortie exige un <strong>motif</strong> et un <strong>donneur d'ordre</strong>.
+                    </div>
+                    <div><label className="block text-sm font-medium mb-1">Motif de la sortie *</label><input value={hbDischargeMotif} onChange={e => setHbDischargeMotif(e.target.value)} className="w-full px-3 py-2 border rounded-lg outline-none" placeholder="Ex : transfert, accord direction, urgence familiale…" /></div>
+                    <div><label className="block text-sm font-medium mb-1">Donneur d'ordre *</label><input value={hbDischargeDonneur} onChange={e => setHbDischargeDonneur(e.target.value)} className="w-full px-3 py-2 border rounded-lg outline-none" placeholder="Ex : Dr Rabe, Directeur, Chef de service…" /></div>
+                  </>
+                ) : (
+                  <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-500/8 border border-emerald-200 dark:border-emerald-500/25 text-xs text-emerald-800 dark:text-emerald-300">
+                    {record.clientType === 'societe' ? `🏢 Client société (${record.company || '—'}) : le solde sera facturé à la société.` : '✅ Facture soldée : sortie simple.'}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <button onClick={() => setHbModal('none')} className="flex-1 py-2 border border-line rounded-lg hover:bg-surface-muted cursor-pointer">Annuler</button>
+                  <button onClick={confirmDischarge} disabled={!peutValider} className="flex-1 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg cursor-pointer disabled:opacity-40 font-semibold">Confirmer la sortie</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Modal Message Rectification Prescription */}
       {rectificationModal && (
