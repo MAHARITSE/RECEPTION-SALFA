@@ -1,9 +1,9 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import type { UserRole, TicketSettings, User } from '../types';
-import { formatAr, addAuditLog, ensureEtablissements, migrateLegacyToVentes, createInitialState, familyManagesStock, prepareLoadedState } from '../store';
+import { formatAr, addAuditLog, familyManagesStock } from '../store';
 import { IS_WAMP_BUILD, setWampPassword } from '../wamp';
 import { credentialAutofillOptOut, passwordInputOptOut } from '../utils/credentialAutofill';
-import { downloadJsonBackup } from '../utils/sauvegarde';
+import { downloadSqlBackup } from '../utils/sauvegardeSql';
 import { hashPassword } from '../utils/motDePasse';
 import type { AppState } from '../store';
 import ModuleReception from './ModuleReception';
@@ -17,10 +17,10 @@ import ModuleDossierMedical from './ModuleDossierMedical';
 import TableEtablissements from './TableEtablissements';
 import EnTeteFactureEditor from './EnTeteFactureEditor';
 import {
-  Trash2, Plus, X, Check, Download, Upload,
+  Trash2, Plus, X, Check,
   Eye, Settings as SettingsIcon, Users, Building2,
   Receipt, FileText, Shield, Database, Printer,
-  CreditCard, AlertCircle, Search, RefreshCw, Copy, Activity,
+  CreditCard, Search, RefreshCw, Copy, Activity,
   Key, Edit2, Hospital, Stethoscope, Pill, Package, FlaskConical,
   Menu, LayoutDashboard, AlertTriangle, ArrowRight, HardDrive, FileSpreadsheet, Lock, Unlock, CheckCircle2,
   Landmark
@@ -32,7 +32,7 @@ interface Props {
   setState: React.Dispatch<React.SetStateAction<AppState>>;
 }
 
-type Tab = 'dashboard' | 'etablissements' | 'tickets' | 'invoiceHeader' | 'users' | 'audit' | 'backup' | 'system';
+type Tab = 'dashboard' | 'etablissements' | 'tickets' | 'invoiceHeader' | 'users' | 'audit' | 'system';
 type AppModuleKey = 'reception' | 'doctor' | 'medicalRecords' | 'cashier' | 'pharmacy' | 'magasinier' | 'laboratory' | 'billing';
 
 const roleLabels: Record<string, string> = {
@@ -54,7 +54,6 @@ const TABS: { key: Tab; label: string; icon: any; desc: string }[] = [
   { key: 'invoiceHeader', label: 'En-tête Facture', icon: FileText, desc: 'En-tête des factures A4/A5 (texte & images) — hors tickets POS' },
   { key: 'users', label: 'Personnel & Accès', icon: Users, desc: 'Comptes utilisateurs, rôles & sécurisation' },
   { key: 'audit', label: 'Journal d\'audit', icon: Shield, desc: 'Traçabilité complète des événements' },
-  { key: 'backup', label: 'Sauvegarde & Restauration', icon: Database, desc: 'Export JSON, réinitialisation & maintenance' },
   { key: 'system', label: 'Diagnostics Système', icon: HardDrive, desc: 'État du stockage & statistiques tables' },
 ];
 
@@ -98,21 +97,6 @@ interface ResetPasswordModalState {
   showPassword: boolean;
 }
 
-interface RestoreModalState {
-  isOpen: boolean;
-  fileName: string;
-  exportedAt?: string;
-  exportedBy?: string;
-  version?: string;
-  stats?: {
-    patientsCount: number;
-    invoicesCount: number;
-    articlesCount: number;
-    usersCount: number;
-  };
-  parsedState: AppState | null;
-}
-
 export default function ModuleAdministration({ state, setState }: Props) {
   const [tab, setTab] = useState<Tab>('dashboard');
   const [activeModule, setActiveModule] = useState<AppModuleKey | null>(null);
@@ -127,9 +111,6 @@ export default function ModuleAdministration({ state, setState }: Props) {
 
   // Aperçu Ticket
   const [showPreview, setShowPreview] = useState(false);
-  const restoreInputRef = useRef<HTMLInputElement>(null);
-
-
 
   // Notification Toast
   const [toast, setToast] = useState('');
@@ -154,12 +135,6 @@ export default function ModuleAdministration({ state, setState }: Props) {
     user: null,
     newPassword: '',
     showPassword: true,
-  });
-
-  const [restoreModal, setRestoreModal] = useState<RestoreModalState>({
-    isOpen: false,
-    fileName: '',
-    parsedState: null,
   });
 
   // ============ TICKETS & SOCIETE CONFIG ============
@@ -344,195 +319,23 @@ export default function ModuleAdministration({ state, setState }: Props) {
     setResetPasswordModal((rpm) => ({ ...rpm, isOpen: false }));
   };
 
-  // ============ BACKUP & RESTORE ============
-  const exportBackup = () => {
+  // ============ SAUVEGARDE SQL (tableau de bord — sauvegarde uniquement) ============
+  const exportSqlBackup = () => {
     try {
-      const fileName = downloadJsonBackup(state);
+      const fileName = downloadSqlBackup(state);
       setState((prev) => {
         const next = {
           ...prev,
           lastBackupAt: new Date().toISOString(),
           lastBackupBy: prev.currentUser?.id || 'ADM001',
         };
-        addAuditLog(next, 'EXPORT_BACKUP', fileName);
+        addAuditLog(next, 'EXPORT_BACKUP_SQL', fileName);
         return next;
       });
-      showToast(`✅ Fichier de sauvegarde JSON exporté (${fileName})`);
+      showToast(`✅ Sauvegarde SQL exportée (${fileName})`);
     } catch {
-      showToast('⚠️ Export de sauvegarde impossible');
+      showToast('⚠️ Export de sauvegarde SQL impossible');
     }
-  };
-
-  const handleBackupFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const data = JSON.parse(ev.target?.result as string);
-        if (!data.state) throw new Error('Fichier de sauvegarde invalide ou corrompu');
-        
-        const backupState: AppState = data.state;
-        setRestoreModal({
-          isOpen: true,
-          fileName: file.name,
-          exportedAt: data.exportedAt,
-          exportedBy: data.exportedBy,
-          version: data.version,
-          stats: {
-            patientsCount: backupState.patients?.length || 0,
-            invoicesCount: backupState.invoices?.length || 0,
-            articlesCount: backupState.articles?.length || 0,
-            usersCount: backupState.users?.length || 0,
-          },
-          parsedState: backupState,
-        });
-      } catch (err) {
-        showToast('❌ Erreur lors de la lecture du fichier : ' + (err as Error).message);
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
-  };
-
-  const confirmImportBackup = () => {
-    if (!restoreModal.parsedState) return;
-    const backupState = restoreModal.parsedState;
-
-    setState((prev) => {
-      const next = ensureEtablissements({
-        ...prev,
-        ...backupState,
-        currentUser: prev.currentUser,
-        assuranceStorageSupported: prev.assuranceStorageSupported,
-        ventes: backupState.ventes || [],
-        venteLines: backupState.venteLines || [],
-        ventePayments: backupState.ventePayments || [],
-        factureCounter: backupState.factureCounter || 0,
-        // Sauvegardes antérieures à la table d'identification : la fiche
-        // actuelle est conservée puis complétée si nécessaire.
-        etablissements: backupState.etablissements?.length ? backupState.etablissements : prev.etablissements,
-      });
-      migrateLegacyToVentes(next);
-      addAuditLog(next, 'IMPORT_BACKUP', `Restauré depuis ${restoreModal.fileName}`);
-      return next;
-    });
-    showToast('✅ Base de données restaurée avec succès');
-    setRestoreModal({ isOpen: false, fileName: '', parsedState: null });
-  };
-
-  // Étape 2 d'une réinitialisation : sauvegarde téléchargée, saisie exigée.
-  const [resetTyped, setResetTyped] = useState<{ isOpen: boolean; text: string; action: 'operational' | 'total' | null; backupFile: string }>(
-    { isOpen: false, text: '', action: null, backupFile: '' },
-  );
-
-  /**
-   * GARDE-FOU : aucune réinitialisation sans sauvegarde préalable.
-   * Télécharge immédiatement une sauvegarde JSON complète, horodate
-   * l'export, puis exige la saisie de « SUPPRIMER » (2ᵉ fenêtre).
-   */
-  const beginReset = (action: 'operational' | 'total') => {
-    let backupFile = '';
-    try {
-      backupFile = downloadJsonBackup(state);
-    } catch {
-      showToast('⚠️ Sauvegarde impossible : réinitialisation annulée');
-      return;
-    }
-    setState((prev) => ({
-      ...prev,
-      lastBackupAt: new Date().toISOString(),
-      lastBackupBy: prev.currentUser?.id || 'ADM001',
-    }));
-    setResetTyped({ isOpen: true, text: '', action, backupFile });
-    showToast(`💾 Sauvegarde téléchargée (${backupFile}) — confirmez par saisie`);
-  };
-
-  const resetSystem = () => {
-    setConfirmModal({
-      isOpen: true,
-      title: 'Réinitialiser les données opérationnelles ?',
-      message: 'ATTENTION : Cette action supprimera TOUS les dossiers patients, factures, consultations, ordonnances et mouvements de stock. Les comptes utilisateurs, les articles et les sociétés seront conservés. Une sauvegarde JSON sera téléchargée AVANT, et la saisie de « SUPPRIMER » sera exigée.',
-      confirmText: 'Étape suivante : sauvegarde + saisie',
-      variant: 'warning',
-      onConfirm: () => {
-        setConfirmModal((cm) => ({ ...cm, isOpen: false }));
-        beginReset('operational');
-      },
-    });
-  };
-
-  const executeOperationalReset = () => {
-        setState((prev) => {
-          const fresh: AppState = {
-            ...prev,
-            patients: [], consultations: [], invoices: [],
-            stockTransfers: [], stockEntries: [],
-            notifications: [], messages: [], auditLogs: [],
-            stockMovements: [], inventorySessions: [], journey: [], labRequests: [],
-            hbRecords: [],
-            ventes: [],
-            venteLines: [],
-            ventePayments: [],
-            factureCounter: 0,
-            movementHeaders: [],
-            movementLines: [],
-            articles: prev.articles,
-            companies: prev.companies,
-            users: prev.users,
-            warehouseServices: prev.warehouseServices,
-            fournisseurs: prev.fournisseurs,
-            familles: prev.familles,
-            // Identification de la société / de l'hôpital : jamais purgée
-            etablissements: prev.etablissements,
-          };
-          addAuditLog(fresh, 'RESET_SYSTEM', 'Réinitialisation des données opérationnelles');
-          return fresh;
-        });
-        showToast('Données opérationnelles réinitialisées');
-        setResetTyped({ isOpen: false, text: '', action: null, backupFile: '' });
-  };
-
-  const resetAllDatabase = () => {
-    const wampHint = IS_WAMP_BUILD
-      ? ' En mode MySQL (WAMP), les comptes utilisateurs, les paramètres d\'impression, les familles et les services sont conservés : il s\'agit de la configuration minimale nécessaire à la connexion.'
-      : ' En mode standard, les données seront remplacées par le jeu de démonstration local.';
-    setConfirmModal({
-      isOpen: true,
-      title: '⛔ RÉINITIALISATION TOTALE DE LA BASE ?',
-      message: `ATTENTION EXTRÊME : Cette action est IRREVOCABLE. Toutes les données saisies (patients, factures, ventes, catalogue d'articles, sociétés) seront EFFACÉES.${wampHint} Une sauvegarde JSON sera téléchargée AVANT, et la saisie de « SUPPRIMER » sera exigée.`,
-      confirmText: 'Étape suivante : sauvegarde + saisie',
-      variant: 'danger',
-      onConfirm: () => {
-        setConfirmModal((cm) => ({ ...cm, isOpen: false }));
-        beginReset('total');
-      },
-    });
-  };
-
-  const executeTotalReset = () => {
-        try { localStorage.clear(); } catch { /* ignore */ }
-        // prepareLoadedState : normalise les familles et intègre la base unifiée
-        // des articles (familles LABO / ECHO / HOSP) dès la réinitialisation.
-        const freshState = prepareLoadedState(createInitialState());
-        setState((prev) => {
-          // Mode WAMP (données dans MySQL) : on repart d'un état vide SANS données
-          // JSON, en conservant la configuration système indispensable (comptes de
-          // connexion, paramètres d'impression, familles, services).
-          if (IS_WAMP_BUILD) {
-            return {
-              ...freshState,
-              users: prev.users,
-              ticketSettings: prev.ticketSettings || freshState.ticketSettings,
-              familles: prev.familles?.length ? prev.familles : freshState.familles,
-              warehouseServices: prev.warehouseServices?.length ? prev.warehouseServices : freshState.warehouseServices,
-              etablissements: prev.etablissements?.length ? prev.etablissements : freshState.etablissements,
-            };
-          }
-          return freshState;
-        });
-        showToast('✅ Base de données entièrement réinitialisée');
-        setResetTyped({ isOpen: false, text: '', action: null, backupFile: '' });
   };
 
   // CSV Export for Audit Logs
@@ -751,54 +554,6 @@ export default function ModuleAdministration({ state, setState }: Props) {
         </div>
       )}
 
-      {/* Saisie de confirmation d'une réinitialisation (sauvegarde déjà téléchargée) */}
-      {resetTyped.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in">
-          <div className="bg-surface rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-line">
-            <div className="flex items-center gap-3">
-              <div className="p-3 rounded-xl bg-red-100 dark:bg-red-500/15 text-red-600 dark:text-red-400">
-                <AlertTriangle className="w-6 h-6" />
-              </div>
-              <h3 className="font-bold text-ink-strong text-lg">Dernière étape : tapez SUPPRIMER</h3>
-            </div>
-            <p className="text-sm text-ink-secondary leading-relaxed">
-              💾 Sauvegarde téléchargée : <code className="bg-surface-active px-1 rounded text-xs">{resetTyped.backupFile || '—'}</code>
-              <br />
-              {resetTyped.action === 'total'
-                ? 'La RÉINITIALISATION TOTALE va effacer toutes les données saisies.'
-                : 'La réinitialisation va effacer toutes les données opérationnelles.'}{' '}
-              Pour confirmer, tapez <strong className="text-ink">SUPPRIMER</strong> en majuscules :
-            </p>
-            <input
-              type="text"
-              value={resetTyped.text}
-              onChange={(e) => setResetTyped((r) => ({ ...r, text: e.target.value }))}
-              placeholder="SUPPRIMER"
-              autoFocus
-              className="w-full px-4 py-3 bg-field border border-line rounded-lg text-ink font-mono tracking-widest focus:ring-2 focus:ring-red-500/30 focus:border-red-500 outline-none"
-            />
-            <div className="flex justify-end gap-2 pt-2 border-t">
-              <button
-                onClick={() => setResetTyped({ isOpen: false, text: '', action: null, backupFile: '' })}
-                className="px-4 py-2 bg-surface-hover hover:bg-surface-active text-ink rounded-xl text-xs font-semibold cursor-pointer"
-              >
-                Annuler (données intactes)
-              </button>
-              <button
-                disabled={resetTyped.text.trim() !== 'SUPPRIMER'}
-                onClick={() => {
-                  if (resetTyped.action === 'total') executeTotalReset();
-                  else executeOperationalReset();
-                }}
-                className="px-4 py-2 text-white rounded-xl text-xs font-bold shadow cursor-pointer bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Effacer définitivement
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* User Create / Edit Modal */}
       {userModal.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in">
@@ -966,62 +721,6 @@ export default function ModuleAdministration({ state, setState }: Props) {
         </div>
       )}
 
-      {/* Restore Backup Inspection Modal */}
-      {restoreModal.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in">
-          <div className="bg-surface rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4 border border-line">
-            <div className="flex items-center justify-between border-b pb-3">
-              <h3 className="font-bold text-ink-strong text-lg flex items-center gap-2">
-                <Upload className="w-5 h-5 text-blue-600 dark:text-cyan-400" /> Restauration système
-              </h3>
-              <button onClick={() => setRestoreModal({ ...restoreModal, isOpen: false })} className="text-ink-faint hover:text-ink cursor-pointer">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              <div className="p-3 bg-blue-50 dark:bg-cyan-500/8 border border-blue-200 dark:border-cyan-500/25 rounded-xl text-xs text-blue-900 dark:text-cyan-300 space-y-1.5">
-                <div className="font-bold text-sm text-blue-950 dark:text-cyan-300 flex items-center gap-1.5">
-                  <FileText className="w-4 h-4 text-blue-700 dark:text-cyan-400" /> {restoreModal.fileName}
-                </div>
-                <div>Date d'exportation : <strong>{restoreModal.exportedAt ? new Date(restoreModal.exportedAt).toLocaleString('fr-FR') : 'Non spécifiée'}</strong></div>
-                <div>Opérateur source : <strong>{restoreModal.exportedBy || 'ADM001'}</strong></div>
-                <div>Version du format : <strong>{restoreModal.version || 'Standard'}</strong></div>
-              </div>
-
-              <div className="border rounded-xl p-3 bg-surface-muted space-y-2 text-xs">
-                <div className="font-bold text-ink">Contenu détecté dans la sauvegarde :</div>
-                <div className="grid grid-cols-2 gap-2 font-mono">
-                  <div className="bg-surface p-2 border rounded">👥 Patients : <strong>{restoreModal.stats?.patientsCount}</strong></div>
-                  <div className="bg-surface p-2 border rounded">💳 Factures : <strong>{restoreModal.stats?.invoicesCount}</strong></div>
-                  <div className="bg-surface p-2 border rounded">💊 Articles : <strong>{restoreModal.stats?.articlesCount}</strong></div>
-                  <div className="bg-surface p-2 border rounded">👤 Utilisateurs : <strong>{restoreModal.stats?.usersCount}</strong></div>
-                </div>
-              </div>
-
-              <p className="text-xs text-red-600 dark:text-red-400 font-medium">
-                ⚠️ En confirmant la restauration, toutes les données actuelles de l'application seront écrasées et remplacées par celles du fichier.
-              </p>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-3 border-t">
-              <button
-                onClick={() => setRestoreModal({ ...restoreModal, isOpen: false })}
-                className="px-4 py-2 bg-surface-hover text-ink rounded-xl text-xs font-semibold hover:bg-surface-active cursor-pointer"
-              >
-                Annuler
-              </button>
-              <button
-                onClick={confirmImportBackup}
-                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow cursor-pointer flex items-center gap-1.5"
-              >
-                <Check className="w-4 h-4" /> Restaurer la base
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Main Admin Workspace Card — occupe toute la fenêtre (hauteur restante) */}
       <div className="flex min-h-0 flex-1 bg-surface rounded-2xl shadow-sm border border-line overflow-hidden">
           {/* Main Content Area */}
@@ -1165,11 +864,11 @@ export default function ModuleAdministration({ state, setState }: Props) {
                             <span>Facturation</span>
                           </button>
                           <button
-                            onClick={exportBackup}
+                            onClick={exportSqlBackup}
                             className="p-3 bg-surface-muted hover:bg-blue-50 dark:hover:bg-cyan-500/8 hover:border-blue-300 dark:hover:border-cyan-500/40 border rounded-xl text-xs font-semibold text-ink hover:text-blue-800 dark:hover:text-cyan-300 transition flex flex-col items-center gap-2 cursor-pointer text-center"
                           >
-                            <Download className="w-5 h-5 text-blue-600 dark:text-cyan-400" />
-                            <span>Exporter Base (JSON)</span>
+                            <Database className="w-5 h-5 text-blue-600 dark:text-cyan-400" />
+                            <span>Sauvegarde SQL</span>
                           </button>
                           <button
                             onClick={() => setShowPreview(true)}
@@ -1622,107 +1321,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
                     </div>
                   )}
 
-                  {/* ===== TAB 7: BACKUP & RESTORE ===== */}
-                  {tab === 'backup' && (
-                    <div className="space-y-6 max-w-4xl">
-                      <div>
-                        <h3 className="font-bold text-ink-strong text-xl flex items-center gap-2.5">
-                          <Database className="w-6 h-6 text-emerald-600 dark:text-emerald-400" /> Sauvegarde, Restauration & Maintenance Système
-                        </h3>
-                        <p className="text-xs text-ink-muted mt-0.5">Exportation intégrale au format JSON, importation sécurisée avec vérification et maintenance opérationnelle.</p>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        <div className="p-6 border-2 border-emerald-200 dark:border-emerald-500/25 rounded-2xl bg-emerald-50/40 dark:bg-emerald-500/3 space-y-4 shadow-xs">
-                          <div className="flex items-center gap-3">
-                            <div className="p-3 bg-emerald-100 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 rounded-xl">
-                              <Download className="w-6 h-6" />
-                            </div>
-                            <div>
-                              <h4 className="font-bold text-emerald-950 dark:text-emerald-300 text-base">Sauvegarder la Base (JSON)</h4>
-                              <p className="text-xs text-emerald-700 dark:text-emerald-400">Téléchargement instantané de toutes les données.</p>
-                            </div>
-                          </div>
-                          <p className="text-xs text-emerald-800 dark:text-emerald-300 leading-relaxed">
-                            Exporte un fichier JSON certifié contenant les dossiers patients, consultations, ordonnances, factures, catalogue d'articles et journaux d'audit.
-                          </p>
-                          <button
-                            onClick={exportBackup}
-                            className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs cursor-pointer flex items-center justify-center gap-2 shadow-md"
-                          >
-                            <Download className="w-4 h-4" /> Exporter le fichier de sauvegarde JSON
-                          </button>
-                        </div>
-
-                        <div className="p-6 border-2 border-blue-200 dark:border-cyan-500/25 rounded-2xl bg-blue-50/40 dark:bg-cyan-500/3 space-y-4 shadow-xs">
-                          <div className="flex items-center gap-3">
-                            <div className="p-3 bg-blue-100 dark:bg-cyan-500/15 text-blue-800 dark:text-cyan-300 rounded-xl">
-                              <Upload className="w-6 h-6" />
-                            </div>
-                            <div>
-                              <h4 className="font-bold text-blue-950 dark:text-cyan-300 text-base">Restaurer un Fichier JSON</h4>
-                              <p className="text-xs text-blue-700 dark:text-cyan-400">Chargement et inspection préalable.</p>
-                            </div>
-                          </div>
-                          <p className="text-xs text-blue-800 dark:text-cyan-300 leading-relaxed">
-                            Chargez un fichier de sauvegarde JSON antérieur. Le système affichera un rapport de contrôle du contenu avant de valider le remplacement.
-                          </p>
-                          <input ref={restoreInputRef} type="file" accept="application/json" onChange={handleBackupFileSelect} className="hidden" />
-                          <button
-                            onClick={() => restoreInputRef.current?.click()}
-                            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs cursor-pointer flex items-center justify-center gap-2 shadow-md"
-                          >
-                            <Upload className="w-4 h-4" /> Sélectionner le fichier de restauration
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Reset Danger Zones */}
-                      <div className="p-6 border-2 border-rose-200 dark:border-rose-500/25 rounded-2xl bg-rose-50/60 dark:bg-rose-500/5 space-y-4 shadow-xs">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2.5 bg-rose-100 dark:bg-rose-500/15 text-rose-700 dark:text-rose-400 rounded-xl">
-                            <AlertTriangle className="w-6 h-6" />
-                          </div>
-                          <div>
-                            <h4 className="font-bold text-rose-950 dark:text-rose-300 text-base">Réinitialisation des Données Opérationnelles</h4>
-                            <p className="text-xs text-rose-700 dark:text-rose-400">Purger les transactions sans effacer le personnel ni le catalogue.</p>
-                          </div>
-                        </div>
-                        <p className="text-xs text-rose-800 dark:text-rose-300 leading-relaxed">
-                          Efface l'intégralité des consultations, factures, prescriptions et mouvements de stock. Les comptes d'accès du personnel, les articles du catalogue et les sociétés partenaires sont préservés.
-                        </p>
-                        <button
-                          onClick={resetSystem}
-                          className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs cursor-pointer flex items-center gap-2 shadow-sm"
-                        >
-                          <RefreshCw className="w-4 h-4" /> Purger les données opérationnelles
-                        </button>
-                      </div>
-
-                      <div className="p-6 border-2 border-red-300 dark:border-red-500/40 rounded-2xl bg-gradient-to-br from-red-50 dark:from-red-950/60 to-rose-100 dark:to-rose-950/60 space-y-4 shadow-xs">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2.5 bg-red-200 dark:bg-red-500/25 text-red-900 dark:text-red-300 rounded-xl">
-                            <AlertCircle className="w-6 h-6 text-red-700 dark:text-red-400" />
-                          </div>
-                          <div>
-                            <h4 className="font-bold text-red-950 dark:text-red-300 text-base">Réinitialisation TOTALE de la Base de Données</h4>
-                            <p className="text-xs text-red-700 dark:text-red-400 font-semibold">Remise à zéro complète avec seed initial de démonstration.</p>
-                          </div>
-                        </div>
-                        <p className="text-xs text-red-800 dark:text-red-300 leading-relaxed">
-                          Supprime définitivement l'ensemble des données personnalisées de l'application et recharge l'état initial.
-                        </p>
-                        <button
-                          onClick={resetAllDatabase}
-                          className="px-6 py-3 bg-red-700 hover:bg-red-800 text-white rounded-xl font-bold text-xs cursor-pointer flex items-center gap-2 shadow-md border border-red-600"
-                        >
-                          <RefreshCw className="w-4 h-4" /> Réinitialiser TOUTE la base de données
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* ===== TAB 8: SYSTEM DIAGNOSTICS ===== */}
+                  {/* ===== TAB 7: SYSTEM DIAGNOSTICS ===== */}
                   {tab === 'system' && (
                     <div className="space-y-6 max-w-3xl">
                       <div>

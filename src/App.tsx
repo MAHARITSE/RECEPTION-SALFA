@@ -90,7 +90,7 @@ function BackupReminderBanner({ state }: { state: AppState }) {
   return (
     <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[9990] flex items-center gap-3 rounded-xl border border-amber-300 dark:border-amber-500/40 bg-amber-50/95 dark:bg-amber-500/10 px-4 py-2 text-xs font-semibold text-amber-900 dark:text-amber-200 shadow-lg backdrop-blur">
       <span>
-        💾 {days === null ? 'Aucune sauvegarde JSON exportée.' : `Dernière sauvegarde JSON il y a ${days} jour${days > 1 ? 's' : ''}.`}{' '}
+        💾 {days === null ? 'Aucune sauvegarde SQL exportée.' : `Dernière sauvegarde SQL il y a ${days} jour${days > 1 ? 's' : ''}.`}{' '}
         Pensez à exporter (module Administration).
       </span>
       <button

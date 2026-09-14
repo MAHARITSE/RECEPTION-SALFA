@@ -695,7 +695,7 @@ export interface AppState {
    *  (factures en attente supprimées, purge de file d'attente…). Un numéro
    *  attribué n'est JAMAIS réutilisé, même après suppression de sa facture. */
   issuedFactureNumbers?: string[];
-  /** Dernière sauvegarde JSON : horodatage ISO + id de l'auteur (bannière de rappel). */
+  /** Dernière sauvegarde SQL : horodatage ISO + id de l'auteur (bannière de rappel). */
   lastBackupAt?: string;
   lastBackupBy?: string;
   /** Médecins prescripteurs des ventes externes — généralement hors de notre
