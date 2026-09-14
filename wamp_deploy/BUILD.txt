@@ -1,0 +1,12 @@
+RECEPTION SALFA — Application compilée pour WAMP (index.html)
+================================================================
+Build du       : 2026-09-14
+Commit source  : 35dfea0 (branche arena/01a09e61-reception-salfa)
+Commande       : npm run build:wamp   (VITE_WAMP_MODE=1 via .env.wamp)
+Mode vérifié   : WAMP / MySQL (ternaire replié dans le bundle)
+Taille         : ~3,6 Mo (monofichier, gzip ~981 Ko)
+
+Pour régénérer après modification du code :
+  npm run build:wamp
+  copy dist\index.html wamp_deploy\index.html
+  wamp_deploy\outils\deployer.bat

@@ -6,12 +6,12 @@
 import { useState, useRef, useMemo, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription, Article, Patient } from '../types';
-import type { AppState } from '../store';
+import type { AppState, FactureNumberAllocation, FactureNumberSpec } from '../store';
 import type { Societe } from '../modules/assurance/types';
 import {
   addAuditLog, addNotification, formatAr, formatNum, roundTo2, getPrice, calculateAge,
   normalizeDossierNumber, isDossierTaken, addJourneyEvent, generatePharmaClosingNumber, purgePatientFromQueue,
-  familyManagesStock, isLabFamily, isEchoFamily, allocateFactureNumber, applySocieteUpsert, collectExistingFactureNumbers, companyIsBlocked, companyOptions, sousSocietesConnues,
+  familyManagesStock, isLabFamily, isEchoFamily, allocateFactureNumber, allocateFactureNumberAsync, allocateFactureNumbersAsync, applySocieteUpsert, collectExistingFactureNumbers, companyIsBlocked, companyOptions, sousSocietesConnues,
 } from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText, RefreshCw } from 'lucide-react';
 import { SearchableSelect, optionsFromValues } from './SearchableSelect';
@@ -46,7 +46,7 @@ interface Props {
 // L'ancien onglet « Comptes sociétés » a été déplacé vers le module dédié
 // du rôle Responsable Facturation (module Facturation).
 type Tab = 'payment' | 'hospit' | 'bloc' | 'closing';
-type HbModal = 'none' | 'add_patient' | 'add_article' | 'edit_client';
+type HbModal = 'none' | 'add_patient' | 'add_article' | 'edit_client' | 'discharge';
 
 type ReceiptKind = 'all' | 'payment' | 'lab' | 'echo';
 interface ReceiptSnapshot {
@@ -201,15 +201,19 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   };
 
   /** Numéro de facture officiel d'un nouveau dossier hospit/bloc :
-   *  FA-MM/CODE/YY-NNN pour les sociétés, AAFAMMJJ + ordre du jour sinon. */
-  const hbNumeroFacture = (clientType: ClientType, company?: string): string => {
-    const allocated = allocateFactureNumber(state, {
+   *  FA-MM/CODE/YY-NNN pour les sociétés, AAFAMMJJ + ordre du jour sinon.
+   *  Réservé atomiquement : JETTE une erreur si la numérotation échoue. */
+  const hbNumeroFacture = async (clientType: ClientType, company?: string): Promise<string> => {
+    const allocated = await allocateFactureNumberAsync(state, {
       clientType,
       company,
       invoiceDate: new Date().toISOString(),
       prescriptionDate: new Date().toISOString(),
     });
-    if (allocated.societeUpsert) setState(prev => applySocieteUpsert(prev, allocated.societeUpsert));
+    if (allocated.societeUpsert) {
+      const upsert = allocated.societeUpsert;
+      setState(prev => applySocieteUpsert(prev, upsert));
+    }
     return allocated.numeroFacture;
   };
   const [hbSelRecordId, setHbSelRecordId] = useState<string | null>(null);
@@ -218,6 +222,10 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   // 💡 Historique des paiements (affiché via un bouton dédié)
   const [hbHistoryId, setHbHistoryId] = useState<string | null>(null);
   const [hbModal, setHbModal] = useState<HbModal>('none');
+  // Sorties : seules les personnes encore hospitalisées / au bloc sont listées par défaut.
+  const [hbShowDischarged, setHbShowDischarged] = useState(false);
+  const [hbDischargeMotif, setHbDischargeMotif] = useState('');
+  const [hbDischargeDonneur, setHbDischargeDonneur] = useState('');
 
   // HB Modal: patient search/add (ALL fields like reception)
   const [hbPatSearch, setHbPatSearch] = useState('');
@@ -431,7 +439,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     setSelConsultId(null);
   };
 
-  const handlePayment = () => {
+  const handlePayment = async () => {
     if (!selPatient) return;
     // Garde anti double-paiement
     if (payingRef.current) return;
@@ -449,22 +457,13 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     //  - client société → FA-MM/CODE/YY-NNN (mois des prescriptions, code société) ;
     //  - autres clients → AAFAMMJJ + ordre du jour (ex: 26FA0427102).
     // Les factures de services (labo/écho) en attente reçoivent leur numéro dans
-    // l'ordre chronologique, puis la facture médicaments.
-    const numbers = collectExistingFactureNumbers(state);
-    const societeUpserts: Societe[] = [];
+    // l'ordre chronologique, puis la facture médicaments — le tout en UN SEUL
+    // lot atomique (attribué plus bas, après le cas « passage sans facturation »).
+    const servicesToNumber = [...serviceInvoices]
+      .sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''))
+      .filter(svc => !svc.numeroFacture);
     const allocatedNumbers = new Map<string, string>();
-    const allocateFor = (clientType: ClientType, company: string | undefined, invoiceDate: string, prescriptionDate?: string): string => {
-      const allocated = allocateFactureNumber(state, { clientType, company, invoiceDate, prescriptionDate, numbers });
-      if (allocated.societeUpsert) societeUpserts.push(allocated.societeUpsert);
-      numbers.push(allocated.numeroFacture);
-      return allocated.numeroFacture;
-    };
-    for (const svc of [...serviceInvoices].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''))) {
-      if (svc.numeroFacture) { numbers.push(svc.numeroFacture); continue; }
-      const svcPatient = svc.patientId ? state.patients.find(p => p.id === svc.patientId) : undefined;
-      const svcConsultDate = svc.consultationId ? state.consultations.find(c => c.id === svc.consultationId)?.date : undefined;
-      allocatedNumbers.set(svc.id, allocateFor(svc.clientType, svcPatient?.company, svc.createdAt || new Date().toISOString(), svcConsultDate || svc.createdAt));
-    }
+    const societeUpserts: Societe[] = [];
     // Déduplication des items service par description + montant (sécurité anti-doublon)
     const seen = new Set<string>();
     const dedupedServiceItems = serviceItems.filter(item => {
@@ -501,9 +500,41 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     // attente : celles-ci sont soldées directement ci-dessous. Cela évite le double
     // comptage dans la facturation sociétés (crédit société).
     const medsTotal = medicationItems.reduce((sum, item) => sum + item.amount, 0);
-    const medsNumero = medicationItems.length > 0
-      ? allocateFor(selPatient.clientType, selPatient.company, paidAt, unpaidConsults[0]?.date || paidAt)
-      : undefined;
+    // LOT UNIQUE atomique : services à numéroter + facture médicaments.
+    // Échec (réseau/base) → on alerte et on n'encaisse RIEN : facturer sans
+    // numéro réservé créerait un doublon avec une autre caisse.
+    const specs: FactureNumberSpec[] = [
+      ...servicesToNumber.map((svc) => {
+        const svcPatient = svc.patientId ? state.patients.find(p => p.id === svc.patientId) : undefined;
+        const svcConsultDate = svc.consultationId ? state.consultations.find(c => c.id === svc.consultationId)?.date : undefined;
+        return {
+          clientType: svc.clientType, company: svcPatient?.company,
+          invoiceDate: svc.createdAt || paidAt, prescriptionDate: svcConsultDate || svc.createdAt || paidAt,
+        };
+      }),
+      ...(medicationItems.length > 0
+        ? [{
+            clientType: selPatient.clientType, company: selPatient.company,
+            invoiceDate: paidAt, prescriptionDate: unpaidConsults[0]?.date || paidAt,
+          }]
+        : []),
+    ];
+    let allocated: FactureNumberAllocation[];
+    try {
+      allocated = await allocateFactureNumbersAsync(state, specs);
+    } catch (e) {
+      showAlert(e instanceof Error ? e.message : 'Numérotation impossible.', 'Numérotation impossible', 'danger');
+      payingRef.current = false;
+      return;
+    }
+    servicesToNumber.forEach((svc, i) => {
+      allocatedNumbers.set(svc.id, allocated[i].numeroFacture);
+      const upsert = allocated[i].societeUpsert;
+      if (upsert) societeUpserts.push(upsert);
+    });
+    const medsAlloc = medicationItems.length > 0 ? allocated[servicesToNumber.length] : undefined;
+    if (medsAlloc?.societeUpsert) societeUpserts.push(medsAlloc.societeUpsert);
+    const medsNumero = medsAlloc?.numeroFacture;
     const inv: Invoice | null = medicationItems.length > 0 ? {
       id: uuidv4(), patientId: selPatient.id, consultationId: unpaidConsults[0]?.id, clientType: selPatient.clientType,
       items: medicationItems, totalAmount: medsTotal, patientCharge: medsTotal, numeroFacture: medsNumero,
@@ -673,7 +704,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     }
     else if (e.key === 'Escape') setExtSearch('');
   };
-  const extPay = () => {
+  const extPay = async () => {
     if (extLines.length === 0) return;
     // Ne pas valider l'encaissement si une ligne de vente est en cours de saisie mais non enregistrée
     if (blockIfUnsavedDraftLine(extLineForm, extLines, { entityLabel: 'l\'article' })) return;
@@ -826,7 +857,14 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
     // Numérotation officielle : les ventes externes sont des factures « comptoir »
     // → AAFAMMJJ + numéro d'ordre du jour (ex: 26FA0427102).
-    const extNumero = allocateFactureNumber(state, { clientType: 'externe', invoiceDate: now }).numeroFacture;
+    // Réservé atomiquement : échec → on alerte et on n'encaisse RIEN.
+    let extNumero: string;
+    try {
+      extNumero = (await allocateFactureNumberAsync(state, { clientType: 'externe', invoiceDate: now })).numeroFacture;
+    } catch (e) {
+      showAlert(e instanceof Error ? e.message : 'Numérotation impossible.', 'Numérotation impossible', 'danger');
+      return;
+    }
     const inv: Invoice = {
       id: invId,
       consultationId: extConsultId,
@@ -890,16 +928,23 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const hbLineAmt = (l: HbLine) => roundTo2(l.unitPrice * l.quantity * (1 - l.discount / 100));
   const hbPatFiltered = hbPatSearch.length >= 1 ? state.patients.filter(p => `${p.lastName} ${p.firstName}`.toLowerCase().includes(hbPatSearch.toLowerCase()) || p.dossier.toLowerCase().includes(hbPatSearch.toLowerCase())) : [];
 
-  const hbSelectPatient = (patientId: string) => {
+  const hbSelectPatient = async (patientId: string) => {
     const p = state.patients.find(x => x.id === patientId);
     if (!p) return;
     const exists = hbRecords.some(r => r.patientId === p.id && r.type === tab);
     if (exists) { alert('Ce patient est déjà dans la liste'); return; }
     const now = new Date().toISOString();
+    let numeroFacture: string;
+    try {
+      numeroFacture = await hbNumeroFacture(p.clientType, p.company);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Numérotation impossible : dossier non créé.');
+      return;
+    }
     updateHbRecords([...hbRecords, {
       id: uuidv4(), patientId: p.id, patientName: `${p.lastName} ${p.firstName}`,
       clientType: p.clientType, company: p.company, subCompany: p.subCompany,
-      numeroFacture: hbNumeroFacture(p.clientType, p.company),
+      numeroFacture,
       type: tab as 'hospit' | 'bloc', lines: [], payments: [],
       openedAt: now, openedBy: state.currentUser?.name, openedByUserId: state.currentUser?.id,
     }]);
@@ -918,7 +963,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     return name;
   };
 
-  const hbAddNewPatient = () => {
+  const hbAddNewPatient = async () => {
     if (!hbNewPat.lastName || !hbNewPat.firstName) { alert('Nom et prénom requis'); return; }
     const dossier = normalizeDossierNumber(hbNewPat.dossier);
     if (!dossier) { alert('Le numéro de dossier est obligatoire (saisie manuelle, majuscules).'); return; }
@@ -937,11 +982,19 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       registeredAt: new Date().toISOString(), registeredBy: state.currentUser?.id || 'CAISSE', status: 'registered' as const,
     };
     const now = new Date().toISOString();
+    // Numéro réservé AVANT toute création : en cas d'échec, rien n'est créé.
+    let numeroFacture: string;
+    try {
+      numeroFacture = await hbNumeroFacture(np.clientType, np.company);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Numérotation impossible : patient et dossier non créés.');
+      return;
+    }
     setState(prev => ({ ...prev, patients: [...prev.patients, np] }));
     updateHbRecords([...hbRecords, {
       id: uuidv4(), patientId: np.id, patientName: `${np.lastName} ${np.firstName}`,
       clientType: np.clientType, company: np.company, subCompany: np.subCompany,
-      numeroFacture: hbNumeroFacture(np.clientType, np.company),
+      numeroFacture,
       type: tab as 'hospit' | 'bloc', lines: [], payments: [],
       openedAt: now, openedBy: state.currentUser?.name, openedByUserId: state.currentUser?.id,
     }]);
@@ -994,6 +1047,81 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         addAuditLog(state, 'SUPPRESSION_DOSSIER_HB', `Dossier ${rec.type} de ${rec.patientName} supprimé (Facture 0 Ar)`, rec.patientId);
         setConfirmModalState((prev) => ({ ...prev, isOpen: false }));
       },
+    });
+  };
+
+  const openDischarge = (recordId: string) => {
+    setHbSelRecordId(recordId);
+    setHbDischargeMotif('');
+    setHbDischargeDonneur('');
+    setHbModal('discharge');
+  };
+
+  /** Reste à payer arrondi au centime (évite les poussières flottantes affichées « 0,00 Ar »). */
+  const hbReste = (record: HbRecord): number => {
+    const totalFact = record.lines.reduce((s, l) => s + hbLineAmt(l), 0);
+    const totalPaid = record.payments.reduce((s, p) => s + p.amount, 0);
+    return Math.round((totalFact - totalPaid) * 100) / 100;
+  };
+
+  const confirmDischarge = () => {
+    const rec = hbRecords.find(r => r.id === hbSelRecordId);
+    if (!rec || rec.dischargedAt) return;
+    const motif = hbDischargeMotif.trim();
+    const donneur = hbDischargeDonneur.trim();
+    // Hors société (comptoir…) au paiement incomplet : motif + donneur d'ordre obligatoires.
+    if (rec.clientType !== 'societe' && hbReste(rec) > 0 && (!motif || !donneur)) {
+      showAlert('Sortie sans paiement complet : le motif ET le donneur d’ordre sont obligatoires.', 'Sortie impossible', 'danger');
+      return;
+    }
+    const now = new Date().toISOString();
+    const dossierTypeName = rec.type === 'hospit' ? 'hospitalisation' : 'bloc opératoire';
+    const totalFact = rec.lines.reduce((s, l) => s + hbLineAmt(l), 0);
+    const totalPaid = rec.payments.reduce((s, p) => s + p.amount, 0);
+    const reste = hbReste(rec);
+    setState(prev => {
+      const next: AppState = {
+        ...prev,
+        hbRecords: (prev.hbRecords || []).map(r => r.id === rec.id ? {
+          ...r,
+          dischargedAt: now,
+          dischargedBy: prev.currentUser?.name,
+          dischargedByUserId: prev.currentUser?.id,
+          dischargeMotif: motif || undefined,
+          dischargeDonneurOrdre: donneur || undefined,
+        } : r),
+        // La demande est honorée (patient passé par le service puis sorti) :
+        // sans cela, l'ajout automatique recréerait le dossier au prochain onglet.
+        consultations: prev.consultations.map(c => {
+          if (c.patientId !== rec.patientId) return c;
+          if (rec.type === 'hospit' && !c.hospitalizeRequested) return c;
+          if (rec.type === 'bloc' && !c.surgeryRequested) return c;
+          return { ...c, hospitalizeRequested: rec.type === 'hospit' ? false : c.hospitalizeRequested, surgeryRequested: rec.type === 'bloc' ? false : c.surgeryRequested };
+        }),
+      };
+      addAuditLog(next, 'SORTIE_HB', `Sortie d'${dossierTypeName} : ${rec.patientName} — Facture ${formatAr(totalFact)}, payé ${formatAr(totalPaid)}${reste > 0 ? `, RESTE ${formatAr(reste)} (motif : ${motif || '—'} ; donneur d'ordre : ${donneur || '—'})` : ' (soldé)'}`, rec.patientId);
+      if (rec.patientId) {
+        addJourneyEvent(next, { patientId: rec.patientId, department: 'caisse', action: rec.type === 'hospit' ? "Sortie d'hospitalisation" : 'Sortie de bloc', status: 'discharged', details: `Dossier ${rec.type} clos par ${prev.currentUser?.name || 'la caisse'} — ${formatAr(totalPaid)} / ${formatAr(totalFact)}${reste > 0 ? ` — reste ${formatAr(reste)}` : ''}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, hospitalizationId: rec.id });
+      }
+      return next;
+    });
+    setHbModal('none');
+    if (hbSelRecordId === rec.id) setHbSelRecordId(null);
+  };
+
+  const cancelDischarge = (recordId: string) => {
+    const rec = hbRecords.find(r => r.id === recordId);
+    if (!rec || !rec.dischargedAt) return;
+    setState(prev => {
+      const next: AppState = {
+        ...prev,
+        hbRecords: (prev.hbRecords || []).map(r => r.id === recordId ? {
+          ...r, dischargedAt: undefined, dischargedBy: undefined, dischargedByUserId: undefined,
+          dischargeMotif: undefined, dischargeDonneurOrdre: undefined,
+        } : r),
+      };
+      addAuditLog(next, 'ANNULATION_SORTIE_HB', `Sortie annulée (réadmission) : ${rec.patientName} — dossier ${rec.type} rouvert`, rec.patientId);
+      return next;
     });
   };
 
@@ -1095,6 +1223,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     // 💡 On conserve qui a reçu l'argent : caisse ou pharmacie (selon le rôle de l'utilisateur connecté)
     const receivedBy: 'caisse' | 'pharmacie' = state.currentUser?.role === 'pharmacy' ? 'pharmacie' : 'caisse';
     const payment = {
+      id: uuidv4(),
       amount,
       paidBy: state.currentUser?.name || '',
       paidByUserId: state.currentUser?.id,
@@ -1151,36 +1280,54 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   };
 
   // Auto-add from doctor requests
-  const autoAddRequests = () => {
+  const autoAddRequests = async () => {
     const now = new Date().toISOString();
     const openerName = state.currentUser?.name;
     const openerId = state.currentUser?.id;
-    const additions: HbRecord[] = [];
-    // Plusieurs dossiers peuvent être créés d'affilée : les numéros sont attribués
-    // dans une même série pour ne pas se chevaucher.
-    const numbers = collectExistingFactureNumbers(state);
-    const upserts: Societe[] = [];
-    const nextNumero = (clientType: ClientType, company?: string): string => {
-      const allocated = allocateFactureNumber(state, { clientType, company, invoiceDate: now, prescriptionDate: now, numbers });
-      if (allocated.societeUpsert) upserts.push(allocated.societeUpsert);
-      numbers.push(allocated.numeroFacture);
-      return allocated.numeroFacture;
-    };
+    // Plusieurs dossiers peuvent être créés d'affilée : on collecte d'abord
+    // les demandes, puis UN SEUL lot atomique les numérote toutes.
+    const pending: { pat: Patient; type: 'hospit' | 'bloc' }[] = [];
     state.consultations.forEach(c => {
       const pat = state.patients.find(p => p.id === c.patientId);
       if (!pat) return;
-      const name = `${pat.lastName} ${pat.firstName}`;
       if (c.hospitalizeRequested && !hbRecords.some(h => h.patientId === pat.id && h.type === 'hospit'))
-        additions.push({ id: uuidv4(), patientId: pat.id, patientName: name, clientType: pat.clientType, company: pat.company, subCompany: pat.subCompany, numeroFacture: nextNumero(pat.clientType, pat.company), type: 'hospit', lines: [], payments: [], openedAt: now, openedBy: openerName, openedByUserId: openerId });
+        pending.push({ pat, type: 'hospit' });
       if (c.surgeryRequested && !hbRecords.some(h => h.patientId === pat.id && h.type === 'bloc'))
-        additions.push({ id: uuidv4(), patientId: pat.id, patientName: name, clientType: pat.clientType, company: pat.company, subCompany: pat.subCompany, numeroFacture: nextNumero(pat.clientType, pat.company), type: 'bloc', lines: [], payments: [], openedAt: now, openedBy: openerName, openedByUserId: openerId });
+        pending.push({ pat, type: 'bloc' });
     });
-    if (additions.length > 0) {
-      for (const upsert of upserts) setState(prev => applySocieteUpsert(prev, upsert));
-      updateHbRecords(prev => [...prev, ...additions]);
+    if (pending.length === 0) return;
+    let allocated: FactureNumberAllocation[];
+    try {
+      allocated = await allocateFactureNumbersAsync(
+        state,
+        pending.map(({ pat }) => ({ clientType: pat.clientType, company: pat.company, invoiceDate: now, prescriptionDate: now })),
+      );
+    } catch {
+      return; // ajout automatique : échec silencieux, réessayé au prochain onglet
     }
+    setState(prev => {
+      let next = prev;
+      const fresh = prev.hbRecords || [];
+      const additions: HbRecord[] = [];
+      pending.forEach(({ pat, type }, i) => {
+        // Re-vérification anti-doublon au moment d'écrire (l'onglet a pu
+        // recevoir les dossiers d'un autre poste pendant l'allocation).
+        if (fresh.some(h => h.patientId === pat.id && h.type === type)
+          || additions.some(h => h.patientId === pat.id && h.type === type)) return;
+        additions.push({
+          id: uuidv4(), patientId: pat.id, patientName: `${pat.lastName} ${pat.firstName}`,
+          clientType: pat.clientType, company: pat.company, subCompany: pat.subCompany,
+          numeroFacture: allocated[i].numeroFacture, type, lines: [], payments: [],
+          openedAt: now, openedBy: openerName, openedByUserId: openerId,
+        });
+        const upsert = allocated[i].societeUpsert;
+        if (upsert) next = applySocieteUpsert(next, upsert);
+      });
+      if (additions.length === 0) return next === prev ? prev : next;
+      return { ...next, hbRecords: [...(next.hbRecords || []), ...additions] };
+    });
   };
-  const switchTab = (t: Tab) => { setTab(t); if (t === 'hospit' || t === 'bloc') autoAddRequests(); };
+  const switchTab = (t: Tab) => { setTab(t); if (t === 'hospit' || t === 'bloc') void autoAddRequests(); };
 
   // Stats — FILTRÉES PAR LE CAISSIER CONNECTÉ
   // Les paiements se font individuellement et au nom de la personne qui a reçu l'argent.
@@ -1227,6 +1374,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   // Ordre décroissant : dernier saisi / dernier arrivé en haut (hospitalisation & bloc)
   const curHbRecords = hbRecords
     .filter(h => h.type === tab)
+    .filter(h => hbShowDischarged || !h.dischargedAt)
     .sort((a, b) => new Date((b.openedAt || 0) as string | number).getTime() - new Date((a.openedAt || 0) as string | number).getTime());
   const closingDateKey = new Date().toDateString();
   const existingClosing = state.cashClosings.find(c => new Date(c.date).toDateString() === closingDateKey && c.cashierId === currentCashierId);
@@ -1368,7 +1516,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       <div className="bg-surface rounded-xl shadow-sm border overflow-hidden">
         <div className="flex items-center justify-between border-b overflow-x-auto bg-surface-muted/50 px-2">
           <div className="flex overflow-x-auto">
-            {([['payment','📋 Facturation',pendingPatients.length],['hospit','🏨 Hospit.',hbRecords.filter(h=>h.type==='hospit').length],['bloc','🏥 Bloc',hbRecords.filter(h=>h.type==='bloc').length],['closing','🔒 Clôture',0]] as [Tab,string,number][]).map(([k,l,c]) => (
+            {([['payment','📋 Facturation',pendingPatients.length],['hospit','🏨 Hospit.',hbRecords.filter(h=>h.type==='hospit' && !h.dischargedAt).length],['bloc','🏥 Bloc',hbRecords.filter(h=>h.type==='bloc' && !h.dischargedAt).length],['closing','🔒 Clôture',0]] as [Tab,string,number][]).map(([k,l,c]) => (
               <button key={k} onClick={() => switchTab(k)} className={`flex items-center gap-1 px-4 py-3 text-xs font-medium border-b-2 cursor-pointer whitespace-nowrap ${tab===k?'border-amber-500 text-amber-600 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-500/4':'border-transparent text-ink-muted hover:text-ink-strong'}`}>{l}{c > 0 ? ` (${c})` : ''}</button>
             ))}
           </div>
@@ -1520,11 +1668,18 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                     Peu importe qui saisit (articles/bloc/hosp) — c'est le <strong>paiement</strong> qui fait foi.
                   </p>
                 </div>
-                <button onClick={() => { setHbPatSearch(''); setHbModal('add_patient'); }} className={`px-3 py-1.5 text-white rounded-lg cursor-pointer text-sm flex items-center gap-1 ${tab === 'hospit' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-blue-600 hover:bg-blue-700'}`}><UserPlus className="w-4 h-4" /> Ajouter Patient</button>
+                <div className="flex items-center gap-2 shrink-0">
+                  {hbRecords.some(h => h.type === tab && h.dischargedAt) && (
+                    <button onClick={() => setHbShowDischarged(v => !v)} className="px-3 py-1.5 rounded-lg cursor-pointer text-sm border border-line bg-surface hover:bg-surface-hover text-ink-secondary" title={hbShowDischarged ? 'Masquer les patients sortis' : 'Afficher les patients sortis'}>
+                      {hbShowDischarged ? '🙈 Masquer les sortis' : `👁 Sortis (${hbRecords.filter(h => h.type === tab && h.dischargedAt).length})`}
+                    </button>
+                  )}
+                  <button onClick={() => { setHbPatSearch(''); setHbModal('add_patient'); }} className={`px-3 py-1.5 text-white rounded-lg cursor-pointer text-sm flex items-center gap-1 ${tab === 'hospit' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-blue-600 hover:bg-blue-700'}`}><UserPlus className="w-4 h-4" /> Ajouter Patient</button>
+                </div>
               </div>
 
               {/* Records list */}
-              {curHbRecords.length === 0 ? <div className="text-center py-8 text-ink-faint">Aucun patient</div>
+              {curHbRecords.length === 0 ? <div className="text-center py-8 text-ink-faint">{!hbShowDischarged && hbRecords.some(h => h.type === tab && h.dischargedAt) ? `Aucun patient présent — ${hbRecords.filter(h => h.type === tab && h.dischargedAt).length} sorti(s), affichables via « 👁 Sortis »` : 'Aucun patient'}</div>
                 : curHbRecords.map(record => {
                   const totalFact = record.lines.reduce((s, l) => s + hbLineAmt(l), 0);
                   const totalPaid = record.payments.reduce((s, p) => s + p.amount, 0);
@@ -1549,6 +1704,14 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                             <input type="number" min={1} max={reste} value={hbPayAmounts[record.id] || ''} onChange={e => setHbPayAmounts(prev => ({ ...prev, [record.id]: Math.max(0, Math.min(parseFloat(e.target.value) || 0, reste)) }))} className="w-24 px-2 py-1 border rounded text-xs text-right outline-none" placeholder="Montant" />
                             <button onClick={() => addPartialPay(record.id)} disabled={!hbPayAmounts[record.id] || hbPayAmounts[record.id] > reste} className="px-2 py-1 bg-amber-600 text-white rounded text-xs cursor-pointer disabled:opacity-40">💰 Payer</button>
                           </>}
+                          {!record.dischargedAt ? (
+                            <button onClick={() => openDischarge(record.id)} title="Enregistrer la sortie du patient" className="px-2 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded text-xs cursor-pointer transition font-medium">🚪 Sortie</button>
+                          ) : (
+                            <>
+                              <span className="px-2 py-1 rounded text-xs bg-surface-hover text-ink-secondary" title={`Sortie enregistrée par ${record.dischargedBy || '—'}${record.dischargeDonneurOrdre ? ` — donneur d'ordre : ${record.dischargeDonneurOrdre}` : ''}${record.dischargeMotif ? ` — motif : ${record.dischargeMotif}` : ''}`}>🚪 Sorti le {new Date(record.dischargedAt).toLocaleDateString('fr-FR')}</span>
+                              <button onClick={() => cancelDischarge(record.id)} title="Annuler la sortie (réadmettre le patient)" className="px-2 py-1 border border-line rounded text-xs cursor-pointer hover:bg-surface-hover text-ink-secondary">↩ Réadmettre</button>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1960,6 +2123,50 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
           </div>
         </div>
       )}
+
+      {/* Modal Sortie (Hospitalisation / Bloc) */}
+      {hbModal === 'discharge' && hbSelRecordId && (() => {
+        const record = hbRecords.find(r => r.id === hbSelRecordId);
+        if (!record || record.dischargedAt) return null;
+        const totalFact = record.lines.reduce((s, l) => s + hbLineAmt(l), 0);
+        const totalPaid = record.payments.reduce((s, p) => s + p.amount, 0);
+        const reste = hbReste(record);
+        // Hors société (comptoir…) au paiement incomplet : motif + donneur d'ordre obligatoires.
+        const exigeJustificatif = record.clientType !== 'societe' && reste > 0;
+        const peutValider = !exigeJustificatif || (hbDischargeMotif.trim() !== '' && hbDischargeDonneur.trim() !== '');
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" onClick={() => setHbModal('none')}>
+            <div className="w-full max-w-md bg-surface rounded-xl shadow-2xl border border-line-strong overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className="bg-teal-600 px-4 py-3 flex justify-between items-center text-white"><span className="font-bold">🚪 Sortie — {record.type === 'hospit' ? 'Hospitalisation' : 'Bloc Opératoire'}</span><button onClick={() => setHbModal('none')} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button></div>
+              <div className="p-4 space-y-3">
+                <div className="text-sm"><strong>{record.patientName}</strong>{record.numeroFacture && <span className="ml-2 font-mono text-xs text-ink-faint">{record.numeroFacture}</span>}</div>
+                <div className="p-3 rounded-lg bg-surface-muted border border-line text-sm flex justify-between gap-2 flex-wrap">
+                  <span>Facture : <strong>{formatAr(totalFact)}</strong></span>
+                  <span>Payé : <strong className="text-green-600 dark:text-green-400">{formatAr(totalPaid)}</strong></span>
+                  <span>Reste : <strong className={reste > 0 ? 'text-red-600 dark:text-red-400' : ''}>{formatAr(reste)}</strong></span>
+                </div>
+                {exigeJustificatif ? (
+                  <>
+                    <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-500/8 border border-amber-200 dark:border-amber-500/25 text-xs text-amber-800 dark:text-amber-300">
+                      ⚠️ <strong>Paiement incomplet</strong> (reste {formatAr(reste)}). La sortie exige un <strong>motif</strong> et un <strong>donneur d'ordre</strong>.
+                    </div>
+                    <div><label className="block text-sm font-medium mb-1">Motif de la sortie *</label><input value={hbDischargeMotif} onChange={e => setHbDischargeMotif(e.target.value)} className="w-full px-3 py-2 border rounded-lg outline-none" placeholder="Ex : transfert, accord direction, urgence familiale…" /></div>
+                    <div><label className="block text-sm font-medium mb-1">Donneur d'ordre *</label><input value={hbDischargeDonneur} onChange={e => setHbDischargeDonneur(e.target.value)} className="w-full px-3 py-2 border rounded-lg outline-none" placeholder="Ex : Dr Rabe, Directeur, Chef de service…" /></div>
+                  </>
+                ) : (
+                  <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-500/8 border border-emerald-200 dark:border-emerald-500/25 text-xs text-emerald-800 dark:text-emerald-300">
+                    {record.clientType === 'societe' ? `🏢 Client société (${record.company || '—'}) : le solde sera facturé à la société.` : '✅ Facture soldée : sortie simple.'}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <button onClick={() => setHbModal('none')} className="flex-1 py-2 border border-line rounded-lg hover:bg-surface-muted cursor-pointer">Annuler</button>
+                  <button onClick={confirmDischarge} disabled={!peutValider} className="flex-1 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg cursor-pointer disabled:opacity-40 font-semibold">Confirmer la sortie</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Modal Message Rectification Prescription */}
       {rectificationModal && (

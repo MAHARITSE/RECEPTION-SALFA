@@ -170,7 +170,7 @@ Toutes les entités sont stockées dans des tableaux typés TypeScript.
   modifier ni écraser un article existant.
 - **Base MySQL** : `reception_salfa.sql` intègre le référentiel unifié en
   insertions idempotentes (`INSERT IGNORE`) ; pour une base déjà installée,
-  importer `WAMP/database/migration_articles_unifies.sql`.
+  importer `wamp_deploy/database/migration_articles_unifies.sql`.
 
 ---
 

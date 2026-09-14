@@ -1,0 +1,3 @@
+# Les scripts SQL ne doivent jamais être téléchargeables (ils contiennent
+# la structure et les comptes par défaut).
+Require all denied

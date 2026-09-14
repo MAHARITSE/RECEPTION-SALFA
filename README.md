@@ -112,52 +112,44 @@ Les tests utilisent des données et un navigateur isolés : encaissements patien
 
 ---
 
-## 📂 Structure du projet — 2 parties distinctes
-
-Le projet est divisé en **deux parties indépendantes**, chacune prête à déployer
-dans son environnement :
+## 📂 Structure du projet — production WAMP + version navigateur
 
 ```text
 RECEPTION-SALFA/
-├── workers/          #  PARTIE 1 — version JSON  → déployée sur workers.dev
-├── WAMP/             #  PARTIE 2 — version WAMP locale (100 % MySQL)
-├── src/              #  Source commune React/TypeScript (pour recompiler les 2)
+├── wamp_deploy/      #  PRODUCTION — version WAMP locale (100 % MySQL), prête à copier
+├── src/              #  Source React/TypeScript (pour recompiler les 2 versions)
 └── docs/ …           #  Documentation & modèles de données
 ```
 
-### 🟦 PARTIE 1 — `workers/` : version JSON (Cloudflare Workers)
+> La version Cloudflare Workers a été supprimée : la production cible
+> uniquement WAMP/MySQL en réseau local (données de santé : pas de cloud).
 
-Application **statique** en un seul fichier, données intégrées depuis
-[`src/data/localData.json`](./src/data/localData.json) (état en mémoire).
-À déployer sur **workers.dev** :
+### 🟨 `wamp_deploy/` : version WAMP locale (100 % MySQL) — PRODUCTION
 
-```bash
-cd workers
-npx wrangler login
-npx wrangler deploy
-```
-
-➡️ Voir [`workers/README.md`](./workers/README.md) pour les détails.
-
-### 🟨 PARTIE 2 — `WAMP/` : version WAMP locale (100 % MySQL)
-
-Application compilée + API PHP + scripts SQL, à copier dans
-`C:\wamp64\www\reception-salfa`. **Toutes les données sont stockées
-strictement dans MySQL** dans des **tables normalisées en français** (`patients`,
-`ventes`, `articles`, …). Cette partie a été reconstruite en
-s'inspirant de [LogBara](https://github.com/MAHARITSE/LogBara) (connexion en
-`127.0.0.1`, une table par entité, page de diagnostic MySQL) :
+Application compilée (`index.html`) + API PHP + scripts SQL, à copier dans
+`C:\wamp64\www\reception-salfa` (script `outils\deployer.bat` fourni).
+**Toutes les données sont stockées strictement dans MySQL** dans des
+**tables en français, une par entité** (`patients`, `ventes`, `articles`, …),
+en s'inspirant de [LogBara](https://github.com/MAHARITSE/LogBara)
+(connexion en `127.0.0.1`, une table par entité, page de diagnostic MySQL) :
 
 - L'application est chargée depuis MySQL au démarrage et sauvegarde
   automatiquement **chaque modification** (patients, consultations, caisse,
   ventes, stocks, messagerie, journal d'audit…) ;
+- API **transactionnelle** (`read_all` / `sync_all`), suppressions explicites
+  uniquement, compteurs monotones, requêtes préparées partout ;
 - Connexion MySQL fiable en `127.0.0.1` (évite le bug IPv6 `::1` de WAMP) ;
-- Page de vérification : `http://localhost/reception-salfa/api/diagnostic.php` ;
+- Page de vérification : `http://localhost/reception-salfa/api/diagnostic.php`
+  (santé PHP/MySQL, volumes, doublons n° facture / n° dossier) ;
+- Scripts fournis : déploiement, **sauvegarde quotidienne** + rotation,
+  restauration (avec confirmation) ;
 - Aucune donnée applicative dans `localStorage` ni dans un fichier JSON local.
 
-➡️ Voir [`WAMP/README.md`](./WAMP/README.md) et [`WAMP/QUICKSTART.md`](./WAMP/QUICKSTART.md).
+➡️ Voir [`wamp_deploy/README.md`](./wamp_deploy/README.md),
+[`wamp_deploy/QUICKSTART.md`](./wamp_deploy/QUICKSTART.md) et
+[`wamp_deploy/SECURITE.md`](./wamp_deploy/SECURITE.md) (à lire !).
 
-### 🌐 Version navigateur (hors WAMP)
+### 🌐 Version navigateur (démo / hors WAMP)
 
 La version standard (`npm run build` ou `npm run dev`) conserve les données de
 l'application dans **IndexedDB**, la base locale du navigateur. Les données ne
@@ -165,12 +157,12 @@ sont pas envoyées à MySQL et restent dans le profil / navigateur utilisé. La
 session de connexion n'est pas conservée : il faut se reconnecter après avoir
 fermé l'application.
 
-### 🔄 Recompiler les deux parties (depuis la source commune)
+### 🔄 Recompiler (depuis la source commune)
 
 ```bash
 npm install
-npm run build          # version navigateur (base locale IndexedDB) → dist/index.html → copier vers workers/public/
-npm run build:wamp     # version WAMP  → dist/index.html → copier vers WAMP/index.html
+npm run build          # version navigateur (base locale IndexedDB) → dist/index.html
+npm run build:wamp     # version WAMP (VITE_WAMP_MODE=1 via .env.wamp) → dist/index.html → copier vers wamp_deploy/index.html
 ```
 
 ---

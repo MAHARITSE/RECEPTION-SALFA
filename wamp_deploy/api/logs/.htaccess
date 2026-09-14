@@ -1,0 +1,2 @@
+# Les journaux d'erreurs ne doivent jamais être lisibles via HTTP.
+Require all denied

@@ -190,7 +190,7 @@ Les boutons de vérification et de réparation ont été supprimés à la demand
 
 La résolution reconnaît les identifiants d’articles stockés dans `InvoiceItem.code` (ancien format), les codes commerciaux et, à défaut, un nom exact et unique. Les homonymes ne sont pas départagés arbitrairement ; la catégorie générale ne masque pas une famille invalide sur un article identifié.
 
-**WAMP/MySQL :** cette migration n’est pas exécutée via le `sync_all` générique. Le serveur PHP et le schéma n’étant pas fournis dans ce dépôt, la réorganisation transactionnelle de la vraie base MySQL doit être déployée côté serveur. La compilation ne constitue pas une exécution sur la base de l’utilisateur. En mode navigateur, la migration s’applique automatiquement au prochain chargement de la version mise à jour, sans action métier supplémentaire.
+**WAMP/MySQL :** cette migration n’est pas exécutée via le `sync_all` générique. Le serveur PHP et le schéma sont fournis dans `wamp_deploy/` (API transactionnelle + `parametres`), mais la réorganisation des familles reste appliquée côté client au chargement (`prepareLoadedState`) puis persistée par le `sync_all` suivant. La compilation ne constitue pas une exécution sur la base de l’utilisateur. En mode navigateur, la migration s’applique automatiquement au prochain chargement de la version mise à jour, sans action métier supplémentaire.
 
 ### Persistance et concurrence
 

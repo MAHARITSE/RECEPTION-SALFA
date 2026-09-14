@@ -21,7 +21,7 @@ Deux bases locales sont présentes dans le dépôt :
 | Base | Fichier | Verdict |
 |------|---------|---------|
 | Base navigateur (seed IndexedDB) | `src/data/localData.json` | ✅ **CONFORME** |
-| Base MySQL (WAMP) | `WAMP/database/reception_salfa.sql` | ❌ **NON CONFORME** |
+| Base MySQL (WAMP) | `wamp_deploy/database/reception_salfa.sql` | ❌ **NON CONFORME** |
 
 ### 2.1 Base navigateur — `localData.json` ✅
 
@@ -62,8 +62,8 @@ Vérification automatisée : **0 problème** sur les 42 contrôles.
 
 ### 3.2 Base MySQL — référentiel unifié intégré
 
-- **`WAMP/database/reception_salfa.sql`** : ajout du référentiel unifié (28 articles : 14 examens + 3 consommables `LABO`, 10 actes + gel `ECHO`) et du miroir `catalogue_laboratoire` (14 examens), en insertions **idempotentes** (`INSERT IGNORE` par identifiant).
-- **`WAMP/database/migration_articles_unifies.sql`** *(nouveau)* : script à importer dans phpMyAdmin pour mettre une **base locale existante** en conformité sans toucher aux données métier.
+- **`wamp_deploy/database/reception_salfa.sql`** : ajout du référentiel unifié (28 articles : 14 examens + 3 consommables `LABO`, 10 actes + gel `ECHO`) et du miroir `catalogue_laboratoire` (14 examens), en insertions **idempotentes** (`INSERT IGNORE` par identifiant).
+- **`wamp_deploy/database/migration_articles_unifies.sql`** *(nouveau)* : script à importer dans phpMyAdmin pour mettre une **base locale existante** en conformité sans toucher aux données métier.
 - **`WAMP/deployment/install_wamp.bat`** : applique automatiquement la migration à l'installation.
 - **`WAMP/index.html`** et **`workers/public/index.html`** : bundles reconstruits avec la correction.
 
@@ -93,7 +93,7 @@ Vérification automatisée : **0 problème** sur les 42 contrôles.
 ## 5. Application sur votre base locale WAMP
 
 1. **Sauvegardez** la base `reception_salfa` (Export phpMyAdmin).
-2. Importez dans phpMyAdmin : `WAMP/database/migration_articles_unifies.sql`
+2. Importez dans phpMyAdmin : `wamp_deploy/database/migration_articles_unifies.sql`
    (ou relancez `WAMP/deployment/install_wamp.bat`).
 3. Recopiez le nouveau `WAMP/index.html` (déjà reconstruit dans le dépôt).
 4. Rouvrez l'application : au démarrage, `prepareLoadedState` réaligne automatiquement

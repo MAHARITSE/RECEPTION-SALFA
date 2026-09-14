@@ -1,6 +1,7 @@
 import type { AppState } from './store';
 import { preserveMonthlyInvoices } from './modules/assurance/monthlyBilling';
 import { syncSharedInvoiceBalances } from './modules/assurance/sharedData';
+import { repairVenteHeaders } from './moneyRepair';
 
 /**
  * ─────────────────────────────────────────────────────────────────────────────
@@ -66,10 +67,40 @@ const indexById = (rows: Rec[]): Map<string, Rec> => {
 
 /** Réconcilie une collection (liste d'objets possédant un `id`). */
 export function mergeList(base: unknown, local: unknown, remote: unknown): Rec[] {
-  const baseRows = asList(base);
   const localRows = asList(local);
   const remoteRows = asList(remote);
 
+  // ── Chemin rapide : aucune modification locale (même référence) → le
+  // distant fait foi, dans l'ordre local puis les ajouts distants.
+  // Sémantique STRICTEMENT identique au chemin lent, sans aucun stringify
+  // (précondition : `id` uniques par collection — garanti par MySQL/PK et la
+  // déduplication du chemin lent ; des `id` dupliqués sont une entrée corrompue).
+  if (local === base) {
+    // NOTE : aucun retour anticipé sur les seuls `id` ici — un collègue peut
+    // avoir MODIFIÉ une ligne (même `id`, contenu différent), et sa version
+    // distante doit gagner. Seule certitude sans stringify : rien n'a été
+    // créé ni supprimé PAR CE POSTE (même référence que la base confirmée).
+    const baseRows = asList(base);
+    const remoteById = indexById(remoteRows);
+    const seen = new Set<string>();
+    const out: Rec[] = [];
+    for (const b of baseRows) {
+      const id = typeof b?.id === 'string' ? b.id : undefined;
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      const r = remoteById.get(id);
+      if (r) out.push(r); // absent du distant → supprimé par un collègue
+    }
+    for (const r of remoteRows) {
+      const id = typeof r?.id === 'string' ? r.id : undefined;
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      out.push(r);
+    }
+    return out;
+  }
+
+  const baseRows = asList(base);
   const baseMap = indexById(baseRows);
   const localMap = indexById(localRows);
   const remoteMap = indexById(remoteRows);
@@ -90,7 +121,9 @@ export function mergeList(base: unknown, local: unknown, remote: unknown): Rec[]
       if (!baseRow) result.push(row);
       continue;
     }
-    const changedLocally = !baseRow || stable(baseRow) !== stable(row);
+    // Même référence = inchangé : on évite le stringify (cas général : les
+    // mises à jour React préservent les références des lignes intactes).
+    const changedLocally = row !== baseRow && (!baseRow || stable(baseRow) !== stable(row));
     result.push(changedLocally ? row : remoteRow);
   }
 
@@ -104,6 +137,10 @@ export function mergeList(base: unknown, local: unknown, remote: unknown): Rec[]
     result.push(row);
   }
 
+  // Rien n'a bougé → on garde la référence locale (comparaisons rapides).
+  if (result.length === localRows.length && result.every((r, i) => r === localRows[i])) {
+    return localRows;
+  }
   return result;
 }
 
@@ -127,17 +164,97 @@ export function collectDeletions(base: AppState | null, local: AppState): Record
 }
 
 /**
+ * Fusionne les lignes de paiement IMBRIQUÉES d'un enregistrement (relevés
+ * sociétés, dossiers hospit/bloc) : deux postes ajoutant un règlement en même
+ * temps créent deux lignes distinctes — l'union par `id` les préserve toutes
+ * les deux, là où « dernier écrivain gagne » en perdrait une.
+ * Les lignes historiques sans `id` sont départagées par une clé composite.
+ */
+function unionNestedPayments(
+  mergedRows: Rec[],
+  localRows: Rec[],
+  remoteRows: Rec[],
+  /** Comptes sociétés : maintient `paidAmount`/statut. Dossiers hospit/bloc :
+   *  aucun total figé → union seule, aucun champ parasite ajouté. */
+  withTotal: boolean,
+): Rec[] {
+  const localById = indexById(localRows);
+  const remoteById = indexById(remoteRows);
+  const keyOf = (p: Rec): string => {
+    const id = typeof p?.id === 'string' ? p.id : '';
+    if (id) return `id:${id}`;
+    return `legacy:${p?.date || ''}|${p?.amount ?? ''}|${p?.paidBy || ''}|${p?.method || ''}|${p?.reference || ''}|${p?.receivedBy || ''}`;
+  };
+  let changed = false;
+  const out = mergedRows.map((row) => {
+    const id = typeof row?.id === 'string' ? row.id : undefined;
+    const l = id ? localById.get(id) : undefined;
+    const r = id ? remoteById.get(id) : undefined;
+    const seen = new Map<string, Rec>();
+    for (const src of [l, r, row]) {
+      const arr = src ? (src as Record<string, unknown>).payments : undefined;
+      if (!Array.isArray(arr)) continue;
+      for (const p of arr as Rec[]) {
+        const k = keyOf(p);
+        if (!seen.has(k)) seen.set(k, p);
+      }
+    }
+    const payments = [...seen.values()];
+    const prev = Array.isArray((row as Record<string, unknown>).payments)
+      ? ((row as Record<string, unknown>).payments as Rec[]) : [];
+    const sum = Math.round(payments.reduce((s, p) => s + (typeof p?.amount === 'number' ? p.amount : 0), 0) * 100) / 100;
+    const prevAmount = typeof (row as Record<string, unknown>).paidAmount === 'number'
+      ? ((row as Record<string, unknown>).paidAmount as number) : 0;
+    // Seulement plus de lignes, ou un total supérieur (jamais de diminution).
+    if (payments.length === prev.length && (!withTotal || sum <= prevAmount)) return row;
+    changed = true;
+    // Sans total figé (hospit/bloc : calculé à la volée) → union seule, aucun champ ajouté.
+    if (!withTotal) return { ...row, payments } as Rec;
+    const total = typeof (row as Record<string, unknown>).totalAmount === 'number'
+      ? ((row as Record<string, unknown>).totalAmount as number) : 0;
+    const paidAmount = Math.max(prevAmount, sum);
+    const next: Record<string, unknown> = { ...row, payments, paidAmount };
+    if (typeof next.status === 'string' && (next.status === 'open' || next.status === 'partial' || next.status === 'paid')) {
+      next.status = total > 0 && paidAmount >= total ? 'paid' : paidAmount > 0 ? 'partial' : next.status;
+    }
+    return next as Rec;
+  });
+  return changed ? out : mergedRows;
+}
+
+/**
  * Réconcilie l'état complet du poste avec l'état lu dans MySQL.
  * `currentUser` (session locale) n'est JAMAIS remplacé.
+ * `onlyLists` : fusion sélective — seules ces collections sont réconciliées
+ * (les autres gardent leur référence locale, sans aucun coût).
  */
-export function mergeStates(base: AppState | null, local: AppState, remote: AppState): AppState {
+export function mergeStates(base: AppState | null, local: AppState, remote: AppState, onlyLists?: readonly string[]): AppState {
   const merged: Record<string, unknown> = { ...local };
   const baseRec = (base || {}) as unknown as Record<string, unknown>;
   const localRec = local as unknown as Record<string, unknown>;
   const remoteRec = remote as unknown as Record<string, unknown>;
+  const only = onlyLists ? new Set<string>(onlyLists) : null;
 
   for (const key of MERGEABLE_LISTS) {
-    merged[key] = mergeList(base ? baseRec[key] : undefined, localRec[key], remoteRec[key]);
+    merged[key] = (!only || only.has(key))
+      ? mergeList(base ? baseRec[key] : undefined, localRec[key], remoteRec[key])
+      : localRec[key];
+  }
+
+  // Paiements imbriqués : union par id (jamais de règlement perdu).
+  if (!only || only.has('companyBillingAccounts')) {
+    merged.companyBillingAccounts = unionNestedPayments(
+      asList(merged.companyBillingAccounts), asList(localRec.companyBillingAccounts),
+      asList(remoteRec.companyBillingAccounts), true,
+    );
+  }
+  if (!only || only.has('hbRecords')) {
+    // Les dossiers hospit/bloc n'ont pas de total figé (calculé à la volée) :
+    // l'union suffit, `paidAmount` virtuel reste à 0.
+    merged.hbRecords = unionNestedPayments(
+      asList(merged.hbRecords), asList(localRec.hbRecords),
+      asList(remoteRec.hbRecords), false,
+    );
   }
 
   // Paramètres d'impression : la version locale ne gagne que si elle a été modifiée ici.
@@ -178,21 +295,67 @@ export function mergeStates(base: AppState | null, local: AppState, remote: AppS
   // La session du poste reste celle de l'utilisateur connecté ici.
   merged.currentUser = localRec.currentUser ?? null;
 
-  return syncSharedInvoiceBalances(merged as unknown as AppState);
+  // Les lignes de paiement font foi : les en-têtes de ventes concurrents sont réparés.
+  return repairVenteHeaders(syncSharedInvoiceBalances(merged as unknown as AppState));
 }
 
 /** Vrai si la fusion n'a rien changé pour ce poste (évite un re-rendu inutile). */
 export function sameBusinessData(a: AppState, b: AppState): boolean {
-  if (stable(a.monthlyInvoices || []) !== stable(b.monthlyInvoices || [])) return false;
+  if (a === b) return true;
+  if (a.monthlyInvoices !== b.monthlyInvoices
+    && stable(a.monthlyInvoices || []) !== stable(b.monthlyInvoices || [])) return false;
   if (a.assuranceStorageSupported !== b.assuranceStorageSupported) return false;
   const aRec = a as unknown as Record<string, unknown>;
   const bRec = b as unknown as Record<string, unknown>;
   for (const key of MERGEABLE_LISTS) {
+    // Même référence = identique : aucun stringify (cas général après fusion).
+    if (aRec[key] === bRec[key]) continue;
     if (stable(aRec[key]) !== stable(bRec[key])) return false;
   }
-  if (stable(aRec.ticketSettings) !== stable(bRec.ticketSettings)) return false;
+  if (aRec.ticketSettings !== bRec.ticketSettings
+    && stable(aRec.ticketSettings) !== stable(bRec.ticketSettings)) return false;
   for (const key of COUNTER_KEYS) {
     if (aRec[key] !== bRec[key]) return false;
   }
+  if (a.lastBackupAt !== b.lastBackupAt || a.lastBackupBy !== b.lastBackupBy) return false;
+  if (stable(a.prescripteursExternes || []) !== stable(b.prescripteursExternes || [])) return false;
+  if (stable(a.issuedFactureNumbers || []) !== stable(b.issuedFactureNumbers || [])) return false;
   return true;
+}
+
+/**
+ * Vrai si deux états partagent les mêmes références de premier niveau
+ * (aucune modification métier). O(1) par collection — la session locale
+ * (`currentUser`) est ignorée car jamais persistée.
+ */
+export function sameRefs(a: AppState, b: AppState | null): boolean {
+  if (!b) return false;
+  if (a === b) return true;
+  const aRec = a as unknown as Record<string, unknown>;
+  const bRec = b as unknown as Record<string, unknown>;
+  const keys = new Set<string>([...Object.keys(aRec), ...Object.keys(bRec)]);
+  for (const key of keys) {
+    if (key === 'currentUser') continue;
+    if (aRec[key] !== bRec[key]) return false;
+  }
+  return true;
+}
+
+/**
+ * Clés de premier niveau modifiées entre deux états (comparaison par
+ * référence, session exclue). Retourne `null` sans état de référence
+ * (tout doit être envoyé).
+ */
+export function changedTopKeys(a: AppState, b: AppState | null): string[] | null {
+  if (!b) return null;
+  if (a === b) return [];
+  const aRec = a as unknown as Record<string, unknown>;
+  const bRec = b as unknown as Record<string, unknown>;
+  const keys = new Set<string>([...Object.keys(aRec), ...Object.keys(bRec)]);
+  const out: string[] = [];
+  for (const key of keys) {
+    if (key === 'currentUser') continue;
+    if (aRec[key] !== bRec[key]) out.push(key);
+  }
+  return out;
 }

@@ -64,10 +64,13 @@ export default function EnTeteFactureEditor({ settings, updateTicket, showToast 
   const rangeRef = useRef<Range | null>(null);
 
   const [previewOpen, setPreviewOpen] = useState(false);
+  // Police / taille = OUTILS appliqués à la sélection seulement (jamais à toute la zone).
   const [fontFamily, setFontFamily] = useState(headerTypography(settings).font);
   const [fontSize, setFontSize] = useState(headerTypography(settings).size);
-  const typography = headerTypography({ invoiceHeaderFontFamily: fontFamily, invoiceHeaderFontSize: fontSize });
-  const typographyStyle = { '--invoice-header-font': `'${typography.font}'`, '--invoice-header-size': `${typography.size}pt` } as React.CSSProperties;
+  const toolSize = Math.max(MIN_HEADER_FONT_SIZE, Math.min(MAX_HEADER_FONT_SIZE, Number.isFinite(fontSize) ? fontSize : 10));
+  // Base de la zone = typographie déjà enregistrée (les styles de sélection la surchargent en inline).
+  const baseTypography = headerTypography(settings);
+  const typographyStyle = { '--invoice-header-font': `'${baseTypography.font}'`, '--invoice-header-size': `${baseTypography.size}pt` } as React.CSSProperties;
   const [editorKey, setEditorKey] = useState(0);
   // Image actuellement sélectionnée (par data-id) → permet d'afficher la barre d'outils image.
   const [selId, setSelId] = useState<string | null>(null);
@@ -122,6 +125,73 @@ export default function EnTeteFactureEditor({ settings, updateTicket, showToast 
     document.execCommand(command, false);
     editorRef.current?.focus();
   };
+
+  /**
+   * Applique la police / taille à la SÉLECTION (jamais à toute la zone).
+   * La sélection est restaurée depuis la plage mémorisée (le clic sur les
+   * contrôles fait perdre le focus de l'éditeur). Chaque morceau de texte
+   * sélectionné est enveloppé dans un <span style> : la structure des
+   * lignes est préservée et les styles se combinent (imbrication).
+   */
+  const applyInlineStyle = (prop: 'fontFamily' | 'fontSize', value: string) => {
+    const el = editorRef.current;
+    if (!el) return;
+    el.focus();
+    const sel = window.getSelection();
+    if (sel && rangeRef.current) {
+      sel.removeAllRanges();
+      try { sel.addRange(rangeRef.current); } catch { /* plage obsolète */ }
+    }
+    const range = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
+    if (!range || range.collapsed || !el.contains(range.commonAncestorContainer)) {
+      showToast('Sélectionnez d\u2019abord du texte dans l\u2019en-tête (Ctrl+A pour tout), puis choisissez la police / la taille.');
+      return;
+    }
+    if (figOf(range.commonAncestorContainer)) {
+      showToast('La police et la taille s\u2019appliquent au texte, pas aux images.');
+      return;
+    }
+    const startContainer = range.startContainer;
+    const startOffset = range.startOffset;
+    const endContainer = range.endContainer;
+    const endOffset = range.endOffset;
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) => (range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT),
+    });
+    const nodes: Text[] = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode as Text);
+    const spans: HTMLSpanElement[] = [];
+    nodes.forEach((node) => {
+      if (figOf(node)) return; // jamais à l'intérieur d'un bloc image
+      let target: Text = node;
+      if (node === startContainer && node === endContainer) {
+        target = target.splitText(startOffset);
+        target.splitText(Math.max(0, endOffset - startOffset));
+      } else {
+        if (node === endContainer) target.splitText(endOffset);
+        if (node === startContainer) target = target.splitText(startOffset);
+      }
+      if (!target.length) return;
+      const span = document.createElement('span');
+      span.style[prop] = value;
+      target.parentNode?.insertBefore(span, target);
+      span.appendChild(target);
+      spans.push(span);
+    });
+    if (!spans.length) {
+      showToast('Sélectionnez d\u2019abord du texte dans l\u2019en-tête (Ctrl+A pour tout), puis choisissez la police / la taille.');
+      return;
+    }
+    const after = document.createRange();
+    after.setStartBefore(spans[0]);
+    after.setEndAfter(spans[spans.length - 1]);
+    sel?.removeAllRanges();
+    sel?.addRange(after);
+    rememberRange();
+    setVer((v) => v + 1);
+    el.focus();
+  };
+
 
   // Nettoie l'état de sélection après action du clavier / clic hors image.
   const refreshSelection = () => {
@@ -266,7 +336,7 @@ export default function EnTeteFactureEditor({ settings, updateTicket, showToast 
   const save = () => {
     const html = sanitizeInvoiceHeader(current()?.innerHTML?.trim() || '');
     if (!html) { showToast('⚠️ L\'en-tête est vide. Saisissez du texte ou insérez une image.'); return; }
-    updateTicket({ customInvoiceHeader: true, invoiceHeaderHtml: html, invoiceHeaderFontFamily: typography.font, invoiceHeaderFontSize: typography.size });
+    updateTicket({ customInvoiceHeader: true, invoiceHeaderHtml: html }); // styles de sélection dans le HTML ; base enregistrée inchangée
     showToast('✅ En-tête de facture personnalisé enregistré');
   };
 
@@ -370,17 +440,17 @@ export default function EnTeteFactureEditor({ settings, updateTicket, showToast 
           </div>
 
           <div className="px-3 py-2 border-b border-line flex flex-wrap items-center gap-2 bg-surface-muted/50">
-            <label className="text-xs text-ink">Police de l’en-tête
-              <select aria-label="Police de l’en-tête" value={fontFamily} onChange={e => setFontFamily(e.target.value as typeof fontFamily)} className="ml-2 rounded border border-line bg-field px-2 py-1">
+            <label className="text-xs text-ink">Police de la sélection
+              <select aria-label="Police de la sélection" value={fontFamily} onChange={e => { const v = e.target.value as typeof fontFamily; setFontFamily(v); applyInlineStyle('fontFamily', v); }} className="ml-2 rounded border border-line bg-field px-2 py-1">
                 {INVOICE_HEADER_FONTS.map(font => <option key={font} value={font}>{font}</option>)}
               </select>
             </label>
-            <button type="button" aria-label="Diminuer la taille de police de l’en-tête" disabled={typography.size <= MIN_HEADER_FONT_SIZE} onClick={() => setFontSize(Math.max(MIN_HEADER_FONT_SIZE, typography.size - 1))} className={toolbarBtn}>A−</button>
+            <button type="button" aria-label="Diminuer la taille de police de la sélection" title="Appliquer à la sélection" disabled={toolSize <= MIN_HEADER_FONT_SIZE} onClick={() => { const v = Math.max(MIN_HEADER_FONT_SIZE, toolSize - 1); setFontSize(v); applyInlineStyle('fontSize', `${v}pt`); }} className={toolbarBtn}>A−</button>
             <label className="text-xs text-ink">Taille (pt)
-              <input aria-label="Taille de police de l’en-tête" type="number" min={MIN_HEADER_FONT_SIZE} max={MAX_HEADER_FONT_SIZE} step={1} value={fontSize} onChange={e => setFontSize(e.target.value === '' ? 10 : Number(e.target.value))} onBlur={() => setFontSize(typography.size)} className="ml-1 w-16 rounded border border-line bg-field px-2 py-1" />
+              <input aria-label="Taille de police de la sélection" type="number" min={MIN_HEADER_FONT_SIZE} max={MAX_HEADER_FONT_SIZE} step={1} value={fontSize} onChange={e => setFontSize(e.target.value === '' ? MIN_HEADER_FONT_SIZE : Number(e.target.value))} onBlur={() => { setFontSize(toolSize); applyInlineStyle('fontSize', `${toolSize}pt`); }} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} className="ml-1 w-16 rounded border border-line bg-field px-2 py-1" />
             </label>
-            <button type="button" aria-label="Augmenter la taille de police de l’en-tête" disabled={typography.size >= MAX_HEADER_FONT_SIZE} onClick={() => setFontSize(Math.min(MAX_HEADER_FONT_SIZE, typography.size + 1))} className={toolbarBtn}>A+</button>
-            <p className="basis-full text-[11px] text-ink-muted">Ces réglages s’appliquent à toute la zone de texte de l’en-tête, pas au corps de la facture. Enregistrez pour les appliquer aux impressions et réimpressions.</p>
+            <button type="button" aria-label="Augmenter la taille de police de la sélection" title="Appliquer à la sélection" disabled={toolSize >= MAX_HEADER_FONT_SIZE} onClick={() => { const v = Math.min(MAX_HEADER_FONT_SIZE, toolSize + 1); setFontSize(v); applyInlineStyle('fontSize', `${v}pt`); }} className={toolbarBtn}>A+</button>
+            <p className="basis-full text-[11px] text-ink-muted">Sélectionnez du texte dans l’en-tête (Ctrl+A pour tout), puis choisissez la police et la taille : elles s’appliquent à la <strong>sélection seulement</strong> — ni au reste de l’en-tête, ni au corps de la facture. Enregistrez pour les appliquer aux impressions et réimpressions.</p>
           </div>
 
           {/* Barre image : visible quand une image est sélectionnée */}

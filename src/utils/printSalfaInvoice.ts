@@ -153,7 +153,7 @@ export function printSalfaIndividualInvoice(
     ? `${patient.lastName} ${patient.firstName}`.toUpperCase()
     : (invoice.clientName || 'CLIENT COMPTOIR').toUpperCase();
 
-  const priseEnCharge = company?.name || patient?.company || (invoice.isExternal ? 'PAYANT DIRECT' : 'PAYANT DIRECT');
+  const priseEnCharge = company?.name || patient?.company || 'CLIENT COMPTOIR';
 
   // Numéro de facture officiel (26FA0427102 / FA-07/BSA/26-014) ; historique : invoiceNumber, puis id tronqué.
   const invNumber = invoice.numeroFacture || (invoice as any).invoiceNumber || invoice.id.slice(0, 10).toUpperCase();
@@ -355,7 +355,7 @@ export function printSalfaIndividualInvoice(
     </div>
     <div class="info-row">
       <span class="info-label">Prise en charge :</span>
-      <span class="info-val">${priseEnCharge}</span>
+      <span class="info-val">${escapeHtml(priseEnCharge)}</span>
     </div>
   </div>
 
@@ -468,11 +468,11 @@ export function printSalfaCompanyMonthlyInvoice(
         <td style="text-align: center; font-weight: bold;">${idx + 1}</td>
         <td style="text-align: center;">${dateInv}</td>
         <td style="text-align: center;">${matricule}</td>
-        <td style="text-align: left; font-weight: bold;">${patientName}</td>
-        <td style="text-align: right; font-family: monospace; font-size: 9px; line-height: 1.2;">${actDisplay}</td>
-        <td style="text-align: right; font-weight: bold;">${formatArDec(montant)}</td>
-        <td style="text-align: right;">${formatArDec(participat)}</td>
-        <td style="text-align: right; font-weight: bold;">${formatArDec(netAPayer)}</td>
+        <td style="text-align: center; font-weight: bold;">${patientName}</td>
+        <td style="text-align: center; font-family: monospace; font-size: 9px; line-height: 1.2;">${actDisplay}</td>
+        <td style="text-align: center; font-weight: bold;">${formatArDec(montant)}</td>
+        <td style="text-align: center;">${formatArDec(participat)}</td>
+        <td style="text-align: center; font-weight: bold;">${formatArDec(netAPayer)}</td>
       </tr>
     `;
   }).join('');
@@ -650,10 +650,10 @@ export function printSalfaCompanyMonthlyInvoice(
     <tbody>
       ${rowsHtml}
       <tr class="total-row">
-        <td colspan="5" style="text-align: right;">Total</td>
-        <td style="text-align: right;">${formatArDec(totalMontantGlobal)}</td>
-        <td style="text-align: right;">${formatArDec(totalParticipatGlobal)}</td>
-        <td style="text-align: right;">${formatArDec(totalNetGlobal)}</td>
+        <td colspan="5" style="text-align: center;">Total</td>
+        <td style="text-align: center;">${formatArDec(totalMontantGlobal)}</td>
+        <td style="text-align: center;">${formatArDec(totalParticipatGlobal)}</td>
+        <td style="text-align: center;">${formatArDec(totalNetGlobal)}</td>
       </tr>
     </tbody>
   </table>

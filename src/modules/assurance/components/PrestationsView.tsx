@@ -41,6 +41,7 @@ import { Prestation, LignePrestation, Paiement, Societe, Personne, Famille } fro
 import { formatMoney, formatDate, generateId, getCurrentTimestamp } from '../utils/formatters';
 import { maskNom } from '../utils/inputMasks';
 import { buildSocieteFactureNumber, collectExistingFactureNumbers, SOCIETE_FACTURE_RE } from '../../../utils/factureNumber';
+import { attribuerNumeroFacture } from '../../../utils/numeros';
 import { calculateRecouvrementData, generateRecouvrementPdf, generateSelectedPrestationsPdf } from '../utils/recouvrementPdf';
 import { exclusionPersonne, repartirPrestation, societeEstPayeurGlobal } from '../utils/societeExclusions';
 import { SalfaImportModal } from './SalfaImportModal';
@@ -1618,18 +1619,43 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
     }
   };
 
-  const handleSubmitForm = (e: React.FormEvent) => {
+  const handleSubmitForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.numeroFacture || !formData.personneId || !formData.societeId) {
       alert('Veuillez remplir tous les champs obligatoires (Facture, Société, Assuré).');
       return;
     }
+    // Numéro DÉFINITIF : si le champ a gardé la suggestion automatique, le
+    // numéro est réservé atomiquement MAINTENANT (un autre poste a pu
+    // facturer entre l'ouverture du formulaire et la validation). Une saisie
+    // manuelle est conservée telle quelle (contrôle de doublon ci-dessous).
+    let numeroDefinitif = formData.numeroFacture;
+    if (!editingPrestation) {
+      const dateSoinsSubmit = formData.date || new Date().toISOString().split('T')[0];
+      if (numeroDefinitif === nextAutoNumero(formData.societeId, dateSoinsSubmit)) {
+        const socSubmit = societes.find(s => s.id === formData.societeId);
+        const parsedSoins = new Date(`${dateSoinsSubmit}T12:00:00`);
+        try {
+          numeroDefinitif = await attribuerNumeroFacture(
+            {
+              kind: 'societe',
+              date: Number.isFinite(parsedSoins.getTime()) ? parsedSoins : new Date(),
+              code: socSubmit?.code || '',
+            },
+            collectExistingFactureNumbers({ assurancePrestations: prestations }),
+          );
+        } catch (e) {
+          alert(e instanceof Error ? e.message : 'Numérotation impossible : prestation non enregistrée.');
+          return;
+        }
+      }
+    }
 
     // Check if duplicate invoice already exists in database (when creating new)
     const cleanNum = (n?: string) => (n || '').replace(/[\s\-\_\.\/]/g, '').toUpperCase();
-    const isDupFacture = !editingPrestation && prestations.some(p => cleanNum(p.numeroFacture) === cleanNum(formData.numeroFacture));
+    const isDupFacture = !editingPrestation && prestations.some(p => cleanNum(p.numeroFacture) === cleanNum(numeroDefinitif));
     if (isDupFacture) {
-      const proceed = confirm(`Attention : La facture N° "${formData.numeroFacture}" existe déjà dans la base. Souhaitez-vous quand même l'enregistrer ?`);
+      const proceed = confirm(`Attention : La facture N° "${numeroDefinitif}" existe déjà dans la base. Souhaitez-vous quand même l'enregistrer ?`);
       if (!proceed) return;
     }
 
@@ -1646,7 +1672,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
     const prestationToSave: Prestation = {
       ...editingPrestation,
       id: prestationId,
-      numeroFacture: formData.numeroFacture!,
+      numeroFacture: numeroDefinitif,
       date: formData.date || new Date().toISOString().split('T')[0],
       societeId: formData.societeId!,
       sousSociete: formData.sousSociete || '',
