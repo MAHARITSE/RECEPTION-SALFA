@@ -1,26 +1,19 @@
-RECEPTION SALFA — Application compilée pour WAMP (index.html)
+RECEPTION SALFA - Application compilée pour WAMP (index.html)
 ================================================================
 Build du       : 2026-09-14
-Commit source  : 35dfea0 (branche arena/01a09e61-reception-salfa)
+Commit source  : 7c9a685 (branche arena/01a09ec8-reception-salfa)
 Commande       : npm run build:wamp   (VITE_WAMP_MODE=1 via .env.wamp)
 Mode vérifié   : WAMP / MySQL (ternaire replié dans le bundle)
-Taille         : ~3,6 Mo (monofichier, gzip ~981 Ko)
+Taille         : 3,66 Mo (monofichier, gzip ~988 Ko)
+Contenu        : inclut les correctifs « audit WAMP 100 passages/jour » :
+                 sonde action=poll + envoi différentiel + contrôle de révision
+                 if_rev (409), déconnexion révocante (action=logout),
+                 persistance monthlyInvoices / prescripteursExternes.
+Vérifications  : npx tsc --noEmit OK, npm run build:wamp OK.
+                 (Les specs Playwright nécessitent un navigateur d'automatisation :
+                  à lancer sur un poste qui les a - `npm run test`.)
 
 Pour régénérer après modification du code :
   npm run build:wamp
   copy dist\index.html wamp_deploy\index.html
   wamp_deploy\outils\deployer.bat
-
---------------------------------------------------------------------------
-ATTENTION (14/09/2026) : ce fichier index.html est ANTERIEUR aux correctifs
-"WAMP 100 passages/jour" (src/wamp.ts, src/store.ts, src/App.tsx modifies).
-Il reste compatible avec la nouvelle API (aucun champ requis en moins), mais il
-ne beneficie PAS de la sonde `poll` ni de l'envoi differentiel : la charge
-reseau et memoire decrite dans docs/AUDIT_WAMP_100_PAR_JOUR.md s'applique alors
-integralement. A recopiler avant mise en production :
-
-  npm install
-  npm run build:wamp
-  copy dist\index.html wamp_deploy\index.html
-  wamp_deploy\outils\deployer.bat
-...puis relancer ce BUILD.txt avec la date et le commit reels.
