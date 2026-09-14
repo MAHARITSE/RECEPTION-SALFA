@@ -441,7 +441,7 @@ export default function EnTeteFactureEditor({ settings, updateTicket, showToast 
 
           <div className="px-3 py-2 border-b border-line flex flex-wrap items-center gap-2 bg-surface-muted/50">
             <label className="text-xs text-ink">Police de la sélection
-              <select aria-label="Police de la sélection" value={fontFamily} onChange={e => { const v = e.target.value; setFontFamily(v); applyInlineStyle('fontFamily', v); }} className="ml-2 rounded border border-line bg-field px-2 py-1">
+              <select aria-label="Police de la sélection" value={fontFamily} onChange={e => { const v = e.target.value as typeof fontFamily; setFontFamily(v); applyInlineStyle('fontFamily', v); }} className="ml-2 rounded border border-line bg-field px-2 py-1">
                 {INVOICE_HEADER_FONTS.map(font => <option key={font} value={font}>{font}</option>)}
               </select>
             </label>
