@@ -206,12 +206,6 @@ export default function EcranConnexion({ users, onLogin, onBack, onPasswordUpgra
             {busy ? 'Connexion…' : 'Se connecter'}
           </button>
 
-          <div className="mt-6 p-3 bg-surface-muted border border-line rounded-lg">
-            <p className="text-xs text-ink-muted text-center leading-relaxed">
-              🔒 Première connexion ? Demandez vos identifiants à l'administrateur
-              {IS_WAMP_BUILD ? ' (la réception se connecte aussi, avec le compte Réception).' : '.'}
-            </p>
-          </div>
         </form>
 
         <p className="text-center text-ink-faint text-xs mt-6">
