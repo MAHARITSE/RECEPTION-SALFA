@@ -24,7 +24,15 @@ Contenu        : 1) correctifs « audit WAMP 100 passages/jour » (sonde action=
                    message quand le fichier n'est pas arrivé (dont un conseil explicite
                    quand l'application est ouverte dans un cadre intégré, où les
                    navigateurs bloquent souvent l'enregistrement) ;
-                 4) NOUVEL ONGLET FACTURATION « Bloc & Hospit. - reliquats » :
+                 4) RAPPORT "PDF Selection Detailler" (Prestations, menu Exporter) REPRIS :
+                   la selection memorisee par poste est nettoyes des identifiants qui ne
+                   correspondent plus a aucun dossier, le rapport porte sur toute la
+                   selection (pas seulement la vue filtree), les paiements sans lignes
+                   jointes ne font plus echouer le clic, la derniere colonne n'est plus
+                   roignee hors de la page (largeur de table forcee), et le generateur
+                   renvoie ok/nom/taille pour qu'un echec soit annonce ; garde "aucune
+                   ligne a exporter" sur les exports Excel de la meme vue ;
+                 5) NOUVEL ONGLET FACTURATION « Bloc & Hospit. - reliquats » :
                    dossiers de bloc/hospitalisation sortis sur autorisation alors
                    qu'il reste une somme due - KPI, filtres (service, société,
                    période de sortie, recherche multi-mots, tri par plus grosse somme

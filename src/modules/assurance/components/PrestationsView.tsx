@@ -218,6 +218,21 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
     } catch {}
   }, [selectedPrestations]);
 
+  // La selection est rechargee depuis le localStorage du poste : on retire immediatement
+  // les identifiants qui ne correspondent plus a aucun dossier. Sans ce tri, le bouton
+  // affichait « (167) » et produisait un PDF vide (ou echouait) sans rien expliquer.
+  React.useEffect(() => {
+    if (prestations.length === 0) return; // donnees pas encore chargees (mode WAMP)
+    setSelectedPrestations((prev) => {
+      if (prev.size === 0) return prev;
+      const valides = new Set(prestations.map((p) => p.id));
+      let change = false;
+      const suivant = new Set<string>();
+      prev.forEach((id) => { if (valides.has(id)) suivant.add(id); else change = true; });
+      return change ? suivant : prev;
+    });
+  }, [prestations]);
+
   React.useEffect(() => {
     if (lineEditContext) {
       setLineEditForm({
@@ -256,13 +271,33 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
     setFilterSousSociete(selectedSubSocieteId && selectedSubSocieteId !== 'ALL' ? selectedSubSocieteId : 'ALL');
   }, [selectedSubSocieteId]);
 
-  const handleExportRecouvrementPdfSelected = () => {
-    if (selectedPrestations.size === 0) return;
-    const prestationsList = filteredAndSortedList.filter(p => selectedPrestations.has(p.id));
-    generateSelectedPrestationsPdf(prestationsList, paiements, societes, personnes, {
-      titreEtablissement: 'SALFA - Établissement Médical & Soins',
-      familles,
-    });
+  // Dossiers cochés qui existent dans la base (hors filtre d'affichage) : c'est la seule
+  // liste sur laquelle le « PDF Sélection Détaillé » peut s'appuyer.
+  const selectionExportable = useMemo(
+    () => prestations.filter(p => selectedPrestations.has(p.id)),
+    [prestations, selectedPrestations]
+  );
+
+  const handleExportRecouvrementPdfSelected = async () => {
+    if (selectionExportable.length === 0) {
+      setSelectedPrestations(new Set());
+      alert(
+        selectedPrestations.size > 0
+          ? `Aucun des ${selectedPrestations.size} dossier(s) coché(s) ne correspond aux données actuelles (lignes supprimées ou sélection d'une autre session). La sélection a été remise à zéro : recochez les prestations à imprimer.`
+          : 'Cochez d’abord des prestations dans le tableau pour générer le PDF de sélection.'
+      );
+      return;
+    }
+    try {
+      // telechargerPdf() affiche lui-même le fichier obtenu ou le motif de l'échec ;
+      // ici on ne capture que les erreurs de génération du document.
+      await generateSelectedPrestationsPdf(selectionExportable, paiements, societes, personnes, {
+        titreEtablissement: 'SALFA - Établissement Médical & Soins',
+        familles,
+      });
+    } catch (e) {
+      alert('Rapport impossible à générer : ' + (e instanceof Error ? e.message : String(e)));
+    }
   };
 
   // Unique list of sous-sociétés for filter dropdown
@@ -878,11 +913,11 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
   }, [filteredAndSortedList, paymentsMap]);
 
   // Statistics for selected items (when checkboxes are checked)
+  // Mêmes dossiers que ceux du « PDF Sélection Détaillé » : les totaux affichés doivent
+  // être ceux du rapport, y compris quand un filtre masque une partie de la sélection.
   const selectedStats = useMemo(() => {
     const isCustom = selectedPrestations.size > 0;
-    const items = isCustom 
-      ? filteredAndSortedList.filter(p => selectedPrestations.has(p.id))
-      : [];
+    const items = isCustom ? selectionExportable : [];
 
     let count = items.length;
     let totalFacture = 0;
@@ -909,7 +944,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
       totalPaye,
       totalReste,
     };
-  }, [filteredAndSortedList, selectedPrestations, paymentsMap]);
+  }, [selectionExportable, selectedPrestations, paymentsMap]);
 
   // Grouped factures aggregation across all filtered prestations
   const groupedFactures = useMemo(() => {
@@ -1717,6 +1752,10 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
         'Bordereaux Règlements': f.bordereaux.map(b => b.bordereau).join(', '),
       }));
 
+      if (rows.length === 0) {
+        alert('Aucune facture dans cette vue avec les filtres actuels : élargissez la période ou effacez les filtres avant d’exporter.');
+        return;
+      }
       const worksheet = XLSX.utils.json_to_sheet(rows);
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Synthese_Factures');
@@ -1747,6 +1786,10 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
       };
     });
 
+    if (rows.length === 0) {
+      alert('Aucune prestation dans cette vue avec les filtres actuels : élargissez la période ou effacez les filtres avant d’exporter.');
+      return;
+    }
     const worksheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Prestations');
@@ -1860,18 +1903,25 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
                   </button>
 
                   <button
-                    onClick={() => { setShowExportMenu(false); handleExportRecouvrementPdfSelected(); }}
-                    disabled={selectedPrestations.size === 0}
+                    onClick={() => { setShowExportMenu(false); void handleExportRecouvrementPdfSelected(); }}
+                    disabled={selectionExportable.length === 0}
                     className={`w-full text-left px-3.5 py-2 flex items-center space-x-2 ${
-                      selectedPrestations.size > 0 
-                        ? 'hover:bg-surface-muted text-ink cursor-pointer' 
+                      selectionExportable.length > 0
+                        ? 'hover:bg-surface-muted text-ink cursor-pointer'
                         : 'text-slate-300 cursor-not-allowed'
                     }`}
                   >
-                    <FileText className={`w-4 h-4 ${selectedPrestations.size > 0 ? 'text-amber-600' : 'text-slate-300'}`} />
+                    <FileText className={`w-4 h-4 ${selectionExportable.length > 0 ? 'text-amber-600' : 'text-slate-300'}`} />
                     <div>
-                      <div className="font-semibold">PDF Sélection Détaillé ({selectedPrestations.size})</div>
-                      <div className="text-[10px] text-ink-faint">Rapport personnalisé avec récap mensuel & actes</div>
+                      <div className="font-semibold">
+                        PDF Sélection Détaillé ({selectionExportable.length}
+                        {selectionExportable.length !== selectedPrestations.size ? ` sur ${selectedPrestations.size} cochés` : ''})
+                      </div>
+                      <div className="text-[10px] text-ink-faint">
+                        {selectionExportable.length > 0
+                          ? 'Rapport personnalisé avec récap mensuel & actes'
+                          : 'Aucune ligne cochée dans les données actuelles'}
+                      </div>
                     </div>
                   </button>
                 </div>

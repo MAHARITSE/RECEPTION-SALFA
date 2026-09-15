@@ -92,6 +92,28 @@ En plus de la vue mensuelle et de la vue détaillée, la Facturation propose un 
 
 Les numéros qui ne suivent pas la numérotation officielle en vigueur (`26FA0427102` pour le comptoir et les externes, `FA-07/CODE/26-014` pour les sociétés) sont signalés « ancien format » dans cette vue.
 
+### Rapport « PDF Sélection Détaillé » (récap mensuel & actes)
+
+Dans la vue **Prestations**, le menu « Exporter » propose un PDF construit sur les
+lignes cochées : 1. synthèse mensuelle des créances, 2. liste nominative détaillée avec
+les actes de chaque dossier, totaux et pied de page paramétrables. Trois pièges ont été
+corrigés, parce qu'ils donnaient un bouton « qui ne fait rien » :
+
+- la sélection est **mémorisée par poste** (`localStorage`) : les identifiants d'une
+  autre session ou de dossiers supprimés sont maintenant retirés dès le chargement, et
+  le compteur du bouton affiche `PDF Sélection Détaillé (n sur m cochés)` — le rapport
+  porte sur les dossiers qui existent, pas sur un nombre périmé ;
+- le rapport est calculé sur **toute la sélection**, pas seulement la vue filtrée : un
+  filtre changé après le cochage des lignes ne produit plus un PDF vide ;
+- les paiements importés sans lignes jointes et une sélection vidée ne font plus échouer
+  le clic en silence : le refus est annoncé par un message, et la génération renvoie son
+  résultat (`ok`, nom, taille).
+- les deux tableaux imposaient leurs largeurs de colonnes : `jspdf-autotable` ne pouvant
+  pas les réduire, la dernière colonne (« Reste Dû ») était **rognée** hors de la page en
+  portrait. La colonne texte est passée en largeur automatique avec une largeur de table
+  fixée à la page : plus rien ne dépasse, l'avertissement
+  « units width could not fit page » a disparu (contrôlé dans les tests).
+
 ## Reliquats de sortie — Bloc & Hospitalisation
 
 **Onglet « Bloc & Hospit. — reliquats »** du module Facturation : la liste des
