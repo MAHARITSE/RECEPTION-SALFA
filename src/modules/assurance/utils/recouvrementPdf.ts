@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { telechargerPdf } from '../../../utils/exportFichier';
 import { Prestation, Paiement, Societe, Personne, EnteteConfig, Famille } from '../types';
 import { formatMoney, formatDate } from './formatters';
 import { getStoredEnteteConfig } from './enteteStorage';
@@ -724,7 +725,7 @@ export function generateRecouvrementPdf(
   }
 
   const filename = `Etat_Recouvrement_Plus_${seuil}_Mois_${new Date().toISOString().split('T')[0]}.pdf`;
-  doc.save(filename);
+  telechargerPdf(doc, filename);
 }
 
 /**
@@ -1166,5 +1167,5 @@ export function generateSelectedPrestationsPdf(
 
   const cleanSocName = mainSocNom.replace(/[^a-zA-Z0-9]/g, '_');
   const filename = `Recouvrement_${cleanSocName}_${monthPart}_${new Date().toISOString().split('T')[0]}.pdf`;
-  doc.save(filename);
+  telechargerPdf(doc, filename);
 }

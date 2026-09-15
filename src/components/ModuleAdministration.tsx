@@ -4,6 +4,7 @@ import { formatAr, addAuditLog, familyManagesStock } from '../store';
 import { IS_WAMP_BUILD, setWampPassword } from '../wamp';
 import { credentialAutofillOptOut, passwordInputOptOut } from '../utils/credentialAutofill';
 import { exporterSauvegardeSql } from '../utils/sauvegarde';
+import { telechargerFichier } from '../utils/exportFichier';
 import { hashPassword } from '../utils/motDePasse';
 import type { AppState } from '../store';
 import ModuleReception from './ModuleReception';
@@ -357,15 +358,13 @@ export default function ModuleAdministration({ state, setState }: Props) {
       `"${(l.details || '').replace(/"/g, '""')}"`,
     ]);
 
-    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(';'), ...rows.map((r) => r.join(';'))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `journal_audit_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showToast('✅ Journal d\'audit exporté au format CSV');
+    // Le « BOM » \uFEFF est conservé : Excel sans lui ouvre un CSV en ANSI et
+    // casse les accents malgaches et les noms propres.
+    const csvContent = '\uFEFF' + [headers.join(';'), ...rows.map((r) => r.join(';'))].join('\r\n');
+    const resultat = telechargerFichier(csvContent, `journal_audit_${new Date().toISOString().slice(0, 10)}.csv`, { mime: 'text/csv;charset=utf-8' });
+    // Un `data:` URL en haut d'onglet est bloqué par Chrome : le fichier partait
+    // dans le vide sans message. Blob + <a download> est le seul chemin fiable.
+    if (resultat.ok) showToast(`✅ ${resultat.message}`);
   };
 
 

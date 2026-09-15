@@ -23,6 +23,7 @@ import { formatMoney, formatDate } from '../utils/formatters';
 import { maskNom } from '../utils/inputMasks';
 import { FacturesRejetsGroupedTable, GroupedRejetFacture, RejetFactureSortField } from './FacturesRejetsGroupedTable';
 import * as XLSX from 'xlsx';
+import { telechargerClasseur, telechargerPdf } from '../../../utils/exportFichier';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Select } from '../../../components/Select';
@@ -508,7 +509,7 @@ export const RejetsView: React.FC<RejetsViewProps> = ({
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Rejets_Exclusions');
-    XLSX.writeFile(wb, `Etat_Rejets_Assurance_${new Date().toISOString().split('T')[0]}.xlsx`);
+    telechargerClasseur(wb, `Etat_Rejets_Assurance_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   // Génération PDF : Bordereau des Rejets
@@ -631,7 +632,7 @@ export const RejetsView: React.FC<RejetsViewProps> = ({
       },
     });
 
-    doc.save(`Bordereau_Rejets_${new Date().toISOString().split('T')[0]}.pdf`);
+    telechargerPdf(doc, `Bordereau_Rejets_${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
   return (

@@ -49,6 +49,7 @@ import { FacturesGroupedTable } from './prestations/FacturesGroupedTable';
 import { ChangerLiaisonModal } from './prestations/ChangerLiaisonModal';
 import { FactureDetailModal } from './prestations/FactureDetailModal';
 import * as XLSX from 'xlsx';
+import { telechargerClasseur } from '../../../utils/exportFichier';
 import { Select } from '../../../components/Select';
 
 export type PrestationViewMode = 'detaillee' | 'factures';
@@ -1719,7 +1720,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
       const worksheet = XLSX.utils.json_to_sheet(rows);
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Synthese_Factures');
-      XLSX.writeFile(workbook, `Synthese_Factures_${new Date().toISOString().split('T')[0]}.xlsx`);
+      telechargerClasseur(workbook, `Synthese_Factures_${new Date().toISOString().split('T')[0]}.xlsx`);
       return;
     }
 
@@ -1749,7 +1750,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
     const worksheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Prestations');
-    XLSX.writeFile(workbook, `Prestations_Assurance_${new Date().toISOString().split('T')[0]}.xlsx`);
+    telechargerClasseur(workbook, `Prestations_Assurance_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   // Helper for render sort icon

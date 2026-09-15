@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { telechargerClasseur } from '../../../utils/exportFichier';
 
 /**
  * Génère et télécharge le modèle Excel pour l'importation des Prestations (Factures SALFA)
@@ -143,7 +144,7 @@ export function downloadPrestationsExcelTemplate() {
   ];
   XLSX.utils.book_append_sheet(workbook, wsGuide, 'Guide_Remplissage');
 
-  XLSX.writeFile(workbook, 'Modele_Import_Prestations_Facture_SALFA.xlsx');
+  telechargerClasseur(workbook, 'Modele_Import_Prestations_Facture_SALFA.xlsx');
 }
 
 /**
@@ -308,5 +309,5 @@ export function downloadDecomptesExcelTemplate() {
   ];
   XLSX.utils.book_append_sheet(workbook, wsGuide, 'Guide_Rattachement');
 
-  XLSX.writeFile(workbook, 'Modele_Import_Reglements_Decompte_Assurance.xlsx');
+  telechargerClasseur(workbook, 'Modele_Import_Reglements_Decompte_Assurance.xlsx');
 }

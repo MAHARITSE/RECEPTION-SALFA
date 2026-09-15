@@ -15,9 +15,15 @@ import { PaiementGlobalModal } from './billing/PaiementGlobalModal';
 import { societeEstPayeurGlobal } from '../utils/societeExclusions';
 import { formatDate } from '../utils/formatters';
 
-type Props = PrestationsViewProps & { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>> };
+type Props = PrestationsViewProps & {
+  state: AppState;
+  setState: React.Dispatch<React.SetStateAction<AppState>>;
+  /** Dossiers de bloc/hospitalisation sortis avec un solde ouvert (raccourci). */
+  reliquatsAHuiter?: number;
+  onOuvrirReliquats?: () => void;
+};
 
-export function BillingWorkspace({ state, setState, onFusionPrescription, onAnnulerFusion, ...details }: Props) {
+export function BillingWorkspace({ state, setState, reliquatsAHuiter = 0, onOuvrirReliquats, onFusionPrescription, onAnnulerFusion, ...details }: Props) {
   const formatMoney = (value: number, currency = state.ticketSettings.currency) => `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(value)} ${currency}`;
   const [mode, setMode] = useState<'factures' | 'detaillee'>('factures');
   const [month, setMonth] = useState('');
@@ -118,6 +124,18 @@ export function BillingWorkspace({ state, setState, onFusionPrescription, onAnnu
           <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-surface-active text-ink font-bold">{visible.length}</span>
         </button>
       </div>
+      {onOuvrirReliquats && (
+        <button type="button" onClick={onOuvrirReliquats}
+          className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition cursor-pointer ${
+            reliquatsAHuiter
+              ? 'border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200'
+              : 'border-line bg-surface text-ink-muted hover:bg-surface-muted'}`}
+          title="Patients sortis d'hospitalisation ou de bloc alors qu'il reste une somme due au centre">
+          <Banknote className="w-3.5 h-3.5" />
+          <span>Reliquats Bloc &amp; Hospit.</span>
+          <span className={`px-1.5 py-0.5 text-[10px] rounded-full font-bold ${reliquatsAHuiter ? 'bg-amber-200 text-amber-900 dark:bg-amber-500/25 dark:text-amber-100' : 'bg-surface-hover text-ink-faint'}`}>{reliquatsAHuiter}</span>
+        </button>
+      )}
       <label className="text-sm text-ink">Mois <input aria-label="Mois de facturation" type="month" value={month} onChange={event => setMonth(event.target.value)} className="ml-2 rounded-lg border border-line bg-field p-2" /></label>
       {month && <button type="button" className="text-xs text-accent underline" onClick={() => setMonth('')}>Tous les mois</button>}
     </div>
