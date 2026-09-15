@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Printer, Receipt, FileText, Info, Search, X } from 'lucide-react';
+import { Printer, Receipt, FileText, Info, Search, X, Combine, FilePlus2 } from 'lucide-react';
 import type { AppState } from '../../../store';
+import { addAuditLog, familyManagesStock } from '../../../store';
+import type { AjoutFacturier } from '../../../types';
+import type { LignePrestation, Prestation } from '../types';
 import { IS_WAMP_BUILD } from '../../../wamp';
 import { issueMonthlyInvoiceInBrowser } from '../../../browserDb';
 import { billingTotals, categoryLabels, collectBillingDocuments, documentsForScope, monthlyGroups, monthlyScopeId, preserveMonthlyInvoices, type BillingDocument, type MonthlyScope } from '../monthlyBilling';
 import { auditArticleFamilies } from '../billingFamilies';
-import { printIndividualBillingDocument, printMonthlyInvoice, printTwoPerPage } from '../printBilling';
-import { documentCorrespondRecherche, nomClientGenerique, normaliserRecherche } from '../utils/rechercheDocument';
+import { printIndividualBillingDocument, printMergedBillingDocuments, printMonthlyInvoice, printTwoPerPage } from '../printBilling';
+import { PrescriptionEditModal } from './billing/PrescriptionEditModal';
+import { deltaStockVentesOmises } from '../utils/stockVentesOmises';
+import { documentCorrespondRecherche, factureCorrespondRecherche, nomClientGenerique, normaliserRecherche } from '../utils/rechercheDocument';
 import { formatDate } from '../utils/formatters';
 
 type Props = { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>> };
@@ -30,8 +35,14 @@ export function ComptoirExterneView({ state, setState }: Props) {
   // Vue Détaillée : un dossier par nom de client ; le double-clic ouvre
   // la liste complète de ses factures (dates + impression).
   const [clientOuvert, setClientOuvert] = useState<{ cle: string; nom: string } | null>(null);
-  // Sélection des factures du client ouvert → impression « 2 par page A4 ».
+  // Sélection des factures du client ouvert → impression « 2 par page A4 » ou fusion.
   const [selection, setSelection] = useState<Record<string, boolean>>({});
+  // Recherche propre à la fiche client (n°, date, articles, montants), sans filtre de mois.
+  const [rechercheFacture, setRechercheFacture] = useState('');
+  // Fusion en attente du nom à inscrire (client sans nom propre).
+  const [fusionNom, setFusionNom] = useState<BillingDocument[] | null>(null);
+  // Prescription ouverte (ventes omises / ordonnances externes, comme les sociétés).
+  const [prescriptionDoc, setPrescriptionDoc] = useState<BillingDocument | null>(null);
   const articleIssues = useMemo(() => auditArticleFamilies(state), [state]);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -56,6 +67,16 @@ export function ComptoirExterneView({ state, setState }: Props) {
       .map(g => ({ ...g, docs: g.docs.slice().sort((a, b) => b.date.localeCompare(a.date) || a.number.localeCompare(b.number)) }))
       .sort((a, b) => a.nom.localeCompare(b.nom));
   }, [visible]);
+  // Fiche client ouverte : TOUTES ses factures, toutes dates confondues, sans
+  // le filtre mois ni la recherche extérieure (« sans filtre ») — la fiche a
+  // son propre champ de recherche (pré-rempli avec la recherche extérieure).
+  const docsClientOuvert = useMemo(() => {
+    if (!clientOuvert) return [];
+    return documents
+      .filter(d => (normaliserRecherche(d.client) || 'sans-nom') === clientOuvert.cle)
+      .slice()
+      .sort((a, b) => b.date.localeCompare(a.date) || a.number.localeCompare(b.number));
+  }, [documents, clientOuvert]);
 
   useEffect(() => { setError(''); setNotice(''); }, [month]);
 
@@ -83,11 +104,19 @@ export function ComptoirExterneView({ state, setState }: Props) {
   }
 
   function confirmerNomFacture() {
-    const doc = factureNom;
     const nom = nomFacture.trim();
-    if (!doc || !nom) return;
-    // Le nom saisi ne fait qu'être imprimé sur la facture : la base n'est
-    // PAS modifiée (la pièce garde son libellé générique et ses données).
+    if (!nom) return;
+    // Le nom saisi ne fait qu'être imprimé : la base n'est PAS modifiée
+    // (les pièces gardent leur libellé générique et leurs données).
+    if (fusionNom && fusionNom.length) {
+      const docs = fusionNom;
+      setFusionNom(null);
+      printMergedBillingDocuments(state, docs, nom);
+      setNotice(`${docs.length} facture(s) fusionnée(s) en une seule facture — A4 paysage.`);
+      return;
+    }
+    const doc = factureNom;
+    if (!doc) return;
     setFactureNom(null);
     printIndividualBillingDocument(state, { ...doc, client: nom });
   }
@@ -95,13 +124,103 @@ export function ComptoirExterneView({ state, setState }: Props) {
   /** Impression « 2 factures par page A4 » des factures cochées du client ouvert. */
   function imprimerSelectionDeuxParPage() {
     if (!clientOuvert) return;
-    const groupe = groupesClients.find(g => g.cle === clientOuvert.cle);
-    if (!groupe) return;
-    const docs = groupe.docs.filter(d => selection[d.id])
-      .map(d => nomClientGenerique(d.client) ? { ...d, client: groupe.nom } : d);
+    const docs = docsClientOuvert.filter(d => selection[d.id])
+      .map(d => nomClientGenerique(d.client) ? { ...d, client: clientOuvert.nom } : d);
     if (!docs.length) { setNotice('Cochez d’abord au moins une facture à imprimer.'); return; }
     printTwoPerPage(state, docs);
     setNotice(`${docs.length} facture(s) envoyée(s) à l’impression — 2 par page A4.`);
+  }
+
+  /** Fusion des factures cochées en UNE seule facture (A4 paysage, suite à droite). */
+  function fusionnerSelection() {
+    if (!clientOuvert) return;
+    const docs = docsClientOuvert.filter(d => selection[d.id]);
+    if (!docs.length) { setNotice('Cochez d’abord au moins une facture à fusionner.'); return; }
+    if (nomClientGenerique(clientOuvert.nom)) { setNomFacture(''); setFusionNom(docs); return; }
+    printMergedBillingDocuments(state, docs, clientOuvert.nom);
+    setNotice(`${docs.length} facture(s) fusionnée(s) en une seule facture — A4 paysage.`);
+  }
+
+  /** Ajouts du facturier déjà enregistrés sur la pièce d'origine (facture ou vente). */
+  const ajoutsDuDoc = (d: BillingDocument): AjoutFacturier[] =>
+    state.invoices.find(i => i.id === d.sourceId)?.ajoutsFacturier
+    || state.ventes.find(v => v.id === d.sourceId)?.ajoutsFacturier
+    || [];
+
+  /**
+   * Adapte une pièce comptoir / externe au MODAL prescription des sociétés :
+   * lignes Caisse reconstruites depuis la pièce d'origine (verrouillées 🔒)
+   * + ajouts du facturier (modifiables). Rien n'est copié en base assurance.
+   */
+  function prestationPourDoc(d: BillingDocument): Prestation {
+    const inv = state.invoices.find(i => i.id === d.sourceId);
+    const lignesCaisse: LignePrestation[] = inv
+      ? inv.items.map((it, index) => ({
+          id: `${d.id}:caisse:${index}`, prestationId: d.id, code: it.code || '', libelle: it.description,
+          totalPrestation: it.amount, totalPaye: 0, origine: 'caisse' as const, quantity: it.quantity, prixUnitaire: it.unitPrice,
+        }))
+      : (state.venteLines || []).filter(l => l.venteId === d.sourceId).map((l, index) => ({
+          id: `${d.id}:caisse:${index}`, prestationId: d.id, code: '', libelle: l.articleName,
+          totalPrestation: Math.round(l.quantity * l.unitPrice * (1 - l.discount / 100) * 100) / 100, totalPaye: 0,
+          origine: 'caisse' as const, quantity: l.quantity, prixUnitaire: l.unitPrice,
+        }));
+    const ajouts: LignePrestation[] = ajoutsDuDoc(d).map(a => ({
+      id: a.id, prestationId: d.id, code: a.code, libelle: a.libelle, totalPrestation: a.totalPrestation,
+      ticketModerateur: a.ticketModerateur || 0,
+      montantARembourser: Math.round((a.totalPrestation - (a.ticketModerateur || 0)) * 100) / 100,
+      totalPaye: 0, origine: a.origine, articleId: a.articleId,
+      quantity: a.quantity, remisePct: a.remisePct, prixUnitaire: a.prixUnitaire, dateActe: a.dateActe,
+    }));
+    const vente = !inv ? state.ventes.find(v => v.id === d.sourceId) : undefined;
+    return {
+      id: d.id, numeroFacture: d.number, date: d.date, societeId: '', societeNom: d.client,
+      sousSociete: d.subCompany || '', personneId: '', statut: 'Payé',
+      lignes: [...lignesCaisse, ...ajouts],
+      totalPrestation: d.total, participation: d.copay, montantARembourser: d.payable,
+      dateCreation: d.date, commentaires: inv?.commentaireFacturier || vente?.commentaireFacturier,
+    };
+  }
+
+  /**
+   * Enregistre la prescription d'une pièce comptoir / externe : SEULS les
+   * ajouts (omissions / ordonnances externes) et le commentaire sont conservés
+   * sur la pièce d'origine — ses lignes Caisse restent intactes. Les ventes
+   * omises reliées au catalogue régularisent le stock pharmacie (comme les
+   * sociétés) ; les ordonnances externes n'ont aucun impact stock.
+   */
+  function enregistrerPrescriptionComptoir(doc: BillingDocument, next: Prestation) {
+    const ajouts: AjoutFacturier[] = next.lignes
+      .filter(l => l.origine === 'omission' || l.origine === 'ordonnance_externe')
+      .map(l => ({
+        id: l.id, code: l.code || '', libelle: (l.libelle || '').trim(), quantity: l.quantity,
+        remisePct: l.remisePct, prixUnitaire: l.prixUnitaire, totalPrestation: l.totalPrestation,
+        ticketModerateur: l.ticketModerateur || 0, origine: l.origine as 'omission' | 'ordonnance_externe',
+        articleId: l.articleId, dateActe: l.dateActe,
+      }));
+    const commentaires = (next.commentaires || '').trim() || undefined;
+    const avant: LignePrestation[] = ajoutsDuDoc(doc).map(a => ({ ...a, prestationId: doc.id, totalPaye: 0 } as LignePrestation));
+    const mouvements = deltaStockVentesOmises({ lignes: avant } as Prestation, { lignes: next.lignes } as Prestation);
+    setState(prev => {
+      const articles = [...prev.articles];
+      const appliques: string[] = [];
+      for (const m of mouvements) {
+        const idx = articles.findIndex(a => a.id === m.articleId);
+        if (idx < 0 || !familyManagesStock(articles[idx].family, prev.familles)) continue;
+        articles[idx] = { ...articles[idx], stockPharmacie: Math.max(0, articles[idx].stockPharmacie - m.qte) };
+        appliques.push(`${articles[idx].name} (${m.qte > 0 ? '−' : '+'}${Math.abs(m.qte)})`);
+      }
+      const nextState: AppState = {
+        ...prev, articles,
+        invoices: prev.invoices.map(i => i.id === doc.sourceId ? { ...i, ajoutsFacturier: ajouts, commentaireFacturier: commentaires } : i),
+        ventes: prev.ventes.map(v => v.id === doc.sourceId ? { ...v, ajoutsFacturier: ajouts, commentaireFacturier: commentaires } : v),
+      };
+      if (appliques.length) {
+        addAuditLog(nextState, 'ASSURANCE_VENTE_OMISE', `Stock pharmacie régularisé — ${doc.number} : ${appliques.join(', ')}`);
+      }
+      return nextState;
+    });
+    setPrescriptionDoc(null);
+    setNotice(`Prescription ${doc.number} mise à jour — ${ajouts.length} ajout(s) (omissions / ordonnances externes).`);
   }
 
   function renderDossiersTable() {
@@ -115,7 +234,7 @@ export function ComptoirExterneView({ state, setState }: Props) {
           const premiere = g.docs[0];
           return <tr key={g.cle} className="border-t border-line cursor-pointer hover:bg-surface-hover"
             title="Double-clic : voir toutes les factures de ce client"
-            onDoubleClick={() => { setSelection({}); setClientOuvert({ cle: g.cle, nom: g.nom }); }}>
+            onDoubleClick={() => { setSelection({}); setRechercheFacture(recherche); setClientOuvert({ cle: g.cle, nom: g.nom }); }}>
             <td className="p-3 font-semibold text-indigo-700 dark:text-indigo-300 underline decoration-dotted underline-offset-2">
               {g.nom}
               {premiere.dossier && <span className="block text-ink-muted font-normal">{premiere.dossier}</span>}
@@ -202,72 +321,107 @@ export function ComptoirExterneView({ state, setState }: Props) {
 
     {/* ===== MODAL : liste complète des factures d'un client (double-clic sur son nom) ===== */}
     {clientOuvert && (() => {
-      const groupe = groupesClients.find(g => g.cle === clientOuvert.cle);
-      if (!groupe) return null;
-      const totaux = billingTotals(groupe.docs);
+      const nom = clientOuvert.nom;
+      const affiches = docsClientOuvert.filter(d => factureCorrespondRecherche(d, rechercheFacture));
+      const coches = docsClientOuvert.filter(d => selection[d.id]);
+      const totaux = billingTotals(affiches);
+      const rechercheActive = rechercheFacture.trim() !== '';
       return (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200" onMouseDown={e => { if (e.target === e.currentTarget) setClientOuvert(null); }}>
-          <div className="bg-surface rounded-2xl max-w-3xl w-full shadow-2xl flex flex-col max-h-[92vh]" role="dialog" aria-label={`Factures de ${groupe.nom}`}>
+          <div className="bg-surface rounded-2xl max-w-3xl w-full shadow-2xl flex flex-col max-h-[92vh]" role="dialog" aria-label={`Factures de ${nom}`}>
             <div className="flex items-start justify-between gap-3 border-b border-line-soft px-6 py-4">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/25 text-indigo-700 dark:text-indigo-300"><FileText className="w-6 h-6" /></div>
                 <div>
-                  <h3 className="text-lg font-bold text-ink-strong">{groupe.nom}</h3>
-                  <p className="text-xs text-ink-muted mt-0.5">{groupe.docs.length} facture(s) — toutes les dates</p>
+                  <h3 className="text-lg font-bold text-ink-strong">{nom}</h3>
+                  <p className="text-xs text-ink-muted mt-0.5">{docsClientOuvert.length} facture(s) — toutes les dates{rechercheActive && ` — ${affiches.length} affichée(s)`}</p>
                 </div>
               </div>
               <button onClick={() => setClientOuvert(null)} aria-label="Fermer" className="p-2 rounded-xl text-ink-faint hover:text-ink hover:bg-surface-hover transition cursor-pointer"><X className="w-5 h-5" /></button>
             </div>
             <div className="px-6 py-4 overflow-y-auto">
-              <p className="mb-2 text-[11px] text-ink-muted flex items-center gap-1.5"><Printer size={13} className="text-indigo-500" /> Cochez plusieurs factures puis « Imprimer la sélection — 2 par page A4 » pour économiser le papier (2 factures côte à côte par feuille A4 paysage).</p>
+              <div className="mb-2 flex items-center gap-2">
+                <span className="relative inline-block flex-1">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 w-3.5 h-3.5 -translate-y-1/2 text-ink-faint" />
+                  <input aria-label="Rechercher une facture du client" type="text" value={rechercheFacture}
+                    onChange={event => setRechercheFacture(event.target.value)} placeholder="Rechercher : n° facture, date, article, montant…"
+                    title="Recherche sans filtre de mois : n° facture, date, article ou montant"
+                    className="w-full rounded-lg border border-line bg-field py-2 pl-8 pr-8 text-xs" />
+                  {rechercheFacture && <button type="button" aria-label="Effacer la recherche de facture" onClick={() => setRechercheFacture('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink transition cursor-pointer"><X className="w-3.5 h-3.5" /></button>}
+                </span>
+              </div>
+              <p className="mb-2 text-[11px] text-ink-muted flex items-center gap-1.5"><Printer size={13} className="text-indigo-500" /> Cochez plusieurs factures puis « Imprimer la sélection — 2 par page A4 » pour économiser le papier (2 factures côte à côte par feuille A4 paysage), ou « Fusionner » pour n'en faire qu'une seule facture.</p>
+              <p className="mb-2 text-[11px] text-ink-muted flex items-center gap-1.5"><FilePlus2 size={13} className="text-emerald-600" /> <span><strong>Double-cliquez sur un n° facture</strong> (ou 🧾) pour ouvrir sa prescription et y saisir, comme dans les sociétés, les <strong>ventes omises</strong> (− stock pharmacie) ou les <strong>ordonnances externes</strong> remboursées par l'hôpital (sans stock).</span></p>
               <div className="overflow-x-auto rounded-xl border border-line">
-                <table className="w-full text-left text-xs" aria-label={`Factures de ${groupe.nom}`}>
+                <table className="w-full text-left text-xs" aria-label={`Factures de ${nom}`}>
                   <thead className="bg-surface-muted text-ink-secondary"><tr>
                     <th className="p-2.5 w-10">
-                      <input type="checkbox" aria-label="Tout sélectionner" title="Tout sélectionner / tout désélectionner"
-                        checked={groupe.docs.length > 0 && groupe.docs.every(d => selection[d.id])}
-                        onChange={e => { const on = e.target.checked; setSelection(Object.fromEntries(groupe.docs.map(d => [d.id, on]))); }}
+                      <input type="checkbox" aria-label="Tout sélectionner" title="Tout sélectionner / tout désélectionner (factures affichées)"
+                        checked={affiches.length > 0 && affiches.every(d => selection[d.id])}
+                        onChange={e => { const on = e.target.checked; setSelection(prev => ({ ...prev, ...Object.fromEntries(affiches.map(d => [d.id, on])) })); }}
                         className="w-4 h-4 accent-indigo-600 cursor-pointer" />
                     </th>
                     {['Date', 'Facture', 'Catégorie', 'Montant', 'Encaissé', 'Impression'].map(label => <th className="p-2.5" key={label}>{label}</th>)}
                   </tr></thead>
                   <tbody>
-                    {groupe.docs.map(d => (
+                    {affiches.map(d => {
+                      const nbAjouts = ajoutsDuDoc(d).length;
+                      return (
                       <tr key={d.id} className="border-t border-line hover:bg-surface-hover">
                         <td className="p-2.5">
-                          <input type="checkbox" aria-label={`Sélectionner la facture ${d.number}`} title="Sélectionner pour l'impression 2 par page A4"
+                          <input type="checkbox" aria-label={`Sélectionner la facture ${d.number}`} title="Sélectionner pour l'impression 2 par page A4 ou la fusion"
                             checked={!!selection[d.id]}
                             onChange={e => setSelection(prev => ({ ...prev, [d.id]: e.target.checked }))}
                             className="w-4 h-4 accent-indigo-600 cursor-pointer" />
                         </td>
                         <td className="p-2.5 whitespace-nowrap">{formatDate(d.date)}</td>
-                        <td className="p-2.5 font-mono font-semibold">{d.number}</td>
+                        <td className="p-2.5 font-mono font-semibold cursor-pointer hover:text-indigo-700 dark:hover:text-indigo-300 underline decoration-dotted underline-offset-2"
+                            title="Double-clic : ouvrir la prescription (ventes omises / ordonnances externes)"
+                            onDoubleClick={() => setPrescriptionDoc(d)}>
+                          {d.number}
+                          {nbAjouts > 0 && <span className="ml-1.5 inline-block px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300 text-[10px] font-bold" title="Lignes ajoutées par le facturier">+{nbAjouts}</span>}
+                        </td>
                         <td className="p-2.5">{categoryLabels[d.category]}</td>
                         <td className="p-2.5 whitespace-nowrap font-mono">{formatMoney(d.total)}</td>
                         <td className="p-2.5 whitespace-nowrap font-mono">{formatMoney(d.paid)}</td>
                         <td className="p-2.5">
-                          <button type="button" onClick={() => demanderFacture(d)} aria-label={`Imprimer la facture ${d.number}`}
-                            title={nomClientGenerique(d.client) ? 'Le nom du client à inscrire sur la facture vous sera demandé' : undefined}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-line-strong px-3 py-2 hover:bg-accent-soft text-accent">
-                            <Printer size={14} />Imprimer
-                          </button>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <button type="button" onClick={() => setPrescriptionDoc(d)} aria-label={`Prescription de la facture ${d.number}`}
+                              title="Prescription : saisir les ventes omises / ordonnances externes (comme dans les sociétés)"
+                              className="inline-flex items-center gap-1 rounded-lg border border-line-strong px-2 py-2 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+                              <FilePlus2 size={14} />
+                            </button>
+                            <button type="button" onClick={() => demanderFacture(d)} aria-label={`Imprimer la facture ${d.number}`}
+                              title={nomClientGenerique(d.client) ? 'Le nom du client à inscrire sur la facture vous sera demandé' : undefined}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-line-strong px-3 py-2 hover:bg-accent-soft text-accent">
+                              <Printer size={14} />Imprimer
+                            </button>
+                          </div>
                         </td>
                       </tr>
-                    ))}
-                    {!groupe.docs.length && <tr><td colSpan={7} className="p-6 text-center text-ink-muted italic">Aucune facture pour cette sélection.</td></tr>}
+                      );
+                    })}
+                    {!affiches.length && <tr><td colSpan={7} className="p-6 text-center text-ink-muted italic">{rechercheActive ? 'Aucune facture ne correspond à cette recherche.' : 'Aucune facture pour cette sélection.'}</td></tr>}
                   </tbody>
                 </table>
               </div>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line-soft px-6 py-3">
-              <span className="text-sm font-bold text-ink-strong">Total : {formatMoney(totaux.total)}</span>
-              <div className="flex items-center gap-3">
+              <span className="text-sm font-bold text-ink-strong">Total{rechercheActive ? ' (affichées)' : ''} : {formatMoney(totaux.total)}</span>
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs text-ink-muted">Encaissé : {formatMoney(totaux.paid)}</span>
+                <button type="button" onClick={fusionnerSelection}
+                  disabled={!coches.length}
+                  title="Regroupe les factures cochées en UNE seule facture (A4 paysage : la suite se poursuit sur la moitié droite de la feuille)"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 disabled:opacity-45 px-3 py-2 text-xs font-semibold text-white cursor-pointer">
+                  <Combine size={14} /> Fusionner en une seule facture ({coches.length})
+                </button>
                 <button type="button" onClick={imprimerSelectionDeuxParPage}
-                  disabled={!groupe.docs.some(d => selection[d.id])}
+                  disabled={!coches.length}
                   title="Imprime les factures cochées deux par deux sur des feuilles A4 paysage"
                   className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-45 px-3 py-2 text-xs font-semibold text-white cursor-pointer">
-                  <Printer size={14} /> Imprimer la sélection — 2 par page A4 ({groupe.docs.filter(d => selection[d.id]).length})
+                  <Printer size={14} /> Imprimer la sélection — 2 par page A4 ({coches.length})
                 </button>
               </div>
             </div>
@@ -276,19 +430,21 @@ export function ComptoirExterneView({ state, setState }: Props) {
       );
     })()}
 
-    {/* Demande du nom lorsque la personne réclame sa facture (pièce sans nom propre) */}
-    {factureNom && (
-      <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-200" onMouseDown={e => { if (e.target === e.currentTarget) setFactureNom(null); }}>
+    {/* Demande du nom lorsque la personne réclame sa facture (pièce sans nom propre) — facture seule ou fusionnée */}
+    {(factureNom || (fusionNom && fusionNom.length > 0)) && (
+      <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-200" onMouseDown={e => { if (e.target === e.currentTarget) { setFactureNom(null); setFusionNom(null); } }}>
         <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-indigo-100 dark:border-indigo-500/25" role="dialog" aria-label="Nom du client pour la facture">
           <div className="px-6 py-4 bg-indigo-50 dark:bg-indigo-500/10 border-b border-indigo-100 dark:border-indigo-500/25 flex items-center gap-2.5">
             <Receipt className="w-5 h-5 text-indigo-700 dark:text-indigo-300" />
             <div>
               <h3 className="text-base font-bold text-indigo-900 dark:text-indigo-200">Nom sur la facture</h3>
-              <p className="text-xs text-indigo-700 dark:text-indigo-300 font-medium">{factureNom.number} — {formatMoney(factureNom.total)}</p>
+              <p className="text-xs text-indigo-700 dark:text-indigo-300 font-medium">{fusionNom && fusionNom.length
+                ? `Fusion de ${fusionNom.length} facture(s) — ${formatMoney(fusionNom.reduce((s, d) => s + d.total, 0))}`
+                : factureNom && `${factureNom.number} — ${formatMoney(factureNom.total)}`}</p>
             </div>
           </div>
           <div className="p-6 space-y-3">
-            <p className="text-sm text-ink-secondary">La personne réclame sa facture : saisissez le nom à imprimer dessus. Ce nom n'est pas enregistré dans la base — les données de la pièce restent inchangées.</p>
+            <p className="text-sm text-ink-secondary">La personne réclame sa facture{fusionNom && fusionNom.length ? ' fusionnée' : ''} : saisissez le nom à imprimer dessus. Ce nom n'est pas enregistré dans la base — les données des pièces restent inchangées.</p>
             <input
               autoFocus
               type="text"
@@ -302,7 +458,7 @@ export function ComptoirExterneView({ state, setState }: Props) {
             {!nomFacture.trim() && <p className="text-xs text-ink-muted">Le nom est obligatoire pour imprimer la facture.</p>}
           </div>
           <div className="px-6 py-4 border-t border-line-soft flex justify-end gap-3">
-            <button type="button" onClick={() => setFactureNom(null)} className="px-4 py-2 rounded-xl text-xs font-semibold border border-line hover:bg-surface-hover transition cursor-pointer">Annuler</button>
+            <button type="button" onClick={() => { setFactureNom(null); setFusionNom(null); }} className="px-4 py-2 rounded-xl text-xs font-semibold border border-line hover:bg-surface-hover transition cursor-pointer">Annuler</button>
             <button type="button" disabled={!nomFacture.trim()} onClick={confirmerNomFacture}
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
               <Printer className="w-4 h-4" /> Imprimer la facture
@@ -310,6 +466,18 @@ export function ComptoirExterneView({ state, setState }: Props) {
           </div>
         </div>
       </div>
+    )}
+
+    {/* ===== MODAL : prescription de la pièce (ventes omises / ordonnances externes, comme les sociétés) ===== */}
+    {prescriptionDoc && (
+      <PrescriptionEditModal
+        prestation={prestationPourDoc(prescriptionDoc)}
+        familles={state.assuranceFamilles || []}
+        articles={state.articles}
+        tarif={prescriptionDoc.category === 'externe' ? 'externe' : 'comptoir'}
+        onClose={() => setPrescriptionDoc(null)}
+        onSave={next => enregistrerPrescriptionComptoir(prescriptionDoc, next)}
+      />
     )}
   </section>;
 }

@@ -44,10 +44,11 @@ export function billingAmountInWords(value: number, currency: string): string {
 
 // The common Administration header is presentation-only; financial snapshots stay frozen.
 // Native pagination handles variable-height rows and repeats the column headings.
-const css = (mode: 'monthly' | 'individual' | 'duo') => `@page{size:${mode === 'duo' ? 'A4 landscape' : `${mode === 'monthly' ? 'A4' : 'A5'} portrait`};margin:${mode === 'monthly' ? '12mm 10mm 16mm' : mode === 'duo' ? '8mm' : '8mm 7mm 12mm'};@bottom-left{content:"Page " counter(page) "/" counter(pages);font:9px Arial,sans-serif;color:#000}}
-*{box-sizing:border-box}body{font:12px Arial,sans-serif;color:#000;background:#fff;margin:0}h1{font-size:19px;text-align:center;margin:8px 0 14px}p{margin:8px 0}table{font:inherit;width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #000;padding:4px;overflow-wrap:anywhere;vertical-align:top}th{text-align:center;font-weight:bold}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}.number{text-align:right;white-space:nowrap}.center{text-align:center}.summary{break-inside:avoid;page-break-inside:avoid}.totals{width:40%;margin-left:auto;margin-top:-1px}.totals th{text-align:right}.totals th{width:62%}.words{margin-top:12px}.invoice-date{text-align:right;margin-top:14px}.note{font-size:9px;margin-top:12px}.individual .identity{margin-bottom:18px}.individual .identity p{margin:9px 0}.individual .net{font-weight:bold}.individual{font-size:10px}.individual h1{font-size:16px}.individual .totals{width:40%;margin-left:60%}.individual .totals th{width:62%}.individual .note{font-size:8px}.monthly{font-size:10px}.monthly h1{font-size:16px;margin-bottom:18px}.monthly .period{margin-bottom:12px}.monthly .invoice-number{text-align:center;margin-bottom:16px}.monthly th,.monthly td{padding:3px 2px}.monthly .acts{font-size:9px;line-height:1.25}.monthly .grand-total{font-weight:bold}.monthly .number{font-variant-numeric:tabular-nums}.monthly .note{font-size:8px}.duo-page{display:flex;gap:5mm;align-items:flex-start;break-after:page;page-break-after:always}.duo-half{flex:1;min-width:0}.duo-half+.duo-half{border-left:1px dashed #999;padding-left:5mm}`;
+type PrintMode = 'monthly' | 'individual' | 'duo' | 'fusion';
+const css = (mode: PrintMode) => `@page{size:${(mode === 'duo' || mode === 'fusion') ? 'A4 landscape' : `${mode === 'monthly' ? 'A4' : 'A5'} portrait`};margin:${mode === 'monthly' ? '12mm 10mm 16mm' : (mode === 'duo' || mode === 'fusion') ? '8mm' : '8mm 7mm 12mm'};@bottom-left{content:"Page " counter(page) "/" counter(pages);font:9px Arial,sans-serif;color:#000}}
+*{box-sizing:border-box}body{font:12px Arial,sans-serif;color:#000;background:#fff;margin:0}h1{font-size:19px;text-align:center;margin:8px 0 14px}p{margin:8px 0}table{font:inherit;width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #000;padding:4px;overflow-wrap:anywhere;vertical-align:top}th{text-align:center;font-weight:bold}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}.number{text-align:right;white-space:nowrap}.center{text-align:center}.summary{break-inside:avoid;page-break-inside:avoid}.totals{width:40%;margin-left:auto;margin-top:-1px}.totals th{text-align:right}.totals th{width:62%}.words{margin-top:12px}.invoice-date{text-align:right;margin-top:14px}.note{font-size:9px;margin-top:12px}.individual .identity{margin-bottom:18px}.individual .identity p{margin:9px 0}.individual .net{font-weight:bold}.individual{font-size:10px}.individual h1{font-size:16px}.individual .totals{width:40%;margin-left:60%}.individual .totals th{width:62%}.individual .note{font-size:8px}.monthly{font-size:10px}.monthly h1{font-size:16px;margin-bottom:18px}.monthly .period{margin-bottom:12px}.monthly .invoice-number{text-align:center;margin-bottom:16px}.monthly th,.monthly td{padding:3px 2px}.monthly .acts{font-size:9px;line-height:1.25}.monthly .grand-total{font-weight:bold}.monthly .number{font-variant-numeric:tabular-nums}.monthly .note{font-size:8px}.duo-page{display:flex;gap:5mm;align-items:flex-start;break-after:page;page-break-after:always}.duo-half{flex:1;min-width:0}.duo-half+.duo-half{border-left:1px dashed #999;padding-left:5mm}.fusion{font-size:10px}.fusion h1{font-size:16px}.fusion-flow{columns:2;column-gap:8mm;column-fill:auto;column-rule:1px dashed #999}.fusion .identity{margin-bottom:10px}.fusion .identity p{margin:5px 0}.fusion .source-row td{background:#f1f5f9;font-weight:bold}.fusion .totals{width:62%;margin-left:38%;margin-top:6px}.fusion .net{font-weight:bold}.fusion .words{margin-top:8px}.fusion .note{font-size:8px}`;
 
-function shell(number: string, kind: 'monthly' | 'individual' | 'duo', content: string, settings?: TicketSettings): string {
+function shell(number: string, kind: PrintMode, content: string, settings?: TicketSettings): string {
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${escape(number)}</title><style>${css(kind)}${INVOICE_HEADER_STYLE}</style></head><body class="${kind}">${settings ? invoiceHeaderMarkup(settings) : ''}${content}</body></html>`;
 }
 
@@ -118,6 +119,58 @@ export function individualBillingPrintHtml(state: AppState, document: BillingDoc
 }
 export function printIndividualBillingDocument(state: AppState, document: BillingDocument): void {
   printDocument(individualBillingPrintHtml(state, document), `Facture ${document.number}`);
+}
+
+/**
+ * FACTURE FUSIONNÉE : plusieurs pièces d'un même client regroupées en UNE
+ * seule facture, imprimée sur A4 paysage en deux colonnes — le contenu
+ * remplit la moitié gauche puis se poursuit sur la moitié droite de la même
+ * feuille (la « 2e page » est juste à côté), et ainsi de suite.
+ */
+function mergedContent(documents: BillingDocument[], clientName: string, issuedAt: string, currency: string): string {
+  const pieces = [...documents].sort((a, b) => a.date.localeCompare(b.date) || a.number.localeCompare(b.number));
+  const gross = Math.round(pieces.reduce((s, d) => s + (d.individualGross ?? d.total), 0) * 100) / 100;
+  const net = Math.round(pieces.reduce((s, d) => s + (d.individualNet ?? d.payable), 0) * 100) / 100;
+  const paid = Math.round(pieces.reduce((s, d) => s + d.paid, 0) * 100) / 100;
+  const reduction = Math.round((gross - net) * 100) / 100;
+  const dates = pieces.map(d => d.date).filter(Boolean).sort();
+  const periode = !dates.length ? '—' : dates[0] === dates[dates.length - 1]
+    ? dateLabel(dates[0])
+    : `${dateLabel(dates[0])} → ${dateLabel(dates[dates.length - 1])}`;
+  let numero = 0;
+  const lignes = pieces.map(d => {
+    const entete = `<tr class="source-row"><td colspan="5">Facture N° ${escape(d.number)} — ${escape(dateLabel(d.date))}</td></tr>`;
+    const items = d.items.map(item => {
+      numero += 1;
+      return `<tr><td class="number">${numero}</td><td>${escape(item.description)}</td><td class="number">${item.quantity == null ? '—' : quantite(item.quantity)}</td><td class="number">${item.unitPrice == null ? '—' : decimal(item.unitPrice)}</td><td class="number">${decimal(item.quantity != null && item.unitPrice != null ? item.quantity * item.unitPrice : item.amount)}</td></tr>`;
+    }).join('') || `<tr><td colspan="5">Voir les articles sur la pièce d’origine (${escape(d.number)}).</td></tr>`;
+    return entete + items;
+  }).join('');
+  return `<div class="fusion-flow">
+    <h1>FACTURE FUSIONNÉE — ${pieces.length} facture${pieces.length > 1 ? 's' : ''}</h1>
+    <div class="identity"><p>Nom :&emsp; <strong>${escape(clientName)}</strong></p>
+    <p>Période :&emsp; ${escape(periode)}</p>
+    <p>Factures regroupées :&emsp; ${pieces.map(d => escape(d.number)).join(' · ')}</p></div>
+    <table aria-label="Articles des factures regroupées"><colgroup><col style="width:6%"><col style="width:54%"><col style="width:8%"><col style="width:14%"><col style="width:18%"></colgroup>
+    <thead><tr><th>N°</th><th>Libellé Article</th><th>Qté</th><th>Prix</th><th>Montant</th></tr></thead>
+    <tbody>${lignes}</tbody></table>
+    <div class="summary"><table class="totals" aria-label="Totaux fusionnés"><tbody>
+    <tr><th>Total Brut</th><td class="number">${decimal(gross)}</td></tr>
+    <tr><th>Remise/Participation</th><td class="number">${decimal(reduction)}</td></tr>
+    <tr class="net"><th>Net à payer</th><td class="number">${decimal(net)}</td></tr>
+    <tr><th>Encaissé</th><td class="number">${decimal(paid)}</td></tr></tbody></table>
+    <p class="words">Arrêtée à la somme de : ${escape(billingAmountInWords(net, currency))}</p>
+    <p class="invoice-date">Date de facture :&emsp; ${escape(dateLabel(issuedAt))}</p>
+    <p class="note">Fusion de ${pieces.length} facture${pieces.length > 1 ? 's' : ''} déjà encaissée${pieces.length > 1 ? 's' : ''} en une seule facture — réimpression sans nouvel encaissement ni nouvelle créance. Montants des pièces d’origine, avant imputation des règlements.</p></div>
+  </div>`;
+}
+export function mergedBillingPrintHtml(state: AppState, documents: BillingDocument[], clientName?: string, printedAt = new Date().toISOString()): string {
+  if (!documents.length) throw new Error('Aucune facture sélectionnée pour la fusion.');
+  const nom = (clientName || documents[0].client || '').trim() || 'Client';
+  return shell(`Facture fusionnée (${documents.length})`, 'fusion', mergedContent(documents, nom, printedAt, state.ticketSettings.currency), state.ticketSettings);
+}
+export function printMergedBillingDocuments(state: AppState, documents: BillingDocument[], clientName?: string): void {
+  printDocument(mergedBillingPrintHtml(state, documents, clientName), `Facture fusionnée (${documents.length})`);
 }
 
 /**

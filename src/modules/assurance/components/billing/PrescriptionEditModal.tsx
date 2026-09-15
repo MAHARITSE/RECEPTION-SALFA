@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { X, Lock, Trash2, Save, FilePlus2, Plus } from 'lucide-react';
 import type { Prestation, LignePrestation, Famille } from '../../types';
-import type { Article } from '../../../../types';
+import type { Article, ClientType } from '../../../../types';
 import { getPrice, formatAr } from '../../../../store';
 import { formatDate } from '../../utils/formatters';
 
@@ -31,6 +31,8 @@ interface Props {
   prestation: Prestation;
   familles: Famille[];
   articles?: Article[];
+  /** Grille de prix à l'ajout d'un article du catalogue ('societe' par défaut). */
+  tarif?: ClientType;
   onClose: () => void;
   /** Reçoit la prescription complète (lignes d'origine intactes + ajouts). */
   onSave: (next: Prestation) => void;
@@ -46,7 +48,7 @@ interface Props {
  *    les ajouts du facturier (clic = recharger dans la barre pour correction) ;
  *  - pied de tableau TOTAL + enregistrement de la prescription.
  */
-export function PrescriptionEditModal({ prestation, familles, articles = [], onClose, onSave }: Props) {
+export function PrescriptionEditModal({ prestation, familles, articles = [], tarif = 'societe', onClose, onSave }: Props) {
   const originales = prestation.lignes.filter(l => !l.origine || l.origine === 'caisse');
   const [ajouts, setAjouts] = useState<LignePrestation[]>(() =>
     prestation.lignes.filter(l => l.origine === 'omission' || l.origine === 'ordonnance_externe').map(l => ({ ...l })));
@@ -195,7 +197,7 @@ export function PrescriptionEditModal({ prestation, familles, articles = [], onC
                           <span className="truncate">[{a.family}] {a.name}</span>
                           <span className="flex items-center gap-2 shrink-0">
                             <span className={`font-mono text-[10px] ${i === idx ? 'text-white/90' : 'text-ink-faint'}`}>Stock: {a.stockPharmacie}</span>
-                            <span className={`font-mono ${i === idx ? 'text-white' : 'text-blue-600 dark:text-cyan-400 font-medium'}`}>{formatAr(getPrice(a, 'societe'))}</span>
+                            <span className={`font-mono ${i === idx ? 'text-white' : 'text-blue-600 dark:text-cyan-400 font-medium'}`}>{formatAr(getPrice(a, tarif))}</span>
                           </span>
                         </div>
                       ))}

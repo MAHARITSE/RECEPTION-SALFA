@@ -214,6 +214,26 @@ export interface EchoRequest {
   completedAt?: string;
 }
 
+/**
+ * Ligne ajoutée par le facturier assurance sur une facture comptoir / externe :
+ * vente omise (produit réellement sorti sans saisie — régularise le stock
+ * pharmacie) ou ordonnance externe remboursée par l'hôpital (aucun impact
+ * stock). Structure miroir de LignePrestation (module assurance).
+ */
+export interface AjoutFacturier {
+  id: string;
+  code: string;
+  libelle: string;
+  quantity?: number;
+  remisePct?: number;
+  prixUnitaire?: number;
+  totalPrestation: number;
+  ticketModerateur?: number;
+  origine: 'omission' | 'ordonnance_externe';
+  articleId?: string;
+  dateActe?: string;
+}
+
 export interface Invoice {
   id: string; patientId?: string; consultationId?: string; clientName?: string;
   clientType: ClientType; items: InvoiceItem[]; totalAmount: number;
@@ -226,6 +246,21 @@ export interface Invoice {
    */
   numeroFacture?: string;
   paidAt?: string; paidBy?: string; createdAt: string; isExternal: boolean;
+  /**
+   * Médecin prescripteur saisi à la caisse (vente directe client externe).
+   * Repris sur le ticket de caisse, la facture A5 et les bons d'examen
+   * (y compris lors des réimpressions depuis la clôture).
+   */
+  prescriberName?: string;
+  /**
+   * Ajouts du facturier assurance sur une facture comptoir / externe (ventes
+   * omises / ordonnances externes) — SUPERPOSÉS à la facture Caisse, sans
+   * jamais modifier ses lignes d'origine. Même mécanisme que les ajouts des
+   * prescriptions sociétés (origine 'omission' / 'ordonnance_externe').
+   */
+  ajoutsFacturier?: AjoutFacturier[];
+  /** Commentaire du facturier sur la prescription (suivi assurance). */
+  commentaireFacturier?: string;
   /**
    * Paiement validé par la caisse en CRÉDIT SOCIÉTÉ : aucun encaissement en
    * espèces n'a eu lieu, la somme est portée au crédit (compte) de la société
@@ -788,6 +823,13 @@ export interface Vente {
   /** Références vers les anciennes tables pour la migration. */
   legacyInvoiceId?: string;
   legacyHbRecordId?: string;
+  /**
+   * Ajouts du facturier assurance (ventes omises / ordonnances externes) —
+   * superposés à la vente, sans modifier ses lignes d'origine.
+   */
+  ajoutsFacturier?: AjoutFacturier[];
+  /** Commentaire du facturier sur la prescription (suivi assurance). */
+  commentaireFacturier?: string;
 }
 
 /** Paiement partiel rattaché à une vente (utile pour hospit/bloc). */

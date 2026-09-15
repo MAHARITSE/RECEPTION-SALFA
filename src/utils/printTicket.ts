@@ -99,7 +99,7 @@ export function printPaymentTicket(
   patient?: Patient,
   cashier?: User,
   company?: Company,
-  opts?: { creditSociete?: boolean },
+  opts?: { creditSociete?: boolean; prescriberName?: string },
 ) {
   const date = new Date(invoice.paidAt || invoice.createdAt);
   // Facture validée en CRÉDIT SOCIÉTÉ : aucun encaissement en espèces.
@@ -107,10 +107,13 @@ export function printPaymentTicket(
   const customer = patient
     ? `${patient.lastName} ${patient.firstName}`
     : invoice.clientName || 'Client comptoir';
+  // Médecin prescripteur (vente externe) : repris sur le ticket quand il est connu.
+  const prescriberName = (opts?.prescriberName || invoice.prescriberName || '').trim();
   const detailRows = [
     patient?.dossier ? `<div>Dossier : ${escapeHtml(patient.dossier)}</div>` : '',
     patient?.company ? `<div>Société : ${escapeHtml(patient.company)}</div>` : '',
     company ? `<div>Société : ${escapeHtml(company.name)}</div>` : '',
+    prescriberName ? `<div>Médecin prescripteur : ${escapeHtml(prescriberName)}</div>` : '',
     cashier ? `<div>${credit ? 'Validé par' : 'Caissier'} : ${escapeHtml(cashier.name)}</div>` : '',
     credit ? '<div class="bold">Règlement : CRÉDIT SOCIÉTÉ (sans espèces)</div>' : '',
     invoice.isExternal ? '<div><i>Vente directe comptoir</i></div>' : '',
