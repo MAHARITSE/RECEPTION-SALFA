@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import type { AppState } from '../src/store';
 import type { BillingDocument } from '../src/modules/assurance/monthlyBilling';
-import { mergedBillingPrintHtml } from '../src/modules/assurance/printBilling';
+import { mergedBillingPrintHtml, twoPerPagePrintHtml } from '../src/modules/assurance/printBilling';
 import { factureCorrespondRecherche } from '../src/modules/assurance/utils/rechercheDocument';
 
 const doc = (overrides: Partial<BillingDocument> = {}): BillingDocument => ({
@@ -37,12 +37,18 @@ test('recherche fiche : n°, date ISO/FR, article, montant, multi-mots', () => {
 test('fusion : une seule facture A4 paysage, 2 colonnes, totaux cumulés', () => {
   const state = { ticketSettings: { currency: 'Ar' }, currentUser: { id: 'u', name: 'Test' } } as unknown as AppState;
   const html = mergedBillingPrintHtml(state, [doc(), docAout()], 'RAKOTO Jeanne');
-  expect(html).toContain('FACTURE FUSIONNÉE');
-  expect(html).toContain('26FA0909001');
-  expect(html).toContain('26FA0815007');
+  // La facture fusionnée se lit comme UNE facture : plus de titre de fusion ni
+  // de liste des pièces d'origine.
+  expect(html).not.toContain('FUSIONNÉE');
+  expect(html).not.toContain('Factures regroupées');
+  expect(html).not.toContain('source-row');
+  // Numéro de la facture = celui de la pièce la PLUS ANCIENNE (août).
+  expect(html).toContain('<h1>FACTURE&nbsp; 26FA0815007</h1>');
   expect(html).toContain('RAKOTO Jeanne');
   expect(html).toContain('Amoxicilline 1g');
   expect(html).toContain('NFS (labo)');
+  // Les articles de la pièce la plus ancienne sortent en premier.
+  expect(html.indexOf('NFS (labo)')).toBeLessThan(html.indexOf('Amoxicilline 1g'));
   // A4 paysage, contenu à gauche puis suite à droite.
   expect(html).toContain('size:A4 landscape');
   expect(html).toContain('fusion-flow');
@@ -54,9 +60,53 @@ test('fusion : une seule facture A4 paysage, 2 colonnes, totaux cumulés', () =>
   expect(html).toContain('Encaissé');
   expect(html).toContain('Arrêtée à la somme de');
   expect(html).toContain('sans nouvel encaissement ni nouvelle créance');
-  // Ordre chronologique : août avant septembre.
-  expect(html.indexOf('26FA0815007')).toBeLessThan(html.indexOf('26FA0909001'));
+  // Aucune autre pièce n'est numérotée : la plus récente n'apparaît plus comme numéro de facture.
+  expect(html).not.toContain('26FA0909001');
   expect(() => mergedBillingPrintHtml(state, [])).toThrow('Aucune facture sélectionnée pour la fusion.');
+});
+
+test('fusion : l’en-tête est posé une seule fois, en première colonne, jamais sur la suite', () => {
+  const settings = {
+    facilityName: 'CENTRE SALFA TEST', currency: 'Ar', customInvoiceHeader: true,
+    invoiceHeaderHtml: '<div><strong>EN-TÊTE FUSIONNÉE</strong></div>',
+  } as unknown as AppState['ticketSettings'];
+  const state = { ticketSettings: settings, currentUser: { id: 'u', name: 'Test' } } as unknown as AppState;
+  const html = mergedBillingPrintHtml(state, [doc(), docAout()], 'RAKOTO Jeanne');
+  // Un seul en-tête, à l'intérieur du flux en deux colonnes : la « 2e page »
+  // (colonne de droite) n'en porte aucun.
+  expect(html.match(/class="invoice-header"/g)).toHaveLength(1);
+  expect(html.indexOf('class="invoice-header"')).toBeGreaterThan(html.indexOf('fusion-flow'));
+  expect(html).toContain('.fusion-flow>.invoice-header{margin-bottom:4mm}');
+  // En-tête collé à son titre : la ligne d'articles ne peut pas s'y accrocher.
+  expect(html).toContain('break-after:avoid');
+});
+
+test('2 par page : deux en-têtes séparés, un par facture, jamais un en-tête étendu', async ({ page }) => {
+  const settings = { facilityName: 'CENTRE SALFA TEST', address: 'Toliara', currency: 'Ar' } as unknown as AppState['ticketSettings'];
+  const state = { ticketSettings: settings, currentUser: { id: 'u', name: 'Test' } } as unknown as AppState;
+  const html = twoPerPagePrintHtml(state, [doc(), docAout()]);
+  // Un en-tête PAR facture, chacun À L'INTÉRIEUR de sa demi-feuille A5 :
+  // jamais un en-tête unique étendu sur toute la largeur de la feuille.
+  expect(html.match(/class="invoice-header"/g)).toHaveLength(2);
+  expect(html).toContain('.duo-half>.invoice-header');
+  await page.setContent(html);
+  await expect(page.locator('.duo-half .invoice-header')).toHaveCount(2);
+  await expect(page.locator('body > .invoice-header')).toHaveCount(0);
+  const moities = page.locator('.duo-half.individual');
+  await expect(moities).toHaveCount(2);
+  for (const moitie of [0, 1]) {
+    await expect(moities.nth(moitie)).toContainText('CENTRE SALFA TEST');
+    await expect(moities.nth(moitie)).toContainText('Toliara');
+  }
+  await expect(moities.nth(0)).toContainText('26FA0909001');
+  await expect(moities.nth(0)).toContainText('Amoxicilline 1g');
+  await expect(moities.nth(1)).toContainText('26FA0815007');
+  await expect(moities.nth(1)).toContainText('NFS (labo)');
+  // Chaque facture garde sa pagination : une facture longue ne réclame pas
+  // l'en-tête de sa voisine sur sa deuxième page.
+  const longHtml = twoPerPagePrintHtml(state, [doc({ items: doc().items.concat(doc().items, doc().items, doc().items, doc().items, doc().items, doc().items, doc().items, doc().items, doc().items, doc().items) }), docAout()]);
+  expect(longHtml.match(/class="invoice-header"/g)).toHaveLength(2);
+  expect(longHtml).toContain('break-after:avoid');
 });
 
 /* ===== Tests UI : recherche sans filtre + bouton Fusionner dans la fiche client ===== */
@@ -163,10 +213,12 @@ test('UI : fusion des factures cochées en une seule facture A4 paysage', async 
   await expect(page.locator('iframe[data-salfa-print]')).toHaveCount(1);
 
   // Une seule facture imprimée, A4 paysage, avec les 2 pièces et le nom saisi.
-  await expect.poll(() => printsHtml(page)).toContain('FACTURE FUSIONNÉE');
+  await expect.poll(() => printsHtml(page)).toContain('FACTURE&nbsp; 26FA0815001');
   const html = await printsHtml(page);
-  expect(html).toContain('26FA0910001');
-  expect(html).toContain('26FA0815001');
+  // Numéro de la plus ancienne des factures fusionnées, et aucune liste des pièces.
+  expect(html).not.toContain('26FA0910001');
+  expect(html).not.toContain('Factures regroupées');
+  expect(html).not.toContain('source-row');
   expect(html).toContain('RAKOTO Jeanne');
   expect(html).toContain('Amoxicilline 1g');
   expect(html).toContain('size:A4 landscape');
