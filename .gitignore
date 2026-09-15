@@ -18,3 +18,8 @@ wamp_deploy/sauvegardes/
 .arena/
 test-results/
 playwright-report/
+
+# Gestionnaire officiel : npm (package-lock.json). Pas de lockfile bun — il fait
+# echouer le deploiement (le bun 1.2.15 distant ne lit pas bun.lock v2).
+bun.lock
+bun.lockb
