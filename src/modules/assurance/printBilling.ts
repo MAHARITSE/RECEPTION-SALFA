@@ -43,18 +43,22 @@ export function billingAmountInWords(value: number, currency: string): string {
 }
 
 // The common Administration header is presentation-only; financial snapshots stay frozen.
-// Native pagination handles variable-height rows and repeats the column headings.
+// Native pagination handles variable-height rows. L'en-tête du tableau ne se
+// répète JAMAIS : une facture qui déborde sur une 2e page y poursuit simplement
+// ses lignes, sans aucun en-tête (thead = row-group, pas header-group).
 type PrintMode = 'monthly' | 'individual' | 'duo' | 'fusion';
 const css = (mode: PrintMode) => `@page{size:${(mode === 'duo' || mode === 'fusion') ? 'A4 landscape' : `${mode === 'monthly' ? 'A4' : 'A5'} portrait`};margin:${mode === 'monthly' ? '12mm 10mm 16mm' : (mode === 'duo' || mode === 'fusion') ? '8mm' : '8mm 7mm 12mm'};@bottom-left{content:"Page " counter(page) "/" counter(pages);font:9px Arial,sans-serif;color:#000}}
-*{box-sizing:border-box}body{font:12px Arial,sans-serif;color:#000;background:#fff;margin:0}h1{font-size:19px;text-align:center;margin:8px 0 14px}p{margin:8px 0}table{font:inherit;width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #000;padding:4px;overflow-wrap:anywhere;vertical-align:top}th{text-align:center;font-weight:bold}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}.number{text-align:right;white-space:nowrap}.center{text-align:center}.summary{break-inside:avoid;page-break-inside:avoid}.totals{width:40%;margin-left:auto;margin-top:-1px}.totals th{text-align:right}.totals th{width:62%}.words{margin-top:12px}.invoice-date{text-align:right;margin-top:14px}.note{font-size:9px;margin-top:12px}.individual .identity{margin-bottom:18px}.individual .identity p{margin:9px 0}.individual .net{font-weight:bold}.individual{font-size:10px}.individual h1{font-size:16px}.individual .totals{width:40%;margin-left:60%}.individual .totals th{width:62%}.individual .note{font-size:8px}.monthly{font-size:10px}.monthly h1{font-size:16px;margin-bottom:18px}.monthly .period{margin-bottom:12px}.monthly .invoice-number{text-align:center;margin-bottom:16px}.monthly th,.monthly td{padding:3px 2px}.monthly .acts{font-size:9px;line-height:1.25}.monthly .grand-total{font-weight:bold}.monthly .number{font-variant-numeric:tabular-nums}.monthly .note{font-size:8px}.duo-page{display:flex;gap:5mm;align-items:flex-start;break-after:page;page-break-after:always}.duo-half{flex:1;min-width:0}.duo-half+.duo-half{border-left:1px dashed #999;padding-left:5mm}.fusion{font-size:10px}.fusion h1{font-size:16px}.fusion-flow{columns:2;column-gap:8mm;column-fill:auto;column-rule:1px dashed #999}.fusion .identity{margin-bottom:10px}.fusion .identity p{margin:5px 0}.fusion .source-row td{background:#f1f5f9;font-weight:bold}.fusion .totals{width:62%;margin-left:38%;margin-top:6px}.fusion .net{font-weight:bold}.fusion .words{margin-top:8px}.fusion .note{font-size:8px}`;
+*{box-sizing:border-box}body{font:12px Arial,sans-serif;color:#000;background:#fff;margin:0}h1{font-size:19px;text-align:center;margin:8px 0 14px}p{margin:8px 0}table{font:inherit;width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #000;padding:4px;overflow-wrap:anywhere;vertical-align:top}th{text-align:center;font-weight:bold}thead{display:table-row-group}tr{break-inside:avoid;page-break-inside:avoid}.number{text-align:right;white-space:nowrap}.center{text-align:center}.summary{break-inside:avoid;page-break-inside:avoid}.totals{width:40%;margin-left:auto;margin-top:-1px}.totals th{text-align:right}.totals th{width:62%}.words{margin-top:12px}.invoice-date{text-align:right;margin-top:14px}.note{font-size:9px;margin-top:12px}.individual .identity{margin-bottom:18px}.individual .identity p{margin:9px 0}.individual .net{font-weight:bold}.individual{font-size:10px}.individual h1{font-size:16px}.individual .totals{width:40%;margin-left:60%}.individual .totals th{width:62%}.individual .note{font-size:8px}.monthly{font-size:10px}.monthly h1{font-size:16px;margin-bottom:18px}.monthly .period{margin-bottom:12px}.monthly .invoice-number{text-align:center;margin-bottom:16px}.monthly th,.monthly td{padding:3px 2px}.monthly .acts{font-size:9px;line-height:1.25}.monthly .grand-total{font-weight:bold}.monthly .number{font-variant-numeric:tabular-nums}.monthly .note{font-size:8px}.duo-page{display:flex;gap:5mm;align-items:flex-start;break-after:page;page-break-after:always}.duo-half{flex:1;min-width:0}.duo-half+.duo-half{border-left:1px dashed #999;padding-left:5mm}.fusion{font-size:10px}.fusion h1{font-size:16px}.fusion-flow{columns:2;column-gap:8mm;column-fill:auto;column-rule:1px dashed #999}.fusion .identity{margin-bottom:10px}.fusion .identity p{margin:5px 0}.fusion .totals{width:62%;margin-left:38%;margin-top:6px}.fusion .net{font-weight:bold}.fusion .words{margin-top:8px}.fusion .note{font-size:8px}`;
 
 function shell(number: string, kind: PrintMode, content: string, settings?: TicketSettings): string {
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${escape(number)}</title><style>${css(kind)}${INVOICE_HEADER_STYLE}</style></head><body class="${kind}">${settings ? invoiceHeaderMarkup(settings) : ''}${content}</body></html>`;
 }
 
 /** Contenu d'une facture individuelle (commun aux impressions A5 et au
- * regroupement « 2 factures par page A4 »). patientCharge, jamais le solde. */
-function individualContent(invoice: MonthlyInvoice): string {
+ * regroupement « 2 factures par page A4 »). patientCharge, jamais le solde.
+ * L'en-tête Administration est posé DANS la facture : une facture = un
+ * en-tête, cantonné à sa page (ou sa moitié de feuille A4). */
+function individualContent(invoice: MonthlyInvoice, settings?: TicketSettings): string {
   const document = invoice.documents[0];
   if (!document) throw new Error('Aucune pièce individuelle à imprimer.');
   const gross = document.individualGross ?? document.total;
@@ -62,7 +66,7 @@ function individualContent(invoice: MonthlyInvoice): string {
   const reduction = Math.round((gross - net) * 100) / 100;
   const payer = document.companyName || (document.category === 'societe' ? invoice.recipient : 'CLIENT COMPTOIR');
   return `
-    <h1>FACTURE&nbsp; ${escape(invoice.number)}</h1>
+    ${settings ? invoiceHeaderMarkup(settings) : ''}<h1>FACTURE&nbsp; ${escape(invoice.number)}</h1>
     <div class="identity"><p>Date de consultation :&emsp; ${escape(dateLabel(document.consultationDate || document.date))}</p>
     <p>Nom :&emsp; <strong>${escape(document.client)}</strong></p>
     <p>Prise en charge :&emsp; ${escape(payer)}</p></div>
@@ -79,7 +83,9 @@ function individualContent(invoice: MonthlyInvoice): string {
 }
 
 function individualHtml(invoice: MonthlyInvoice, settings?: TicketSettings): string {
-  return shell(invoice.number, 'individual', individualContent(invoice), settings);
+  // L'en-tête est déjà dans le contenu (individualContent) : il ne faut pas
+  // en ajouter un second au niveau du document.
+  return shell(invoice.number, 'individual', individualContent(invoice, settings));
 }
 
 /** Pièce individuelle → facture mensuelle factice prête à imprimer. */
@@ -122,13 +128,29 @@ export function printIndividualBillingDocument(state: AppState, document: Billin
 }
 
 /**
+ * Pièces triées de la plus ancienne à la plus récente (date, puis numéro).
+ * La plus ancienne donne son numéro à la facture fusionnée.
+ */
+const chronological = (documents: BillingDocument[]) =>
+  [...documents].sort((a, b) => a.date.localeCompare(b.date) || a.number.localeCompare(b.number));
+
+/** Numéro porté par une fusion : celui de la facture la PLUS ANCIENNE. */
+export function oldestBillingNumber(documents: BillingDocument[]): string {
+  return documents.length ? chronological(documents)[0].number : '';
+}
+
+/**
  * FACTURE FUSIONNÉE : plusieurs pièces d'un même client regroupées en UNE
  * seule facture, imprimée sur A4 paysage en deux colonnes — le contenu
  * remplit la moitié gauche puis se poursuit sur la moitié droite de la même
  * feuille (la « 2e page » est juste à côté), et ainsi de suite.
+ *
+ * La facture porte le NUMÉRO DE LA PLUS ANCIENNE des pièces fusionnées et
+ * les factures d'origine ne sont PAS listées (ni leurs numéros, ni lignes de
+ * séparation) : la feuille se lit comme une seule et même facture.
  */
-function mergedContent(documents: BillingDocument[], clientName: string, issuedAt: string, currency: string): string {
-  const pieces = [...documents].sort((a, b) => a.date.localeCompare(b.date) || a.number.localeCompare(b.number));
+function mergedContent(documents: BillingDocument[], clientName: string, issuedAt: string, currency: string, settings?: TicketSettings): string {
+  const pieces = chronological(documents);
   const gross = Math.round(pieces.reduce((s, d) => s + (d.individualGross ?? d.total), 0) * 100) / 100;
   const net = Math.round(pieces.reduce((s, d) => s + (d.individualNet ?? d.payable), 0) * 100) / 100;
   const paid = Math.round(pieces.reduce((s, d) => s + d.paid, 0) * 100) / 100;
@@ -138,20 +160,19 @@ function mergedContent(documents: BillingDocument[], clientName: string, issuedA
     ? dateLabel(dates[0])
     : `${dateLabel(dates[0])} → ${dateLabel(dates[dates.length - 1])}`;
   let numero = 0;
-  const lignes = pieces.map(d => {
-    const entete = `<tr class="source-row"><td colspan="5">Facture N° ${escape(d.number)} — ${escape(dateLabel(d.date))}</td></tr>`;
-    const items = d.items.map(item => {
-      numero += 1;
-      return `<tr><td class="number">${numero}</td><td>${escape(item.description)}</td><td class="number">${item.quantity == null ? '—' : quantite(item.quantity)}</td><td class="number">${item.unitPrice == null ? '—' : decimal(item.unitPrice)}</td><td class="number">${decimal(item.quantity != null && item.unitPrice != null ? item.quantity * item.unitPrice : item.amount)}</td></tr>`;
-    }).join('') || `<tr><td colspan="5">Voir les articles sur la pièce d’origine (${escape(d.number)}).</td></tr>`;
-    return entete + items;
-  }).join('');
+  // Articles mis à la suite, numérotés en continu : aucune ligne ne cite les
+  // factures d'origine.
+  const lignes = pieces.flatMap(d => d.items.map(item => {
+    numero += 1;
+    return `<tr><td class="number">${numero}</td><td>${escape(item.description)}</td><td class="number">${item.quantity == null ? '—' : quantite(item.quantity)}</td><td class="number">${item.unitPrice == null ? '—' : decimal(item.unitPrice)}</td><td class="number">${decimal(item.quantity != null && item.unitPrice != null ? item.quantity * item.unitPrice : item.amount)}</td></tr>`;
+  })).join('') || '<tr><td colspan="5">Voir les articles sur la pièce d’origine.</td></tr>';
+  // L'en-tête ouvre la première colonne : il coiffe la « première page »,
+  // la colonne de droite (« 2e page ») n'en porte aucun.
   return `<div class="fusion-flow">
-    <h1>FACTURE FUSIONNÉE — ${pieces.length} facture${pieces.length > 1 ? 's' : ''}</h1>
+    ${settings ? invoiceHeaderMarkup(settings) : ''}<h1>FACTURE&nbsp; ${escape(pieces[0].number)}</h1>
     <div class="identity"><p>Nom :&emsp; <strong>${escape(clientName)}</strong></p>
-    <p>Période :&emsp; ${escape(periode)}</p>
-    <p>Factures regroupées :&emsp; ${pieces.map(d => escape(d.number)).join(' · ')}</p></div>
-    <table aria-label="Articles des factures regroupées"><colgroup><col style="width:6%"><col style="width:54%"><col style="width:8%"><col style="width:14%"><col style="width:18%"></colgroup>
+    <p>Période :&emsp; ${escape(periode)}</p></div>
+    <table aria-label="Articles de la facture"><colgroup><col style="width:6%"><col style="width:54%"><col style="width:8%"><col style="width:14%"><col style="width:18%"></colgroup>
     <thead><tr><th>N°</th><th>Libellé Article</th><th>Qté</th><th>Prix</th><th>Montant</th></tr></thead>
     <tbody>${lignes}</tbody></table>
     <div class="summary"><table class="totals" aria-label="Totaux fusionnés"><tbody>
@@ -161,37 +182,43 @@ function mergedContent(documents: BillingDocument[], clientName: string, issuedA
     <tr><th>Encaissé</th><td class="number">${decimal(paid)}</td></tr></tbody></table>
     <p class="words">Arrêtée à la somme de : ${escape(billingAmountInWords(net, currency))}</p>
     <p class="invoice-date">Date de facture :&emsp; ${escape(dateLabel(issuedAt))}</p>
-    <p class="note">Fusion de ${pieces.length} facture${pieces.length > 1 ? 's' : ''} déjà encaissée${pieces.length > 1 ? 's' : ''} en une seule facture — réimpression sans nouvel encaissement ni nouvelle créance. Montants des pièces d’origine, avant imputation des règlements.</p></div>
+    <p class="note">Réimpression sans nouvel encaissement ni nouvelle créance. Montants des pièces d’origine, avant imputation des règlements.</p></div>
   </div>`;
 }
 export function mergedBillingPrintHtml(state: AppState, documents: BillingDocument[], clientName?: string, printedAt = new Date().toISOString()): string {
   if (!documents.length) throw new Error('Aucune facture sélectionnée pour la fusion.');
   const nom = (clientName || documents[0].client || '').trim() || 'Client';
-  return shell(`Facture fusionnée (${documents.length})`, 'fusion', mergedContent(documents, nom, printedAt, state.ticketSettings.currency), state.ticketSettings);
+  // Le numéro de la facture fusionnée est celui de la pièce la plus ancienne ;
+  // l'en-tête est dans le contenu (première colonne), pas au niveau du document.
+  return shell(oldestBillingNumber(documents), 'fusion', mergedContent(documents, nom, printedAt, state.ticketSettings.currency, state.ticketSettings));
 }
 export function printMergedBillingDocuments(state: AppState, documents: BillingDocument[], clientName?: string): void {
-  printDocument(mergedBillingPrintHtml(state, documents, clientName), `Facture fusionnée (${documents.length})`);
+  printDocument(mergedBillingPrintHtml(state, documents, clientName), `Facture fusionnée n° ${oldestBillingNumber(documents)}`);
 }
 
 /**
  * IMPRESSION « 2 FACTURES PAR PAGE A4 » : les factures individuelles sont
  * posées deux par deux côte à côte sur une feuille A4 paysage (chaque moitié
- * correspond à une page A5 ; un pointillé marque la découpe). Les factures
- * sont appariées dans l'ordre fourni ; un nombre impair laisse la seconde
- * moitié de la dernière feuille vide.
+ * correspond à une page A5 ; un pointillé marque la découpe). Chaque facture
+ * porte SON PROPRE en-tête, cantonné à sa moitié de feuille : deux en-têtes
+ * séparés, jamais un en-tête unique étendu sur toute la largeur. Si une
+ * facture déborde sur une seconde feuille, celle-ci n'y porte aucun en-tête.
+ * Les factures sont appariées dans l'ordre fourni ; un nombre impair laisse
+ * la seconde moitié de la dernière feuille vide.
  */
 export function twoPerPagePrintHtml(state: AppState, documents: BillingDocument[], printedAt = new Date().toISOString()): string {
   if (!documents.length) throw new Error('Aucune facture sélectionnée pour l’impression 2 par page.');
   const invoices = documents.map(document => documentToInvoice(state, document, printedAt));
   const pages: string[] = [];
   for (let i = 0; i < invoices.length; i += 2) {
-    const gauche = `<div class="individual duo-half">${individualContent(invoices[i])}</div>`;
+    const gauche = `<div class="individual duo-half">${individualContent(invoices[i], state.ticketSettings)}</div>`;
     const droite = invoices[i + 1]
-      ? `<div class="individual duo-half">${individualContent(invoices[i + 1])}</div>`
+      ? `<div class="individual duo-half">${individualContent(invoices[i + 1], state.ticketSettings)}</div>`
       : '<div class="duo-half" aria-hidden="true"></div>';
     pages.push(`<div class="duo-page">${gauche}${droite}</div>`);
   }
-  return shell(`Factures 2 par page A4 (${invoices.length})`, 'duo', pages.join(''), state.ticketSettings);
+  // Pas d'en-tête au niveau du document : chaque moitié apporte le sien.
+  return shell(`Factures 2 par page A4 (${invoices.length})`, 'duo', pages.join(''));
 }
 export function printTwoPerPage(state: AppState, documents: BillingDocument[]): void {
   printDocument(twoPerPagePrintHtml(state, documents), `Factures 2 par page A4 (${documents.length})`);

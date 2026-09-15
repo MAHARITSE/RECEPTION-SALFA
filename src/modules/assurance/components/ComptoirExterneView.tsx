@@ -8,7 +8,7 @@ import { IS_WAMP_BUILD } from '../../../wamp';
 import { issueMonthlyInvoiceInBrowser } from '../../../browserDb';
 import { billingTotals, categoryLabels, collectBillingDocuments, documentsForScope, monthlyGroups, monthlyScopeId, preserveMonthlyInvoices, type BillingDocument, type MonthlyScope } from '../monthlyBilling';
 import { auditArticleFamilies } from '../billingFamilies';
-import { printIndividualBillingDocument, printMergedBillingDocuments, printMonthlyInvoice, printTwoPerPage } from '../printBilling';
+import { oldestBillingNumber, printIndividualBillingDocument, printMergedBillingDocuments, printMonthlyInvoice, printTwoPerPage } from '../printBilling';
 import { PrescriptionEditModal } from './billing/PrescriptionEditModal';
 import { deltaStockVentesOmises } from '../utils/stockVentesOmises';
 import { documentCorrespondRecherche, factureCorrespondRecherche, nomClientGenerique, normaliserRecherche } from '../utils/rechercheDocument';
@@ -112,7 +112,7 @@ export function ComptoirExterneView({ state, setState }: Props) {
       const docs = fusionNom;
       setFusionNom(null);
       printMergedBillingDocuments(state, docs, nom);
-      setNotice(`${docs.length} facture(s) fusionnée(s) en une seule facture — A4 paysage.`);
+      setNotice(`Facture fusionnée n° ${oldestBillingNumber(docs)} (la plus ancienne des ${docs.length}) — A4 paysage, sans lister les factures d’origine.`);
       return;
     }
     const doc = factureNom;
@@ -128,7 +128,7 @@ export function ComptoirExterneView({ state, setState }: Props) {
       .map(d => nomClientGenerique(d.client) ? { ...d, client: clientOuvert.nom } : d);
     if (!docs.length) { setNotice('Cochez d’abord au moins une facture à imprimer.'); return; }
     printTwoPerPage(state, docs);
-    setNotice(`${docs.length} facture(s) envoyée(s) à l’impression — 2 par page A4.`);
+    setNotice(`${docs.length} facture(s) envoyée(s) à l’impression — 2 par page A4, chacune avec son propre en-tête.`);
   }
 
   /** Fusion des factures cochées en UNE seule facture (A4 paysage, suite à droite). */
@@ -138,7 +138,7 @@ export function ComptoirExterneView({ state, setState }: Props) {
     if (!docs.length) { setNotice('Cochez d’abord au moins une facture à fusionner.'); return; }
     if (nomClientGenerique(clientOuvert.nom)) { setNomFacture(''); setFusionNom(docs); return; }
     printMergedBillingDocuments(state, docs, clientOuvert.nom);
-    setNotice(`${docs.length} facture(s) fusionnée(s) en une seule facture — A4 paysage.`);
+    setNotice(`Facture fusionnée n° ${oldestBillingNumber(docs)} (la plus ancienne des ${docs.length}) — A4 paysage, sans lister les factures d’origine.`);
   }
 
   /** Ajouts du facturier déjà enregistrés sur la pièce d'origine (facture ou vente). */
@@ -351,7 +351,7 @@ export function ComptoirExterneView({ state, setState }: Props) {
                     className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink transition cursor-pointer"><X className="w-3.5 h-3.5" /></button>}
                 </span>
               </div>
-              <p className="mb-2 text-[11px] text-ink-muted flex items-center gap-1.5"><Printer size={13} className="text-indigo-500" /> Cochez plusieurs factures puis « Imprimer la sélection — 2 par page A4 » pour économiser le papier (2 factures côte à côte par feuille A4 paysage), ou « Fusionner » pour n'en faire qu'une seule facture.</p>
+              <p className="mb-2 text-[11px] text-ink-muted flex items-center gap-1.5"><Printer size={13} className="text-indigo-500" /> Cochez plusieurs factures puis « Imprimer la sélection — 2 par page A4 » pour économiser le papier (2 factures côte à côte par feuille A4 paysage, chacune avec son propre en-tête), ou « Fusionner » pour n'en faire qu'une seule facture portant le numéro de la plus ancienne.</p>
               <p className="mb-2 text-[11px] text-ink-muted flex items-center gap-1.5"><FilePlus2 size={13} className="text-emerald-600" /> <span><strong>Double-cliquez sur un n° facture</strong> (ou 🧾) pour ouvrir sa prescription et y saisir, comme dans les sociétés, les <strong>ventes omises</strong> (− stock pharmacie) ou les <strong>ordonnances externes</strong> remboursées par l'hôpital (sans stock).</span></p>
               <div className="overflow-x-auto rounded-xl border border-line">
                 <table className="w-full text-left text-xs" aria-label={`Factures de ${nom}`}>
@@ -413,13 +413,13 @@ export function ComptoirExterneView({ state, setState }: Props) {
                 <span className="text-xs text-ink-muted">Encaissé : {formatMoney(totaux.paid)}</span>
                 <button type="button" onClick={fusionnerSelection}
                   disabled={!coches.length}
-                  title="Regroupe les factures cochées en UNE seule facture (A4 paysage : la suite se poursuit sur la moitié droite de la feuille)"
+                  title="Regroupe les factures cochées en UNE seule facture portant le numéro de la PLUS ANCIENNE, sans lister les factures d’origine (A4 paysage : la suite se poursuit sur la moitié droite de la feuille)"
                   className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 disabled:opacity-45 px-3 py-2 text-xs font-semibold text-white cursor-pointer">
                   <Combine size={14} /> Fusionner en une seule facture ({coches.length})
                 </button>
                 <button type="button" onClick={imprimerSelectionDeuxParPage}
                   disabled={!coches.length}
-                  title="Imprime les factures cochées deux par deux sur des feuilles A4 paysage"
+                  title="Imprime les factures cochées deux par deux sur des feuilles A4 paysage — deux en-têtes séparés, un par facture, chacun cantonné à sa moitié de feuille"
                   className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-45 px-3 py-2 text-xs font-semibold text-white cursor-pointer">
                   <Printer size={14} /> Imprimer la sélection — 2 par page A4 ({coches.length})
                 </button>

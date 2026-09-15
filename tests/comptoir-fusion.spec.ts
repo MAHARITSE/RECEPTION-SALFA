@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import type { AppState } from '../src/store';
 import type { BillingDocument } from '../src/modules/assurance/monthlyBilling';
-import { mergedBillingPrintHtml } from '../src/modules/assurance/printBilling';
+import { mergedBillingPrintHtml, twoPerPagePrintHtml } from '../src/modules/assurance/printBilling';
 import { factureCorrespondRecherche } from '../src/modules/assurance/utils/rechercheDocument';
 
 const doc = (overrides: Partial<BillingDocument> = {}): BillingDocument => ({
@@ -34,12 +34,15 @@ test('recherche fiche : n°, date ISO/FR, article, montant, multi-mots', () => {
   expect(factureCorrespondRecherche(piece, '   ')).toBe(true);
 });
 
-test('fusion : une seule facture A4 paysage, 2 colonnes, totaux cumulés', () => {
-  const state = { ticketSettings: { currency: 'Ar' }, currentUser: { id: 'u', name: 'Test' } } as unknown as AppState;
+test('fusion : une seule facture A4 paysage, numéro de la plus ancienne, sans lister les factures', () => {
+  const state = { ticketSettings: { currency: 'Ar', facilityName: 'CENTRE TEST' }, currentUser: { id: 'u', name: 'Test' } } as unknown as AppState;
   const html = mergedBillingPrintHtml(state, [doc(), docAout()], 'RAKOTO Jeanne');
-  expect(html).toContain('FACTURE FUSIONNÉE');
-  expect(html).toContain('26FA0909001');
-  expect(html).toContain('26FA0815007');
+  // La facture fusionnée porte le numéro de la pièce la PLUS ANCIENNE (août).
+  expect(html).toContain('FACTURE&nbsp; 26FA0815007');
+  // Les factures d'origine ne sont PAS listées sur la facture imprimée.
+  expect(html).not.toContain('26FA0909001');
+  expect(html).not.toContain('Factures regroupées');
+  expect(html).not.toContain('source-row');
   expect(html).toContain('RAKOTO Jeanne');
   expect(html).toContain('Amoxicilline 1g');
   expect(html).toContain('NFS (labo)');
@@ -54,9 +57,41 @@ test('fusion : une seule facture A4 paysage, 2 colonnes, totaux cumulés', () =>
   expect(html).toContain('Encaissé');
   expect(html).toContain('Arrêtée à la somme de');
   expect(html).toContain('sans nouvel encaissement ni nouvelle créance');
-  // Ordre chronologique : août avant septembre.
-  expect(html.indexOf('26FA0815007')).toBeLessThan(html.indexOf('26FA0909001'));
   expect(() => mergedBillingPrintHtml(state, [])).toThrow('Aucune facture sélectionnée pour la fusion.');
+});
+
+test('fusion : les articles des pièces sont mis à la suite, numérotés en continu', () => {
+  const state = { ticketSettings: { currency: 'Ar' }, currentUser: { id: 'u', name: 'Test' } } as unknown as AppState;
+  const html = mergedBillingPrintHtml(state, [doc(), docAout()]);
+  // Ordre chronologique : la pièce d'août (NFS) ouvre la facture, celle de
+  // septembre la suit — une seule liste d'articles, sans ligne de séparation.
+  expect(html.indexOf('NFS (labo)')).toBeGreaterThan(-1);
+  expect(html.indexOf('NFS (labo)')).toBeLessThan(html.indexOf('Amoxicilline 1g'));
+  expect((html.match(/<tr><td class="number">/g) || []).length).toBe(3);
+});
+
+test('impression 2 par page : deux en-têtes séparés, un par facture, jamais un seul étendu', () => {
+  const state = { ticketSettings: { currency: 'Ar', facilityName: 'CENTRE TEST' }, currentUser: { id: 'u', name: 'Test' } } as unknown as AppState;
+  const html = twoPerPagePrintHtml(state, [doc(), docAout()]);
+  expect(html).toContain('size:A4 landscape');
+  expect(html).toContain('duo-page');
+  expect((html.match(/class="individual duo-half"/g) || []).length).toBe(2);
+  // Deux en-têtes séparés : chacun DANS sa moitié de feuille, avant le titre
+  // de SA facture — et aucun en-tête au niveau du document entier.
+  expect((html.match(/<div class="invoice-header"/g) || []).length).toBe(2);
+  const moities = html.split('class="individual duo-half"').slice(1);
+  expect(moities.length).toBe(2);
+  for (const moitie of moities) {
+    expect(moitie.indexOf('invoice-header')).toBeGreaterThanOrEqual(0);
+    expect(moitie.indexOf('invoice-header')).toBeLessThan(moitie.indexOf('FACTURE&nbsp;'));
+  }
+  expect(html).toContain('26FA0909001');
+  expect(html).toContain('26FA0815007');
+  // Nombre impair : la seconde moitié de la dernière feuille reste vide,
+  // sans en-tête fantôme.
+  const impair = twoPerPagePrintHtml(state, [doc(), docAout(), doc({ id: 'doc-3', sourceId: 'src-3', number: '26FA0911003', date: '2026-09-11' })]);
+  expect((impair.match(/<div class="invoice-header"/g) || []).length).toBe(3);
+  expect(impair).toContain('aria-hidden="true"');
 });
 
 /* ===== Tests UI : recherche sans filtre + bouton Fusionner dans la fiche client ===== */
@@ -162,13 +197,14 @@ test('UI : fusion des factures cochées en une seule facture A4 paysage', async 
   await expect(modal).toHaveCount(0);
   await expect(page.locator('iframe[data-salfa-print]')).toHaveCount(1);
 
-  // Une seule facture imprimée, A4 paysage, avec les 2 pièces et le nom saisi.
-  await expect.poll(() => printsHtml(page)).toContain('FACTURE FUSIONNÉE');
+  // Une seule facture imprimée, A4 paysage : elle porte le numéro de la plus
+  // ancienne (août) et ne liste pas les factures d'origine.
+  await expect.poll(() => printsHtml(page)).toContain('26FA0815001');
   const html = await printsHtml(page);
-  expect(html).toContain('26FA0910001');
-  expect(html).toContain('26FA0815001');
   expect(html).toContain('RAKOTO Jeanne');
   expect(html).toContain('Amoxicilline 1g');
+  expect(html).not.toContain('26FA0910001');
+  expect(html).not.toContain('FUSIONNÉE');
   expect(html).toContain('size:A4 landscape');
   expect(html).toContain('fusion-flow');
   // La fiche reste ouverte et la base est inchangée : aucune facture créée ni modifiée.
