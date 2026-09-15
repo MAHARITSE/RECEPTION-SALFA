@@ -4,19 +4,15 @@ import type { jsPDF } from 'jspdf';
 /**
  * Téléchargements de fichiers (Excel, PDF, CSV) produits par le poste.
  *
- * Pourquoi ce fichier existe : les bibliothèques offrent chacune un « save »
- * pratique en Node mais silencieux dans une page web.
- *  - `XLSX.writeFile(classeur, 'fichier.xlsx')` cherche d'abord le module Node
- *    `fs` ; sans DOM, ou dans un contexte qui n'est pas une page, il finit par
- *    `Error: cannot save file …`. Pire : quand l'écriture échoue pour une autre
- *    raison (mémoire, contenu refusé), l'exception partait dans la console et
- *    l'utilisateur ne voyait **aucun** fichier arriver — sans explication ;
- *  - `jsPDF.doc.save()` passe par un FileSaver embarqué qui se réduit à une
- *    fonction vide dès que le contexte n'est pas une fenêtre « simple »
- *    (aperçu intégré, iframe sandboxée) : aucun fichier, aucun message.
- * Les deux sont remplacés par le seul chemin fiable en navigateur :
- * octets → `Blob` → `<a download>`, **avec un vrai message** en cas d'échec et
- * un indice quand le cadre affiché interdit les téléchargements.
+ * Mécanisme ALIGNÉ SUR LE DÉPÔT DE RÉFÉRENCE (MAHARITSE/suivi_assurance), où
+ * les exports fonctionnent en production :
+ *  - Excel  → `XLSX.writeFile(classeur, 'fichier.xlsx')` (appel direct) ;
+ *  - PDF    → `doc.save('fichier.pdf')` (appel direct) ;
+ *  - secours → octets → `Blob` → `<a download>` si l'appel direct échoue.
+ * Dans un navigateur, `XLSX.writeFile` et `doc.save` passent tous deux par le
+ * chemin de téléchargement natif de leur bibliothèque (le même que celui qui
+ * produit les fichiers attendus dans suivi_assurance). Un export raté est
+ * annoncé (message + `signaler`), jamais silencieux.
  */
 
 /** Types MIME écrits par l'application (le nom de fichier reste la référence). */
@@ -116,9 +112,15 @@ export function telechargerFichier(
 }
 
 /**
- * Classeur Excel → fichier `.xlsx` téléchargé. `XLSX.write(..., { type: 'array' })`
- * ne dépend d'aucun module Node, et `cellStyles` conserve les largeurs de
- * colonnes (sinon le fichier arrive illisible dans Excel).
+ * Classeur Excel → fichier `.xlsx` téléchargé.
+ *
+ * Chemin principal IDENTIQUE au dépôt de référence (suivi_assurance) :
+ * `XLSX.writeFile(classeur, nom)`. Dans un navigateur, SheetJS écrit les
+ * octets puis déclenche le téléchargement natif — c'est l'appel qui produit
+ * effectivement les fichiers Excel attendus en production.
+ *
+ * Si `writeFile` échoue (contexte très contraint), on retombe sur le chemin
+ * octets → `Blob` → `<a download>` pour ne jamais laisser un bouton mort.
  */
 export function telechargerClasseur(
   classeur: XLSX.WorkBook,
@@ -127,38 +129,81 @@ export function telechargerClasseur(
 ): ResultatTelechargement {
   const bookType = options.bookType || 'xlsx';
   const nomFichier = new RegExp(`\\.${bookType}$`, 'i').test(nom) ? nom : `${nom}.${bookType}`;
-  try {
-    const octets = XLSX.write(classeur, { bookType, type: 'array', cellStyles: true }) as ArrayBuffer;
-    if (!octets || !octets.byteLength) return telechargerFichier(new Uint8Array(0), nomFichier, { signaler: options.signaler });
-    return telechargerFichier(octets, nomFichier, { signaler: options.signaler });
-  } catch (cause) {
-    const message = `Export Excel impossible : ${cause instanceof Error ? cause.message : String(cause)}.${estDansUnCadre() ? INDICE_CADRE : ''}`;
+  const signaler = (message: string) => {
     if (options.signaler) options.signaler(message);
     else {
       console.warn('[Export]', message);
       if (typeof window !== 'undefined' && typeof window.alert === 'function') window.alert(message);
     }
+  };
+
+  // 1) Appel direct (mécanisme de référence) : dans un navigateur, SheetJS
+  // produit les octets puis déclenche le téléchargement natif.
+  try {
+    if (typeof document !== 'undefined') {
+      XLSX.writeFile(classeur, nomFichier, { bookType });
+      return {
+        ok: true, nom: nomFichier, octets: 0,
+        message: `${nomFichier} téléchargé${estDansUnCadre() ? INDICE_CADRE : ''}`,
+      };
+    }
+  } catch (cause) {
+    console.warn('[Export] XLSX.writeFile a échoué, repli sur Blob :', cause instanceof Error ? cause.message : cause);
+  }
+
+  // 2) Repli : octets → Blob → <a download>.
+  try {
+    const octets = XLSX.write(classeur, { bookType, type: 'array' }) as ArrayBuffer;
+    if (!octets || !octets.byteLength) return telechargerFichier(new Uint8Array(0), nomFichier, { signaler: options.signaler });
+    return telechargerFichier(octets, nomFichier, { signaler: options.signaler });
+  } catch (cause) {
+    const message = `Export Excel impossible : ${cause instanceof Error ? cause.message : String(cause)}.${estDansUnCadre() ? INDICE_CADRE : ''}`;
+    signaler(message);
     return { ok: false, nom: nomFichier, octets: 0, message };
   }
 }
 
-/** Document jsPDF → fichier `.pdf` téléchargé (sans passer par `doc.save()`). */
+/**
+ * Document jsPDF → fichier `.pdf` téléchargé.
+ *
+ * Chemin principal IDENTIQUE au dépôt de référence : `doc.save(nom)`. C'est
+ * l'appel jsPDF qui déclenche le téléchargement natif du PDF. Repli sur
+ * `doc.output('blob')` + `<a download>` en cas d'échec.
+ */
 export function telechargerPdf(
   doc: jsPDF,
   nom: string,
   options: { signaler?: (message: string) => void } = {},
 ): ResultatTelechargement {
   const nomFichier = /\.pdf$/i.test(nom) ? nom : `${nom}.pdf`;
-  try {
-    const blob = doc.output('blob') as Blob;
-    return telechargerFichier(blob, nomFichier, { mime: MIME.pdf, signaler: options.signaler });
-  } catch (cause) {
-    const message = `Export PDF impossible : ${cause instanceof Error ? cause.message : String(cause)}.${estDansUnCadre() ? INDICE_CADRE : ''}`;
+  const signaler = (message: string) => {
     if (options.signaler) options.signaler(message);
     else {
       console.warn('[Export]', message);
       if (typeof window !== 'undefined' && typeof window.alert === 'function') window.alert(message);
     }
+  };
+
+  // 1) Appel direct (mécanisme de référence).
+  try {
+    if (typeof document !== 'undefined') {
+      doc.save(nomFichier);
+      return {
+        ok: true, nom: nomFichier, octets: 0,
+        message: `${nomFichier} téléchargé${estDansUnCadre() ? INDICE_CADRE : ''}`,
+      };
+    }
+  } catch (cause) {
+    console.warn('[Export] doc.save a échoué, repli sur Blob :', cause instanceof Error ? cause.message : cause);
+  }
+
+  // 2) Repli : Blob → <a download>.
+  try {
+    const blob = doc.output('blob') as Blob;
+    return telechargerFichier(blob, nomFichier, { mime: MIME.pdf, signaler: options.signaler });
+  } catch (cause) {
+    const message = `Export PDF impossible : ${cause instanceof Error ? cause.message : String(cause)}.${estDansUnCadre() ? INDICE_CADRE : ''}`;
+    signaler(message);
     return { ok: false, nom: nomFichier, octets: 0, message };
   }
 }

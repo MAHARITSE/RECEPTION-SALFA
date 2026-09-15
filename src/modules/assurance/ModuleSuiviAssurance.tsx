@@ -17,8 +17,9 @@ import { EtatsView } from './components/EtatsView';
 import { EnteteView } from './components/EnteteView';
 import { readSharedTable, writeSharedTable, sharedTransactions, sharedSocietes, sharedPersonnes, sharedFamilles, fusionnerPrescription, annulerFusionPrescription } from './sharedData';
 import { getCurrentTimestamp } from './utils/formatters';
+import { deltaStockVentesOmises } from './utils/stockVentesOmises';
 import type { AppState } from '../../store';
-import { addAuditLog } from '../../store';
+import { addAuditLog, familyManagesStock } from '../../store';
 import { setCurrentEnteteConfig, readLegacyEnteteConfig } from './utils/enteteStorage';
 import { Building2, Filter, RotateCcw } from 'lucide-react';
 import { IS_WAMP_BUILD } from '../../wamp';
@@ -124,6 +125,30 @@ export default function ModuleSuiviAssurance({ state, setState }: Props) {
   // Handlers for Prestations
   const handleSavePrestation = async (prestation: Prestation) => {
     try {
+      // VENTES OMISES reliées à un article du catalogue : les produits sont
+      // réellement sortis de la pharmacie sans saisie → le stock pharmacie est
+      // régularisé ici (décrément à l'ajout, restauration si la ligne est
+      // retirée ou sa quantité corrigée). Les ORDONNANCES EXTERNES n'ont
+      // AUCUN impact stock (médicaments pris dans une autre pharmacie).
+      const ancienne = prestations.find(p => p.id === prestation.id);
+      const mouvements = deltaStockVentesOmises(ancienne, prestation);
+      if (mouvements.length > 0) {
+        setState(prev => {
+          const articles = [...prev.articles];
+          const appliques: string[] = [];
+          for (const m of mouvements) {
+            const idx = articles.findIndex(a => a.id === m.articleId);
+            if (idx < 0 || !familyManagesStock(articles[idx].family, prev.familles)) continue;
+            articles[idx] = { ...articles[idx], stockPharmacie: Math.max(0, articles[idx].stockPharmacie - m.qte) };
+            appliques.push(`${articles[idx].name} (${m.qte > 0 ? '−' : '+'}${Math.abs(m.qte)})`);
+          }
+          if (appliques.length === 0) return prev;
+          const next = { ...prev, articles };
+          addAuditLog(next, 'ASSURANCE_VENTE_OMISE',
+            `Stock pharmacie régularisé — ${prestation.numeroFacture} : ${appliques.join(', ')}`);
+          return next;
+        });
+      }
 
       setPrestations(prev => {
         const idx = prev.findIndex(p => p.id === prestation.id);
@@ -516,17 +541,6 @@ export default function ModuleSuiviAssurance({ state, setState }: Props) {
   };
 
   // Validate all imported references before committing any table.
-  const handleImportPrestations = async (newPrestations: Prestation[], newSocietes: Societe[] = [], newPersonnes: Personne[] = []) => {
-    try {
-      commitChange(prev => {
-        let next = writeSharedTable(prev, 'assuranceSocietes', mergeRows(sharedSocietes(prev), newSocietes));
-        next = writeSharedTable(next, 'assurancePersonnes', mergeRows(sharedPersonnes(next), newPersonnes));
-        return writeSharedTable(next, 'assurancePrestations', mergeRows(sharedTransactions(next).prestations, newPrestations));
-      });
-      setActiveTab('prestations');
-    } catch (err) { alert(`Import non enregistré : ${(err as Error).message}`); }
-  };
-
   const handleImportPaiements = async (newPaiement: Paiement, updatedPrestations: Prestation[], newSocietes: Societe[] = [], newPersonnes: Personne[] = []) => {
     try {
       commitChange(prev => {
@@ -665,7 +679,6 @@ export default function ModuleSuiviAssurance({ state, setState }: Props) {
             onFusionPrescription={handleFusionPrescription}
             onAnnulerFusion={handleAnnulerFusion}
             onDeleteFacture={handleDeleteFacture}
-            onImportPrestations={handleImportPrestations}
             onSavePaiement={handleSavePaiement}
             isCreateModalOpen={isPrestationModalOpen}
             setIsCreateModalOpen={setIsPrestationModalOpen}

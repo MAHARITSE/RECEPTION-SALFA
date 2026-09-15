@@ -448,10 +448,15 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     // Client société → pas d'encaissement en espèces : validation en CRÉDIT SOCIÉTÉ.
     const isSocieteCredit = selPatient.clientType === 'societe';
     const unpaidConsults = getConsults(selPatient.id);
-    const medicationItems: InvoiceItem[] = unpaidConsults.flatMap(c => c.prescriptions.map(p => ({
-      description: `${p.articleName} × ${p.quantity}${p.discount > 0 ? ` (-${p.discount}%)` : ''}`,
-      amount: roundTo2(p.unitPrice * p.quantity * (1 - p.discount / 100)), category: 'pharmacy' as const,
-    })));
+    // Quantité et prix unitaire dans leurs CHAMPS (imprimés dans les colonnes
+    // Qté / Prix de la facture) ; le libellé reste le nom de l'article seul.
+    const medicationItems: InvoiceItem[] = unpaidConsults.flatMap(c => c.prescriptions.map(p => {
+      const unitaire = p.discount > 0 ? roundTo2(p.unitPrice * (1 - p.discount / 100)) : p.unitPrice;
+      return {
+        description: p.articleName, quantity: p.quantity, unitPrice: unitaire,
+        amount: roundTo2(unitaire * p.quantity), category: 'pharmacy' as const,
+      };
+    }));
     const serviceInvoices = pendingServiceInvoices.filter(i => i.patientId === selPatient.id);
     const serviceItems = serviceInvoices.flatMap(i => i.items);
     // Numérotation officielle des factures réglées :
@@ -496,30 +501,42 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       return;
     }
 
-    // Nouvelle facture unifiée : uniquement les MÉDICAMENTS (jamais facturés avant).
-    // Les services (consultation / labo / écho) possèdent DÉJÀ leurs factures en
-    // attente : celles-ci sont soldées directement ci-dessous. Cela évite le double
-    // comptage dans la facturation sociétés (crédit société).
+    // Nouvelle facture :
+    //  - client SOCIÉTÉ → la facture médicaments est créée à part et chaque
+    //    facture service en attente est numérotée puis soldée (le détail reste
+    //    visible dans la Facturation société, sans double comptage) ;
+    //  - client COMPTOIR / EXTERNE → UNE SEULE facture unifiée
+    //    (médicaments + services) : c'est la facture validée à la caisse,
+    //    elle arrive EN TOTALITÉ dans la facturation ; les factures services
+    //    en attente qu'elle absorbe sont remplacées par elle.
     const medsTotal = medicationItems.reduce((sum, item) => sum + item.amount, 0);
-    // LOT UNIQUE atomique : services à numéroter + facture médicaments.
+    // LOT UNIQUE atomique : services à numéroter (société) ou facture unifiée.
     // Échec (réseau/base) → on alerte et on n'encaisse RIEN : facturer sans
     // numéro réservé créerait un doublon avec une autre caisse.
-    const specs: FactureNumberSpec[] = [
-      ...servicesToNumber.map((svc) => {
-        const svcPatient = svc.patientId ? state.patients.find(p => p.id === svc.patientId) : undefined;
-        const svcConsultDate = svc.consultationId ? state.consultations.find(c => c.id === svc.consultationId)?.date : undefined;
-        return {
-          clientType: svc.clientType, company: svcPatient?.company,
-          invoiceDate: svc.createdAt || paidAt, prescriptionDate: svcConsultDate || svc.createdAt || paidAt,
-        };
-      }),
-      ...(medicationItems.length > 0
-        ? [{
-            clientType: selPatient.clientType, company: selPatient.company,
-            invoiceDate: paidAt, prescriptionDate: unpaidConsults[0]?.date || paidAt,
-          }]
-        : []),
-    ];
+    const specs: FactureNumberSpec[] = isSocieteCredit
+      ? [
+          ...servicesToNumber.map((svc) => {
+            const svcPatient = svc.patientId ? state.patients.find(p => p.id === svc.patientId) : undefined;
+            const svcConsultDate = svc.consultationId ? state.consultations.find(c => c.id === svc.consultationId)?.date : undefined;
+            return {
+              // Type ACTUEL du patient : une facture service créée avant le
+              // rattachement société reçoit le numéro société au moment de la
+              // validation (et arrive dans la facturation société).
+              clientType: svcPatient?.clientType || svc.clientType, company: svcPatient?.company,
+              invoiceDate: svc.createdAt || paidAt, prescriptionDate: svcConsultDate || svc.createdAt || paidAt,
+            };
+          }),
+          ...(medicationItems.length > 0
+            ? [{
+                clientType: selPatient.clientType, company: selPatient.company,
+                invoiceDate: paidAt, prescriptionDate: unpaidConsults[0]?.date || paidAt,
+              }]
+            : []),
+        ]
+      : [{
+          clientType: selPatient.clientType, company: selPatient.company,
+          invoiceDate: paidAt, prescriptionDate: unpaidConsults[0]?.date || serviceInvoices[0]?.createdAt || paidAt,
+        }];
     let allocated: FactureNumberAllocation[];
     try {
       allocated = await allocateFactureNumbersAsync(state, specs);
@@ -528,22 +545,35 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       payingRef.current = false;
       return;
     }
-    servicesToNumber.forEach((svc, i) => {
-      allocatedNumbers.set(svc.id, allocated[i].numeroFacture);
-      const upsert = allocated[i].societeUpsert;
-      if (upsert) societeUpserts.push(upsert);
-    });
-    const medsAlloc = medicationItems.length > 0 ? allocated[servicesToNumber.length] : undefined;
-    if (medsAlloc?.societeUpsert) societeUpserts.push(medsAlloc.societeUpsert);
-    const medsNumero = medsAlloc?.numeroFacture;
-    const inv: Invoice | null = medicationItems.length > 0 ? {
-      id: uuidv4(), patientId: selPatient.id, consultationId: unpaidConsults[0]?.id, clientType: selPatient.clientType,
-      items: medicationItems, totalAmount: medsTotal, patientCharge: medsTotal, numeroFacture: medsNumero,
-      status: 'paid', paidAt, paidBy: state.currentUser?.id || '', createdAt: paidAt, isExternal: false, creditSociete: isSocieteCredit,
-    } : null;
-    // Facture combinée (médicaments + services) utilisée UNIQUEMENT pour le ticket.
+    let inv: Invoice | null = null;
+    if (isSocieteCredit) {
+      servicesToNumber.forEach((svc, i) => {
+        allocatedNumbers.set(svc.id, allocated[i].numeroFacture);
+        const upsert = allocated[i].societeUpsert;
+        if (upsert) societeUpserts.push(upsert);
+      });
+      const medsAlloc = medicationItems.length > 0 ? allocated[servicesToNumber.length] : undefined;
+      if (medsAlloc?.societeUpsert) societeUpserts.push(medsAlloc.societeUpsert);
+      const medsNumeroSociete = medsAlloc?.numeroFacture;
+      inv = medicationItems.length > 0 ? {
+        id: uuidv4(), patientId: selPatient.id, consultationId: unpaidConsults[0]?.id, clientType: selPatient.clientType,
+        clientName: `${selPatient.lastName} ${selPatient.firstName}`.trim() || undefined,
+        items: medicationItems, totalAmount: medsTotal, patientCharge: medsTotal, numeroFacture: medsNumeroSociete,
+        status: 'paid', paidAt, paidBy: state.currentUser?.id || '', createdAt: paidAt, isExternal: false, creditSociete: true,
+      } : null;
+    } else {
+      // COMPTOIR / EXTERNE : facture UNIFIÉE médicaments + services — la
+      // facture validée à la caisse, transmise telle quelle à la facturation.
+      inv = {
+        id: uuidv4(), patientId: selPatient.id, consultationId: unpaidConsults[0]?.id || serviceInvoices[0]?.consultationId, clientType: selPatient.clientType,
+        clientName: `${selPatient.lastName} ${selPatient.firstName}`.trim() || undefined,
+        items: unifiedItems, totalAmount: total, patientCharge: total, numeroFacture: allocated[0].numeroFacture,
+        status: 'paid', paidAt, paidBy: state.currentUser?.id || '', createdAt: paidAt, isExternal: false, creditSociete: false,
+      };
+    }
+    // Facture combinée (médicaments + services) utilisée pour le ticket.
     const printNumero = inv
-      ? medsNumero
+      ? inv.numeroFacture
       : (serviceInvoices[0] && (serviceInvoices[0].numeroFacture || allocatedNumbers.get(serviceInvoices[0].id)));
     const printInvoice: Invoice = inv
       ? { ...inv, items: unifiedItems, totalAmount: total, patientCharge: total }
@@ -570,12 +600,26 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       let withCodes: AppState = prev;
       for (const upsert of societeUpserts) withCodes = applySocieteUpsert(withCodes, upsert);
       const next: AppState = { ...withCodes,
-        invoices: [
-          ...withCodes.invoices.map(i => toMarkPaid.has(i.id)
-            ? { ...i, status: 'paid' as const, paidAt, paidBy: prev.currentUser?.id || '', creditSociete: i.creditSociete || isSocieteCredit }
-            : i),
-          ...(inv ? [inv] : []),
-        ],
+        invoices: isSocieteCredit
+          ? [
+              ...withCodes.invoices.map(i => toMarkPaid.has(i.id)
+                ? { ...i, status: 'paid' as const, paidAt, paidBy: prev.currentUser?.id || '', creditSociete: i.creditSociete || isSocieteCredit,
+                    // VALIDATION = situation du patient au moment de la validation :
+                    // des factures services créées quand le patient était encore
+                    // « comptoir » (ou avant son rattachement société) suivent son
+                    // type actuel et arrivent EN TOTALITÉ dans la bonne facturation.
+                    clientType: selPatient.clientType,
+                    clientName: i.clientName || `${selPatient.lastName} ${selPatient.firstName}`.trim() || i.clientName }
+                : i),
+              ...(inv ? [inv] : []),
+            ]
+          : [
+              // COMPTOIR / EXTERNE : les factures en attente absorbées (services
+              // + pharmacie) sont remplacées par la facture unifiée — c'est elle
+              // qui fait foi en facturation (aucun doublon possible).
+              ...withCodes.invoices.filter(i => !toMarkPaid.has(i.id)),
+              ...(inv ? [inv] : []),
+            ],
         // Marquer les lab requests comme payés
         labRequests: prev.labRequests.map(r =>
           receipt.exams.pendingLabIds.has(r.id) ? { ...r, status: 'paid' as const } : r
@@ -1270,14 +1314,21 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   // Edition société pour la facture en attente (toujours visible quand patient choisi)
   const paySaveClientType = () => {
     if (!selPatient) return;
+    const nouveauType = payEditClientType === 'externe' ? 'comptoir' : payEditClientType as 'comptoir'|'societe';
     setState(prev => ({
       ...prev,
       patients: prev.patients.map(p => p.id === selPatient.id ? {
         ...p,
-        clientType: payEditClientType === 'externe' ? 'comptoir' : payEditClientType as 'comptoir'|'societe',
+        clientType: nouveauType,
         company: payEditClientType === 'societe' ? payEditCompany : undefined,
         subCompany: payEditClientType === 'societe' ? payEditSubCompany : undefined,
       } : p),
+      // Les factures EN ATTENTE de ce patient suivent le nouveau type : la
+      // validation à venir arrivera en totalité dans la bonne facturation
+      // (société ou comptoir). Les factures déjà validées ne sont pas réécrites.
+      invoices: prev.invoices.map(i => i.patientId === selPatient.id && i.status === 'pending'
+        ? { ...i, clientType: nouveauType }
+        : i),
     }));
     // Mettre à jour aussi hbRecords si patient déjà présent en hospit/bloc
     updateHbRecords(prev => prev.map(r => r.patientId === selPatient.id ? {

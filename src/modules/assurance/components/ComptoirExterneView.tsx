@@ -5,7 +5,7 @@ import { IS_WAMP_BUILD } from '../../../wamp';
 import { issueMonthlyInvoiceInBrowser } from '../../../browserDb';
 import { billingTotals, categoryLabels, collectBillingDocuments, documentsForScope, monthlyGroups, monthlyScopeId, preserveMonthlyInvoices, type BillingDocument, type MonthlyScope } from '../monthlyBilling';
 import { auditArticleFamilies } from '../billingFamilies';
-import { printIndividualBillingDocument, printMonthlyInvoice } from '../printBilling';
+import { printIndividualBillingDocument, printMonthlyInvoice, printTwoPerPage } from '../printBilling';
 import { documentCorrespondRecherche, nomClientGenerique, normaliserRecherche } from '../utils/rechercheDocument';
 import { formatDate } from '../utils/formatters';
 
@@ -19,7 +19,7 @@ type Props = { state: AppState; setState: React.Dispatch<React.SetStateAction<Ap
  */
 export function ComptoirExterneView({ state, setState }: Props) {
   const formatMoney = (value: number, currency = state.ticketSettings.currency) => `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(value)} ${currency}`;
-  const [mode, setMode] = useState<'factures' | 'detaillee'>('factures');
+  const [mode, setMode] = useState<'factures' | 'detaillee'>('detaillee');
   const [month, setMonth] = useState('');
   // Recherche par nom de client ou numéro de facture (insensible à la casse et aux accents).
   const [recherche, setRecherche] = useState('');
@@ -30,6 +30,8 @@ export function ComptoirExterneView({ state, setState }: Props) {
   // Vue Détaillée : un dossier par nom de client ; le double-clic ouvre
   // la liste complète de ses factures (dates + impression).
   const [clientOuvert, setClientOuvert] = useState<{ cle: string; nom: string } | null>(null);
+  // Sélection des factures du client ouvert → impression « 2 par page A4 ».
+  const [selection, setSelection] = useState<Record<string, boolean>>({});
   const articleIssues = useMemo(() => auditArticleFamilies(state), [state]);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -90,6 +92,18 @@ export function ComptoirExterneView({ state, setState }: Props) {
     printIndividualBillingDocument(state, { ...doc, client: nom });
   }
 
+  /** Impression « 2 factures par page A4 » des factures cochées du client ouvert. */
+  function imprimerSelectionDeuxParPage() {
+    if (!clientOuvert) return;
+    const groupe = groupesClients.find(g => g.cle === clientOuvert.cle);
+    if (!groupe) return;
+    const docs = groupe.docs.filter(d => selection[d.id])
+      .map(d => nomClientGenerique(d.client) ? { ...d, client: groupe.nom } : d);
+    if (!docs.length) { setNotice('Cochez d’abord au moins une facture à imprimer.'); return; }
+    printTwoPerPage(state, docs);
+    setNotice(`${docs.length} facture(s) envoyée(s) à l’impression — 2 par page A4.`);
+  }
+
   function renderDossiersTable() {
     return <div className="overflow-x-auto rounded-xl border border-line bg-surface" data-testid="comptoir-dossiers-table">
       <table className="w-full text-left text-xs" aria-label="Dossiers clients comptoir & externes">
@@ -101,7 +115,7 @@ export function ComptoirExterneView({ state, setState }: Props) {
           const premiere = g.docs[0];
           return <tr key={g.cle} className="border-t border-line cursor-pointer hover:bg-surface-hover"
             title="Double-clic : voir toutes les factures de ce client"
-            onDoubleClick={() => setClientOuvert({ cle: g.cle, nom: g.nom })}>
+            onDoubleClick={() => { setSelection({}); setClientOuvert({ cle: g.cle, nom: g.nom }); }}>
             <td className="p-3 font-semibold text-indigo-700 dark:text-indigo-300 underline decoration-dotted underline-offset-2">
               {g.nom}
               {premiere.dossier && <span className="block text-ink-muted font-normal">{premiere.dossier}</span>}
@@ -121,17 +135,17 @@ export function ComptoirExterneView({ state, setState }: Props) {
   return <section className="space-y-4" aria-label="Facturation comptoir & externes">
     <div className="flex flex-wrap items-center gap-3">
       <div className="inline-flex p-1 bg-surface-hover rounded-xl border border-line text-xs" role="tablist" aria-label="Vues comptoir & externes">
-        <button type="button" role="tab" aria-selected={mode === 'factures'} onClick={() => setMode('factures')}
-          className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${mode === 'factures' ? 'bg-surface text-indigo-700 shadow-2xs' : 'text-ink-secondary hover:text-ink-strong'}`}>
-          <Receipt className="w-3.5 h-3.5 text-indigo-600" />
-          <span>Vue par Facture</span>
-          <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-indigo-100 text-indigo-800 font-bold">{groups.length}</span>
-        </button>
         <button type="button" role="tab" aria-selected={mode === 'detaillee'} onClick={() => setMode('detaillee')}
           className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${mode === 'detaillee' ? 'bg-surface text-indigo-700 shadow-2xs' : 'text-ink-secondary hover:text-ink-strong'}`}>
-          <FileText className="w-3.5 h-3.5 text-ink-secondary" />
+          <FileText className="w-3.5 h-3.5 text-indigo-600" />
           <span>Vue Détaillée (Dossiers)</span>
-          <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-surface-active text-ink font-bold">{groupesClients.length}</span>
+          <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-indigo-100 text-indigo-800 font-bold">{groupesClients.length}</span>
+        </button>
+        <button type="button" role="tab" aria-selected={mode === 'factures'} onClick={() => setMode('factures')}
+          className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${mode === 'factures' ? 'bg-surface text-indigo-700 shadow-2xs' : 'text-ink-secondary hover:text-ink-strong'}`}>
+          <Receipt className="w-3.5 h-3.5 text-ink-secondary" />
+          <span>Vue par Facture</span>
+          <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-surface-active text-ink font-bold">{groups.length}</span>
         </button>
       </div>
       <label className="text-sm text-ink">Mois <input aria-label="Mois comptoir & externe" type="month" value={month} onChange={event => setMonth(event.target.value)} className="ml-2 rounded-lg border border-line bg-field p-2" /></label>
@@ -205,12 +219,27 @@ export function ComptoirExterneView({ state, setState }: Props) {
               <button onClick={() => setClientOuvert(null)} aria-label="Fermer" className="p-2 rounded-xl text-ink-faint hover:text-ink hover:bg-surface-hover transition cursor-pointer"><X className="w-5 h-5" /></button>
             </div>
             <div className="px-6 py-4 overflow-y-auto">
+              <p className="mb-2 text-[11px] text-ink-muted flex items-center gap-1.5"><Printer size={13} className="text-indigo-500" /> Cochez plusieurs factures puis « Imprimer la sélection — 2 par page A4 » pour économiser le papier (2 factures côte à côte par feuille A4 paysage).</p>
               <div className="overflow-x-auto rounded-xl border border-line">
                 <table className="w-full text-left text-xs" aria-label={`Factures de ${groupe.nom}`}>
-                  <thead className="bg-surface-muted text-ink-secondary"><tr>{['Date', 'Facture', 'Catégorie', 'Montant', 'Encaissé', 'Impression'].map(label => <th className="p-2.5" key={label}>{label}</th>)}</tr></thead>
+                  <thead className="bg-surface-muted text-ink-secondary"><tr>
+                    <th className="p-2.5 w-10">
+                      <input type="checkbox" aria-label="Tout sélectionner" title="Tout sélectionner / tout désélectionner"
+                        checked={groupe.docs.length > 0 && groupe.docs.every(d => selection[d.id])}
+                        onChange={e => { const on = e.target.checked; setSelection(Object.fromEntries(groupe.docs.map(d => [d.id, on]))); }}
+                        className="w-4 h-4 accent-indigo-600 cursor-pointer" />
+                    </th>
+                    {['Date', 'Facture', 'Catégorie', 'Montant', 'Encaissé', 'Impression'].map(label => <th className="p-2.5" key={label}>{label}</th>)}
+                  </tr></thead>
                   <tbody>
                     {groupe.docs.map(d => (
                       <tr key={d.id} className="border-t border-line hover:bg-surface-hover">
+                        <td className="p-2.5">
+                          <input type="checkbox" aria-label={`Sélectionner la facture ${d.number}`} title="Sélectionner pour l'impression 2 par page A4"
+                            checked={!!selection[d.id]}
+                            onChange={e => setSelection(prev => ({ ...prev, [d.id]: e.target.checked }))}
+                            className="w-4 h-4 accent-indigo-600 cursor-pointer" />
+                        </td>
                         <td className="p-2.5 whitespace-nowrap">{formatDate(d.date)}</td>
                         <td className="p-2.5 font-mono font-semibold">{d.number}</td>
                         <td className="p-2.5">{categoryLabels[d.category]}</td>
@@ -225,14 +254,22 @@ export function ComptoirExterneView({ state, setState }: Props) {
                         </td>
                       </tr>
                     ))}
-                    {!groupe.docs.length && <tr><td colSpan={6} className="p-6 text-center text-ink-muted italic">Aucune facture pour cette sélection.</td></tr>}
+                    {!groupe.docs.length && <tr><td colSpan={7} className="p-6 text-center text-ink-muted italic">Aucune facture pour cette sélection.</td></tr>}
                   </tbody>
                 </table>
               </div>
             </div>
-            <div className="flex items-center justify-between border-t border-line-soft px-6 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line-soft px-6 py-3">
               <span className="text-sm font-bold text-ink-strong">Total : {formatMoney(totaux.total)}</span>
-              <span className="text-xs text-ink-muted">Encaissé : {formatMoney(totaux.paid)}</span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-ink-muted">Encaissé : {formatMoney(totaux.paid)}</span>
+                <button type="button" onClick={imprimerSelectionDeuxParPage}
+                  disabled={!groupe.docs.some(d => selection[d.id])}
+                  title="Imprime les factures cochées deux par deux sur des feuilles A4 paysage"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-45 px-3 py-2 text-xs font-semibold text-white cursor-pointer">
+                  <Printer size={14} /> Imprimer la sélection — 2 par page A4 ({groupe.docs.filter(d => selection[d.id]).length})
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -25,7 +25,7 @@ type Props = PrestationsViewProps & {
 
 export function BillingWorkspace({ state, setState, reliquatsAHuiter = 0, onOuvrirReliquats, onFusionPrescription, onAnnulerFusion, ...details }: Props) {
   const formatMoney = (value: number, currency = state.ticketSettings.currency) => `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(value)} ${currency}`;
-  const [mode, setMode] = useState<'factures' | 'detaillee'>('factures');
+  const [mode, setMode] = useState<'factures' | 'detaillee'>('detaillee');
   const [month, setMonth] = useState('');
   const articleIssues = useMemo(() => auditArticleFamilies(state), [state]);
   const [error, setError] = useState('');
@@ -84,11 +84,23 @@ export function BillingWorkspace({ state, setState, reliquatsAHuiter = 0, onOuvr
   const prestationDe = (docId: string) => details.prestations.find(p => p.id === docId);
   const estCaisse = (p: Prestation) => !!(p.sourceInvoiceId || p.id.startsWith('caisse:'));
   const nbFusions = (p: Prestation) => p.fusionsAnnulees?.length || 0;
-  // Toute prescription de la même société est fusionnable (facture Caisse incluse),
-  // même à des dates différentes : celle d'où l'on lance est conservée, l'autre absorbée.
+  // La facture ABSORBÉE doit être celle de la MÊME personne (même assuré) :
+  // même personneId ; à défaut (données anciennes) même matricule.
+  const memePersonne = (a: Prestation, b: Prestation) =>
+    (!!a.personneId && a.personneId === b.personneId)
+    || (!a.personneId && !b.personneId && !!a.matricule && a.matricule === b.matricule);
+  // Les candidates sont proposées par DATE LA PLUS PROCHE de la prescription
+  // d'où l'on lance la fusion (écart absolu en jours, puis date décroissante).
   const candidatesFusion = (source: Prestation) => details.prestations
-    .filter(p => p.id !== source.id && p.societeId === source.societeId)
-    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    .filter(p => p.id !== source.id && p.societeId === source.societeId && memePersonne(source, p))
+    .sort((a, b) => {
+      const tSource = new Date(source.date).getTime();
+      const ecart = (p: Prestation) => {
+        const t = new Date(p.date).getTime();
+        return Number.isNaN(t) || Number.isNaN(tSource) ? Number.POSITIVE_INFINITY : Math.abs(t - tSource);
+      };
+      return ecart(a) - ecart(b) || (b.date || '').localeCompare(a.date || '');
+    });
 
   function confirmerFusion(absorbeId: string, libelle?: string) {
     if (!fusionSource || !onFusionPrescription) return;
@@ -111,17 +123,17 @@ export function BillingWorkspace({ state, setState, reliquatsAHuiter = 0, onOuvr
   return <section className="space-y-4" aria-label="Facturation clients">
     <div className="flex flex-wrap items-center gap-3">
       <div className="inline-flex p-1 bg-surface-hover rounded-xl border border-line text-xs" role="tablist" aria-label="Vues de facturation">
-        <button type="button" role="tab" aria-selected={mode === 'factures'} onClick={() => setMode('factures')}
-          className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${mode === 'factures' ? 'bg-surface text-indigo-700 shadow-2xs' : 'text-ink-secondary hover:text-ink-strong'}`}>
-          <Receipt className="w-3.5 h-3.5 text-indigo-600" />
-          <span>Vue par Facture</span>
-          <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-indigo-100 text-indigo-800 font-bold">{groups.length}</span>
-        </button>
         <button type="button" role="tab" aria-selected={mode === 'detaillee'} onClick={() => setMode('detaillee')}
           className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${mode === 'detaillee' ? 'bg-surface text-indigo-700 shadow-2xs' : 'text-ink-secondary hover:text-ink-strong'}`}>
-          <FileText className="w-3.5 h-3.5 text-ink-secondary" />
+          <FileText className="w-3.5 h-3.5 text-indigo-600" />
           <span>Vue Détaillée (Dossiers)</span>
-          <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-surface-active text-ink font-bold">{visible.length}</span>
+          <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-indigo-100 text-indigo-800 font-bold">{visible.length}</span>
+        </button>
+        <button type="button" role="tab" aria-selected={mode === 'factures'} onClick={() => setMode('factures')}
+          className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${mode === 'factures' ? 'bg-surface text-indigo-700 shadow-2xs' : 'text-ink-secondary hover:text-ink-strong'}`}>
+          <Receipt className="w-3.5 h-3.5 text-ink-secondary" />
+          <span>Vue par Facture</span>
+          <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-surface-active text-ink font-bold">{groups.length}</span>
         </button>
       </div>
       {onOuvrirReliquats && (
@@ -189,7 +201,7 @@ export function BillingWorkspace({ state, setState, reliquatsAHuiter = 0, onOuvr
         })}</tbody>
       </table>{!groups.length && <p className="p-6 text-center text-sm text-ink-muted">Aucune facture pour cette sélection.</p>}</div>
     </div> : <div data-testid="billing-detail-view">
-      <PrestationsView {...details} prestations={visiblePrestations} hideViewSwitcher onFusionPrescription={onFusionPrescription} onFusionner={p => setFusionSource(p)} onAnnulerFusion={onAnnulerFusion} onPrintPrestation={p => { const doc = documents.find(d => d.id === p.id); if (doc) printIndividualBillingDocument(state, doc); }} />
+      <PrestationsView {...details} prestations={visiblePrestations} articles={state.articles} hideViewSwitcher onFusionPrescription={onFusionPrescription} onFusionner={p => setFusionSource(p)} onAnnulerFusion={onAnnulerFusion} onPrintPrestation={p => { const doc = documents.find(d => d.id === p.id); if (doc) printIndividualBillingDocument(state, doc); }} />
     </div>}
 
     {/* ===== MODAL : vue détaillée du destinataire de la facture mensuelle ===== */}

@@ -77,7 +77,7 @@ export const RejetsView: React.FC<RejetsViewProps> = ({
   onDeleteRejet,
 }) => {
   // Mode de vue : 'bordereau' (Vue par Facture / Bordereau) ou 'detaillee' (Vue Détaillée Dossiers)
-  const [viewMode, setViewMode] = useState<RejetViewMode>('bordereau');
+  const [viewMode, setViewMode] = useState<RejetViewMode>('detaillee');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('ALL');
@@ -687,22 +687,6 @@ export const RejetsView: React.FC<RejetsViewProps> = ({
         <div className="inline-flex p-1 bg-surface-hover rounded-xl border border-line text-xs">
           <button
             type="button"
-            onClick={() => setViewMode('bordereau')}
-            className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
-              viewMode === 'bordereau'
-                ? 'bg-surface text-rose-700 shadow-2xs'
-                : 'text-ink-secondary hover:text-ink-strong'
-            }`}
-          >
-            <Receipt className="w-3.5 h-3.5 text-rose-600" />
-            <span>Vue par Bordereau / Facture</span>
-            <span className="ml-1 px-1.5 py-0.2 text-[10px] rounded-full bg-rose-100 text-rose-800 font-bold">
-              {groupedFactures.length}
-            </span>
-          </button>
-
-          <button
-            type="button"
             onClick={() => setViewMode('detaillee')}
             className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
               viewMode === 'detaillee'
@@ -710,10 +694,26 @@ export const RejetsView: React.FC<RejetsViewProps> = ({
                 : 'text-ink-secondary hover:text-ink-strong'
             }`}
           >
-            <FileText className="w-3.5 h-3.5 text-ink-secondary" />
+            <FileText className="w-3.5 h-3.5 text-rose-600" />
             <span>Vue Détaillée (Dossiers)</span>
-            <span className="ml-1 px-1.5 py-0.2 text-[10px] rounded-full bg-surface-active text-ink font-bold">
+            <span className="ml-1 px-1.5 py-0.2 text-[10px] rounded-full bg-rose-100 text-rose-800 font-bold">
               {filteredRejets.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setViewMode('bordereau')}
+            className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+              viewMode === 'bordereau'
+                ? 'bg-surface text-rose-700 shadow-2xs'
+                : 'text-ink-secondary hover:text-ink-strong'
+            }`}
+          >
+            <Receipt className="w-3.5 h-3.5 text-ink-secondary" />
+            <span>Vue par Bordereau / Facture</span>
+            <span className="ml-1 px-1.5 py-0.2 text-[10px] rounded-full bg-surface-active text-ink font-bold">
+              {groupedFactures.length}
             </span>
           </button>
         </div>

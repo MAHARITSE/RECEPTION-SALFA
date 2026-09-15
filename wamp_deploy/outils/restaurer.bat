@@ -8,7 +8,7 @@ REM     donc les tables concernees -> restauration complete possible ;
 REM   - fichier .sql telecharge par l'application (bouton Sauvegarder) : INSERT ...
 REM     ON DUPLICATE KEY UPDATE uniquement -> il AJOUTE ou MET A JOUR les lignes,
 REM     il ne supprime rien. Sur une base vide, importer d'abord
-REM     database\schema.sql, puis ce fichier.
+REM     database\reception_salfa_complete.sql, puis ce fichier.
 REM  Dans les deux cas : hors heures d'ouverture, postes déconnectés, et sauvegarde
 REM  immédiate de la base AVANT (sauvegarder.bat). Ne jamais lancer sans réfléchir.
 REM ==========================================================================

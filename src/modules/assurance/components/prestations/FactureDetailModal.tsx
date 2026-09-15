@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { GroupedFacture } from '../PrestationsView';
 import { formatDate, formatMoney } from '../../utils/formatters';
-import { Personne, Societe, Prestation, LignePrestation } from '../../types';
+import { Personne, Societe, Prestation, LignePrestation, ligneEstMedicament, LIBELLE_NATURE_MEDICAMENT } from '../../types';
 
 interface FactureDetailModalProps {
   facture: GroupedFacture | null;
@@ -252,6 +252,7 @@ export const FactureDetailModal: React.FC<FactureDetailModalProps> = ({
                           <tr className="text-ink-muted border-b border-line">
                             <th className="py-1 px-2">Code</th>
                             <th className="py-1 px-2">Description de l'acte</th>
+                            <th className="py-1 px-2">Nature</th>
                             <th className="py-1 px-2 text-right">Montant Brut</th>
                             <th className="py-1 px-2 text-right">Ticket Mod.</th>
                             <th className="py-1 px-2 text-right">Part Assurance</th>
@@ -283,7 +284,29 @@ export const FactureDetailModal: React.FC<FactureDetailModalProps> = ({
                             return (
                               <tr key={l.id || lIdx}>
                                 <td className="py-1.5 px-2 font-mono font-bold text-indigo-700">{l.code}</td>
-                                <td className="py-1.5 px-2 text-ink">{l.libelle || '-'}</td>
+                                <td className="py-1.5 px-2 text-ink">
+                                  {l.libelle || '-'}
+                                  {(l.quantity ?? 0) > 0 && l.prixUnitaire != null && (
+                                    <span className="block text-[10px] text-ink-faint font-mono">
+                                      {l.quantity} × {formatMoney(l.prixUnitaire)}{l.remisePct ? ` − ${l.remisePct}%` : ''}{l.dateActe ? ` · ${formatDate(l.dateActe)}` : ''}
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-1.5 px-2">
+                                  {ligneEstMedicament(l) ? (
+                                    (l.natureMedicament || 'ordonnance') === 'vente_non_saisie' ? (
+                                      <span className="px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-200 text-[9px] font-extrabold uppercase whitespace-nowrap" title="Vente de médicaments non saisie à la pharmacie/caisse, facturée a posteriori">
+                                        🧾 Vente non saisie
+                                      </span>
+                                    ) : (
+                                      <span className="px-1.5 py-0.5 rounded-md bg-violet-100 text-violet-800 border border-violet-200 text-[9px] font-extrabold uppercase whitespace-nowrap" title="Médicaments prescrits par le médecin">
+                                        💊 Ordonnance
+                                      </span>
+                                    )
+                                  ) : (
+                                    <span className="text-ink-faint">—</span>
+                                  )}
+                                </td>
                                 <td className="py-1.5 px-2 text-right font-mono text-ink-strong">{formatMoney(lBrut)}</td>
                                 <td className="py-1.5 px-2 text-right font-mono text-amber-700">{formatMoney(lPart)}</td>
                                 <td className="py-1.5 px-2 text-right font-mono font-bold text-ink-strong">{formatMoney(lRemb)}</td>

@@ -63,7 +63,7 @@ echo.
 echo Prochaines etapes (a faire une fois, dans l'ordre) :
 echo   1. Base existante v1/v2 : importer database\migrations\002_sequences.sql
 echo      puis 003_performance.sql dans phpMyAdmin (apres outils\sauvegarder.bat).
-echo      Nouvelle base : database\schema.sql puis database\seed.sql.
+echo      Nouvelle base : database\reception_salfa_complete.sql (fichier unique).
 echo   2. Verrouiller MySQL : editer le mot de passe dans outils\hygiene_mysql.sql
 echo      puis  mysql -u root < outils\hygiene_mysql.sql
 echo      et creer api\config.local.php (modele : api\config.local.php.exemple).
@@ -72,7 +72,7 @@ echo      config\wamp-salfa-mysql.ini.txt dans la section [mysqld] du my.ini,
 echo      puis redemarrer les services.
 echo   4. Verifier : http://localhost/reception-salfa/api/diagnostic.php (tout vert)
 echo   5. Contrer les acces Apache :
-echo      curl -i http://localhost/reception-salfa/database/seed.sql   (403 attendu)
+echo      curl -i http://localhost/reception-salfa/database/reception_salfa_complete.sql   (403 attendu)
 echo      curl -i http://localhost/reception-salfa/api/config.local.php (403 attendu)
 echo   6. Ouvrir http://localhost/reception-salfa/ (USR-ADMIN / admin123,
 echo      A CHANGER aussitot : 8 caracteres minimum) ; puis hors heures :

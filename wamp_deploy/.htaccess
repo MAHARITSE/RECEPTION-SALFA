@@ -1,7 +1,7 @@
 # ============================================================================
 #  RECEPTION SALFA — durcissement Apache (dossier déployé)
 #  À vérifier APRÈS déploiement :
-#     curl -i http://SERVEUR/reception-salfa/database/seed.sql   → 403 attendu
+#     curl -i http://SERVEUR/reception-salfa/database/reception_salfa_complete.sql → 403 attendu
 #     curl -i http://SERVEUR/reception-salfa/api/config.local.php → 403 attendu
 #  Si les réponses sont 200, AllowOverride est inactif pour ce dossier :
 #  ajouter dans httpd.conf (ou le vhost) le bloc
@@ -17,8 +17,9 @@ Options -Indexes -MultiViews
 
 # --------------------------------------------------------------------------
 # Fichiers de service : JAMAIS servis au navigateur.
-# Ils contiennent la structure de la base, les comptes par défaut (seed.sql),
-# les chemins d'installation (outils/*.bat) ou des journaux d'erreurs.
+# Ils contiennent la structure de la base, les comptes par défaut
+# (reception_salfa_complete.sql), les chemins d'installation (outils/*.bat)
+# ou des journaux d'erreurs.
 # --------------------------------------------------------------------------
 <FilesMatch "\.(sql|md|txt|log|ini|conf|cnf|sh|bak|old|save|dist|env)$">
   Require all denied
@@ -26,7 +27,7 @@ Options -Indexes -MultiViews
 <FilesMatch "^(config\.local\.php|.*\.local\.php|essais\.json)$">
   Require all denied
 </FilesMatch>
-<Files "seed.sql">
+<Files "reception_salfa_complete.sql">
   Require all denied
 </Files>
 

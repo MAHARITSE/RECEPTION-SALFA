@@ -1,6 +1,6 @@
 import type { AppState } from '../../store';
 import type { ClientType } from '../../types';
-import { sharedTransactions } from './sharedData';
+import { sharedTransactions, typeClientEffectif } from './sharedData';
 import { billingFamilyResolver } from './billingFamilies';
 
 export interface BillingItem { description: string; actCode?: string; quantity?: number; unitPrice?: number; amount: number }
@@ -60,7 +60,10 @@ export function collectBillingDocuments(state: AppState): BillingDocument[] {
     }),
   }));
   for (const invoice of state.invoices) {
-    const category = invoice.isExternal || invoice.clientType === 'externe' ? 'externe' : invoice.clientType;
+    // Type EFFECTIF : une facture validée en crédit société pour un patient
+    // société appartient à la facturation société (voir typeClientEffectif) —
+    // elle ne doit pas ressortir ici en double dans l'onglet Comptoir & Externe.
+    const category = typeClientEffectif(state, invoice);
     if (category === 'societe') continue;
     const sale = state.ventes.find(v => v.legacyInvoiceId === invoice.id);
     if (sale?.status === 'annule') continue;

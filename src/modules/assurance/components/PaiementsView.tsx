@@ -121,7 +121,7 @@ export const PaiementsView: React.FC<PaiementsViewProps> = ({
   setIsCreateModalOpen,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [viewMode, setViewMode] = useState<ViewMode>('bordereaux');
+  const [viewMode, setViewMode] = useState<ViewMode>('groupes_actes');
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const [expandedGroupRows, setExpandedGroupRows] = useState<Record<string, boolean>>({});
   const [groupLinesInBordereau, setGroupLinesInBordereau] = useState<boolean>(true);
@@ -1184,23 +1184,6 @@ export const PaiementsView: React.FC<PaiementsViewProps> = ({
             {/* View Mode Switcher */}
             <div className="inline-flex p-1 bg-surface-hover rounded-xl border border-line text-xs">
               <button
-                id="tab-view-bordereaux"
-                type="button"
-                onClick={() => setViewMode('bordereaux')}
-                className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
-                  viewMode === 'bordereaux'
-                    ? 'bg-surface text-emerald-700 shadow-2xs'
-                    : 'text-ink-secondary hover:text-ink-strong'
-                }`}
-              >
-                <Receipt className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Vue par Bordereau</span>
-                <span className="ml-1 px-1.5 py-0.2 text-[10px] rounded-full bg-emerald-100 text-emerald-800 font-bold">
-                  {filteredAndSortedPaiements.length}
-                </span>
-              </button>
-
-              <button
                 id="tab-view-groupes"
                 type="button"
                 onClick={() => setViewMode('groupes_actes')}
@@ -1214,6 +1197,23 @@ export const PaiementsView: React.FC<PaiementsViewProps> = ({
                 <span>Vue Détaillée (Dossiers)</span>
                 <span className="ml-1 px-1.5 py-0.2 text-[10px] rounded-full bg-emerald-100 text-emerald-800 font-bold">
                   {groupedPaymentActs.length}
+                </span>
+              </button>
+
+              <button
+                id="tab-view-bordereaux"
+                type="button"
+                onClick={() => setViewMode('bordereaux')}
+                className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                  viewMode === 'bordereaux'
+                    ? 'bg-surface text-emerald-700 shadow-2xs'
+                    : 'text-ink-secondary hover:text-ink-strong'
+                }`}
+              >
+                <Receipt className="w-3.5 h-3.5 text-ink-secondary" />
+                <span>Vue par Bordereau</span>
+                <span className="ml-1 px-1.5 py-0.2 text-[10px] rounded-full bg-surface-active text-ink font-bold">
+                  {filteredAndSortedPaiements.length}
                 </span>
               </button>
             </div>

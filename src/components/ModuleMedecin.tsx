@@ -876,7 +876,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
           : p),
       };
       if (newLabRequests.length > 0 && labInvoiceId) {
-        const labItems = newLabRequests.map((lr) => ({ description: `${lr.examType}${lr.urgent ? ' (Urgent)' : ''}`, amount: lr.price || 0, category: 'lab' as const }));
+        const labItems = newLabRequests.map((lr) => ({ description: `${lr.examType}${lr.urgent ? ' (Urgent)' : ''}`, quantity: 1, unitPrice: lr.price || 0, amount: lr.price || 0, category: 'lab' as const }));
         const labTotalAmt = labItems.reduce((s, i) => s + i.amount, 0);
         const labInv: Invoice = {
           id: labInvoiceId, patientId: selectedPatientId, consultationId: consultation.id, clientType: ct,
@@ -888,7 +888,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
         addJourneyEvent(next, { patientId: selectedPatientId, department: 'consultation', action: "Demande d'analyse", status: 'analyses_pending', details: `${newLabRequests.map((r) => r.examType).join(', ')} — à facturer (caisse)`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId: consultation.id });
       }
       if (newEchoRequests.length > 0 && echoInvoiceId) {
-        const echoItems = newEchoRequests.map((er) => ({ description: `${er.examType}${er.urgent ? ' (Urgent)' : ''}`, amount: er.price || 0, category: 'echo' as const }));
+        const echoItems = newEchoRequests.map((er) => ({ description: `${er.examType}${er.urgent ? ' (Urgent)' : ''}`, quantity: 1, unitPrice: er.price || 0, amount: er.price || 0, category: 'echo' as const }));
         const echoTotalAmt = echoItems.reduce((s, i) => s + i.amount, 0);
         const echoInv: Invoice = {
           id: echoInvoiceId, patientId: selectedPatientId, consultationId: consultation.id, clientType: ct,

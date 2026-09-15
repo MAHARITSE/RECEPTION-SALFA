@@ -7,6 +7,8 @@ import { billingFacility, localBillingDate, billingTotals, type BillingDocument,
 
 const escape = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]!));
 const decimal = (value: number) => new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+/** Quantité sans décimales inutiles : 20 (et non 20,00), 1,5 si besoin. */
+const quantite = (value: number) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(value);
 const dateLabel = (value: string, short = false) => {
   const date = localBillingDate(value);
   const [year, month, day] = date.split('-');
@@ -42,37 +44,50 @@ export function billingAmountInWords(value: number, currency: string): string {
 
 // The common Administration header is presentation-only; financial snapshots stay frozen.
 // Native pagination handles variable-height rows and repeats the column headings.
-const css = (monthly: boolean) => `@page{size:${monthly ? 'A4' : 'A5'} portrait;margin:${monthly ? '12mm 10mm 16mm' : '8mm 7mm 12mm'};@bottom-left{content:"Page " counter(page) "/" counter(pages);font:9px Arial,sans-serif;color:#000}}
-*{box-sizing:border-box}body{font:12px Arial,sans-serif;color:#000;background:#fff;margin:0}h1{font-size:19px;text-align:center;margin:8px 0 14px}p{margin:8px 0}table{font:inherit;width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #000;padding:4px;overflow-wrap:anywhere;vertical-align:top}th{text-align:center;font-weight:bold}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}.number{text-align:right;white-space:nowrap}.center{text-align:center}.summary{break-inside:avoid;page-break-inside:avoid}.totals{width:40%;margin-left:auto;margin-top:-1px}.totals th{text-align:right}.totals th{width:62%}.words{margin-top:12px}.invoice-date{text-align:right;margin-top:14px}.note{font-size:9px;margin-top:12px}.individual .identity{margin-bottom:18px}.individual .identity p{margin:9px 0}.individual .net{font-weight:bold}.individual{font-size:10px}.individual h1{font-size:16px}.individual .totals{width:48%}.individual .totals th{width:62%}.individual .note{font-size:8px}.monthly{font-size:10px}.monthly h1{font-size:16px;margin-bottom:18px}.monthly .period{margin-bottom:12px}.monthly .invoice-number{text-align:center;margin-bottom:16px}.monthly th,.monthly td{padding:3px 2px}.monthly .acts{font-size:9px;line-height:1.25}.monthly .grand-total{font-weight:bold}.monthly .number{font-variant-numeric:tabular-nums}.monthly .note{font-size:8px}`;
+const css = (mode: 'monthly' | 'individual' | 'duo') => `@page{size:${mode === 'duo' ? 'A4 landscape' : `${mode === 'monthly' ? 'A4' : 'A5'} portrait`};margin:${mode === 'monthly' ? '12mm 10mm 16mm' : mode === 'duo' ? '8mm' : '8mm 7mm 12mm'};@bottom-left{content:"Page " counter(page) "/" counter(pages);font:9px Arial,sans-serif;color:#000}}
+*{box-sizing:border-box}body{font:12px Arial,sans-serif;color:#000;background:#fff;margin:0}h1{font-size:19px;text-align:center;margin:8px 0 14px}p{margin:8px 0}table{font:inherit;width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #000;padding:4px;overflow-wrap:anywhere;vertical-align:top}th{text-align:center;font-weight:bold}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}.number{text-align:right;white-space:nowrap}.center{text-align:center}.summary{break-inside:avoid;page-break-inside:avoid}.totals{width:40%;margin-left:auto;margin-top:-1px}.totals th{text-align:right}.totals th{width:62%}.words{margin-top:12px}.invoice-date{text-align:right;margin-top:14px}.note{font-size:9px;margin-top:12px}.individual .identity{margin-bottom:18px}.individual .identity p{margin:9px 0}.individual .net{font-weight:bold}.individual{font-size:10px}.individual h1{font-size:16px}.individual .totals{width:40%;margin-left:60%}.individual .totals th{width:62%}.individual .note{font-size:8px}.monthly{font-size:10px}.monthly h1{font-size:16px;margin-bottom:18px}.monthly .period{margin-bottom:12px}.monthly .invoice-number{text-align:center;margin-bottom:16px}.monthly th,.monthly td{padding:3px 2px}.monthly .acts{font-size:9px;line-height:1.25}.monthly .grand-total{font-weight:bold}.monthly .number{font-variant-numeric:tabular-nums}.monthly .note{font-size:8px}.duo-page{display:flex;gap:5mm;align-items:flex-start;break-after:page;page-break-after:always}.duo-half{flex:1;min-width:0}.duo-half+.duo-half{border-left:1px dashed #999;padding-left:5mm}`;
 
-function shell(number: string, kind: string, content: string, settings?: TicketSettings): string {
-  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${escape(number)}</title><style>${css(kind === 'monthly')}${INVOICE_HEADER_STYLE}</style></head><body class="${kind}">${settings ? invoiceHeaderMarkup(settings) : ''}${content}</body></html>`;
+function shell(number: string, kind: 'monthly' | 'individual' | 'duo', content: string, settings?: TicketSettings): string {
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${escape(number)}</title><style>${css(kind)}${INVOICE_HEADER_STYLE}</style></head><body class="${kind}">${settings ? invoiceHeaderMarkup(settings) : ''}${content}</body></html>`;
 }
 
-/** Native individual receipts keep patientCharge, not the insurer's payable or balance.
- * Manual assurance pieces without this field use their recorded net instead. */
-function individualHtml(invoice: MonthlyInvoice, settings?: TicketSettings): string {
+/** Contenu d'une facture individuelle (commun aux impressions A5 et au
+ * regroupement « 2 factures par page A4 »). patientCharge, jamais le solde. */
+function individualContent(invoice: MonthlyInvoice): string {
   const document = invoice.documents[0];
   if (!document) throw new Error('Aucune pièce individuelle à imprimer.');
   const gross = document.individualGross ?? document.total;
   const net = document.individualNet ?? document.payable;
   const reduction = Math.round((gross - net) * 100) / 100;
   const payer = document.companyName || (document.category === 'societe' ? invoice.recipient : 'CLIENT COMPTOIR');
-  return shell(invoice.number, 'individual', `
+  return `
     <h1>FACTURE&nbsp; ${escape(invoice.number)}</h1>
     <div class="identity"><p>Date de consultation :&emsp; ${escape(dateLabel(document.consultationDate || document.date))}</p>
     <p>Nom :&emsp; <strong>${escape(document.client)}</strong></p>
     <p>Prise en charge :&emsp; ${escape(payer)}</p></div>
     <table aria-label="Articles facturés"><colgroup><col style="width:5%"><col style="width:55%"><col style="width:8%"><col style="width:14%"><col style="width:18%"></colgroup>
     <thead><tr><th>N°</th><th>Libellé Article</th><th>Qté</th><th>Prix</th><th>Montant</th></tr></thead>
-    <tbody>${document.items.map((item, index) => `<tr><td class="number">${index + 1}</td><td>${escape(item.description)}</td><td class="number">${item.quantity == null ? '—' : decimal(item.quantity)}</td><td class="number">${item.unitPrice == null ? '—' : decimal(item.unitPrice)}</td><td class="number">${decimal(item.quantity != null && item.unitPrice != null ? item.quantity * item.unitPrice : item.amount)}</td></tr>`).join('') || '<tr><td colspan="5">Voir les articles sur la pièce d’origine.</td></tr>'}</tbody></table>
+    <tbody>${document.items.map((item, index) => `<tr><td class="number">${index + 1}</td><td>${escape(item.description)}</td><td class="number">${item.quantity == null ? '—' : quantite(item.quantity)}</td><td class="number">${item.unitPrice == null ? '—' : decimal(item.unitPrice)}</td><td class="number">${decimal(item.quantity != null && item.unitPrice != null ? item.quantity * item.unitPrice : item.amount)}</td></tr>`).join('') || '<tr><td colspan="5">Voir les articles sur la pièce d’origine.</td></tr>'}</tbody></table>
     <div class="summary"><table class="totals" aria-label="Totaux individuels"><tbody>
     <tr><th>Total Brut</th><td class="number">${decimal(gross)}</td></tr>
     <tr><th>Remise/Participation</th><td class="number">${decimal(reduction)}</td></tr>
     <tr class="net"><th>Net à payer</th><td class="number">${decimal(net)}</td></tr></tbody></table>
     <p class="words">Arrêtée à la somme de : ${escape(billingAmountInWords(net, invoice.facility.currency))}</p>
     <p class="invoice-date">Date de facture :&emsp; ${escape(dateLabel(invoice.issuedAt))}</p>
-    <p class="note">Montants de la pièce d’origine, avant imputation des règlements. Réimpression sans nouvel encaissement.</p></div>`, settings);
+    <p class="note">Montants de la pièce d’origine, avant imputation des règlements. Réimpression sans nouvel encaissement.</p></div>`;
+}
+
+function individualHtml(invoice: MonthlyInvoice, settings?: TicketSettings): string {
+  return shell(invoice.number, 'individual', individualContent(invoice), settings);
+}
+
+/** Pièce individuelle → facture mensuelle factice prête à imprimer. */
+function documentToInvoice(state: AppState, document: BillingDocument, printedAt: string): MonthlyInvoice {
+  return { ...billingTotals([document]), id: document.id, number: document.number, sequence: 0,
+    month: document.date.slice(0, 7), category: document.category, companyId: document.companyId,
+    recipient: document.category === 'societe' ? document.companyName || document.client : document.client,
+    documents: [document], issuedAt: printedAt, issuedBy: state.currentUser?.id || '', issuedByName: state.currentUser?.name || '',
+    facility: billingFacility(state) };
 }
 
 function acts(document: BillingDocument): string {
@@ -99,13 +114,32 @@ export function printMonthlyInvoice(invoice: MonthlyInvoice, settings?: TicketSe
   printDocument(billingPrintHtml(invoice, true, settings), `Facture mensuelle ${invoice.number}`);
 }
 export function individualBillingPrintHtml(state: AppState, document: BillingDocument, printedAt = new Date().toISOString()): string {
-  const invoice: MonthlyInvoice = { ...billingTotals([document]), id: document.id, number: document.number, sequence: 0,
-    month: document.date.slice(0, 7), category: document.category, companyId: document.companyId,
-    recipient: document.category === 'societe' ? document.companyName || document.client : document.client,
-    documents: [document], issuedAt: printedAt, issuedBy: state.currentUser?.id || '', issuedByName: state.currentUser?.name || '',
-    facility: billingFacility(state) };
-  return billingPrintHtml(invoice, false, state.ticketSettings);
+  return billingPrintHtml(documentToInvoice(state, document, printedAt), false, state.ticketSettings);
 }
 export function printIndividualBillingDocument(state: AppState, document: BillingDocument): void {
   printDocument(individualBillingPrintHtml(state, document), `Facture ${document.number}`);
+}
+
+/**
+ * IMPRESSION « 2 FACTURES PAR PAGE A4 » : les factures individuelles sont
+ * posées deux par deux côte à côte sur une feuille A4 paysage (chaque moitié
+ * correspond à une page A5 ; un pointillé marque la découpe). Les factures
+ * sont appariées dans l'ordre fourni ; un nombre impair laisse la seconde
+ * moitié de la dernière feuille vide.
+ */
+export function twoPerPagePrintHtml(state: AppState, documents: BillingDocument[], printedAt = new Date().toISOString()): string {
+  if (!documents.length) throw new Error('Aucune facture sélectionnée pour l’impression 2 par page.');
+  const invoices = documents.map(document => documentToInvoice(state, document, printedAt));
+  const pages: string[] = [];
+  for (let i = 0; i < invoices.length; i += 2) {
+    const gauche = `<div class="individual duo-half">${individualContent(invoices[i])}</div>`;
+    const droite = invoices[i + 1]
+      ? `<div class="individual duo-half">${individualContent(invoices[i + 1])}</div>`
+      : '<div class="duo-half" aria-hidden="true"></div>';
+    pages.push(`<div class="duo-page">${gauche}${droite}</div>`);
+  }
+  return shell(`Factures 2 par page A4 (${invoices.length})`, 'duo', pages.join(''), state.ticketSettings);
+}
+export function printTwoPerPage(state: AppState, documents: BillingDocument[]): void {
+  printDocument(twoPerPagePrintHtml(state, documents), `Factures 2 par page A4 (${documents.length})`);
 }
