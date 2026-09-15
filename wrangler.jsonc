@@ -1,0 +1,23 @@
+{
+  // ============================================================
+  // RECEPTION SALFA — configuration wrangler à la RACINE du dépôt.
+  //
+  // Pourquoi ce fichier ? L'intégration Git « Workers Builds » de Cloudflare
+  // exécute `npx wrangler deploy` depuis la racine du dépôt ; sans
+  // configuration à la racine, le déploiement échoue (« No wrangler
+  // configuration found »). Ce fichier sert le build Vite du dépôt :
+  //   `npm run build` → dist/index.html (fichier unique via
+  //   vite-plugin-singlefile) servi comme site statique (SPA).
+  //
+  // Dépendances : npm UNIQUEMENT (package-lock.json → `npm clean-install`
+  // sur le build distant). Ne JAMAIS committer de bun.lock : le bun 1.2.15
+  // du builder ne sait pas le lire (« Unknown lockfile version ») et
+  // `bun install --frozen-lockfile` fait échouer le build (voir .gitignore).
+  // ============================================================
+  "name": "reception-salfa",
+  "compatibility_date": "2026-08-02",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}

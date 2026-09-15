@@ -173,6 +173,20 @@ npm run build          # version navigateur (base locale IndexedDB) → dist/ind
 npm run build:wamp     # version WAMP (VITE_WAMP_MODE=1 via .env.wamp) → dist/index.html → copier vers wamp_deploy/index.html
 ```
 
+### ☁️ Déploiement Cloudflare (Workers Builds)
+
+- **Gestionnaire officiel : npm.** Le dépôt ne contient que `package-lock.json` :
+  le builder distant exécute `npm clean-install`. **Ne jamais committer de
+  `bun.lock`** — le bun 1.2.15 du builder ne sait pas lire ce format
+  (« Unknown lockfile version ») et `bun install --frozen-lockfile` fait échouer
+  le build (`bun.lock` est ignoré dans `.gitignore`). Les builds encore en file
+  d'un commit antérieur à la suppression peuvent afficher l'ancienne erreur :
+  relancer le build sur le dernier `main` la corrige.
+- [`wrangler.jsonc`](./wrangler.jsonc) (racine) sert le build Vite :
+  `npm run build` → `dist/` (fichier unique) déployé en site statique SPA.
+  Sans ce fichier, l'étape `npx wrangler deploy` échoue (« No wrangler
+  configuration found »).
+
 ---
 
 ## 🧪 Jeu de données de démonstration pour l'analyse (3 mois)
@@ -227,4 +241,14 @@ npx playwright test tests/credentials.spec.ts
 
 - Facture société : **A4 portrait**.
 - Facture individuelle : **A5 portrait**.
+- **Une facture de 2 pages n'a d'en-tête que sur la première** : ni l'en-tête
+  Administration ni les titres de colonnes ne sont répétés/étendus sur la
+  deuxième page (les lignes continuent seules, pagination réelle
+  « Page 2/3 » en pied de page).
+- **Impression multiple « 2 par page A4 »** (fiche client Comptoir & Externe) :
+  **deux en-têtes séparés**, un par facture, chacun cantonné à sa moitié de
+  feuille A4 paysage — jamais un en-tête unique étendu sur toute la largeur.
+- **Fusion de factures** : la facture imprimée porte le **numéro de la plus
+  ancienne** des factures cochées et **ne liste pas** les factures d'origine
+  (articles mis à la suite, numérotés en continu).
 - Les tickets POS et la police du corps des factures ne sont pas modifiés.

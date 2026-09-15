@@ -220,6 +220,11 @@ export function printSalfaIndividualInvoice(
     @page {
       size: A5 portrait;
       margin: 8mm;
+      @bottom-left {
+        content: "Page " counter(page) "/" counter(pages);
+        font: 9px Arial, Helvetica, sans-serif;
+        color: #000;
+      }
     }
     @media print {
       body { width: 100%; margin: 0; padding: 0; }
@@ -233,6 +238,17 @@ export function printSalfaIndividualInvoice(
       padding: 10px;
       line-height: 1.3;
     }
+    /* En-tête de facture : uniquement en tête de la PREMIÈRE page — jamais
+       coupé, jamais détaché de son titre, jamais répété sur la page 2. */
+    .header, .invoice-header {
+      break-inside: avoid;
+      page-break-inside: avoid;
+      break-after: avoid;
+      page-break-after: avoid;
+    }
+    /* Titres de colonnes sans répétition : une facture qui déborde sur une
+       2e page y poursuit ses lignes sans en-tête de tableau. */
+    thead { display: table-row-group; }
     .header {
       display: flex;
       align-items: center;
@@ -403,7 +419,6 @@ export function printSalfaIndividualInvoice(
   </div>
 
   <div class="footer-block">
-    <span>Page 1/1</span>
     <span>Date de facture : <strong>${dateFacture}</strong></span>
   </div>
 
@@ -524,6 +539,11 @@ export function printSalfaCompanyMonthlyInvoice(
     @page {
       size: A4 portrait;
       margin: 10mm;
+      @bottom-left {
+        content: "Page " counter(page) "/" counter(pages);
+        font: 9px Arial, Helvetica, sans-serif;
+        color: #000;
+      }
     }
     * { box-sizing: border-box; }
     body {
@@ -534,6 +554,16 @@ export function printSalfaCompanyMonthlyInvoice(
       padding: 10px;
       line-height: 1.35;
     }
+    /* En-tête de facture : uniquement en tête de la PREMIÈRE page — jamais
+       coupé, jamais répété sur la page 2. */
+    .header, .invoice-header {
+      break-inside: avoid;
+      page-break-inside: avoid;
+      break-after: avoid;
+      page-break-after: avoid;
+    }
+    /* Titres de colonnes sans répétition sur les pages suivantes. */
+    thead { display: table-row-group; }
     .header {
       display: flex;
       align-items: center;

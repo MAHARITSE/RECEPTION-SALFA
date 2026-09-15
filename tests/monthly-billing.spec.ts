@@ -327,7 +327,10 @@ test('facture société longue : pagination A4 sans suppression des bénéficiai
   const html = billingPrintHtml(invoice);
   await page.setContent(html);
   await expect(page.locator('[data-source-id]')).toHaveCount(100);
-  expect(html).toContain('thead{display:table-header-group}');
+  // L'en-tête du tableau ne se répète pas : une facture de 2 pages n'a aucun
+  // en-tête sur la deuxième (les lignes continuent seules).
+  expect(html).toContain('thead{display:table-row-group}');
+  expect(html).not.toContain('display:table-header-group');
   expect(html).toContain('counter(page)');
   expect(html).toContain('counter(pages)');
   const pdf = await page.pdf({ path: testInfo.outputPath('facture-mensuelle-longue.pdf'), preferCSSPageSize: true, displayHeaderFooter: false });
