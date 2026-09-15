@@ -227,6 +227,12 @@ export interface Invoice {
   numeroFacture?: string;
   paidAt?: string; paidBy?: string; createdAt: string; isExternal: boolean;
   /**
+   * Médecin prescripteur saisi à la caisse (vente directe client externe).
+   * Repris sur le ticket de caisse, la facture A5 et les bons d'examen
+   * (y compris lors des réimpressions depuis la clôture).
+   */
+  prescriberName?: string;
+  /**
    * Paiement validé par la caisse en CRÉDIT SOCIÉTÉ : aucun encaissement en
    * espèces n'a eu lieu, la somme est portée au crédit (compte) de la société
    * et sera réglée ultérieurement via le module « Facturation sociétés ».

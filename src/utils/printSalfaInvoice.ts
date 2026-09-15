@@ -155,6 +155,9 @@ export function printSalfaIndividualInvoice(
 
   const priseEnCharge = company?.name || patient?.company || 'CLIENT COMPTOIR';
 
+  // Médecin prescripteur (vente directe client externe) : repris sur la facture A5 quand il est connu.
+  const prescriberName = (invoice.prescriberName || '').trim();
+
   // Numéro de facture officiel (26FA0427102 / FA-07/BSA/26-014) ; historique : invoiceNumber, puis id tronqué.
   const invNumber = invoice.numeroFacture || (invoice as any).invoiceNumber || invoice.id.slice(0, 10).toUpperCase();
 
@@ -357,6 +360,10 @@ export function printSalfaIndividualInvoice(
       <span class="info-label">Prise en charge :</span>
       <span class="info-val">${escapeHtml(priseEnCharge)}</span>
     </div>
+    ${prescriberName ? `<div class="info-row">
+      <span class="info-label">Médecin prescripteur :</span>
+      <span class="info-val">${escapeHtml(prescriberName)}</span>
+    </div>` : ''}
   </div>
 
   <table class="invoice-table">

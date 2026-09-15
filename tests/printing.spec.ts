@@ -403,6 +403,9 @@ test('une nouvelle vente externe imprime les deux bons et ne décompte pas de st
   // Le prescripteur hors centre saisi est repris sur les bons et dans la base.
   expect(attempts[1].text).toContain(medecinHorsCentre);
   expect(attempts[2].text).toContain(medecinHorsCentre);
+  // … conservé sur la facture et repris sur le ticket de caisse (reçu de paiement).
+  expect(saved.invoices[0].prescriberName).toBe(medecinHorsCentre);
+  expect(attempts[0].text).toContain(medecinHorsCentre);
   expect(saved.consultations[0].doctorName).toBe(medecinHorsCentre);
   // Son nom rejoint la base des prescripteurs externes (saisie assistée ultérieure).
   expect(saved.prescripteursExternes).toContain(medecinHorsCentre);
@@ -415,6 +418,14 @@ test('une nouvelle vente externe imprime les deux bons et ne décompte pas de st
   await expectJobs(page, 4);
   expect((await browserState(page)).invoices).toEqual(saved.invoices);
   expect((await browserState(page)).consultations).toEqual(saved.consultations);
+  await closePrint(page);
+  // La facture A5 (Clôture → Facture A5) reprend aussi le médecin prescripteur, sans nouveau paiement.
+  await page.getByRole('button', { name: /Clôture/, exact: false }).first().click();
+  const closingTable = page.locator('table').filter({ has: page.getByRole('columnheader', { name: 'Reçus / Bons / Facture A5', exact: true }) });
+  await closingTable.getByRole('button', { name: 'Facture A5' }).click();
+  await expectJobs(page, 5);
+  expect(await page.evaluate(() => window.__printAttempts[4].text)).toContain(medecinHorsCentre);
+  expect((await browserState(page)).invoices).toEqual(saved.invoices);
   await closePrint(page);
 });
 

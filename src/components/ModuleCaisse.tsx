@@ -124,7 +124,9 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const prepareReceipts = (invoices: Invoice[], invoice: Invoice, exams = getExamReceipts(invoices, state.consultations, state.labRequests)): ReceiptSnapshot => {
     const consultation = state.consultations.find(c => invoices.some(i => i.consultationId === c.id && (!i.patientId || i.patientId === c.patientId)));
     const prescriber = state.users.find(u => u.id === (exams.prescriberId || consultation?.doctorId)) ||
-      (consultation?.doctorName ? { id: consultation.doctorId, name: consultation.doctorName, role: 'doctor' as const } : undefined);
+      (consultation?.doctorName ? { id: consultation.doctorId, name: consultation.doctorName, role: 'doctor' as const } : undefined) ||
+      // Vente externe (ex : analyses seules, sans consultation créée) : le nom saisi est conservé sur la facture.
+      (invoice.prescriberName ? { id: 'EXTERNE', name: invoice.prescriberName, role: 'doctor' as const } : undefined);
     return {
       invoice, exams, prescriber,
       patient: state.patients.find(p => p.id === invoice.patientId),
@@ -143,7 +145,10 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     };
     const date = new Date(invoice.paidAt || invoice.createdAt);
     if (kind === 'all' || kind === 'payment') {
-      openThermalTicket(effectiveTicketSettings, invoice, patient, cashier);
+      // Vente externe : seul le médecin prescripteur SAISI figure sur le ticket
+      // (conservé sur la facture ; jamais le libellé « Vente Externe (…) »).
+      const ticketPrescriber = invoice.isExternal ? invoice.prescriberName : undefined;
+      openThermalTicket(effectiveTicketSettings, invoice, patient, cashier, undefined, ticketPrescriber ? { prescriberName: ticketPrescriber } : undefined);
     }
     if ((kind === 'all' || kind === 'lab') && exams.labLines.length) {
       printLabRequestTicket(effectiveTicketSettings, ticketPatient, prescriber, date, exams.labLines);
@@ -916,6 +921,8 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       clientName: 'Client Externe',
       clientType: 'externe',
       numeroFacture: extNumero,
+      // Médecin prescripteur saisi : repris sur le ticket, la facture A5 et les bons (y compris réimpressions).
+      prescriberName: prescripteurSaisi || undefined,
       items: extLines.map(l => {
         const art = state.articles.find(a => a.name === l.articleName);
         const category: InvoiceItem['category'] = isLabExamArticle(art) ? 'lab' : isEchoActArticle(art) ? 'echo' : 'pharmacy';
