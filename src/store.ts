@@ -1423,6 +1423,83 @@ function normalizeInvoiceItemCategories(state: AppState): AppState {
 }
 
 /**
+ * CONSOLIDATION DES FACTURES COMPTOIR VALIDÉES PAR LOT.
+ * Avant le correctif « facture unifiée », la validation caisse d'un client
+ * comptoir soldait séparément la facture médicaments (créée à la validation)
+ * et les factures services en attente (consultations / analyses / écho) :
+ * la facturation ne montrait alors que la facture médicaments (« la facture
+ * validée de la caisse n'arrive pas en totalité »). Toute la validation est
+ * pourtant UN même encaissement : mêmes patient, paidAt et caissier.
+ *
+ * Réparation : les factures d'un même lot de validation comptoir sont
+ * fusionnées dans la facture médicaments (ou, à défaut, la première du lot) —
+ * une seule facture, le montant TOTAL validé à la caisse. Les factures
+ * absorbées disparaissent ; leurs numéros éventuels rejoignent le registre
+ * des numéros attribués (jamais réattribués). Idempotent et sans effet sur
+ * les factures société (crédit société) ni sur les ventes externes.
+ */
+function consoliderFacturesComptoirValidees(state: AppState): AppState {
+  const arrondi2 = (n: number) => Math.round((n || 0) * 100) / 100;
+  const payees = state.invoices.filter(i =>
+    i.status === 'paid' && i.paidAt && i.patientId && !i.isExternal && !i.creditSociete && i.clientType !== 'societe');
+  const lots = new Map<string, Invoice[]>();
+  for (const inv of payees) {
+    const clef = `${inv.patientId}|${inv.paidAt}|${inv.paidBy || ''}`;
+    const lot = lots.get(clef) || [];
+    lot.push(inv);
+    lots.set(clef, lot);
+  }
+  let modifie = false;
+  let invoices = state.invoices;
+  const numerosAbsorbes: string[] = [];
+  for (const lot of lots.values()) {
+    if (lot.length < 2) continue;
+    const cible = lot.find(i => (i.items || []).some(it => it.category === 'pharmacy'))
+      || lot.find(i => i.numeroFacture) || lot[0];
+    const absorbees = lot.filter(i => i.id !== cible.id);
+    const items = [...(cible.items || []), ...absorbees.flatMap(i => i.items || [])];
+    const totalAmount = arrondi2(items.reduce((s, it) => s + (it.amount || 0), 0));
+    invoices = invoices
+      .filter(i => !absorbees.some(a => a.id === i.id))
+      .map(i => (i.id === cible.id ? { ...i, items, totalAmount, patientCharge: totalAmount } : i));
+    for (const a of absorbees) if (a.numeroFacture) numerosAbsorbes.push(a.numeroFacture);
+    modifie = true;
+  }
+  if (!modifie) return state;
+  return { ...state, invoices, issuedFactureNumbers: [...(state.issuedFactureNumbers || []), ...numerosAbsorbes] };
+}
+
+/**
+ * RENSEIGNE QUANTITÉ / PRIX UNITAIRE DES LIGNES DE FACTURE.
+ * Les anciennes lignes ne portaient que « description + montant » (parfois
+ * « Article × 20 » dans le libellé) : la facture imprimée montrait alors « — »
+ * dans les colonnes Qté et Prix. On rétablit :
+ *  - libellé « … × N » → quantité N, prix unitaire = montant / N ;
+ *  - sinon → quantité 1, prix unitaire = montant.
+ * Idempotent : une ligne déjà renseignée n'est jamais retouchée.
+ */
+function renseignerQuantitesFactures(state: AppState): AppState {
+  const ARRONDI_QTE = /^(.*)\s*[×x]\s*(\d+(?:[.,]\d+)?)$/i;
+  let modifie = false;
+  const invoices = state.invoices.map(inv => {
+    if (!inv.items?.some(it => it.quantity == null || it.unitPrice == null)) return inv;
+    modifie = true;
+    return {
+      ...inv,
+      items: inv.items.map(it => {
+        if (it.quantity != null && it.unitPrice != null) return it;
+        const m = it.quantity == null ? ARRONDI_QTE.exec(it.description || '') : null;
+        const quantity = it.quantity ?? (m ? Number(m[2].replace(',', '.')) : 1);
+        const description = m ? m[1].trim() : it.description;
+        const unitPrice = it.unitPrice ?? (quantity > 0 ? Math.round(((it.amount || 0) / quantity) * 100) / 100 : 0);
+        return { ...it, description, quantity, unitPrice };
+      }),
+    };
+  });
+  return modifie ? { ...state, invoices } : state;
+}
+
+/**
  * Prépare un état chargé depuis une base locale (IndexedDB ou MySQL) :
  * normalisation des familles, garantie de l'établissement principal, des
  * tableaux de consultations, des catégories de lignes de factures et
@@ -1430,6 +1507,12 @@ function normalizeInvoiceItemCategories(state: AppState): AppState {
  */
 export function prepareLoadedState(state: AppState): AppState {
   state = ensureAssuranceCollections(state);
+  // Les validations caisse comptoir d'avant la facture unifiée (médicaments
+  // d'un côté, services de l'autre) sont regroupées en une seule facture.
+  state = consoliderFacturesComptoirValidees(state);
+  // Colonnes Qté / Prix des factures imprimées : les anciennes lignes sans
+  // quantité (« Article × 20 » dans le libellé) sont renseignées.
+  state = renseignerQuantitesFactures(state);
   // Registre des numéros déjà attribués : présent par défaut, y compris pour
   // les bases sauvegardées avant son introduction (promesse de non-réutilisation).
   state.issuedFactureNumbers = state.issuedFactureNumbers || [];

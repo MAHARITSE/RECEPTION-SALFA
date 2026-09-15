@@ -63,7 +63,6 @@ export default function EnTeteFactureEditor({ settings, updateTicket, showToast 
   const imgInputRef = useRef<HTMLInputElement>(null);
   const rangeRef = useRef<Range | null>(null);
 
-  const [previewOpen, setPreviewOpen] = useState(false);
   // Police / taille = OUTILS appliqués à la sélection seulement (jamais à toute la zone).
   const [fontFamily, setFontFamily] = useState(headerTypography(settings).font);
   const [fontSize, setFontSize] = useState(headerTypography(settings).size);
@@ -74,6 +73,8 @@ export default function EnTeteFactureEditor({ settings, updateTicket, showToast 
   const [editorKey, setEditorKey] = useState(0);
   // Image actuellement sélectionnée (par data-id) → permet d'afficher la barre d'outils image.
   const [selId, setSelId] = useState<string | null>(null);
+  // Largeur courante (px) de l'image sélectionnée, pilotée par le curseur « Redimensionner ».
+  const [imgWidth, setImgWidth] = useState(140);
   // Incrémenté à chaque frappe / modification pour rafraîchir l'aperçu en direct.
   const [ver, setVer] = useState(0);
   const dragState = useRef<{ x: number; y: number; dx: number; dy: number; el: HTMLElement } | null>(null);
@@ -303,6 +304,47 @@ export default function EnTeteFactureEditor({ settings, updateTicket, showToast 
     showToast('Image supprimée de l\'en-tête');
   };
 
+  /** Redimensionne l'image sélectionnée (largeur en px, hauteur proportionnelle). */
+  const resizeFig = (width: number) => {
+    const el = selectedFig();
+    if (!el) return;
+    const img = el.querySelector('img');
+    if (!img) return;
+    const w = Math.max(40, Math.min(600, Math.round(width)));
+    img.style.width = `${w}px`;
+    img.style.height = 'auto';
+    // Lever la borne de hauteur par défaut ; la largeur reste bornée au contenu
+    // pour ne jamais déborder sur les formats A5 / A4 / 2 par page.
+    img.style.maxWidth = '100%';
+    img.style.maxHeight = 'none';
+    setImgWidth(w);
+    refreshSelection();
+    setVer((v) => v + 1);
+  };
+
+  /** Rend sa taille automatique à l'image (bornes par défaut selon le plan). */
+  const resetFigSize = () => {
+    const el = selectedFig();
+    if (!el) return;
+    const img = el.querySelector('img');
+    if (!img) return;
+    img.style.width = '';
+    img.style.height = '';
+    img.style.maxWidth = isBg(el) ? '70%' : '140px';
+    img.style.maxHeight = isBg(el) ? '140px' : '90px';
+    refreshSelection();
+    setVer((v) => v + 1);
+    showToast('Taille automatique rétablie');
+  };
+
+  // Synchronise le curseur sur la largeur réelle de l'image sélectionnée.
+  useEffect(() => {
+    const img = selectedFig()?.querySelector('img');
+    if (!img) return;
+    const w = Math.round(img.getBoundingClientRect().width);
+    if (w > 0) setImgWidth(Math.max(40, Math.min(600, w)));
+  }, [selId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /* --- Déplacement à la souris d'une image d'arrière-plan (filigrane) --- */
   const startBgDrag = (e: React.PointerEvent<HTMLDivElement>) => {
     const el = figOf(e.target as Element);
@@ -398,9 +440,11 @@ export default function EnTeteFactureEditor({ settings, updateTicket, showToast 
         <Info className="w-4 h-4 shrink-0 mt-0.5 text-indigo-500 dark:text-indigo-400" />
         <span>
           <strong>Cliquez sur une image</strong> pour la sélectionner : une barre d'outils apparaît pour la
-          <strong> déplacer</strong> (monter / descendre, aligner à gauche / centre / droite) et la
+          <strong> déplacer</strong> (monter / descendre, aligner à gauche / centre / droite), la
+          <strong> redimensionner</strong> (curseur de largeur, hauteur proportionnelle) et la
           <strong> mettre en arrière-plan</strong> (filigrane derrière le texte). Une image d'arrière-plan peut être
-          <strong> glissée à la souris</strong> pour être repositionnée. Le tout est reproduit à l'impression de la facture.
+          <strong> glissée à la souris</strong> pour être repositionnée. L'aperçu à droite montre en direct le rendu
+          exact de l'impression.
         </span>
       </div>
 
@@ -482,6 +526,19 @@ export default function EnTeteFactureEditor({ settings, updateTicket, showToast 
                   <Layers className="w-3.5 h-3.5" /> Image en arrière-plan — <strong>glissez-la</strong> pour la déplacer dans la zone.
                 </span>
               )}
+              <span className="w-px h-5 bg-indigo-200 dark:bg-indigo-500/30 mx-1" />
+              <label className="flex items-center gap-1.5 text-[11px] font-semibold text-indigo-900 dark:text-indigo-300" title="Redimensionner l'image sélectionnée (hauteur proportionnelle)">
+                <Maximize2 className="w-3.5 h-3.5" /> Redimensionner
+                <input type="range" min={40} max={600} step={5} value={imgWidth}
+                  onChange={e => resizeFig(Number(e.target.value))}
+                  aria-label="Largeur de l'image sélectionnée"
+                  className="w-28 accent-indigo-600 cursor-pointer" />
+                <span className="font-mono w-12 text-right">{imgWidth}px</span>
+              </label>
+              <button type="button" onClick={resetFigSize}
+                className="px-2 py-1 rounded-md bg-surface hover:bg-surface-hover border border-line text-indigo-900 dark:text-indigo-300 text-[11px] font-semibold cursor-pointer">
+                Taille auto
+              </button>
               <span className="flex-1" />
               <button type="button" onClick={toggleBg} title={selIsBg ? 'Remettre l\'image devant le texte' : 'Placer l\'image derrière le texte (filigrane)'}
                 className={`px-2.5 py-1.5 rounded-md text-xs font-semibold cursor-pointer flex items-center gap-1.5 border ${
@@ -520,7 +577,7 @@ export default function EnTeteFactureEditor({ settings, updateTicket, showToast 
             onClick={handleEditorClick}
             onPointerDown={startBgDrag}
             data-placeholder="Saisissez ici le texte de l'en-tête de votre facture…"
-            className="invoice-header-content relative z-10 min-h-[240px] px-4 py-4 outline-none leading-relaxed text-ink-strong"
+            className="invoice-header-content relative z-10 min-h-[240px] px-4 py-4 outline-none text-ink-strong"
             style={{ ...typographyStyle, position: 'relative', zIndex: 1 }}
             spellCheck
           />
@@ -543,9 +600,6 @@ export default function EnTeteFactureEditor({ settings, updateTicket, showToast 
               <button onClick={clearAll} className="px-3 py-2 rounded-xl bg-rose-50 dark:bg-rose-500/8 text-rose-700 dark:text-rose-300 text-xs font-semibold cursor-pointer hover:bg-rose-100 dark:hover:bg-rose-500/15 flex items-center justify-center gap-1.5">
                 <Eraser className="w-3.5 h-3.5" /> Vider
               </button>
-              <button onClick={() => setPreviewOpen((p) => !p)} className="px-3 py-2 rounded-xl bg-slate-800 text-white text-xs font-semibold cursor-pointer hover:bg-slate-700 flex items-center justify-center gap-1.5">
-                <Eye className="w-3.5 h-3.5" /> {previewOpen ? 'Masquer' : 'Aperçu'}
-              </button>
               <button onClick={save} className="col-span-2 px-3 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer shadow-md flex items-center justify-center gap-1.5">
                 <Save className="w-4 h-4" /> Enregistrer l'en-tête de facture
               </button>
@@ -561,20 +615,21 @@ export default function EnTeteFactureEditor({ settings, updateTicket, showToast 
             </p>
           </div>
 
-          {/* Aperçu */}
-          {previewOpen && (
-            <div className="rounded-2xl border-2 border-line-strong bg-white p-4 shadow-md">
-              <div className="text-[10px] uppercase tracking-wide font-bold text-ink-muted mb-2 flex items-center gap-1.5">
-                <Eye className="w-3.5 h-3.5" /> Aperçu de l'en-tête de facture
-              </div>
-              <div className="min-h-[150px] border-b-2 border-black pb-3 relative" style={{ fontFamily: 'Arial, Helvetica, sans-serif', position: 'relative' }}>
-                <div className="invoice-header-content text-center relative z-10" style={typographyStyle} data-testid="invoice-header-preview" dangerouslySetInnerHTML={{ __html: previewContent || '<span class="text-ink-faint" style="color:#999;">Aucun contenu — saisissez ou chargez un modèle.</span>' }} />
-              </div>
-              <div className="pt-2 text-[10px] text-ink-muted text-center flex items-center justify-center gap-1">
-                <Maximize2 className="w-3 h-3" /> Format d'impression A5 / A4 — l'image d'arrière-plan apparaît derrière le texte
+          {/* Aperçu PERMANENT — rendu EXACTEMENT identique à l'impression :
+              même balisage .invoice-header, même typographie, même nettoyage. */}
+          <div className="rounded-2xl border-2 border-line-strong bg-white p-4 shadow-md">
+            <div className="text-[10px] uppercase tracking-wide font-bold text-ink-muted mb-2 flex items-center gap-1.5">
+              <Eye className="w-3.5 h-3.5" /> Aperçu en direct — tel qu'imprimé sur la facture
+            </div>
+            <div className="min-h-[150px]">
+              <div className="invoice-header" style={typographyStyle}>
+                <div className="invoice-header-content" data-testid="invoice-header-preview" dangerouslySetInnerHTML={{ __html: previewContent || '<span style="color:#999;">Aucun contenu — saisissez du texte ou chargez un modèle.</span>' }} />
               </div>
             </div>
-          )}
+            <div className="pt-2 text-[10px] text-ink-muted text-center flex items-center justify-center gap-1">
+              <Maximize2 className="w-3 h-3" /> Rendu identique à l'impression A5 / A4 — l'image d'arrière-plan apparaît derrière le texte
+            </div>
+          </div>
 
           {/* Petit rappel des manipulations possibles */}
           <div className="rounded-2xl border border-line bg-surface-muted/40 p-3 text-[11px] text-ink-secondary leading-relaxed space-y-1">
@@ -583,6 +638,7 @@ export default function EnTeteFactureEditor({ settings, updateTicket, showToast 
               <li><strong>Cliquer</strong> sur une image la sélectionne (outils affichés au-dessus).</li>
               <li><strong>Monter / Descendre</strong> : réorganise l'image dans l'en-tête.</li>
               <li><strong>Aligner</strong> : gauche / centre / droite dans la ligne.</li>
+              <li><strong>Redimensionner</strong> : curseur de largeur (40 à 600 px) ; « Taille auto » rétablit la taille par défaut.</li>
               <li><strong>Mettre en arrière-plan</strong> : image derrière le texte (filigrane), puis <strong>glissez-la</strong> pour la repositionner.</li>
             </ul>
           </div>

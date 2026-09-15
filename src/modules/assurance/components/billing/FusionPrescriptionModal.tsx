@@ -44,7 +44,8 @@ export function FusionPrescriptionModal({ source, candidates, societeNom, format
         </div>
 
         <p className="text-xs text-ink-muted">
-          La prescription <strong>absorbée</strong> disparaît de la liste : ses lignes et ses montants s'ajoutent à la
+          La prescription <strong>absorbée</strong> (obligatoirement une facture du <strong>même assuré</strong>,
+          classée par date la plus proche) disparaît de la liste : ses lignes et ses montants s'ajoutent à la
           prescription <strong>conservée</strong>, qui garde son numéro de facture (les deux dates restent tracées dans
           le commentaire). L'opération est <strong>annulable</strong> : la prescription absorbée est restituée à l'identique.
         </p>
@@ -73,7 +74,10 @@ export function FusionPrescriptionModal({ source, candidates, societeNom, format
                 ))}
               </select>
             ) : (
-              <p className="text-xs text-ink-muted italic">Aucune autre prescription de la même société à fusionner.</p>
+              <p className="text-xs text-ink-muted italic">Aucune autre facture de la même personne (même société) à fusionner.</p>
+            )}
+            {candidates.length > 0 && (
+              <p className="text-[10px] text-ink-faint -mt-0.5">Seules les factures du même assuré sont proposées — la date la plus proche de celle-ci est proposée en premier.</p>
             )}
             {cible && (
               <div className="text-xs text-ink space-y-0.5">

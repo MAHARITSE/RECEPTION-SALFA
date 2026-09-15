@@ -1,7 +1,7 @@
 RECEPTION SALFA - Application compilée pour WAMP (index.html)
 ================================================================
 Build du       : 2026-09-15
-Commit source  : suite de 33e7d1 (branche arena/01a09ec8-reception-salfa)
+Commit source  : suite de c1906d2 (branche arena/01a0a3c7-reception-salfa)
 Commande       : npm run build:wamp   (VITE_WAMP_MODE=1 via .env.wamp)
 Mode vérifié   : WAMP / MySQL (ternaire replié dans le bundle)
 Taille         : 3,70 Mo (monofichier, gzip ~999 Ko)
@@ -42,6 +42,130 @@ Contenu        : 1) correctifs « audit WAMP 100 passages/jour » (sonde action=
                    état imprimable (PDF via l'impression du navigateur) et export
                    Excel ; raccourci avec compteur depuis la Facturation et alerte à
                    la validation de sortie à la caisse.
+                 6) INSTALLATION SQL EN UN SEUL FICHIER : schema.sql et seed.sql
+                   sont fusionnés en database/reception_salfa_complete.sql (schéma
+                   v3 complet + comptes par défaut, familles, services, paramètres
+                   d'impression ; idempotent CREATE IF NOT EXISTS / INSERT IGNORE,
+                   crée la base tout seul). Les commentaires de la sauvegarde .sql
+                   de l'application pointent vers ce fichier unique ; les docs
+                   (README, QUICKSTART 13 étapes, PERFORMANCE, SECURITE), le
+                   .htaccess, diagnostic.php et les scripts .bat sont alignés.
+                   Les migrations 002/003 restent réservées aux bases v1/v2.
+                 7) FACTURATION ASSURANCE : suppression du bouton « Importer Facture
+                   SALFA » (SalfaImportModal.tsx retiré) ; le formulaire « Facture
+                   Prestation » saisit désormais ses lignes comme l'Hospitalisation /
+                   Client externe : recherche d'article du catalogue (↑↓ Entrée,
+                   P.U. société automatique), Qté, Remise %, P.U., Montant calculé,
+                   date d'acte, famille déduite de l'article (modifiable). Chaque
+                   ligne MÉDICAMENT porte une « Nature » : Ordonnance (défaut) ou
+                   Vente non saisie — badge dans le détail de la facture et colonne
+                   « Médicaments (Nature) » dans l'export Excel.
+                 8) VUE DÉTAILLÉE EN PREMIER (Responsable Facturation) : dans tous
+                   les onglets à bascule de vue (Facturation/Prestations, Comptoir &
+                   Externes, Paiements, Rejets), l'onglet « Vue Détaillée (Dossiers) »
+                   est maintenant le premier ET la vue par défaut.
+                 9) EXPORTS ALIGNÉS SUR LE DÉPÔT DE RÉFÉRENCE
+                   (MAHARITSE/suivi_assurance, où ils fonctionnent) : Excel passe par
+                   XLSX.writeFile(classeur, nom) et PDF par doc.save(nom) en chemin
+                   principal (repli Blob + <a download> en cas d'échec, message
+                   d'erreur jamais silencieux) ; la Sauvegarde SQL de l'Administration
+                   reprend le même mécanisme Blob sécurisé avec erreur explicite.
+                10) MODIFICATION DE PRESCRIPTION DANS LE MODULE ASSURANCE
+                   (onglet Prestations, Vue Détaillée) : bouton presse-papiers sur
+                   chaque ligne ouvre le facturier façon « vente externe » — saisie
+                   d'article du catalogue (↑↓ Entrée, P.U. société automatique),
+                   Code famille, Qté, Rem %, P.U., Montant calculé, Ticket mod.,
+                   pour ajouter des VENTES OMISES (produits réellement
+                   sortis sans saisie → le STOCK PHARMACIE est régularisé à
+                   l'enregistrement : décrément à l'ajout, restauration si la ligne
+                   est supprimée ou sa quantité corrigée) ou des ORDONNANCES
+                   EXTERNES remboursées par l'hôpital (AUCUN impact stock). Les
+                   lignes de la facture Caisse restent verrouillées 🔒 ; les ajouts
+                   s'empilent et alimentent les totaux. Trace dans le Journal
+                   d'audit (ASSURANCE_VENTE_OMISE).
+                11) ONGLET PRESTATIONS (Vue Détaillée) allégé : les boutons
+                   « Visualiser détails » (œil) et « Modifier la prestation »
+                   (crayon) sont supprimés ; le facturier de prescription ne
+                   comporte plus le champ « Date d'acte ».
+                12) FUSION DE PRESCRIPTIONS : la facture absorbée doit être
+                   celle de la MÊME personne (même assuré — même personneId,
+                   ou à défaut même matricule) et les candidates sont
+                   proposées par DATE LA PLUS PROCHE de la facture d'où l'on
+                   lance la fusion. Garde-fou identique à l'enregistrement
+                   (sharedData.fusionnerPrescription).
+                13) DONNÉES DE DÉMONSTRATION SUPPRIMÉES ET RÉGÉNÉRÉES SUR
+                   3 MOIS (16/06/2026 → 15/09/2026, se termine aujourd'hui) :
+                   toutes les données transactionnelles (patients, factures,
+                   ventes, paiements, clôtures, stock, labo, hospit/bloc,
+                   audit…) ont été regénérées de zéro par
+                   scripts/regen_3mois.cjs — 167 patients, 451 consultations,
+                   535 factures FAC-2026-0001→0535, 156 clôtures de caisse,
+                   16 dossiers hospit/bloc, comptes société juin→août réglés
+                   et septembre en cours, faux dossiers « Test Historique »
+                   supprimés. Le fichier database/reception_salfa_complete.sql
+                   embarque désormais schéma + données (générateur
+                   scripts/seed_sql_3mois.cjs) : un seul import donne une base
+                   prête à l'emploi. Build standard : src/data/localData.json.
+                14) CORRECTIF : la facture validée à la caisse arrive EN
+                   TOTALITÉ vers la Facturation. Cause du bug : les factures
+                   « services » (consultation / analyses / écho) créées quand
+                   le patient était encore « comptoir » (ou avant son
+                   rattachement société) gardaient l'ancien type ; seule la
+                   facture médicaments, créée à la validation avec le type
+                   courant, atteignait la facturation société. Corrections :
+                   (a) à la validation en caisse, les factures soldées suivent
+                   le type/société ACTUELS du patient (+ clientName) et la
+                   numérotation utilise aussi son type actuel ;
+                   (b) le changement de type/société (panneau 🏢 de la caisse)
+                   met à jour les factures EN ATTENTE du patient ;
+                   (c) dérivation : une facture validée en CRÉDIT SOCIÉTÉ
+                   pour un patient société appartient à la facturation société
+                   même si son type d'origine dit « comptoir »
+                   (typeClientEffectif) — répare aussi les dossiers déjà
+                   validés, sans double comptage dans Comptoir & Externe.
+                15) FACTURE UNIFIÉE POUR LES CLIENTS COMPTOIR / EXTERNES :
+                   la validation caisse d'un client comptoir produit désormais
+                   UNE SEULE facture (médicaments + consultations + analyses +
+                   écho = le TOTAL « À PAYER » affiché en caisse) ; les
+                   factures services en attente qu'elle absorbe sont
+                   remplacées. La facture validée arrive donc EN TOTALITÉ dans
+                   la facturation (onglet Comptoir & Externe). Les clients
+                   société gardent leurs factures détaillées (crédit société).
+                   Réparation automatique des dossiers déjà validés sous
+                   l'ancien système : les factures payées en un même lot de
+                   validation (même patient, même instant, même caissier) sont
+                   fusionnées en une seule facture au chargement
+                   (consoliderFacturesComptoirValidees, idempotent).
+                16) FACTURE IMPRIMÉE : QUANTITÉS ET PRIX UNITAIRES EN
+                   COLONNES. Les lignes médicaments ne portent plus « × 20 »
+                   dans le libellé : la quantité et le prix unitaire vont dans
+                   les colonnes Qté / Prix (montant = Qté × Prix). Les
+                   factures labo/écho créées par le médecin portent elles
+                   aussi Qté 1 + prix. Les anciennes lignes déjà en base sont
+                   complétées automatiquement au chargement (« Article × N »
+                   → Qté N, Prix = montant/N ; sinon Qté 1, Prix = montant).
+                   Le bloc Total Brut / Remise-Participation / Net à payer de
+                   la facture individuelle est aligné sur le début de la
+                   colonne Quantité. Le ticket de caisse affiche « ×N » quand
+                   la quantité est supérieure à 1.
+                17) IMPRESSION « 2 FACTURES PAR PAGE A4 » : dans Comptoir &
+                   Externe, la liste des factures d'un client (double-clic sur
+                   son nom) propose des cases à cocher + « Imprimer la
+                   sélection — 2 par page A4 » : les factures choisies sont
+                   posées deux par deux côte à côte sur feuille A4 paysage
+                   (chaque moitié = une facture A5, pointillé de découpe,
+                   en-tête Administration reproduit sur chaque facture).
+                   L'impression individuelle A5 existante reste disponible
+                   bouton « Imprimer ».
+                18) EN-TÊTE DES FACTURES (Administration) : aperçu PERMANENT
+                   affiché à droite de la zone de saisie, rendu strictement
+                   identique à l'impression (même balisage .invoice-header,
+                   même typographie, même nettoyage) — plus besoin de bouton
+                   « Aperçu ». Les images insérées peuvent être
+                   REDIMENSIONNÉES : curseur de largeur 40 à 600 px (hauteur
+                   proportionnelle) + bouton « Taille auto », y compris pour
+                   une image en arrière-plan. L'interligne de la zone
+                   d'édition est calé sur celui de l'impression.
 Vérifications  : npx tsc --noEmit OK, npm run build:wamp OK ; harnais node (exports :
                  fichiers relus identiques, en-têtes sur liste vide, extension forcée,
                  message d'échec - et reliquats : filtres, montants, ancienneté,

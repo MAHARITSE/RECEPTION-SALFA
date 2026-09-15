@@ -8,22 +8,22 @@ import { formatDate } from '../../utils/formatters';
 type OrigineAjout = 'omission' | 'ordonnance_externe';
 
 const LIBELLE_ORIGINE: Record<OrigineAjout, string> = {
-  omission: 'Omission',
+  omission: 'Vente omise',
   ordonnance_externe: 'Ordonnance externe',
 };
 
 interface FormLigne {
   origine: OrigineAjout;
+  articleId?: string;
   code: string;
   libelle: string;
   quantity: number;
   remisePct: number;
   prixUnitaire: number;
   ticketModerateur: number;
-  dateActe: string;
 }
 
-const FORM_VIDE: FormLigne = { origine: 'omission', code: '', libelle: '', quantity: 1, remisePct: 0, prixUnitaire: 0, ticketModerateur: 0, dateActe: new Date().toISOString().split('T')[0] };
+const FORM_VIDE: FormLigne = { origine: 'omission', articleId: undefined, code: '', libelle: '', quantity: 1, remisePct: 0, prixUnitaire: 0, ticketModerateur: 0 };
 const arrondi2 = (n: number) => Math.round((n || 0) * 100) / 100;
 const montantDe = (f: FormLigne) => arrondi2((f.quantity || 0) * (f.prixUnitaire || 0) * (1 - (f.remisePct || 0) / 100));
 
@@ -40,7 +40,7 @@ interface Props {
  * Éditeur de PRESCRIPTION du facturier — même ergonomie que la Saisie Sage
  * du bloc / hospitalisation (Caisse) :
  *  - barre de saisie : acte/article (recherche ↑↓ Entrée dans le catalogue),
- *    code famille, Qté, Rem%, P.U., Montant calculé, Ticket mod., date d'acte 📌 ;
+ *    code famille, Qté, Rem%, P.U., Montant calculé, Ticket mod. ;
  *  - boutons Nouveau / Supprimer / Enregistrer (Entrée valide la ligne) ;
  *  - tableau des lignes : actes Caisse 🔒 (verrouillés, non cliquables) puis
  *    les ajouts du facturier (clic = recharger dans la barre pour correction) ;
@@ -66,7 +66,7 @@ export function PrescriptionEditModal({ prestation, familles, articles = [], onC
   const choisirArticle = (id: string) => {
     const art = articles.find(a => a.id === id);
     if (!art) return;
-    setForm(f => ({ ...f, code: art.family || f.code, libelle: art.name, prixUnitaire: getPrice(art, 'societe') }));
+    setForm(f => ({ ...f, articleId: art.id, code: art.family || f.code, libelle: art.name, prixUnitaire: getPrice(art, 'societe') }));
     setRecherche('');
     setListeOuverte(false);
     setErreur('');
@@ -88,10 +88,10 @@ export function PrescriptionEditModal({ prestation, familles, articles = [], onC
   const chargerLigne = (l: LignePrestation) => {
     setEditionId(l.id);
     setForm({
-      origine: (l.origine as OrigineAjout) || 'omission', code: l.code || '', libelle: l.libelle || '',
+      origine: (l.origine as OrigineAjout) || 'omission', articleId: l.articleId, code: l.code || '', libelle: l.libelle || '',
       quantity: l.quantity || 1, remisePct: l.remisePct || 0,
       prixUnitaire: l.prixUnitaire ?? l.totalPrestation ?? 0,
-      ticketModerateur: l.ticketModerateur || 0, dateActe: l.dateActe || '',
+      ticketModerateur: l.ticketModerateur || 0,
     });
     setErreur('');
   };
@@ -112,8 +112,8 @@ export function PrescriptionEditModal({ prestation, familles, articles = [], onC
       prestationId: prestation.id, code: form.code || 'CONS', libelle: form.libelle.trim().toUpperCase(),
       totalPrestation: montant, montantARembourser: arrondi2(montant - (form.ticketModerateur || 0)),
       ticketModerateur: form.ticketModerateur || 0, totalPaye: 0,
-      origine: form.origine, quantity: form.quantity, remisePct: form.remisePct || undefined,
-      prixUnitaire: form.prixUnitaire, dateActe: form.dateActe || undefined,
+      origine: form.origine, articleId: form.articleId, quantity: form.quantity, remisePct: form.remisePct || undefined,
+      prixUnitaire: form.prixUnitaire,
     };
     setAjouts(a => editionId ? a.map(l => (l.id === editionId ? ligne : l)) : [...a, ligne]);
     nouveau();
@@ -157,9 +157,10 @@ export function PrescriptionEditModal({ prestation, familles, articles = [], onC
 
         <div className="p-4 space-y-3">
           <p className="text-xs text-ink-muted">
-            Les actes de la facture Caisse 🔒 restent inchangés. Saisissez ci-dessous les <strong>omissions</strong> ou
-            les <strong>ordonnances externes remboursées par l'hôpital</strong> : elles s'empilent sur la prescription
-            et figurent dans les prochains totaux.
+            Les actes de la facture Caisse 🔒 restent inchangés. Saisissez ci-dessous, comme en <strong>vente externe</strong> :
+            les <strong>ventes omises</strong> (produits réellement sortis sans saisie — le <strong>stock pharmacie est régularisé</strong> à
+            l'enregistrement) ou les <strong>ordonnances externes remboursées par l'hôpital</strong> (<strong>aucun impact sur le stock</strong>).
+            Elles s'empilent sur la prescription et figurent dans les prochains totaux.
           </p>
 
           {/* Barre de saisie façon Sage */}
@@ -168,9 +169,11 @@ export function PrescriptionEditModal({ prestation, familles, articles = [], onC
               <div className="flex flex-wrap items-end gap-1.5">
                 <div className="w-36">
                   <label className="block text-[10px] font-bold text-ink-muted mb-0.5">Type</label>
-                  <select value={form.origine} onChange={e => setForm(f => ({ ...f, origine: e.target.value as OrigineAjout }))} className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs outline-none focus:border-accent cursor-pointer text-ink-strong">
-                    <option value="omission">Omission</option>
-                    <option value="ordonnance_externe">Ordonnance externe</option>
+                  <select value={form.origine} onChange={e => setForm(f => ({ ...f, origine: e.target.value as OrigineAjout }))}
+                    title={form.origine === 'omission' ? 'Produits réellement sortis sans saisie : le stock pharmacie sera régularisé à l\'enregistrement.' : 'Médicaments pris dans une autre pharmacie et remboursés par l\'hôpital : aucun impact sur le stock.'}
+                    className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs outline-none focus:border-accent cursor-pointer text-ink-strong">
+                    <option value="omission">Vente omise (− stock)</option>
+                    <option value="ordonnance_externe">Ordonnance externe (sans stock)</option>
                   </select>
                 </div>
                 <div className="flex-1 min-w-[170px] relative">
@@ -188,9 +191,12 @@ export function PrescriptionEditModal({ prestation, familles, articles = [], onC
                     <div className="absolute top-full left-0 right-0 bg-surface border border-line-strong rounded-b shadow-2xl z-40 max-h-40 overflow-y-auto">
                       {filtres.map((a, i) => (
                         <div key={a.id} onClick={() => choisirArticle(a.id)}
-                          className={`px-3 py-1.5 text-xs flex justify-between border-b border-line-soft cursor-pointer ${i === idx ? 'bg-blue-500 text-white font-medium' : 'hover:bg-surface-muted text-ink-strong'}`}>
-                          <span>[{a.family}] {a.name}</span>
-                          <span className={`font-mono ${i === idx ? 'text-white' : 'text-blue-600 dark:text-cyan-400 font-medium'}`}>{formatAr(getPrice(a, 'societe'))}</span>
+                          className={`px-3 py-1.5 text-xs flex justify-between items-center gap-2 border-b border-line-soft cursor-pointer ${i === idx ? 'bg-blue-500 text-white font-medium' : 'hover:bg-surface-muted text-ink-strong'}`}>
+                          <span className="truncate">[{a.family}] {a.name}</span>
+                          <span className="flex items-center gap-2 shrink-0">
+                            <span className={`font-mono text-[10px] ${i === idx ? 'text-white/90' : 'text-ink-faint'}`}>Stock: {a.stockPharmacie}</span>
+                            <span className={`font-mono ${i === idx ? 'text-white' : 'text-blue-600 dark:text-cyan-400 font-medium'}`}>{formatAr(getPrice(a, 'societe'))}</span>
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -236,12 +242,6 @@ export function PrescriptionEditModal({ prestation, familles, articles = [], onC
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); enregistrerLigne(); } }}
                     className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-accent text-ink-strong" />
                 </div>
-                <div className="w-36">
-                  <label className="block text-[10px] font-bold text-ink-muted mb-0.5" title="Conservée après validation de la ligne">Date d'acte 📌</label>
-                  <input type="date" value={form.dateActe || ''} onChange={e => setForm(f => ({ ...f, dateActe: e.target.value }))}
-                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); enregistrerLigne(); } }}
-                    className="w-full bg-amber-50 dark:bg-amber-500/8 border border-amber-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-accent text-ink-strong" />
-                </div>
               </div>
               <div className="flex justify-end gap-1.5 mt-2">
                 <button type="button" onClick={nouveau} className="flex items-center gap-1 px-2.5 py-1 bg-surface hover:bg-surface-muted border border-line-strong rounded shadow-sm text-ink transition cursor-pointer text-xs font-medium">
@@ -268,7 +268,6 @@ export function PrescriptionEditModal({ prestation, familles, articles = [], onC
                     <th className="p-1 font-normal text-right w-20">P.U.</th>
                     <th className="p-1 font-normal text-right w-24">Montant</th>
                     <th className="p-1 font-normal text-right w-20">Ticket</th>
-                    <th className="p-1 font-normal w-28">Date d'acte</th>
                     <th className="p-1 font-normal w-6"></th>
                   </tr>
                 </thead>
@@ -282,7 +281,6 @@ export function PrescriptionEditModal({ prestation, familles, articles = [], onC
                       <td className="p-1 text-right">{l.prixUnitaire != null ? formatNum(l.prixUnitaire) : '—'}</td>
                       <td className="p-1 text-right font-bold">{formatNum(l.totalPrestation)}</td>
                       <td className="p-1 text-right">{formatNum(l.ticketModerateur || 0)}</td>
-                      <td className="p-1 font-sans text-ink-faint">{l.dateActe || '—'}</td>
                       <td className="p-1 text-center"><Lock className="w-3 h-3 inline" /></td>
                     </tr>
                   ))}
@@ -301,7 +299,6 @@ export function PrescriptionEditModal({ prestation, familles, articles = [], onC
                         <td className="p-1 text-right">{formatNum(l.prixUnitaire ?? l.totalPrestation)}</td>
                         <td className="p-1 text-right font-bold">{formatNum(l.totalPrestation)}</td>
                         <td className="p-1 text-right">{formatNum(l.ticketModerateur || 0)}</td>
-                        <td className="p-1 font-sans text-ink-muted">{l.dateActe || '—'}</td>
                         <td className="p-1 text-center">
                           <button onClick={e => { e.stopPropagation(); setAjouts(a => a.filter(x => x.id !== l.id)); if (isSel) nouveau(); }}
                             className={`cursor-pointer ${isSel ? 'text-white hover:text-red-200' : 'text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-300'}`}>
@@ -312,7 +309,7 @@ export function PrescriptionEditModal({ prestation, familles, articles = [], onC
                     );
                   })}
                   {!originales.length && !ajouts.length && (
-                    <tr><td colSpan={9} className="p-4 text-center text-ink-faint font-sans">Aucun acte. Saisissez une omission ou une ordonnance externe ci-dessus.</td></tr>
+                    <tr><td colSpan={8} className="p-4 text-center text-ink-faint font-sans">Aucun acte. Saisissez une vente omise ou une ordonnance externe ci-dessus.</td></tr>
                   )}
                 </tbody>
                 {(originales.length > 0 || ajouts.length > 0) && (

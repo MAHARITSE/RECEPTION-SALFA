@@ -23,9 +23,11 @@ wamp_deploy/
 │   ├── lib.php           # fonctions partagées (tables, PDO, journal)
 │   └── logs/             # journaux d'erreurs (inaccessibles via HTTP)
 ├── database/
-│   ├── schema.sql        # schéma v3 : 35 tables métier + parametres + compteurs + sequences + sessions + revision
-│   ├── migrations/       # bases existantes : 002_sequences.sql (v1→v2), 003_performance.sql (v2→v3)
-│   └── seed.sql          # comptes par défaut + référentiels (familles, services…)
+│   ├── reception_salfa_complete.sql  # LE SEUL fichier à importer : schéma v3 complet
+│   │                                 # (35 tables + parametres + compteurs + sequences
+│   │                                 # + sessions + revision) + données initiales
+│   │                                 # (comptes par défaut, familles, services…)
+│   └── migrations/       # bases existantes seulement : 002_sequences.sql (v1→v2), 003_performance.sql (v2→v3)
 ├── outils/
 │   ├── deployer.bat      # copie vers C:\wamp64\www\reception-salfa
 │   ├── sauvegarder.bat   # sauvegarde mysqldump + rotation (à planifier ; voir PERFORMANCE.md §6)
@@ -94,7 +96,9 @@ Garanties (voir code pour le détail) :
 
 ## Installation (résumé — détail dans QUICKSTART.md)
 
-1. Importer `database/schema.sql` puis `database/seed.sql` dans phpMyAdmin.
+1. Importer **`database/reception_salfa_complete.sql`** dans phpMyAdmin
+   (onglet *Importer*) : c'est le fichier unique — il crée la base, le schéma
+   v3 et les données initiales (comptes par défaut, familles, services…).
 2. Si MySQL a un mot de passe : créer `api/config.local.php` :
    ```php
    <?php

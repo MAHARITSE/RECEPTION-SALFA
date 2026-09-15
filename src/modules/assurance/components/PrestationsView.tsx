@@ -4,8 +4,6 @@ import {
   Merge,
   Plus, 
   Search, 
-  Eye, 
-  Edit3, 
   Trash2, 
   FileText, 
   Receipt,
@@ -25,7 +23,6 @@ import {
   Building,
   Building2,
   Calendar,
-  FileSpreadsheet,
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
@@ -35,19 +32,23 @@ import {
   Edit2,
   Ban,
   ShieldOff,
-  Info
+  Info,
+  ClipboardEdit
 } from 'lucide-react';
-import { Prestation, LignePrestation, Paiement, Societe, Personne, Famille } from '../types';
+import { Prestation, LignePrestation, Paiement, Societe, Personne, Famille, ligneEstMedicament, LIBELLE_NATURE_MEDICAMENT } from '../types';
+import { roundTo2 } from '../../../store';
 import { formatMoney, formatDate, generateId, getCurrentTimestamp } from '../utils/formatters';
 import { maskNom } from '../utils/inputMasks';
 import { buildSocieteFactureNumber, collectExistingFactureNumbers, SOCIETE_FACTURE_RE } from '../../../utils/factureNumber';
 import { attribuerNumeroFacture } from '../../../utils/numeros';
 import { calculateRecouvrementData, generateRecouvrementPdf, generateSelectedPrestationsPdf } from '../utils/recouvrementPdf';
 import { exclusionPersonne, repartirPrestation, societeEstPayeurGlobal } from '../utils/societeExclusions';
-import { SalfaImportModal } from './SalfaImportModal';
 import { FacturesGroupedTable } from './prestations/FacturesGroupedTable';
 import { ChangerLiaisonModal } from './prestations/ChangerLiaisonModal';
 import { FactureDetailModal } from './prestations/FactureDetailModal';
+import { PrescriptionEditModal } from './billing/PrescriptionEditModal';
+import type { Article } from '../../../types';
+import { getPrice } from '../../../store';
 import * as XLSX from 'xlsx';
 import { telechargerClasseur } from '../../../utils/exportFichier';
 import { Select } from '../../../components/Select';
@@ -106,6 +107,8 @@ export interface PrestationsViewProps {
   societes: Societe[];
   personnes: Personne[];
   familles: Famille[];
+  /** Catalogue d'articles (saisie des lignes comme Hospitalisation / Client externe). */
+  articles?: Article[];
   selectedSocieteId: string;
   selectedSubSocieteId?: string;
   onSavePrestation: (prestation: Prestation) => void;
@@ -117,7 +120,6 @@ export interface PrestationsViewProps {
   /** Annule la dernière fusion reçue par la prescription et restitue l'absorbée. */
   onAnnulerFusion?: (conserveId: string) => void;
   onDeleteFacture?: (numeroFacture: string) => void;
-  onImportPrestations?: (newPrestations: Prestation[], newSocietes?: Societe[], newPersonnes?: Personne[]) => void;
   onSavePaiement?: (paiement: Paiement, updatedPrestations: Prestation[]) => void;
   isCreateModalOpen: boolean;
   setIsCreateModalOpen: (open: boolean) => void;
@@ -145,6 +147,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
   societes,
   personnes,
   familles,
+  articles = [],
   selectedSocieteId,
   selectedSubSocieteId,
   onSavePrestation,
@@ -153,7 +156,6 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
   onFusionner,
   onAnnulerFusion,
   onDeleteFacture,
-  onImportPrestations,
   onSavePaiement,
   isCreateModalOpen,
   setIsCreateModalOpen,
@@ -190,10 +192,11 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
 
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const [expandedFactureRows, setExpandedFactureRows] = useState<Record<string, boolean>>({});
-  const [viewingPrestation, setViewingPrestation] = useState<Prestation | null>(null);
   const [viewingFacture, setViewingFacture] = useState<GroupedFacture | null>(null);
   const [editingPrestation, setEditingPrestation] = useState<Prestation | null>(null);
-  const [isSalfaModalOpen, setIsSalfaModalOpen] = useState<boolean>(false);
+  /** Modification de prescription (facturier) : ajout de ventes omises ou
+   *  d'ordonnances externes, sans toucher aux lignes Caisse d'origine. */
+  const [prescriptionEditCible, setPrescriptionEditCible] = useState<Prestation | null>(null);
   const [changerLiaisonContext, setChangerLiaisonContext] = useState<{ prestation: Prestation, lignePrestation: LignePrestation } | null>(null);
   const [lineEditContext, setLineEditContext] = useState<{ prestation: Prestation, ligne: LignePrestation } | null>(null);
   const [lineExcludeContext, setLineExcludeContext] = useState<{ prestation: Prestation, ligne: LignePrestation, maxExclu: number } | null>(null);
@@ -1207,9 +1210,13 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
         id: generateId('lig'),
         prestationId: '',
         code: 'CONS',
-        libelle: 'Consultation médicale',
-        totalPrestation: 40000,
+        libelle: '',
+        quantity: 1,
+        remisePct: 0,
+        prixUnitaire: 0,
+        totalPrestation: 0,
         totalPaye: 0,
+        dateActe: new Date().toISOString().split('T')[0],
       }
     ],
   });
@@ -1253,9 +1260,13 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
           id: generateId('lig'),
           prestationId: '',
           code: 'CONS',
-          libelle: 'Consultation & soins médicaux',
+          libelle: '',
+          quantity: 1,
+          remisePct: 0,
+          prixUnitaire: 0,
           totalPrestation: initialMontant,
           totalPaye: 0,
+          dateActe: dateSoins,
         }
       ]
     });
@@ -1274,14 +1285,6 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCreateModalOpen]);
 
-  const handleOpenEdit = (p: Prestation) => {
-    setEditingPrestation(p);
-    setFormData({
-      ...p,
-      lignes: [...p.lignes],
-    });
-    setIsCreateModalOpen(true);
-  };
 
 
   const handleSaveLigneEdit = (e: React.FormEvent) => {
@@ -1545,16 +1548,85 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
     setFactureExcludeContext(null);
   };
 
+  /* ----------------------------------------------------------------------
+   * SAISIE DES LIGNES — même format que l'Hospitalisation / Client externe
+   * (Caisse) : article du catalogue (recherche ↑↓ Entrée), Qté, Remise %,
+   * P.U., Montant calculé, date d'acte. Pour les lignes MÉDICAMENT, une
+   * « Nature » précise s'il s'agit d'une Ordonnance ou d'une Vente non saisie.
+   * ---------------------------------------------------------------------- */
+  const [rechercheLignes, setRechercheLignes] = useState<Record<string, string>>({});
+  const [suggestionsLigneId, setSuggestionsLigneId] = useState<string | null>(null);
+  const [idxSuggestion, setIdxSuggestion] = useState(0);
+
+  /** Montant recalculé : Qté × P.U. × (1 − Remise %). Une ancienne ligne sans
+   *  P.U. explicite conserve son montant (le P.U. retombe sur totalPrestation). */
+  const montantLigneCalcule = (l: LignePrestation) => {
+    const qte = l.quantity ?? 1;
+    const pu = l.prixUnitaire ?? l.totalPrestation ?? 0;
+    return roundTo2(qte * pu * (1 - (l.remisePct || 0) / 100));
+  };
+
+  const prixUnitaireAffiche = (l: LignePrestation) => l.prixUnitaire ?? l.totalPrestation ?? 0;
+
+  /** Famille assurance (CONS, MEDIC, LABO…) correspondant à la famille d'un
+   *  article du catalogue — code exact puis alias. */
+  const famillePourArticle = (family?: string): string => {
+    const code = (family || '').toUpperCase();
+    if (!code) return 'CONS';
+    const exacte = familles.find(f => f.code.toUpperCase() === code);
+    if (exacte) return exacte.code;
+    const alias = familles.find(f => (f.aliases || []).some(a => a.toUpperCase() === code));
+    return alias ? alias.code : code;
+  };
+
+  const suggestionsArticles = (recherche: string) =>
+    recherche.trim().length >= 1
+      ? articles.filter(a => !a.saleBlocked && a.name.toLowerCase().includes(recherche.trim().toLowerCase())).slice(0, 8)
+      : [];
+
+  const focusRechercheLigne = (ligne: LignePrestation) => {
+    setRechercheLignes(prev => ({ ...prev, [ligne.id]: ligne.libelle || '' }));
+    setSuggestionsLigneId(ligne.id);
+    setIdxSuggestion(0);
+  };
+
+  const fermerSuggestions = () => { setSuggestionsLigneId(null); setIdxSuggestion(0); };
+
+  const selectArticlePourLigne = (index: number, article: Article) => {
+    const newLignes = [...(formData.lignes || [])];
+    const prev = newLignes[index];
+    const code = famillePourArticle(article.family);
+    const updated: LignePrestation = {
+      ...prev,
+      libelle: article.name,
+      code,
+      prixUnitaire: getPrice(article, 'societe'),
+      quantity: prev.quantity || 1,
+      remisePct: prev.remisePct || 0,
+      // Médicament : nature par défaut « Ordonnance » (prescription médecin).
+      natureMedicament: ligneEstMedicament({ code }) ? (prev.natureMedicament || 'ordonnance') : undefined,
+    };
+    updated.totalPrestation = montantLigneCalcule(updated);
+    newLignes[index] = updated;
+    setRechercheLignes(prevMap => ({ ...prevMap, [updated.id]: '' }));
+    fermerSuggestions();
+    recalcFormTotals(newLignes, formData.societeId);
+  };
+
   const handleAddLine = () => {
     const newLignes = [
       ...(formData.lignes || []),
       {
         id: generateId('lig'),
         prestationId: formData.id || '',
-        code: 'PHAR',
-        libelle: 'Médicaments / Soins complémentaires',
-        totalPrestation: 30000,
+        code: 'CONS',
+        libelle: '',
+        quantity: 1,
+        remisePct: 0,
+        prixUnitaire: 0,
+        totalPrestation: 0,
         totalPaye: 0,
+        dateActe: formData.date || new Date().toISOString().split('T')[0],
       }
     ];
     recalcFormTotals(newLignes, formData.societeId);
@@ -1568,10 +1640,20 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
 
   const handleLineChange = (index: number, field: keyof LignePrestation, value: any) => {
     const newLignes = [...(formData.lignes || [])];
-    newLignes[index] = {
+    const champsNumeriques: (keyof LignePrestation)[] = ['totalPrestation', 'quantity', 'remisePct', 'prixUnitaire'];
+    let updated: LignePrestation = {
       ...newLignes[index],
-      [field]: field === 'totalPrestation' ? Number(value) || 0 : value,
+      [field]: champsNumeriques.includes(field) ? Number(value) || 0 : value,
     };
+    // Qté / Remise % / P.U. → le montant est recalculé automatiquement.
+    if (field === 'quantity' || field === 'remisePct' || field === 'prixUnitaire') {
+      updated = { ...updated, totalPrestation: montantLigneCalcule(updated) };
+    }
+    // La nature Ordonnance / Vente non saisie ne concerne que les médicaments.
+    if (field === 'code') {
+      updated = { ...updated, natureMedicament: ligneEstMedicament(updated) ? (updated.natureMedicament || 'ordonnance') : undefined };
+    }
+    newLignes[index] = updated;
     recalcFormTotals(newLignes, formData.societeId);
   };
 
@@ -1650,9 +1732,6 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
     if (!prestationToDelete) return;
     onDeletePrestation(prestationToDelete.id);
     setPrestationToDelete(null);
-    if (viewingPrestation?.id === prestationToDelete.id) {
-      setViewingPrestation(null);
-    }
   };
 
   const handleSubmitForm = async (e: React.FormEvent) => {
@@ -1782,6 +1861,10 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
         'Reste à Payer': fin.resteAPayer,
         'Statut': fin.statut,
         'Nombre d\'actes': p?.lignes?.length,
+        'Médicaments (Nature)': (p?.lignes || [])
+          .filter(l => ligneEstMedicament(l))
+          .map(l => `${l.libelle || l.code} ×${l.quantity ?? 1} — ${LIBELLE_NATURE_MEDICAMENT[l.natureMedicament || 'ordonnance']}`)
+          .join(' ; '),
         'Observations': p.commentaires || '',
       };
     });
@@ -1820,22 +1903,6 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
             {!hideViewSwitcher && <div className="inline-flex p-1 bg-surface-hover rounded-xl border border-line text-xs">
               <button
                 type="button"
-                onClick={() => setViewMode('factures')}
-                className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
-                  viewMode === 'factures'
-                    ? 'bg-surface text-indigo-700 shadow-2xs'
-                    : 'text-ink-secondary hover:text-ink-strong'
-                }`}
-              >
-                <Receipt className="w-3.5 h-3.5 text-indigo-600" />
-                <span>Vue par Facture</span>
-                <span className="ml-1 px-1.5 py-0.2 text-[10px] rounded-full bg-indigo-100 text-indigo-800 font-bold">
-                  {groupedFactures.length}
-                </span>
-              </button>
-
-              <button
-                type="button"
                 onClick={() => setViewMode('detaillee')}
                 className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
                   viewMode === 'detaillee'
@@ -1843,10 +1910,26 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
                     : 'text-ink-secondary hover:text-ink-strong'
                 }`}
               >
-                <FileText className="w-3.5 h-3.5 text-ink-secondary" />
+                <FileText className="w-3.5 h-3.5 text-indigo-600" />
                 <span>Vue Détaillée (Dossiers)</span>
-                <span className="ml-1 px-1.5 py-0.2 text-[10px] rounded-full bg-surface-active text-ink font-bold">
+                <span className="ml-1 px-1.5 py-0.2 text-[10px] rounded-full bg-indigo-100 text-indigo-800 font-bold">
                   {filteredAndSortedList.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setViewMode('factures')}
+                className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                  viewMode === 'factures'
+                    ? 'bg-surface text-indigo-700 shadow-2xs'
+                    : 'text-ink-secondary hover:text-ink-strong'
+                }`}
+              >
+                <Receipt className="w-3.5 h-3.5 text-ink-secondary" />
+                <span>Vue par Facture</span>
+                <span className="ml-1 px-1.5 py-0.2 text-[10px] rounded-full bg-surface-active text-ink font-bold">
+                  {groupedFactures.length}
                 </span>
               </button>
             </div>}
@@ -1861,14 +1944,6 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
           <button id="btn-create-prestation" onClick={handleOpenCreate}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white">
             <Plus className="w-3.5 h-3.5" /> Nouvelle prestation
-          </button>
-          <button
-            id="btn-import-salfa"
-            onClick={() => setIsSalfaModalOpen(true)}
-            className="flex items-center space-x-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 shadow-2xs transition cursor-pointer"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Importer Facture SALFA</span>
           </button>
 
           {/* Consolidated Export Dropdown */}
@@ -2451,18 +2526,12 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
                               </button>
                             )}
                             <button
-                              onClick={() => setViewingPrestation(prestation)}
-                              title="Visualiser détails"
-                              className="p-1.5 text-ink-faint hover:text-ink hover:bg-surface-hover rounded-lg cursor-pointer"
+                              onClick={() => setPrescriptionEditCible(prestation)}
+                              title="Modifier la prescription — ajouter une VENTE OMISE (stock pharmacie régularisé) ou une ORDONNANCE EXTERNE (sans impact stock)"
+                              aria-label={`Modifier la prescription ${prestation.numeroFacture}`}
+                              className="p-1.5 text-ink-faint hover:text-emerald-600 hover:bg-emerald-50 rounded-lg cursor-pointer"
                             >
-                              <Eye className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleOpenEdit(prestation)}
-                              title="Modifier la prestation"
-                              className="p-1.5 text-ink-faint hover:text-indigo-600 hover:bg-indigo-50 rounded-lg cursor-pointer"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
+                              <ClipboardEdit className="w-3.5 h-3.5" />
                             </button>
                             {fin.resteAPayer > 0 && onSavePaiement && (
                               <button
@@ -2705,157 +2774,6 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
       </div>
       )}
 
-      {/* Modal: View Prestation (FEN_Vision_Prestation) */}
-      {viewingPrestation && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-surface rounded-2xl max-w-2xl w-full p-6 shadow-xl space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-line-soft pb-3">
-              <div className="flex items-center space-x-2">
-                <FileText className="w-5 h-5 text-indigo-600" />
-                <h3 className="font-bold text-ink-strong">Détails de la Prestation {viewingPrestation.numeroFacture}</h3>
-              </div>
-              <button
-                onClick={() => setViewingPrestation(null)}
-                className="p-1 rounded-lg text-ink-faint hover:text-ink hover:bg-surface-hover"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs bg-surface-muted p-4 rounded-xl">
-              <div>
-                <span className="text-ink-faint block text-[10px]">Date des soins</span>
-                <span className="font-semibold text-ink-strong">{formatDate(viewingPrestation.date)}</span>
-              </div>
-              <div>
-                <span className="text-ink-faint block text-[10px]">Société / Assureur</span>
-                <span className="font-semibold text-ink-strong">{getSocieteNom(viewingPrestation.societeId)}</span>
-              </div>
-              <div>
-                <span className="text-ink-faint block text-[10px]">Sous-Société / Service</span>
-                <span className="font-semibold text-ink-strong">{viewingPrestation.sousSociete}</span>
-              </div>
-              <div>
-                <span className="text-ink-faint block text-[10px]">Adhérent / Assuré</span>
-                <span className="font-semibold text-ink-strong">{getPersonne(viewingPrestation.personneId)?.nomPrenom}</span>
-              </div>
-              <div>
-                <span className="text-ink-faint block text-[10px]">Matricule</span>
-                <span className="font-semibold font-mono text-ink-strong">{getPersonne(viewingPrestation.personneId)?.matricule}</span>
-              </div>
-              <div>
-                <span className="text-ink-faint block text-[10px]">Statut</span>
-                <span className="font-semibold text-indigo-600">{viewingPrestation.statut}</span>
-              </div>
-            </div>
-
-            <div className="space-y-2 bg-surface rounded-lg border border-line p-3 shadow-xs">
-              <div className="text-[11px] font-bold text-ink uppercase tracking-wider flex items-center justify-between mb-2">
-                <span className="flex items-center gap-1.5 text-indigo-700">
-                  <span>Lignes de Prestation (Actes Médicaux & Montants)</span>
-                </span>
-                <span className="text-ink-faint lowercase font-normal">{viewingPrestation?.lignes?.length || 0} actes dans cette prescription</span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead className="text-[10px] text-ink-muted uppercase bg-surface-muted border-b border-line">
-                    <tr>
-                      <th className="py-2 px-2 text-left">Code Acte</th>
-                      <th className="py-2 px-2 text-left">Libellé / Acte médical</th>
-                      <th className="py-2 px-2 text-right">Montant Brut</th>
-                      <th className="py-2 px-2 text-right">Ticket Modérateur</th>
-                      <th className="py-2 px-2 text-right">À Rembourser</th>
-                      <th className="py-2 px-2 text-right">Somme Payée</th>
-                      <th className="py-2 px-2 text-right">Montant Rejeté</th>
-                      <th className="py-2 px-2 text-right">Reste à payer</th>
-                      <th className="py-2 px-2 text-center">Statut</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {(viewingPrestation.lignes || []).map(ligne => {
-                      const lFin = getLineFinancials(ligne, viewingPrestation);
-                      return (
-                        <tr key={ligne.id} className="hover:bg-surface-muted transition">
-                          <td className="py-3 px-2 font-mono font-bold text-indigo-600 whitespace-nowrap">{ligne.code}</td>
-                          <td className="py-3 px-2 text-ink">{ligne.libelle}</td>
-                          <td className="py-3 px-2 text-right font-medium whitespace-nowrap text-ink-secondary">
-                            {formatMoney(lFin.lBrut)}
-                          </td>
-                          <td className="py-3 px-2 text-right text-amber-700 font-medium whitespace-nowrap">
-                            {formatMoney(lFin.lPart)}
-                          </td>
-                          <td className="py-3 px-2 text-right font-bold text-ink-strong whitespace-nowrap">
-                            {formatMoney(lFin.lARemb)}
-                          </td>
-                          <td className="py-3 px-2 text-right text-emerald-700 font-bold whitespace-nowrap">
-                            {formatMoney(lFin.lTotalPaye)}
-                          </td>
-                          <td className="py-3 px-2 text-right text-rose-600 font-bold whitespace-nowrap">
-                            {formatMoney(lFin.lExclu)}
-                          </td>
-                          <td className="py-3 px-2 text-right font-bold whitespace-nowrap">
-                            <span className={lFin.lReste > 0 ? 'text-rose-700 font-bold' : 'text-ink-faint'}>
-                              {formatMoney(lFin.lReste)}
-                            </span>
-                          </td>
-                          <td className="py-3 px-2 text-center whitespace-nowrap">
-                            <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                              lFin.statut === 'Payé'
-                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                                : lFin.statut === 'Partiellement payé'
-                                ? 'bg-sky-100 text-sky-800 border border-sky-200'
-                                : lFin.statut === 'Rejeté'
-                                ? 'bg-rose-100 text-rose-800 border border-rose-200'
-                                : 'bg-amber-100 text-amber-800 border border-amber-200'
-                            }`}>
-                              {lFin.statut}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3 pt-3 border-t border-line-soft text-center">
-              <div className="bg-surface-hover p-2.5 rounded-lg">
-                <span className="text-[10px] text-ink-muted block">Total Facture</span>
-                <span className="font-bold text-ink-strong">{formatMoney(viewingPrestation.totalPrestation)}</span>
-              </div>
-              <div className="bg-amber-50 p-2.5 rounded-lg">
-                <span className="text-[10px] text-amber-700 block">Ticket Modérateur</span>
-                <span className="font-bold text-amber-800">{formatMoney(viewingPrestation.participation)}</span>
-              </div>
-              <div className="bg-emerald-50 p-2.5 rounded-lg">
-                <span className="text-[10px] text-emerald-700 block">Total Remboursé</span>
-                <span className="font-bold text-emerald-800">
-                  {formatMoney((viewingPrestation.lignes || []).reduce((s, l) => s + (l.totalPaye || 0), 0))}
-                </span>
-              </div>
-            </div>
-
-            {viewingPrestation.commentaires && (
-              <div className="text-xs text-ink-secondary bg-surface-muted p-3 rounded-lg border border-line">
-                <span className="font-semibold block text-ink">Commentaires :</span>
-                {viewingPrestation.commentaires}
-              </div>
-            )}
-
-            <div className="flex justify-end gap-2 pt-2">
-              {onPrintPrestation && <button type="button" onClick={() => onPrintPrestation(viewingPrestation)} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-line text-xs font-semibold text-accent"><Printer size={15} />Imprimer la facture</button>}
-              <button
-                onClick={() => setViewingPrestation(null)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-900 text-white hover:bg-slate-800"
-              >
-                Fermer
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Modal: Create or Edit Prestation (FEN_Fiche_Prestation) */}
       {isCreateModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
@@ -3008,77 +2926,187 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
                 return null;
               })()}
 
-              {/* Dynamic Line Items */}
+              {/* Dynamic Line Items — saisie comme Hospitalisation / Client externe */}
               <div className="border border-line rounded-xl p-3 bg-surface-muted space-y-3">
                 <div className="flex items-center justify-between">
-                  <h4 className="font-bold text-xs text-ink uppercase tracking-wider">Actes Médicaux (Lignes de Prestation)</h4>
+                  <div>
+                    <h4 className="font-bold text-xs text-ink uppercase tracking-wider">Actes & Articles (Lignes de Prestation)</h4>
+                    <p className="text-[10px] text-ink-faint mt-0.5">
+                      Saisie comme <strong>Hospitalisation / Client externe</strong> : recherchez un article du catalogue
+                      (↑↓ puis Entrée) ou saisissez librement — le montant est calculé (Qté × P.U. − Remise).
+                    </p>
+                  </div>
                   <button
                     type="button"
                     onClick={handleAddLine}
                     className="flex items-center space-x-1 text-xs text-indigo-600 font-semibold hover:text-indigo-800"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>Ajouter un Acte</span>
+                    <span>Ajouter une Ligne</span>
                   </button>
                 </div>
 
                 <div className="space-y-2">
-                  {(formData.lignes || []).map((ligne, idx) => (
-                    <div key={ligne.id || idx} className="flex items-center gap-2 bg-surface p-2.5 rounded-lg border border-line text-xs">
-                      <div className="w-32">
-                        <Select
-                          value={ligne.code}
-                          onChange={(e) => handleLineChange(idx, 'code', e.target.value)}
-                          className="w-full p-1.5 border border-line-strong rounded font-semibold text-indigo-700 bg-indigo-50/50"
-                        >
-                          {familles.map(f => (
-                            <option key={f.code} value={f.code}>{f.code} - {f.libelle.substring(0, 22)}...</option>
-                          ))}
-                        </Select>
+                  {(formData.lignes || []).map((ligne, idx) => {
+                    const estMedic = ligneEstMedicament(ligne);
+                    return (
+                      <div key={ligne.id || idx} className="bg-surface p-2.5 rounded-lg border border-line text-xs space-y-1.5">
+                        {/* Ligne 1 : recherche article / acte + famille + suppression */}
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 relative">
+                            <input
+                              type="text"
+                              placeholder="🔍 Article ou acte — tapez pour rechercher dans le catalogue"
+                              value={suggestionsLigneId === ligne.id ? (rechercheLignes[ligne.id] || '') : (ligne.libelle || '')}
+                              onFocus={() => focusRechercheLigne(ligne)}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setRechercheLignes(prev => ({ ...prev, [ligne.id]: v }));
+                                setSuggestionsLigneId(ligne.id);
+                                setIdxSuggestion(0);
+                                handleLineChange(idx, 'libelle', v);
+                              }}
+                              onBlur={() => window.setTimeout(fermerSuggestions, 150)}
+                              onKeyDown={(e) => {
+                                const sugg = suggestionsArticles(rechercheLignes[ligne.id] || '');
+                                if (e.key === 'ArrowDown') { e.preventDefault(); setIdxSuggestion(i => (sugg.length ? (i + 1) % sugg.length : 0)); }
+                                else if (e.key === 'ArrowUp') { e.preventDefault(); setIdxSuggestion(i => (sugg.length ? (i - 1 + sugg.length) % sugg.length : 0)); }
+                                else if (e.key === 'Enter' && sugg.length > 0) { e.preventDefault(); selectArticlePourLigne(idx, sugg[Math.min(idxSuggestion, sugg.length - 1)]); }
+                                else if (e.key === 'Escape') { fermerSuggestions(); }
+                              }}
+                              className="w-full p-1.5 border border-line-strong rounded"
+                            />
+                            {suggestionsLigneId === ligne.id && (() => {
+                              const sugg = suggestionsArticles(rechercheLignes[ligne.id] || '');
+                              if (sugg.length === 0) return null;
+                              return (
+                                <div className="absolute top-full left-0 right-0 mt-0.5 bg-surface border border-line rounded-lg shadow-xl z-30 max-h-44 overflow-y-auto">
+                                  {sugg.map((a, sIdx) => (
+                                    <button
+                                      type="button"
+                                      key={a.id}
+                                      onMouseDown={(e) => { e.preventDefault(); selectArticlePourLigne(idx, a); }}
+                                      className={`w-full px-2 py-1.5 text-left flex justify-between items-center gap-2 border-b border-line-soft last:border-0 cursor-pointer ${sIdx === idxSuggestion ? 'bg-indigo-100 dark:bg-indigo-500/15' : 'hover:bg-surface-muted'}`}
+                                    >
+                                      <span className="truncate"><span className="text-ink-faint">[{a.family}]</span> {a.name}</span>
+                                      <span className="font-mono text-indigo-600 shrink-0">{formatMoney(getPrice(a, 'societe'))}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              );
+                            })()}
+                          </div>
+
+                          <div className="w-36 shrink-0">
+                            <Select
+                              value={ligne.code}
+                              onChange={(e) => handleLineChange(idx, 'code', e.target.value)}
+                              title="Famille (déduite de l'article sélectionné, modifiable)"
+                              className="w-full p-1.5 border border-line-strong rounded font-semibold text-indigo-700 bg-indigo-50/50"
+                            >
+                              {familles.map(f => (
+                                <option key={f.code} value={f.code}>{f.code} - {f.libelle.substring(0, 18)}</option>
+                              ))}
+                            </Select>
+                          </div>
+
+                          {formData.lignes && formData?.lignes?.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveLine(idx)}
+                              className="p-1.5 text-rose-500 hover:bg-rose-50 rounded shrink-0"
+                              title="Supprimer la ligne"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Ligne 2 : Qté / Remise % / P.U. / Montant / Date d'acte / Nature médicament */}
+                        <div className="flex items-end gap-2 flex-wrap">
+                          <div className="w-16">
+                            <label className="block text-[9px] text-ink-muted mb-0.5">Qté</label>
+                            <input
+                              type="number"
+                              min="1"
+                              value={ligne.quantity ?? 1}
+                              onChange={(e) => handleLineChange(idx, 'quantity', e.target.value)}
+                              className="w-full p-1.5 border border-line-strong rounded text-right font-mono"
+                            />
+                          </div>
+
+                          <div className="w-16">
+                            <label className="block text-[9px] text-ink-muted mb-0.5">Rem %</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={ligne.remisePct || 0}
+                              onChange={(e) => handleLineChange(idx, 'remisePct', e.target.value)}
+                              className="w-full p-1.5 border border-line-strong rounded text-right font-mono"
+                            />
+                          </div>
+
+                          <div className="w-24">
+                            <label className="block text-[9px] text-ink-muted mb-0.5">P.U.</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={prixUnitaireAffiche(ligne)}
+                              onChange={(e) => handleLineChange(idx, 'prixUnitaire', e.target.value)}
+                              className="w-full p-1.5 border border-line-strong rounded text-right font-mono"
+                            />
+                          </div>
+
+                          <div className="w-28">
+                            <label className="block text-[9px] text-ink-muted mb-0.5">Montant (calculé)</label>
+                            <input
+                              readOnly
+                              value={formatMoney(ligne.totalPrestation || 0)}
+                              title="Qté × P.U. − Remise"
+                              className="w-full p-1.5 border border-line-strong rounded text-right font-mono font-bold bg-surface-active"
+                            />
+                          </div>
+
+                          <div className="w-32">
+                            <label className="block text-[9px] text-ink-muted mb-0.5">Date d'acte</label>
+                            <input
+                              type="date"
+                              value={ligne.dateActe || formData.date || ''}
+                              onChange={(e) => handleLineChange(idx, 'dateActe', e.target.value)}
+                              className="w-full p-1.5 border border-line-strong rounded"
+                            />
+                          </div>
+
+                          {estMedic && (
+                            <div className="w-44">
+                              <label className="block text-[9px] text-ink-muted mb-0.5" title="Médicaments : prescrits par le médecin (Ordonnance) ou vendus sans saisie pharmacie/caisse (Vente non saisie)">
+                                Nature médicament
+                              </label>
+                              <Select
+                                value={ligne.natureMedicament || 'ordonnance'}
+                                onChange={(e) => handleLineChange(idx, 'natureMedicament', e.target.value)}
+                                className={`w-full p-1.5 border rounded font-semibold ${ligne.natureMedicament === 'vente_non_saisie' ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-violet-300 bg-violet-50 text-violet-800'}`}
+                              >
+                                <option value="ordonnance">💊 Ordonnance</option>
+                                <option value="vente_non_saisie">🧾 Vente non saisie</option>
+                              </Select>
+                            </div>
+                          )}
+
+                          {ligne.excluParSociete && (
+                            <span
+                              className="px-1.5 py-0.5 rounded-md bg-rose-100 text-rose-700 border border-rose-200 text-[9px] font-extrabold uppercase shrink-0 mb-1.5"
+                              title={ligne.motifExclusion || 'Acte exclu par la société'}
+                            >
+                              Exclu
+                            </span>
+                          )}
+                        </div>
                       </div>
-
-                      <div className="flex-1">
-                        <input
-                          type="text"
-                          placeholder="Description de l'acte ou des soins"
-                          value={ligne.libelle || ''}
-                          onChange={(e) => handleLineChange(idx, 'libelle', e.target.value)}
-                          className="w-full p-1.5 border border-line-strong rounded"
-                        />
-                      </div>
-
-                      <div className="w-28">
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          placeholder="Montant"
-                          value={ligne.totalPrestation || 0}
-                          onChange={(e) => handleLineChange(idx, 'totalPrestation', e.target.value)}
-                          className="w-full p-1.5 border border-line-strong rounded text-right font-semibold"
-                        />
-                      </div>
-
-                      {ligne.excluParSociete && (
-                        <span
-                          className="px-1.5 py-0.5 rounded-md bg-rose-100 text-rose-700 border border-rose-200 text-[9px] font-extrabold uppercase shrink-0"
-                          title={ligne.motifExclusion || 'Acte exclu par la société'}
-                        >
-                          Exclu
-                        </span>
-                      )}
-
-                      {formData.lignes && formData?.lignes?.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveLine(idx)}
-                          className="p-1.5 text-rose-500 hover:bg-rose-50 rounded"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 <div className="flex justify-between items-center bg-indigo-50/60 p-3 rounded-lg border border-indigo-100 text-xs">
@@ -3392,23 +3420,19 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
         </div>
       )}
 
-      {/* Salfa Import Modal */}
-      <SalfaImportModal
-        isOpen={isSalfaModalOpen}
-        onClose={() => setIsSalfaModalOpen(false)}
-        societes={societes}
-        personnes={personnes}
-        familles={familles}
-        prestations={prestations}
-        defaultSocieteId={filterSocieteId !== 'ALL' ? filterSocieteId : (selectedSocieteId !== 'ALL' ? selectedSocieteId : undefined)}
-        onImportPrestations={(newPrests, newSocs, newPers) => {
-          if (onImportPrestations) {
-            onImportPrestations(newPrests, newSocs, newPers);
-          } else {
-            newPrests.forEach(p => onSavePrestation(p));
-          }
-        }}
-      />
+      {/* Modal : modification de prescription (ventes omises / ordonnances externes) */}
+      {prescriptionEditCible && (
+        <PrescriptionEditModal
+          prestation={prescriptionEditCible}
+          familles={familles}
+          articles={articles}
+          onClose={() => setPrescriptionEditCible(null)}
+          onSave={(next) => {
+            onSavePrestation(next);
+            setPrescriptionEditCible(null);
+          }}
+        />
+      )}
 
       {/* Facture Detail Modal */}
       {viewingFacture && (

@@ -126,7 +126,28 @@ export interface LignePrestation {
   remisePct?: number;
   prixUnitaire?: number;
   dateActe?: string;
+  /** Article du catalogue relié à la ligne (ajouts du facturier). Sert au
+   *  réglage du stock pharmacie pour les VENTES OMISES — jamais pour les
+   *  ordonnances externes (aucun impact stock). */
+  articleId?: string;
+  /** Ligne MÉDICAMENT : nature de la dispensation.
+   *  - 'ordonnance'      : médicaments prescrits par le médecin (cas par défaut) ;
+   *  - 'vente_non_saisie': vente directe de médicaments non enregistrée à la
+   *    pharmacie/caisse, facturée ici a posteriori. */
+  natureMedicament?: 'ordonnance' | 'vente_non_saisie';
 }
+
+/** Codes famille considérés comme « médicament » (contrôle de la nature
+ *  Ordonnance / Vente non saisie sur les lignes de prestation). */
+export const CODES_FAMILLE_MEDICAMENT = ['MEDIC', 'PHAR', 'PHARMACIE'];
+
+export const ligneEstMedicament = (l: Pick<LignePrestation, 'code'>): boolean =>
+  CODES_FAMILLE_MEDICAMENT.includes((l.code || '').toUpperCase());
+
+export const LIBELLE_NATURE_MEDICAMENT: Record<'ordonnance' | 'vente_non_saisie', string> = {
+  ordonnance: 'Ordonnance',
+  vente_non_saisie: 'Vente non saisie',
+};
 
 export interface Prestation {
   /** Référence directe à la facture de Caisse ; pas de copie financière. */

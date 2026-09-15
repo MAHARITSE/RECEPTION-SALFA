@@ -53,7 +53,7 @@
   mot de passe révoque toutes les sessions du compte ; un jeton dont le compte a
   été supprimé est refusé (contrôle à chaque appel authentifié).
 - **Longueur minimale** : 8 caractères, et refus des mots de passe connus
-  (dont ceux du `seed.sql` livré).
+  (dont ceux du fichier d'installation `reception_salfa_complete.sql` livré).
 - **Intégrité multi-postes** : `read_all` s'exécute sous transaction (jamais
   d'état « déchiré ») et renvoie la révision lue ; `sync_all` accepte `if_rev`
   et répond 409 si un autre poste a écrit entre-temps (le client relit et rejoue).
@@ -66,8 +66,8 @@
   valide (il expose versions, nom de base, volumes, espace disque).
 - `api/config.local.php` (vos identifiants) : **jamais versionné, jamais écrasé**
   par `deployer.bat`. Ne pas le copier/coller dans des e-mails.
-- `database/seed.sql` contient les comptes par défaut : ne pas le laisser
-  traîner sur un poste partagé après installation.
+- `database/reception_salfa_complete.sql` contient les comptes par défaut :
+  ne pas le laisser traîner sur un poste partagé après installation.
 
 ## 🟠 À faire sur le serveur (l'application ne peut pas le faire pour vous)
 
@@ -76,9 +76,9 @@
    effacer les dossiers médicaux sans passer par l'application. Exécuter
    `outils/hygiene_mysql.sql`, renseigner `api/config.local.php`, mettre
    `bind-address = 127.0.0.1` dans `my.ini`.
-2. **Retirer `seed.sql` du dossier déployé** une fois l'installation faite
-   (il contient les comptes par défaut ; le `.htaccess` le bloque, mais un
-   `AllowOverride` oublié l'exposerait).
+2. **Retirer `reception_salfa_complete.sql` du dossier déployé** une fois
+   l'installation faite (il contient les comptes par défaut ; le `.htaccess`
+   le bloque, mais un `AllowOverride` oublié l'exposerait).
 3. **Deuxième copie des sauvegardes hors du PC serveur**, chiffrée, testée par
    restauration (un `sauvegardes\` sur le même disque ne protège de rien).
 4. Ne pas utiliser le bouton « Sauvegarde SQL » de l'application pour restaurer

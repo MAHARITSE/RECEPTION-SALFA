@@ -118,7 +118,7 @@ export function printPaymentTicket(
   const itemRows = invoice.items
     .map(
       (item) =>
-        `<tr><td>${escapeHtml(item.description)}</td><td class="amount">${money(item.amount)}</td></tr>`,
+        `<tr><td>${escapeHtml(item.description)}${item.quantity != null && item.quantity > 1 ? ` ×${item.quantity}` : ''}</td><td class="amount">${money(item.amount)}</td></tr>`,
     )
     .join('');
   const bodyHtml = `

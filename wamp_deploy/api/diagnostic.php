@@ -95,7 +95,7 @@ try {
     } catch (Exception $e) { diag_ajouter('Paquet MySQL maximal', 'avertissement', 'Variable illisible.'); }
 } catch (Exception $e) {
     diag_ajouter('Connexion MySQL (' . SALFA_DB_HOST . ' / base ' . SALFA_DB_NAME . ')', 'erreur',
-        'Vérifiez que WAMP est démarré (icône verte), que la base existe (schema.sql importé) et que config.local.php contient les bons identifiants.'
+        'Vérifiez que WAMP est démarré (icône verte), que la base existe (reception_salfa_complete.sql importé) et que config.local.php contient les bons identifiants.'
         . (SALFA_DEBUG ? ' Détail : ' . $e->getMessage() : ''));
 }
 
@@ -120,7 +120,7 @@ if ($pdo instanceof PDO) {
         diag_ajouter('Tables (' . count($tables_attendues) . ' attendues)', 'ok', number_format($lignes_total, 0, ',', ' ') . ' lignes au total.');
     } else {
         diag_ajouter('Tables (' . count($manquantes) . ' manquantes)', 'erreur',
-            'Base existante : importez database/migrations/002_sequences.sql ; nouvelle base : database/schema.sql. Manquantes : ' . implode(', ', $manquantes));
+            'Base existante : importez database/migrations/002_sequences.sql ; nouvelle base : database/reception_salfa_complete.sql. Manquantes : ' . implode(', ', $manquantes));
     }
 
     /* ----------------------------------------- version + compteurs --- */
@@ -354,7 +354,7 @@ foreach ($verifs as $v) {
     </tr>
     <?php endforeach; ?>
   </table>
-  <div class="pied">Si tout est vert, ouvrez <a href="../index.html">l'application</a> et connectez-vous (comptes par défaut dans <code>database/seed.sql</code> — à changer aussitôt). En cas d'erreur MySQL : WAMP démarré (icône verte) ? <code>schema.sql</code> puis <code>seed.sql</code> importés ? <code>api/config.local.php</code> correct ?</div>
+  <div class="pied">Si tout est vert, ouvrez <a href="../index.html">l'application</a> et connectez-vous (comptes par défaut dans <code>database/reception_salfa_complete.sql</code> — à changer aussitôt). En cas d'erreur MySQL : WAMP démarré (icône verte) ? <code>reception_salfa_complete.sql</code> importé ? <code>api/config.local.php</code> correct ?</div>
 </div>
 </body>
 </html>

@@ -1,7 +1,7 @@
 import type { AppState } from '../store';
 
 /**
- * SAUVEGARDE SQL — format IDENTIQUE au schéma WAMP (`wamp_deploy/database/schema.sql`)
+ * SAUVEGARDE SQL — format IDENTIQUE au schéma WAMP (`wamp_deploy/database/reception_salfa_complete.sql`)
  * -------------------------------------------------------------------------------
  * L'export produit un fichier `.sql` **réimportable dans la base de travail**
  * (`reception_salfa`) : mêmes noms de tables (français), mêmes colonnes
@@ -153,7 +153,7 @@ const aQuoiServir = (): string[] => [
   '--   (ou phpMyAdmin → base reception_salfa → Importer)',
   '-- Ce fichier NE SUPPRIME AUCUNE ligne et n’écrase que les enregistrements',
   '-- qu’il contient : il peut être importé plusieurs fois, sur une base existante.',
-  '-- Pour une restauration à zéro : créer une base vide, importer schema.sql PUIS',
+  '-- Pour une restauration à zéro : importer reception_salfa_complete.sql PUIS',
   '-- ce fichier (ne pas restaurer un fichier ancien sur une base plus récente :',
   '--  les lignes supprimées entre-temps réapparaîtraient).',
   '-- Mots de passe : jamais en clair dans ce fichier. Les hachages serveur ($2y$',
@@ -164,7 +164,7 @@ const aQuoiServir = (): string[] => [
   '-- ----------------------------------------------------------------------------',
 ];
 
-/** DDL d'une table d'entité (colonnes et index identiques à schema.sql). */
+/** DDL d'une table d'entité (colonnes et index identiques à reception_salfa_complete.sql). */
 const ddlTable = (table: string): string[] => [
   `CREATE TABLE IF NOT EXISTS \`${table}\` (`,
   "  `id` VARCHAR(64) NOT NULL,",
@@ -365,19 +365,32 @@ export interface ResultatTelechargement {
 }
 
 /** Construit la sauvegarde et déclenche son téléchargement.
+ *  Mécanisme identique au dépôt de référence (suivi_assurance →
+ *  handleExportBackup) : contenu → Blob → <a download>.
  *  @throws Error avec un message compréhensible par un non-technicien. */
 export function downloadSqlBackup(state: AppState): ResultatTelechargement {
   const { sql, tables, rows, octets, comptesSansMotDePasse } = buildSqlBackup(state);
   const fileName = nomFichierSauvegardeSql();
-  const blob = new Blob([sql], { type: 'application/sql;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  // Le fichier peut peser plusieurs Mo : le laisser vivre le temps du transfert.
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  try {
+    if (typeof document === 'undefined' || typeof Blob === 'undefined' || typeof URL === 'undefined' || !URL.createObjectURL) {
+      throw new Error("le contexte d'affichage ne permet pas d'écrire un fichier");
+    }
+    const blob = new Blob([sql], { type: 'application/sql;charset=utf-8' });
+    if (!blob.size) throw new Error('le fichier produit est vide');
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    if (!('download' in a)) throw new Error('le navigateur refuse lenregistrement de fichier');
+    a.href = url;
+    a.download = fileName;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // Le fichier peut peser plusieurs Mo : le laisser vivre le temps du transfert.
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (cause) {
+    const raison = cause instanceof Error ? cause.message : String(cause);
+    throw new Error(`Sauvegarde SQL impossible : ${raison}. Si rien n'arrive dans la barre de téléchargements, ouvrez l'application dans un onglet normal du navigateur (les cadres intégrés bloquent souvent les téléchargements).`);
+  }
   return { fileName, tables, rows, octets, comptesSansMotDePasse };
 }

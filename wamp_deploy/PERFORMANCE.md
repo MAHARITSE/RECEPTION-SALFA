@@ -19,7 +19,7 @@ copy api\config.local.php.exemple api\config.local.php   :: puis éditer user/pa
 outils\sauvegarder.bat
 
 :: 4. Schéma + migration de performance (poll + index de fraîcheur)
-::    phpMyAdmin → base reception_salfa → importer database\schema.sql
+::    phpMyAdmin → importer database\reception_salfa_complete.sql
 ::    (nouvelle base) PUIS database\migrations\003_performance.sql (base existante)
 
 :: 5. Réglages serveur
@@ -152,8 +152,8 @@ explicitement listées, et ne peut pas être « trompée » par une base allég�
    Un écart = sauvegarde à reprendre (mysqldump peut avoir été interrompu par un arrêt du PC).
 5. **Hors site** : une copie mensuelle chiffrée emportée (incendie/vol du cabinet = 10 ans
    d'historique). Le disque resté branché à côté du serveur ne compte pas comme sauvegarde.
-6. `seed.sql` **supprimé** du dossier déployé après installation (il contient les comptes
-   par défaut) — ou laissé, mais alors vérifier le test `curl` du §7.
+6. `reception_salfa_complete.sql` **supprimé** du dossier déployé après installation
+   (il contient les comptes par défaut) — ou laissé, mais alors vérifier le test `curl` du §7.
 7. **Ne pas compter sur `mysqldump` seul** : le bouton **Sauvegarder** de l'application
    produit le même type de fichier côté poste (`reception_salfa_sauvegarde_*.sql`,
    tables en français, colonne `donnees` JSON, `INSERT ... ON DUPLICATE KEY UPDATE`
@@ -173,7 +173,7 @@ curl -i http://SERVEUR/reception-salfa/api/index.php?action=info
 ::   → 200 JSON, "schema_attendu": 3
 
 :: les fichiers de service sont inaccessibles (403 attendu pour chacun)
-curl -i http://SERVEUR/reception-salfa/database/seed.sql
+curl -i http://SERVEUR/reception-salfa/database/reception_salfa_complete.sql
 curl -i http://SERVEUR/reception-salfa/api/config.local.php
 curl -i http://SERVEUR/reception-salfa/api/logs/
 curl -i http://SERVEUR/reception-salfa/outils/sauvegarder.bat

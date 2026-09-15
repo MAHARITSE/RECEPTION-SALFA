@@ -64,8 +64,26 @@ function companyForInvoice(state: AppState, invoice: Invoice): Societe | undefin
   return societies.find(s => key(s.nom) === key(invoice.clientName)) || societies.find(s => key(s.nom) === key(patient?.company));
 }
 
+/**
+ * Type client EFFECTIF d'une facture caisse.
+ * Une facture validée en CRÉDIT SOCIÉTÉ (`creditSociete`) alors que le patient
+ * est (re)devenu un client société appartient à la facturation société MÊME si
+ * son `clientType` d'origine disait « comptoir » (facture service créée avant
+ * le rattachement du patient à sa société). Sans cela, la part services
+ * (consultations / analyses / écho) d'un dossier validé à la caisse
+ * « n'arrive pas » dans la Facturation — seule la facture médicaments,
+ * créée au moment de la validation avec le type courant, y figurait.
+ */
+export function typeClientEffectif(state: AppState, invoice: Invoice): Invoice['clientType'] {
+  if (invoice.isExternal || invoice.clientType === 'externe') return 'externe';
+  if (invoice.clientType === 'societe') return 'societe';
+  const patient = state.patients.find(p => p.id === invoice.patientId);
+  if (invoice.creditSociete && patient?.clientType === 'societe') return 'societe';
+  return invoice.clientType;
+}
+
 function caissePrestations(state: AppState): Prestation[] {
-  return state.invoices.filter(i => i.clientType === 'societe' && !i.isExternal).flatMap(invoice => {
+  return state.invoices.filter(i => typeClientEffectif(state, i) === 'societe' && !i.isExternal).flatMap(invoice => {
     const company = companyForInvoice(state, invoice);
     if (!company) return []; // Not silently attached to an arbitrary insurer.
     const patient = state.patients.find(p => p.id === invoice.patientId);
@@ -166,6 +184,12 @@ export function fusionnerPrescription(conserves: Prestation[], supprimee: Presta
   const conserve = conserves.find(p => p.id === conserveId);
   if (!conserve) throw new Error('Prescription cible introuvable.');
   if (supprimee.societeId !== conserve.societeId) throw new Error('La fusion exige une même société (garant) pour les deux prescriptions.');
+  // La facture absorbée doit être celle de la MÊME personne (même assuré) :
+  // même personneId ; à défaut (données anciennes) même matricule.
+  const memePersonne = (a: Prestation, b: Prestation) =>
+    (!!a.personneId && a.personneId === b.personneId)
+    || (!a.personneId && !b.personneId && !!a.matricule && a.matricule === b.matricule);
+  if (!memePersonne(supprimee, conserve)) throw new Error('La facture absorbée doit être celle de la même personne (même assuré).');
 
   const absorbées = [supprimee, ...(supprimee.fusionsAnnulees || [])];
   const migrees = absorbées.flatMap(ajoutsDe);
