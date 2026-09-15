@@ -25,3 +25,24 @@ export function nomClientGenerique(client?: string): boolean {
   if (!valeur) return true;
   return /^(clients?\s+)?(externes?|comptoir)$/i.test(valeur);
 }
+
+export interface FactureRecherchable extends DocumentRecherchable {
+  date?: string;
+  total?: number;
+  items?: { description: string; amount: number }[];
+}
+
+/**
+ * Correspondance d'une facture avec la recherche du dossier client : numéro,
+ * nom, dossier, matricule, date (AAAA-MM-JJ ou JJ/MM/AAAA), libellés des
+ * articles et montants. Chaque mot saisi doit se retrouver (champs confondus).
+ */
+export function factureCorrespondRecherche(doc: FactureRecherchable, requete: string): boolean {
+  const dateFr = (doc.date || '').replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$3/$2/$1');
+  const cible = [
+    doc.number, doc.client, doc.dossier, doc.matricule, doc.date, dateFr,
+    doc.total != null ? String(doc.total) : '',
+    ...(doc.items || []).flatMap(i => [i.description, String(i.amount)]),
+  ].filter(Boolean).join(' ');
+  return correspondRechercheMultiMots(cible, requete);
+}

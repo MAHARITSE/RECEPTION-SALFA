@@ -221,7 +221,8 @@ Les clients **Comptoir** et **Externes** disposent de l'onglet dédié **Suivi a
 
 - **Vue par Facture** : une facture globale Comptoir/mois et une globale Externes/mois, avec impression/réimpression (numéro figé à la première impression, même mécanique que les sociétés).
 - **Vue Détaillée (Dossiers)** : les pièces d'origine et leur impression individuelle. Le champ **Mois** filtre les deux vues.
-- La colonne **Encaissé** est informative (déjà perçu à la Caisse) ; aucune action de règlement n'est proposée ici.
+- **Fiche client** (double-clic sur un dossier) : liste **toutes** ses factures, toutes dates confondues, avec son propre champ de **recherche** (n° facture, date, article, montant — sans filtre de mois, utile quand un client externe a beaucoup de factures). Les factures cochées s'impriment **2 par page A4** ou se **fusionnent en une seule facture** (bouton **Fusionner**, A4 paysage : contenu à gauche, suite sur la moitié droite de la feuille).
+- La colonne **Encaissé** est informative (déjà perçu à la Caisse) ; aucune action de règlement n'est proposée ici. La fusion n'est qu'une impression : aucune facture n'est créée ni modifiée en base.
 
 Dans **Suivi assurance → Facturation** (sociétés uniquement) :
 
