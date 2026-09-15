@@ -3,6 +3,7 @@ import { History, Search, Calendar, Download, Building, Receipt, ArrowUpDown } f
 import { Paiement, Societe } from '../types';
 import { formatMoney, formatDate } from '../utils/formatters';
 import * as XLSX from 'xlsx';
+import { telechargerClasseur } from '../../../utils/exportFichier';
 import { Select } from '../../../components/Select';
 
 interface HistoriqueViewProps {
@@ -55,7 +56,7 @@ export const HistoriqueView: React.FC<HistoriqueViewProps> = ({
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Historique');
-    XLSX.writeFile(wb, `Historique_Paiements_${new Date().toISOString().split('T')[0]}.xlsx`);
+    telechargerClasseur(wb, `Historique_Paiements_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   return (

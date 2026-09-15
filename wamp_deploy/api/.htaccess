@@ -1,2 +1,22 @@
 # Pas de listage des fichiers de l'API.
 Options -Indexes
+
+# Journaux et surcharges locales : jamais accessibles via HTTP.
+# (Le code refuse déjà l'accès direct à config.php / lib.php ; ce bloc protège
+#  `config.local.php`, qui contient le mot de passe MySQL, même si le module
+#  PHP venait à être désactivé — dans ce cas Apache rendrait le source.)
+<FilesMatch "\.(log|json|txt|sql|md)$">
+  Require all denied
+</FilesMatch>
+<FilesMatch "^config.*\.php$|^lib\.php$">
+  Require all denied
+</FilesMatch>
+
+# L'API n'a rien à faire dans un cadre tiers, ni à être mise en cache.
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "DENY"
+  Header always set Cache-Control "no-store"
+  # Aucun CORS : seuls les postes du centre, sur la même origine, appellent l'API.
+  Header unset Access-Control-Allow-Origin
+</IfModule>

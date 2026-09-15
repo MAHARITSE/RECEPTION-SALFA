@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS `assurance_societes` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `assurance_personnes` (
@@ -46,7 +47,8 @@ CREATE TABLE IF NOT EXISTS `assurance_personnes` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `assurance_familles` (
@@ -57,7 +59,8 @@ CREATE TABLE IF NOT EXISTS `assurance_familles` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `assurance_prestations` (
@@ -68,7 +71,8 @@ CREATE TABLE IF NOT EXISTS `assurance_prestations` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `assurance_paiements` (
@@ -79,7 +83,8 @@ CREATE TABLE IF NOT EXISTS `assurance_paiements` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------------------------
@@ -94,7 +99,8 @@ CREATE TABLE IF NOT EXISTS `patients` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `consultations` (
@@ -105,7 +111,8 @@ CREATE TABLE IF NOT EXISTS `consultations` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `parcours_patient` (
@@ -116,7 +123,8 @@ CREATE TABLE IF NOT EXISTS `parcours_patient` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------------------------
@@ -131,7 +139,8 @@ CREATE TABLE IF NOT EXISTS `factures` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `ventes` (
@@ -142,7 +151,8 @@ CREATE TABLE IF NOT EXISTS `ventes` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `lignes_vente` (
@@ -153,7 +163,8 @@ CREATE TABLE IF NOT EXISTS `lignes_vente` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `paiements_vente` (
@@ -164,7 +175,8 @@ CREATE TABLE IF NOT EXISTS `paiements_vente` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `comptes_facturation` (
@@ -175,7 +187,8 @@ CREATE TABLE IF NOT EXISTS `comptes_facturation` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `dossiers_hospit_bloc` (
@@ -186,7 +199,8 @@ CREATE TABLE IF NOT EXISTS `dossiers_hospit_bloc` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `clotures_caisse` (
@@ -197,7 +211,8 @@ CREATE TABLE IF NOT EXISTS `clotures_caisse` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------------------------
@@ -212,7 +227,8 @@ CREATE TABLE IF NOT EXISTS `demandes_laboratoire` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `catalogue_laboratoire` (
@@ -223,7 +239,8 @@ CREATE TABLE IF NOT EXISTS `catalogue_laboratoire` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `livraisons_pharmacie` (
@@ -234,7 +251,8 @@ CREATE TABLE IF NOT EXISTS `livraisons_pharmacie` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `clotures_pharmacie` (
@@ -245,7 +263,8 @@ CREATE TABLE IF NOT EXISTS `clotures_pharmacie` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------------------------
@@ -260,7 +279,8 @@ CREATE TABLE IF NOT EXISTS `articles` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `entrees_stock` (
@@ -271,7 +291,8 @@ CREATE TABLE IF NOT EXISTS `entrees_stock` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `transferts_stock` (
@@ -282,7 +303,8 @@ CREATE TABLE IF NOT EXISTS `transferts_stock` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `mouvements_stock` (
@@ -293,7 +315,8 @@ CREATE TABLE IF NOT EXISTS `mouvements_stock` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `mouvements_entetes` (
@@ -304,7 +327,8 @@ CREATE TABLE IF NOT EXISTS `mouvements_entetes` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `mouvements_lignes` (
@@ -315,7 +339,8 @@ CREATE TABLE IF NOT EXISTS `mouvements_lignes` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `inventaires` (
@@ -326,7 +351,8 @@ CREATE TABLE IF NOT EXISTS `inventaires` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `services_depot` (
@@ -337,7 +363,8 @@ CREATE TABLE IF NOT EXISTS `services_depot` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------------------------
@@ -352,7 +379,8 @@ CREATE TABLE IF NOT EXISTS `utilisateurs` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `societes` (
@@ -363,7 +391,8 @@ CREATE TABLE IF NOT EXISTS `societes` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `fournisseurs` (
@@ -374,7 +403,8 @@ CREATE TABLE IF NOT EXISTS `fournisseurs` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `familles` (
@@ -385,7 +415,8 @@ CREATE TABLE IF NOT EXISTS `familles` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `etablissements` (
@@ -396,7 +427,8 @@ CREATE TABLE IF NOT EXISTS `etablissements` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `messages` (
@@ -407,7 +439,8 @@ CREATE TABLE IF NOT EXISTS `messages` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `notifications` (
@@ -418,7 +451,8 @@ CREATE TABLE IF NOT EXISTS `notifications` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `journal_audit` (
@@ -429,7 +463,8 @@ CREATE TABLE IF NOT EXISTS `journal_audit` (
   `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_numero` (`numero_ref`),
-  KEY `idx_dossier` (`dossier_ref`)
+  KEY `idx_dossier` (`dossier_ref`),
+  KEY `idx_maj` (`mis_a_jour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------------------------
@@ -481,8 +516,22 @@ CREATE TABLE IF NOT EXISTS `sessions` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------------------------
+-- Révision d'état (rafraîchissement léger `action=poll` + contrôle
+-- d'anti-écrasement entre postes `if_rev`) — une seule ligne, id = 1.
+-- --------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS `revision` (
+  `id` TINYINT NOT NULL,
+  `rev` BIGINT NOT NULL DEFAULT 0 COMMENT 'incrémentée à chaque écriture ayant réellement modifié des lignes',
+  `mis_a_jour` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO `revision` (`id`, `rev`) VALUES (1, 1);
+
+-- --------------------------------------------------------------------------
 -- Valeurs initiales (idempotent : réimportable sans risque)
 -- --------------------------------------------------------------------------
 
-INSERT IGNORE INTO `parametres` (`cle`, `valeur`) VALUES ('schema_version', '2');
+INSERT IGNORE INTO `parametres` (`cle`, `valeur`) VALUES ('schema_version', '3');
 INSERT IGNORE INTO `compteurs` (`cle`, `valeur`) VALUES ('factureCounter', 0), ('pharmaClosingCounter', 0);

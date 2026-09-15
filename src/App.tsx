@@ -14,9 +14,10 @@ import {
   setSyncBaseline,
   onWampUnauthorized,
   clearWampSession,
+  logoutFromMysql,
   type WampSyncState,
 } from './wamp';
-import { daysSinceBackup } from './utils/sauvegarde';
+import { daysSinceBackup, exporterSauvegardeSql, sauvegardeDejaFaiteAujourdhui, type RetourSauvegardeUi } from './utils/sauvegarde';
 import PrintFeedback from './components/PrintFeedback';
 import ModuleReception from './components/ModuleReception';
 import EcranConnexion from './components/EcranConnexion';
@@ -75,24 +76,38 @@ function WampSyncBadge({ wamp }: { wamp: WampSyncState }) {
   );
 }
 
-/* ─── Rappel de sauvegarde JSON ───
-   En mode navigateur, la base vit DANS ce navigateur : sans export régulier,
-   une panne disque = tout perdu. En WAMP, MySQL est la référence (sauvegardée
-   par outils/sauvegarder.bat) mais un export JSON reste une 2ᵉ sécurité.
-   Affiché après 7 jours sans sauvegarde (ou jamais), masquable jusqu'au prochain export. */
-function BackupReminderBanner({ state }: { state: AppState }) {
+/* ─── Rappel de sauvegarde SQL (fichier .sql téléchargé par le poste) ───
+   Un fichier est dû par poste et chaque jour : en mode navigateur la base vit
+   DANS ce navigateur (panne disque = tout perdu) ; en WAMP, MySQL est la
+   référence mais l'export du poste reste la copie qui permet de repartir sans
+   serveur. Apparu dès le lendemain d'une journée sans export, masquable. */
+function BackupReminderBanner({ state, onBackup }: { state: AppState; onBackup?: () => RetourSauvegardeUi }) {
   const [dismissed, setDismissed] = useState(false);
+  const [info, setInfo] = useState<RetourSauvegardeUi | null>(null);
   if (dismissed) return null;
-  const days = daysSinceBackup(state.lastBackupAt);
+  const jours = daysSinceBackup(state.lastBackupAt);
   const hasData = state.patients.length > 0 || state.invoices.length > 0 || state.ventes.length > 0;
   if (!hasData) return null;
-  if (days !== null && days < 7) return null;
+  if (Number.isFinite(jours) && jours < 1) return null;
   return (
     <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[9990] flex items-center gap-3 rounded-xl border border-amber-300 dark:border-amber-500/40 bg-amber-50/95 dark:bg-amber-500/10 px-4 py-2 text-xs font-semibold text-amber-900 dark:text-amber-200 shadow-lg backdrop-blur">
       <span>
-        💾 {days === null ? 'Aucune sauvegarde SQL exportée.' : `Dernière sauvegarde SQL il y a ${days} jour${days > 1 ? 's' : ''}.`}{' '}
-        Pensez à exporter (module Administration).
+        {info
+          ? (info.ok ? `✅ ${info.message}` : `⚠️ ${info.message}`)
+          : <>💾 {Number.isFinite(jours)
+            ? `Dernier fichier de sauvegarde exporté il y a ${Math.floor(jours)} jour${jours > 1 ? 's' : ''} sur ce poste.`
+            : 'Aucun fichier de sauvegarde SQL exporté sur ce poste.'}{' '}
+            Un fichier <code>.sql</code> importable dans MySQL est dû chaque jour.</>}
       </span>
+      {onBackup && (
+        <button
+          onClick={() => { setInfo(onBackup()); window.setTimeout(() => setInfo(null), 6000); }}
+          className="shrink-0 px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-bold cursor-pointer"
+          title="Télécharge le fichier .sql de tout ce que ce poste voit (base MySQL)"
+        >
+          {info?.ok ? '✅ Fichier téléchargé' : '⬇️ Télécharger le .sql'}
+        </button>
+      )}
       <button
         onClick={() => setDismissed(true)}
         className="shrink-0 px-2 py-1 rounded-lg border border-amber-300 dark:border-amber-500/40 hover:bg-amber-100 dark:hover:bg-amber-500/20 cursor-pointer"
@@ -481,8 +496,45 @@ function AppInner() {
     }
   };
 
+  /**
+   * SAUVEGARDE SQL — produit le fichier `.sql` du poste (format du schéma MySQL,
+   * donc réimportable dans `reception_salfa`). Déclenchée par le bouton de la
+   * barre supérieure, par le rappel de sauvegarde et par la déconnexion.
+   */
+  const handleBackupSql = (): RetourSauvegardeUi => {
+    const res = exporterSauvegardeSql(stateRef.current);
+    if (!res.ok) {
+      // Le bouton et le rappel affichent `res.message` ; trace console en plus
+      // pour l'administrateur qui vérifierait le poste.
+      // eslint-disable-next-line no-console
+      console.warn('[Sauvegarde SQL] Aucun fichier produit :', res.erreur);
+      return { ok: false, message: res.message };
+    }
+    setState((prev) => {
+      const next = {
+        ...prev,
+        lastBackupAt: new Date().toISOString(),
+        lastBackupBy: prev.currentUser?.id || 'ADM001',
+      };
+      addAuditLog(next, 'EXPORT_BACKUP_SQL', res.message);
+      return next;
+    });
+    return { ok: true, message: res.message };
+  };
+
   const handleLogout = () => {
-    if (IS_WAMP_BUILD) clearWampSession();
+    // Un fichier de sauvegarde est dû par poste et par jour : si aucun export
+    // n'a été fait aujourd'hui, la déconnexion le produit (sinon le poste
+    // travaillerait des semaines sans copie hors de MySQL).
+    if (stateRef.current.currentUser && !sauvegardeDejaFaiteAujourdhui(stateRef.current.lastBackupAt)) {
+      handleBackupSql();
+    }
+    if (IS_WAMP_BUILD) {
+      // Révocation côté serveur (le jeton de 12 h ne doit pas survivre à la
+      // déconnexion affichée), puis oubli local.
+      void logoutFromMysql();
+      clearWampSession();
+    }
     setState((prev) => ({ ...prev, currentUser: null }));
     setView(IS_WAMP_BUILD ? 'login' : 'reception');
   };
@@ -562,7 +614,7 @@ function AppInner() {
     return (
       <>
         <ModuleReception state={state} setState={setState} onStaffLogin={() => setView('login')} onOpenMessaging={() => handleOpenMessagingWithRecipient(null)} />
-        <BackupReminderBanner key={state.lastBackupAt || 'never'} state={state} />
+        <BackupReminderBanner key={state.lastBackupAt || 'never'} state={state} onBackup={handleBackupSql} />
         {showMessaging && <Messagerie state={state} setState={setState} onClose={handleCloseMessaging} initialRecipientId={messagingRecipientId} />}
         <WampSyncBadge wamp={wamp} />
       </>
@@ -630,7 +682,7 @@ function AppInner() {
   return (
     <>
       <MiseEnPage user={state.currentUser} patients={state.patients} notifications={state.notifications} onLogout={handleLogout} onMarkRead={handleMarkRead} onNotificationAction={handleNotificationAction}
-        onOpenMessaging={() => handleOpenMessagingWithRecipient(null)} onOpenMedicalRecord={state.currentUser.role === 'doctor' || state.currentUser.role === 'admin' ? handleOpenMedicalRecord : undefined} unreadMessages={myMsgCount}
+        onOpenMessaging={() => handleOpenMessagingWithRecipient(null)} onOpenMedicalRecord={state.currentUser.role === 'doctor' || state.currentUser.role === 'admin' ? handleOpenMedicalRecord : undefined} onBackupSql={handleBackupSql} unreadMessages={myMsgCount}
         onChangeRole={(role) => setState((prev) => ({ ...prev, currentUser: { ...prev.currentUser!, role } }))}
         fullHeight={state.currentUser.role === 'admin'}>
         <ModuleErrorBoundary onReset={handleLogout}>
@@ -638,7 +690,7 @@ function AppInner() {
         </ModuleErrorBoundary>
       </MiseEnPage>
       {showMessaging && <Messagerie state={state} setState={setState} onClose={handleCloseMessaging} initialRecipientId={messagingRecipientId} />}
-      <BackupReminderBanner key={state.lastBackupAt || 'never'} state={state} />
+      <BackupReminderBanner key={state.lastBackupAt || 'never'} state={state} onBackup={handleBackupSql} />
       <WampSyncBadge wamp={wamp} />
     </>
   );

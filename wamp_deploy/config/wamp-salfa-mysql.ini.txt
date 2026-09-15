@@ -1,0 +1,62 @@
+; ============================================================================
+;  RECEPTION SALFA — bloc à coller dans la section [mysqld] du my.ini de WAMP
+;  (C:\wamp64\bin\mysql\mysqlX.Y.Z\my.ini — faire une copie du fichier avant ;
+;   après enregistrement : redémarrer le service MySQL depuis le menu WAMP)
+;
+;  Le my.ini livré avec WAMP est réglé pour un site de démonstration, pas pour
+;  un dossier médical partagé par plusieurs services. Les valeurs ci-dessous
+;  sont les minimas constatés nécessaires à 100 passages/jour.
+; ============================================================================
+
+[mysqld]
+
+; --- Réseau ---------------------------------------------------------------
+; MySQL n'a rien à faire sur le LAN : les postes passent par Apache (port 80).
+; 127.0.0.1 ferme le port 3306 aux autres machines (le compte root sans mot
+; de passe de WAMP est sinon accessible à tout le réseau).
+bind-address = 127.0.0.1
+port = 3306
+
+; --- Paquets : le défaut WAMP est 1M, insuffisant dès qu'une ligne JSON ou
+;     un dump dépasse cette taille (erreur « MySQL server has gone away »)
+max_allowed_packet = 64M
+
+; --- InnoDB : cache des pages de données. Sous 128M, chaque relecture repasse
+;     par le disque ; 1 Go sur un PC de 8 Go est un bon compromis (50 % RAM).
+innodb_buffer_pool_size = 1G
+innodb_buffer_pool_instances = 1
+innodb_log_file_size = 256M
+innodb_log_buffer_size = 32M
+; Ne PAS baisser à 2 : c'est la garantie qu'aucune écriture confirmée à
+; l'utilisateur ne disparaît après un arrêt brutal (coupure de courant).
+innodb_flush_log_at_trx_commit = 1
+innodb_file_per_table = 1
+innodb_lock_wait_timeout = 15
+
+; --- Journaux binaires : activés par défaut dans WAMP et JAMAIS purgés →
+;     le disque se remplit jour après jour, sur le même volume que la base.
+;     Aucun besoin de réplication ici : on les coupe. (Si un replica est prévu
+;     plus tard, mettre à la place :
+;        binlog_expire_logs_seconds = 604800 )
+skip-log-bin
+
+; --- Connexions & tri -----------------------------------------------------
+max_connections = 60
+table_open_cache = 2000
+tmp_table_size = 64M
+max_heap_table_size = 64M
+sort_buffer_size = 4M
+join_buffer_size = 4M
+read_rnd_buffer_size = 4M
+
+; --- Divers ---------------------------------------------------------------
+; NE PAS ajouter lower_case_table_names ici : cette variable se fige à la
+; création du répertoire de données ; la changer sur une base existante rend
+; les tables inaccessibles. Le schéma SALFA est déjà tout en minuscules.
+explicit_defaults_for_timestamp = 1
+performance_schema = OFF
+
+[mysqldump]
+; Doit suivre [mysqld] sinon la sauvegarde quotidienne échoue sur les grosses bases.
+quick
+max_allowed_packet = 64M

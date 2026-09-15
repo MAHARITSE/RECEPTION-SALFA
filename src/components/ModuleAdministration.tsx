@@ -3,7 +3,8 @@ import type { UserRole, TicketSettings, User } from '../types';
 import { formatAr, addAuditLog, familyManagesStock } from '../store';
 import { IS_WAMP_BUILD, setWampPassword } from '../wamp';
 import { credentialAutofillOptOut, passwordInputOptOut } from '../utils/credentialAutofill';
-import { downloadSqlBackup } from '../utils/sauvegardeSql';
+import { exporterSauvegardeSql } from '../utils/sauvegarde';
+import { telechargerFichier } from '../utils/exportFichier';
 import { hashPassword } from '../utils/motDePasse';
 import type { AppState } from '../store';
 import ModuleReception from './ModuleReception';
@@ -321,21 +322,24 @@ export default function ModuleAdministration({ state, setState }: Props) {
 
   // ============ SAUVEGARDE SQL (tableau de bord — sauvegarde uniquement) ============
   const exportSqlBackup = () => {
-    try {
-      const fileName = downloadSqlBackup(state);
-      setState((prev) => {
-        const next = {
-          ...prev,
-          lastBackupAt: new Date().toISOString(),
-          lastBackupBy: prev.currentUser?.id || 'ADM001',
-        };
-        addAuditLog(next, 'EXPORT_BACKUP_SQL', fileName);
-        return next;
-      });
-      showToast(`✅ Sauvegarde SQL exportée (${fileName})`);
-    } catch {
-      showToast('⚠️ Export de sauvegarde SQL impossible');
+    // Fichier .sql au format du schéma MySQL : réimportable dans reception_salfa
+    // (mysql < fichier.sql ou phpMyAdmin). Volume trop lourd pour l'onglet ->
+    // le message renvoyé oriente vers outils/sauvegarder.bat (mysqldump).
+    const res = exporterSauvegardeSql(state);
+    if (!res.ok) {
+      showToast(`⚠️ ${res.message || 'Export de sauvegarde SQL impossible.'}`);
+      return;
     }
+    setState((prev) => {
+      const next = {
+        ...prev,
+        lastBackupAt: new Date().toISOString(),
+        lastBackupBy: prev.currentUser?.id || 'ADM001',
+      };
+      addAuditLog(next, 'EXPORT_BACKUP_SQL', res.message);
+      return next;
+    });
+    showToast(`✅ Sauvegarde SQL : ${res.message}`);
   };
 
   // CSV Export for Audit Logs
@@ -354,15 +358,13 @@ export default function ModuleAdministration({ state, setState }: Props) {
       `"${(l.details || '').replace(/"/g, '""')}"`,
     ]);
 
-    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(';'), ...rows.map((r) => r.join(';'))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `journal_audit_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showToast('✅ Journal d\'audit exporté au format CSV');
+    // Le « BOM » \uFEFF est conservé : Excel sans lui ouvre un CSV en ANSI et
+    // casse les accents malgaches et les noms propres.
+    const csvContent = '\uFEFF' + [headers.join(';'), ...rows.map((r) => r.join(';'))].join('\r\n');
+    const resultat = telechargerFichier(csvContent, `journal_audit_${new Date().toISOString().slice(0, 10)}.csv`, { mime: 'text/csv;charset=utf-8' });
+    // Un `data:` URL en haut d'onglet est bloqué par Chrome : le fichier partait
+    // dans le vide sans message. Blob + <a download> est le seul chemin fiable.
+    if (resultat.ok) showToast(`✅ ${resultat.message}`);
   };
 
 
@@ -865,10 +867,11 @@ export default function ModuleAdministration({ state, setState }: Props) {
                           </button>
                           <button
                             onClick={exportSqlBackup}
+                            title="Télécharge un fichier .sql réimportable dans la base reception_salfa (mysql < fichier.sql ou outils\restaurer.bat). Les mots de passe en clair n'y figurent jamais."
                             className="p-3 bg-surface-muted hover:bg-blue-50 dark:hover:bg-cyan-500/8 hover:border-blue-300 dark:hover:border-cyan-500/40 border rounded-xl text-xs font-semibold text-ink hover:text-blue-800 dark:hover:text-cyan-300 transition flex flex-col items-center gap-2 cursor-pointer text-center"
                           >
                             <Database className="w-5 h-5 text-blue-600 dark:text-cyan-400" />
-                            <span>Sauvegarde SQL</span>
+                            <span>Sauvegarde SQL<br /><span className="text-[10px] font-normal opacity-70">fichier .sql à télécharger</span></span>
                           </button>
                           <button
                             onClick={() => setShowPreview(true)}

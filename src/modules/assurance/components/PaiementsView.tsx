@@ -43,6 +43,7 @@ import { DecompteImportModal } from './DecompteImportModal';
 import { RelierPaiementModal } from './paiements/RelierPaiementModal';
 import { SaisieReglementModal } from './paiements/SaisieReglementModal';
 import * as XLSX from 'xlsx';
+import { telechargerClasseur } from '../../../utils/exportFichier';
 import { Select } from '../../../components/Select';
 
 type PaiementSortField = 'datePaiement' | 'dateSaisie' | 'numeroBordereau' | 'societe' | 'modePaiement' | 'totalReclame' | 'totalPaye' | 'totalModerateur' | 'totalExclu' | 'statut';
@@ -1121,7 +1122,7 @@ export const PaiementsView: React.FC<PaiementsViewProps> = ({
       const worksheet = XLSX.utils.json_to_sheet(rows);
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Paiements_Groupes_Actes');
-      XLSX.writeFile(workbook, `Paiements_Groupes_Patient_Date_Actes_${new Date().toISOString().split('T')[0]}.xlsx`);
+      telechargerClasseur(workbook, `Paiements_Groupes_Patient_Date_Actes_${new Date().toISOString().split('T')[0]}.xlsx`);
       return;
     }
 
@@ -1147,7 +1148,7 @@ export const PaiementsView: React.FC<PaiementsViewProps> = ({
     const worksheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Règlements');
-    XLSX.writeFile(workbook, `Reglements_Assurance_${new Date().toISOString().split('T')[0]}.xlsx`);
+    telechargerClasseur(workbook, `Reglements_Assurance_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const renderSortIcon = (field: PaiementSortField) => {

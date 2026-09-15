@@ -1,10 +1,53 @@
-RECEPTION SALFA — Application compilée pour WAMP (index.html)
+RECEPTION SALFA - Application compilée pour WAMP (index.html)
 ================================================================
-Build du       : 2026-09-14
-Commit source  : 35dfea0 (branche arena/01a09e61-reception-salfa)
+Build du       : 2026-09-15
+Commit source  : suite de 33e7d1 (branche arena/01a09ec8-reception-salfa)
 Commande       : npm run build:wamp   (VITE_WAMP_MODE=1 via .env.wamp)
 Mode vérifié   : WAMP / MySQL (ternaire replié dans le bundle)
-Taille         : ~3,6 Mo (monofichier, gzip ~981 Ko)
+Taille         : 3,70 Mo (monofichier, gzip ~999 Ko)
+Contenu        : 1) correctifs « audit WAMP 100 passages/jour » (sonde action=poll,
+                   envoi différentiel, contrôle de révision if_rev/409, déconnexion
+                   révocante, persistance monthlyInvoices / prescripteursExternes) ;
+                 2) SAUVEGARDE .sql : bouton « Sauvegarder » dans la barre supérieure
+                   et Administration -> Données, fichier
+                   reception_salfa_sauvegarde_AAMMJJ-HHMM.sql au format du schéma
+                   (tables en français, donnees JSON, INSERT ... ON DUPLICATE KEY
+                   UPDATE par paquets de 600 Ko, journal d'audit en INSERT IGNORE,
+                   mots de passe en clair jamais écrits, hachage serveur non écrasé
+                   à l'import), export automatique à la déconnexion si la journée
+                   n'a rien produit, refus au-dessus de 150 Mo estimés ;
+                 3) EXPORTS DE FICHIERS FIABILISES : plus aucun XLSX.writeFile ni
+                   doc.save() - les exports Excel/CSV/PDF passent par
+                   src/utils/exportFichier.ts (octets -> Blob -> <a download>),
+                   ajoutent l'extension, conservent les largeurs de colonnes,
+                   écrivent les en-têtes même sur liste vide, et affichent un
+                   message quand le fichier n'est pas arrivé (dont un conseil explicite
+                   quand l'application est ouverte dans un cadre intégré, où les
+                   navigateurs bloquent souvent l'enregistrement) ;
+                 4) RAPPORT "PDF Selection Detailler" (Prestations, menu Exporter) REPRIS :
+                   la selection memorisee par poste est nettoyes des identifiants qui ne
+                   correspondent plus a aucun dossier, le rapport porte sur toute la
+                   selection (pas seulement la vue filtree), les paiements sans lignes
+                   jointes ne font plus echouer le clic, la derniere colonne n'est plus
+                   roignee hors de la page (largeur de table forcee), et le generateur
+                   renvoie ok/nom/taille pour qu'un echec soit annonce ; garde "aucune
+                   ligne a exporter" sur les exports Excel de la meme vue ;
+                 5) NOUVEL ONGLET FACTURATION « Bloc & Hospit. - reliquats » :
+                   dossiers de bloc/hospitalisation sortis sur autorisation alors
+                   qu'il reste une somme due - KPI, filtres (service, société,
+                   période de sortie, recherche multi-mots, tri par plus grosse somme
+                   due, bascule « afficher aussi les soldés »), encaissement écrit
+                   directement dans le dossier de caisse (ticket 58 mm, événement de
+                   parcours, ligne d'audit RELIQUAT_HB_REGLE), relance individuelle,
+                   état imprimable (PDF via l'impression du navigateur) et export
+                   Excel ; raccourci avec compteur depuis la Facturation et alerte à
+                   la validation de sortie à la caisse.
+Vérifications  : npx tsc --noEmit OK, npm run build:wamp OK ; harnais node (exports :
+                 fichiers relus identiques, en-têtes sur liste vide, extension forcée,
+                 message d'échec - et reliquats : filtres, montants, ancienneté,
+                 trop-perçu, synthèse, lignes Excel) OK. Les specs Playwright
+                 nécessitent un navigateur d'automatisation : à lancer sur un poste
+                 qui les a - `npm run test`.
 
 Pour régénérer après modification du code :
   npm run build:wamp

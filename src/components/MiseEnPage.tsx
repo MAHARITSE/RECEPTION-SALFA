@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { User, Patient, Notification as NotifType } from '../types';
 import {
-  Hospital, LogOut, Bell, UserCircle, Stethoscope,
+  Hospital, LogOut, Bell, UserCircle, Stethoscope, Database,
   CreditCard, Pill, FlaskConical, Building2, X,
   ChevronRight, MessageCircle, FileText, CheckCircle2, AlertTriangle, Info
 } from 'lucide-react';
@@ -16,6 +16,9 @@ interface MiseEnPageProps {
   onOpenMessaging: () => void;
   onOpenMedicalRecord?: (patientId?: string) => void;
   onChangeRole?: (role: import('../types').UserRole) => void;
+  /** Produit et télécharge le fichier de sauvegarde `.sql` (importable dans la
+   *  base MySQL). Retourne le message à afficher (succès = nom du fichier). */
+  onBackupSql?: () => import('../utils/sauvegarde').RetourSauvegardeUi;
   unreadMessages: number;
   /** Ouvre la mise en page en mode « pleine fenêtre » (hauteur = 100vh, pas de scroll de page) : utilisé par la console d'administration. */
   fullHeight?: boolean;
@@ -55,7 +58,10 @@ const roleBg: Record<string, string> = {
   admin: 'bg-slate-700',
 };
 
-export default function MiseEnPage({ user, patients = [], notifications, onLogout, onMarkRead, onNotificationAction, onOpenMessaging, onOpenMedicalRecord, onChangeRole, unreadMessages, fullHeight = false, children }: MiseEnPageProps) {
+export default function MiseEnPage({ user, patients = [], notifications, onLogout, onMarkRead, onNotificationAction, onOpenMessaging, onOpenMedicalRecord, onChangeRole, onBackupSql, unreadMessages, fullHeight = false, children }: MiseEnPageProps) {
+  // Confirmation locale du bouton « Sauvegarder » (le fichier est téléchargé par
+  // le navigateur : aucun toast global n'existe dans cette barre).
+  const [sauvegardeInfo, setSauvegardeInfo] = useState<{ ok: boolean; message: string } | null>(null);
   const [showNotif, setShowNotif] = useState(false);
   const [activeToast, setActiveToast] = useState<NotifType | null>(null);
 
@@ -256,6 +262,23 @@ export default function MiseEnPage({ user, patients = [], notifications, onLogou
                 <FileText className="w-4 h-4" /> Dossiers
               </button>
             )}
+            {/* Sauvegarde : un fichier .sql par poste et par jour, importable
+                dans MySQL (le poste peut être coupé du serveur à tout moment). */}
+            {onBackupSql && (
+              <button
+                onClick={() => { const r = onBackupSql(); setSauvegardeInfo(r); window.setTimeout(() => setSauvegardeInfo(null), r.ok ? 5000 : 12000); }}
+                className="flex items-center gap-2 px-3 py-2 bg-surface-muted hover:bg-surface-hover border border-line rounded-lg transition-colors text-sm cursor-pointer"
+                title="Télécharger un fichier de sauvegarde .sql (importable dans la base MySQL du serveur)"
+              >
+                <Database className="w-4 h-4" />
+                <span className="hidden sm:inline max-w-[260px] truncate">
+                  {sauvegardeInfo
+                    ? (sauvegardeInfo.ok ? `✅ ${sauvegardeInfo.message}` : `⚠️ ${sauvegardeInfo.message}`)
+                    : 'Sauvegarder'}
+                </span>
+              </button>
+            )}
+
             {/* Messagerie */}
             <button
               onClick={onOpenMessaging}

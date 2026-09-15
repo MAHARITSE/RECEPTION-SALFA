@@ -4,6 +4,8 @@ import { Navigation } from './components/Navigation';
 import { Dashboard } from './components/Dashboard';
 import { BillingWorkspace } from './components/BillingWorkspace';
 import { ComptoirExterneView } from './components/ComptoirExterneView';
+import { ReliquatsHbView } from './components/ReliquatsHbView';
+import { listerReliquatsHb } from './utils/reliquatsHb';
 import { PaiementsView } from './components/PaiementsView';
 import { RejetsView } from './components/RejetsView';
 import type { RejetDetail } from './components/RejetsView';
@@ -74,6 +76,9 @@ export default function ModuleSuiviAssurance({ state, setState }: Props) {
   const setFamilles = tableSetter('assuranceFamilles');
   const setPrestations = tableSetter('assurancePrestations');
   const setPaiements = tableSetter('assurancePaiements');
+  // Reliquats de sortie (bloc + hospitalisation) : pastille de l'onglet dédié.
+  const reliquatsHb = useMemo(() => listerReliquatsHb(state, { inclureSoldes: false }), [state]);
+
   // Computed values for selected societe and sub-societe filter
   const selectedSociete = societes.find(s => s.id === selectedSocieteId);
 
@@ -619,7 +624,7 @@ export default function ModuleSuiviAssurance({ state, setState }: Props) {
       </div>
 
       {/* Navigation Tab Bar */}
-      <Navigation activeTab={activeTab} onTabChange={setActiveTab} />
+      <Navigation activeTab={activeTab} onTabChange={setActiveTab} badges={{ reliquats: reliquatsHb.length }} />
 
       {/* Main Content Area */}
       <div className="w-full min-w-0 flex-1 px-4 py-5 sm:px-6 lg:px-8 lg:py-6">
@@ -646,6 +651,8 @@ export default function ModuleSuiviAssurance({ state, setState }: Props) {
           <BillingWorkspace
             state={state}
             setState={setState}
+            reliquatsAHuiter={reliquatsHb.length}
+            onOuvrirReliquats={() => setActiveTab('reliquats')}
             prestations={prestations}
             paiements={paiements}
             societes={societes}
@@ -663,6 +670,10 @@ export default function ModuleSuiviAssurance({ state, setState }: Props) {
             isCreateModalOpen={isPrestationModalOpen}
             setIsCreateModalOpen={setIsPrestationModalOpen}
           />
+        )}
+
+        {activeTab === 'reliquats' && (
+          <ReliquatsHbView state={state} setState={setState} />
         )}
 
         {activeTab === 'comptoir' && (

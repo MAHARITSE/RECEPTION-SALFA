@@ -1,7 +1,8 @@
 @echo off
 REM ==========================================================================
 REM  RECEPTION SALFA - Deploiement vers WAMP
-REM  Copie index.html + api/ + database/ vers C:\wamp64\www\reception-salfa
+REM  Copie index.html + .htaccess + api/ + database/ + outils/ + config/
+REM  vers C:\wamp64\www\reception-salfa
 REM  Usage : deployer.bat [dossier-cible]
 REM  Le fichier api\config.local.php du serveur n'est JAMAIS ecrase.
 REM ==========================================================================
@@ -31,6 +32,19 @@ if errorlevel 1 (
   echo [ERREUR] Copie de index.html impossible.
   exit /b 1
 )
+REM .htaccess racine : refus de database\, outils\, logs\, *.sql, config.local.php
+REM + en-tetes de securite + LimitRequestBody. Sans ce fichier, les protections
+REM Apache ne couvrent que les sous-dossiers.
+if exist "%SRC%\.htaccess" copy /Y "%SRC%\.htaccess" "%CIBLE%\.htaccess" >nul
+REM Outils d'exploitation installes sur le serveur (sauvegarde, restauration,
+REM hygiene MySQL, banc d'essai de charge).
+robocopy "%SRC%\outils" "%CIBLE%\outils" /E >nul
+if errorlevel 8 (
+  echo [ERREUR] Copie de outils\ impossible.
+  exit /b 1
+)
+REM Blocs de reglages php.ini / my.ini a recopier dans WAMP (voir PERFORMANCE.md).
+if exist "%SRC%\config" robocopy "%SRC%\config" "%CIBLE%\config" /E >nul
 robocopy "%SRC%\api" "%CIBLE%\api" /E /XF config.local.php >nul
 if errorlevel 8 (
   echo [ERREUR] Copie de api\ impossible (code %errorlevel%^).
@@ -45,13 +59,26 @@ if errorlevel 8 (
 echo.
 echo [OK] Application deployee vers %CIBLE%
 echo.
-echo Prochaines etapes (une seule fois) :
-echo   1. WAMP demarre (icone verte), ouvrir phpMyAdmin :
-echo      http://localhost/phpmyadmin
-echo   2. Importer database\schema.sql puis database\seed.sql
-echo   3. Si MySQL a un mot de passe : creer api\config.local.php :
-echo      ^<?php define('SALFA_DB_PASS', 'votre-mot-de-passe'^);
-echo   4. Verifier : http://localhost/reception-salfa/api/diagnostic.php
-echo   5. Ouvrir :   http://localhost/reception-salfa/
-echo      (admin : USR-ADMIN / admin123 - A CHANGER aussitot)
+echo.
+echo Prochaines etapes (a faire une fois, dans l'ordre) :
+echo   1. Base existante v1/v2 : importer database\migrations\002_sequences.sql
+echo      puis 003_performance.sql dans phpMyAdmin (apres outils\sauvegarder.bat).
+echo      Nouvelle base : database\schema.sql puis database\seed.sql.
+echo   2. Verrouiller MySQL : editer le mot de passe dans outils\hygiene_mysql.sql
+echo      puis  mysql -u root < outils\hygiene_mysql.sql
+echo      et creer api\config.local.php (modele : api\config.local.php.exemple).
+echo   3. Coller config\wamp-salfa-php.ini.txt dans le php.ini de WAMP et
+echo      config\wamp-salfa-mysql.ini.txt dans la section [mysqld] du my.ini,
+echo      puis redemarrer les services.
+echo   4. Verifier : http://localhost/reception-salfa/api/diagnostic.php (tout vert)
+echo   5. Contrer les acces Apache :
+echo      curl -i http://localhost/reception-salfa/database/seed.sql   (403 attendu)
+echo      curl -i http://localhost/reception-salfa/api/config.local.php (403 attendu)
+echo   6. Ouvrir http://localhost/reception-salfa/ (USR-ADMIN / admin123,
+echo      A CHANGER aussitot : 8 caracteres minimum) ; puis hors heures :
+echo      php outils\test_charge.php
+echo.
+echo NOTE : ce script ne compile PAS l'application. Si src\ a change, lancer
+echo        d'abord npm run build:wamp et copier dist\index.html ici, sinon le
+echo        poste tourne avec un index.html ancien (sans poll ^/ envoi differentiel).
 endlocal

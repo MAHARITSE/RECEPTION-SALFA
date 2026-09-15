@@ -92,6 +92,82 @@ En plus de la vue mensuelle et de la vue détaillée, la Facturation propose un 
 
 Les numéros qui ne suivent pas la numérotation officielle en vigueur (`26FA0427102` pour le comptoir et les externes, `FA-07/CODE/26-014` pour les sociétés) sont signalés « ancien format » dans cette vue.
 
+### Rapport « PDF Sélection Détaillé » (récap mensuel & actes)
+
+Dans la vue **Prestations**, le menu « Exporter » propose un PDF construit sur les
+lignes cochées : 1. synthèse mensuelle des créances, 2. liste nominative détaillée avec
+les actes de chaque dossier, totaux et pied de page paramétrables. Trois pièges ont été
+corrigés, parce qu'ils donnaient un bouton « qui ne fait rien » :
+
+- la sélection est **mémorisée par poste** (`localStorage`) : les identifiants d'une
+  autre session ou de dossiers supprimés sont maintenant retirés dès le chargement, et
+  le compteur du bouton affiche `PDF Sélection Détaillé (n sur m cochés)` — le rapport
+  porte sur les dossiers qui existent, pas sur un nombre périmé ;
+- le rapport est calculé sur **toute la sélection**, pas seulement la vue filtrée : un
+  filtre changé après le cochage des lignes ne produit plus un PDF vide ;
+- les paiements importés sans lignes jointes et une sélection vidée ne font plus échouer
+  le clic en silence : le refus est annoncé par un message, et la génération renvoie son
+  résultat (`ok`, nom, taille).
+- les deux tableaux imposaient leurs largeurs de colonnes : `jspdf-autotable` ne pouvant
+  pas les réduire, la dernière colonne (« Reste Dû ») était **rognée** hors de la page en
+  portrait. La colonne texte est passée en largeur automatique avec une largeur de table
+  fixée à la page : plus rien ne dépasse, l'avertissement
+  « units width could not fit page » a disparu (contrôlé dans les tests).
+
+## Reliquats de sortie — Bloc & Hospitalisation
+
+**Onglet « Bloc & Hospit. — reliquats »** du module Facturation : la liste des
+dossiers d'hospitalisation et de bloc opératoire qui ont reçu une **autorisation
+de sortie** alors qu'il restait de l'argent au centre. Ces dossiers quittent la
+liste de la caisse dès la sortie enregistrée ; sans cet onglet, le reliquat
+n'était plus suivi par personne.
+
+- Source unique : `state.hbRecords` (le dossier de caisse lui-même, encaissements
+  de la caisse **et** de la pharmacie de garde compris). Rien n'est recopié, donc
+  le « total du facturier » et le « total de la caisse » ne peuvent pas diverger.
+  Les calculs viennent de `src/utils/hbDossier.ts` (`hbLineAmt`, `hbTotalFacture`,
+  `hbTotalPaye`, `hbReste`) — le même code que la caisse.
+- Colonnes : date de sortie et **nombre de jours depuis la sortie**, patient et
+  dossier, n° de facture, service, société, facturé, réglé, **reste dû**, statut
+  (aucun règlement / partiel / soldé / trop-perçu), et l'autorisation de sortie :
+  qui l'a enregistrée, le **motif** et le **donneur d'ordre** exigés par la caisse.
+- Filtres : service, société (y compris « sans société »), période de sortie,
+  recherche multi-mots (nom, dossier, facture, motif…), tri (le défaut met **la
+  plus grosse somme due en premier**), bascule « afficher aussi les soldés ».
+- **Encaisser** ouvre une fenêtre (montant, reste dû préremis, moitié en un clic) :
+  le règlement est ajouté au dossier, un ticket 58 mm est imprimé comme à la caisse,
+  le parcours du patient reçoit l'événement et le journal d'audit la ligne
+  `RELIQUAT_HB_REGLE`. Un montant supérieur au reste dû est refusé.
+- Export **Excel (.xlsx)** de la liste filtrée et **état imprimable** (une ligne par
+  dossier, totaux et mentions) — l'impression passe par le moteur d'impression
+  interne, « Enregistrer en PDF » du navigateur suffit pour archiver ou transmettre.
+  Une relance individuelle s'imprime depuis la ligne du tableau.
+- Un **trop-perçu** (paiement supérieur à la facture) reste visible quand on
+  affiche les soldés, jamais masqué silencieusement : il se rembourse au guichet.
+- Raccourci en tête de l'onglet Facturation (pastille = nombre de dossiers à
+  traiter) ; la caisse, elle, prévient à la validation de la sortie que le solde
+  ouvert part en recouvrement côté Facturation.
+
+## Exports de fichiers (Excel, CSV, PDF)
+
+Tous les téléchargements passent par `src/utils/exportFichier.ts`
+(`telechargerClasseur`, `telechargerPdf`, `telechargerFichier`) : octets → `Blob` →
+`<a download>`. Ce n'est pas un détail :
+
+- `XLSX.writeFile` et `doc.save()` dépendent de `fs` (Node) ou d'un FileSaver
+  embarqué ; hors d'une page « simple », ils ne produisent **rien** et n'avertissent
+  personne. D'où des boutons «Exporter Excel » qui semblaient morts au guichet ;
+- le helper, lui, ajoute l'extension qui manque, conserve les largeurs de colonnes
+  (`cellStyles`, sinon le fichier arrive illisible dans Excel), écrit les en-têtes
+  même si la liste est vide, et **affiche un message** quand le fichier n'a pas pu
+  être écrit ;
+- dans un **cadre intégré** (aperçu d'éditeur, iframe d'un portail), beaucoup de
+  navigateurs interdisent l'enregistrement de fichier : le message le dit et
+  demande d'ouvrir l'application dans un onglet normal — le calcul, lui, est bon ;
+- les exports CSV utilisent un `Blob` (plus d'URL `data:`, que Chrome bloque en
+  navigation de premier niveau) et gardent le BOM `\ufeff` pour qu'Excel lise les
+  accents en UTF-8.
+
 ## Compléments assurance, dans la même base
 
 Les collections `assuranceSocietes`, `assurancePersonnes` et `assuranceFamilles` conservent les attributs propres au suivi (coordonnées du garant, taux par assuré, alias des actes, etc.). Les identités de Réception sont prioritaires : il ne s'agit plus de référentiels indépendants.

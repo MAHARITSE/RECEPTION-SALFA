@@ -11,6 +11,25 @@
 
 require_once __DIR__ . '/lib.php';
 
+/* ---------------------------------------------------------------------------
+ *  Ce diagnostic expose des informations d'infrastructure (versions PHP et
+ *  MySQL, nom de la base, nombre de lignes, espace disque) : il reste réservé
+ *  au PC serveur. Depuis un autre poste du réseau, il exige une session
+ *  valide (jeton de l'application connectée).
+ * ------------------------------------------------------------------------- */
+$__ip = isset($_SERVER['REMOTE_ADDR']) ? (string) $_SERVER['REMOTE_ADDR'] : '';
+$__local = ($__ip === '127.0.0.1' || $__ip === '::1' || strpos($__ip, '127.') === 0
+    || strpos($__ip, '::ffff:127.') === 0);
+if (!$__local) {
+    try {
+        salfa_session_exige(salfa_pdo());
+    } catch (Exception $e) {
+        http_response_code(403);
+        exit('Diagnostic réservé au PC serveur (ou à une session connectée).');
+    }
+}
+unset($__ip, $__local);
+
 $verifs = array(); // chaque entrée : array('titre', 'statut', 'detail')
 function diag_ajouter($titre, $statut, $detail = '') {
     global $verifs;
@@ -135,6 +154,89 @@ if ($pdo instanceof PDO) {
             $taille < $seuil ? 'ok' : 'avertissement',
             $taille < $seuil ? '' : 'Au-delà d\'1 Go, prévoyez l\'API incrémentale (Phase 1) et l\'archivage.');
     } catch (Exception $e) { diag_ajouter('Taille de la base', 'avertissement', 'information_schema illisible.'); }
+
+    /* ------------------------------------- révision d'état (schema v3) --- */
+    try {
+        $n_rev = (int) $pdo->query('SELECT COUNT(*) FROM information_schema.TABLES'
+            . " WHERE table_schema = '" . str_replace("'", "''", SALFA_DB_NAME) . "' AND table_name = 'revision'")->fetchColumn();
+        if ($n_rev === 1) {
+            $rev = (int) $pdo->query('SELECT `rev` FROM `revision` WHERE `id` = 1')->fetchColumn();
+            diag_ajouter('Révision d’état (poll léger)', 'ok', 'révision ' . number_format($rev, 0, ',', ' ')
+                . ' — les postes ne relisent la base que quand elle a changé.');
+        } else {
+            diag_ajouter('Révision d’état (poll léger)', 'avertissement',
+                'Table `revision` absente : importez database/migrations/003_performance.sql. Sans elle, chaque poste relit TOUT l’état toutes les 5 secondes.');
+        }
+    } catch (Exception $e) { diag_ajouter('Révision d’état', 'avertissement', 'Lecture impossible.'); }
+
+    /* ------------------------------- moteur InnoDB : mémoire & journal --- */
+    try {
+        $bp = 0;
+        $stmt = $pdo->query("SHOW VARIABLES LIKE 'innodb_buffer_pool_size'");
+        $row = $stmt->fetch();
+        if ($row) { $bp = (int) (isset($row['Value']) ? $row['Value'] : 0); }
+        diag_ajouter('InnoDB buffer pool (' . diag_lisible($bp) . ')',
+            $bp >= 134217728 ? 'ok' : 'avertissement',
+            $bp >= 134217728 ? '' : '128 Mo conseillés minimum (my.ini → innodb_buffer_pool_size = 512M sur un PC dédié) : sous 16 Mo, chaque relecture relit le disque.');
+    } catch (Exception $e) { diag_ajouter('InnoDB buffer pool', 'avertissement', 'Variable illisible.'); }
+
+    try {
+        $stmt = $pdo->query("SHOW VARIABLES LIKE 'log_bin'");
+        $row = $stmt->fetch();
+        $log_bin = ($row && isset($row['Value'])) ? strtoupper((string) $row['Value']) : 'OFF';
+        if ($log_bin === 'ON') {
+            $expire = 0;
+            try {
+                $s2 = $pdo->query("SHOW VARIABLES LIKE 'binlog_expire_logs_seconds'")->fetch();
+                if ($s2) { $expire = (int) (isset($s2['Value']) ? $s2['Value'] : 0); }
+            } catch (Exception $e) {
+                try {
+                    $s3 = $pdo->query("SHOW VARIABLES LIKE 'expire_logs_days'")->fetch();
+                    if ($s3) { $expire = (int) (isset($s3['Value']) ? $s3['Value'] : 0) * 86400; }
+                } catch (Exception $e2) { $expire = 0; }
+            }
+            diag_ajouter('Binaire log MySQL (log_bin)', $expire > 0 ? 'ok' : 'erreur',
+                $expire > 0 ? 'Retention : ' . round($expire / 86400) . ' jour(s).'
+                    : 'Journal binaire ACTIVÉ sans purge (réglage par défaut de WAMP) : il grossit tous les jours sur le même disque que la base et finit par la saturer. Dans my.ini [mysqld] : binlog_expire_logs_seconds = 604800 (7 j) — ou skip-log-bin si aucune réplication n’est prévue.');
+        } else {
+            diag_ajouter('Binaire log MySQL (log_bin)', 'ok', 'Désactivé : pas de grossissement du disque.');
+        }
+    } catch (Exception $e) { diag_ajouter('Binaire log MySQL', 'avertissement', 'Variable illisible.'); }
+
+    /* ----------------------------------- sessions actives & anti-écrasement */
+    try {
+        $n = (int) $pdo->query('SELECT COUNT(*) FROM `sessions` WHERE `expire_le` > NOW()')->fetchColumn();
+        diag_ajouter('Sessions de travail ouvertes', $n <= 24 ? 'ok' : 'avertissement',
+            $n . ' jeton(s) valide(s) (12 h maximum chacun). '
+            . ($n > 24 ? 'Plus que de postes réels ? Des déconnexions n’ont pas été révoquées : vérifier que le poste utilise bien action=logout.' : ''));
+    } catch (Exception $e) { diag_ajouter('Sessions de travail', 'avertissement', 'Table `sessions` illisible.'); }
+
+    /* ------------------------------------------- projection « mur mémoire » */
+    // read_all renvoie TOUT l'état : le pic mémoire PHP ≈ 5 × le volume JSON.
+    // On compare ce pic à memory_limit pour dire au praticien OU en est son
+    // installation (le chiffre « mois restants » suppose ~100 passages/jour).
+    try {
+        $octets = (int) $pdo->query(
+            'SELECT COALESCE(SUM(data_length), 0) FROM information_schema.TABLES'
+            . " WHERE table_schema = '" . str_replace("'", "''", SALFA_DB_NAME) . "'"
+        )->fetchColumn();
+        $lignes = (int) $pdo->query(
+            'SELECT COALESCE(SUM(table_rows), 0) FROM information_schema.TABLES'
+            . " WHERE table_schema = '" . str_replace("'", "''", SALFA_DB_NAME) . "'"
+        )->fetchColumn();
+        $pic = $octets * 5;
+        $plafond = $memory > 0 ? $memory : 0;
+        $ratio = $plafond > 0 ? $pic / $plafond : 0;
+        $passages = max(1, (int) round($octets / 12094));
+        $jours_restants = $plafond > 0 ? max(0, (int) round((($plafond / 5) - $octets) / (100 * 12094))) : 0;
+        $statut = $ratio < 0.4 ? 'ok' : ($ratio < 0.8 ? 'avertissement' : 'erreur');
+        diag_ajouter('Charge de relecture complète (read_all)', $statut,
+            number_format($lignes, 0, ',', ' ') . ' lignes · ~' . diag_lisible($octets) . ' transférés à CHAQUE relecture, pic mémoire PHP estimé '
+            . diag_lisible($pic) . ' sur une limite de ' . ($plafond > 0 ? diag_lisible($plafond) : 'illimitée')
+            . '. Soit ~' . number_format($passages, 0, ',', ' ') . ' passages enregistrés'
+            . ($plafond > 0 ? ' ; à 100 passages/jour, la relecture complète devient impossible dans environ ' . ($jours_restants > 365 ? round($jours_restants / 365) . ' an(s)' : $jours_restants . ' jour(s)') . '.' : '.')
+            . ' Gain immédiat : migration 003 (poll). Gain structurel : API incrémentale + archivage (voir docs/PERFORMANCE.md).');
+    } catch (Exception $e) { diag_ajouter('Charge de relecture complète', 'avertissement', 'information_schema illisible.'); }
 
     /* ------------------------------------------------- doublons --- */
     $controles_doublons = array(

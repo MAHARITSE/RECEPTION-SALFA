@@ -17,6 +17,7 @@ import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save
 import { SearchableSelect, optionsFromValues } from './SearchableSelect';
 import { SuggestionInput, classerSuggestions, motsIdentite } from './SuggestionInput';
 import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket, printPharmaDeliveryClosingTicket } from '../utils/printTicket';
+import { hbLineAmt, hbReste } from '../utils/hbDossier';
 import { printSalfaIndividualInvoice } from '../utils/printSalfaInvoice';
 import { getExamReceipts, type ExamReceipts } from '../utils/examReceipts';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
@@ -925,7 +926,9 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   };
 
   // === HOSPIT/BLOC ===
-  const hbLineAmt = (l: HbLine) => roundTo2(l.unitPrice * l.quantity * (1 - l.discount / 100));
+  // Les montants d'un dossier hospit/bloc viennent de `utils/hbDossier` : caisse,
+  // pharmacie de garde et facturation calculent donc exactement pareil (`hbLineAmt`
+  // et `hbReste` sont importés en haut du fichier).
   const hbPatFiltered = hbPatSearch.length >= 1 ? state.patients.filter(p => `${p.lastName} ${p.firstName}`.toLowerCase().includes(hbPatSearch.toLowerCase()) || p.dossier.toLowerCase().includes(hbPatSearch.toLowerCase())) : [];
 
   const hbSelectPatient = async (patientId: string) => {
@@ -1057,13 +1060,6 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     setHbModal('discharge');
   };
 
-  /** Reste à payer arrondi au centime (évite les poussières flottantes affichées « 0,00 Ar »). */
-  const hbReste = (record: HbRecord): number => {
-    const totalFact = record.lines.reduce((s, l) => s + hbLineAmt(l), 0);
-    const totalPaid = record.payments.reduce((s, p) => s + p.amount, 0);
-    return Math.round((totalFact - totalPaid) * 100) / 100;
-  };
-
   const confirmDischarge = () => {
     const rec = hbRecords.find(r => r.id === hbSelRecordId);
     if (!rec || rec.dischargedAt) return;
@@ -1107,6 +1103,17 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     });
     setHbModal('none');
     if (hbSelRecordId === rec.id) setHbSelRecordId(null);
+    // Le dossier quitte la liste de la caisse à la sortie : sans ce relais, le
+    // reste dû ne plus être suivi nulle part.
+    if (reste > 0) {
+      showAlert(
+        `Sortie enregistrée : il reste ${formatAr(reste)} au centre sur ce dossier ${dossierTypeName}.
+
+`
+        + "Le suivi et l'encaissement du reliquat se font désormais dans Facturation → « Bloc & Hospit. — reliquats » "
+        + "(relances, état imprimable, export Excel). Un règlement saisi là revenant dans ce dossier, la caisse le verra.",
+        "Solde ouvert après autorisation de sortie", 'warning');
+    }
   };
 
   const cancelDischarge = (recordId: string) => {

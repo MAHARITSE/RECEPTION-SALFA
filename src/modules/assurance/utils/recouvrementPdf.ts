@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { telechargerPdf } from '../../../utils/exportFichier';
 import { Prestation, Paiement, Societe, Personne, EnteteConfig, Famille } from '../types';
 import { formatMoney, formatDate } from './formatters';
 import { getStoredEnteteConfig } from './enteteStorage';
@@ -256,7 +257,7 @@ export function calculateRecouvrementData(
   const paiementsParLigne: Record<string, number> = {};
 
   paiements.forEach(p => {
-    p.lignes.forEach(l => {
+    (p.lignes ?? []).forEach(l => {
       const paye = Number(l.totalPaye || l.montantPaye || 0);
       const exclu = Number(l.montantExclu || 0);
       if (paye > 0 || exclu > 0) {
@@ -712,7 +713,7 @@ export function generateRecouvrementPdf(
     }
   });
 
-  const pageCount = (doc as any).internal.getNumberOfPages();
+  const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
     doc.setFontSize(7.5);
@@ -724,7 +725,7 @@ export function generateRecouvrementPdf(
   }
 
   const filename = `Etat_Recouvrement_Plus_${seuil}_Mois_${new Date().toISOString().split('T')[0]}.pdf`;
-  doc.save(filename);
+  telechargerPdf(doc, filename);
 }
 
 /**
@@ -799,8 +800,21 @@ export function generateSelectedPrestationsPdf(
     enteteConfig?: EnteteConfig;
     familles?: Famille[];
   }
-) {
+): { ok: boolean; nom: string; octets: number; message: string } {
   const config = options?.enteteConfig || getStoredEnteteConfig();
+
+  // Sélection vide (identifiants mémorisés d'une session à l'autre, lignes masquées par
+  // un filtre, dossiers supprimés) : mieux vaut refuser clairement que produire un PDF
+  // d'une page sans ligne, qui donnait l'impression d'un export « mort ».
+  if (!prestations || prestations.length === 0) {
+    return {
+      ok: false,
+      nom: '',
+      octets: 0,
+      message: 'Aucun dossier à imprimer dans cette sélection : les lignes cochées ne correspondent plus aux données affichées. Décochez tout, re-sélectionnez les prestations concernées, puis relancez le PDF.',
+    };
+  }
+
   const palette = getThemePalette(config);
   const fontFam = config.fontFamily || 'helvetica';
 
@@ -830,7 +844,7 @@ export function generateSelectedPrestationsPdf(
   const paiementsParPrestation: Record<string, number> = {};
   const paiementsParLigne: Record<string, number> = {};
   paiements.forEach(p => {
-    p.lignes.forEach(l => {
+    (p.lignes ?? []).forEach(l => {
       const paye = Number(l.totalPaye || l.montantPaye || 0);
       const exclu = Number(l.montantExclu || 0);
       if (paye > 0 || exclu > 0) {
@@ -1024,6 +1038,8 @@ export function generateSelectedPrestationsPdf(
 
     autoTable(doc, {
       startY: currentY + 2.5,
+      margin: { left: 8, right: 8 },
+      tableWidth: pageWidth - 16,
       head: [moisHeaders],
       body: moisRows,
       theme: 'grid',
@@ -1040,7 +1056,7 @@ export function generateSelectedPrestationsPdf(
         textColor: [30, 41, 59],
       },
       columnStyles: {
-        0: { fontStyle: 'bold', cellWidth: 42 },
+        0: { fontStyle: 'bold', cellWidth: 'auto' },
         1: { halign: 'center', cellWidth: 14 },
         2: { halign: 'right', cellWidth: 26 },
         3: { halign: 'right', cellWidth: 24 },
@@ -1090,6 +1106,8 @@ export function generateSelectedPrestationsPdf(
 
   autoTable(doc, {
     startY: currentY + 2.5,
+    margin: { left: 8, right: 8 },
+    tableWidth: pageWidth - 16,
     head: [detailHeaders as any],
     body: detailRows,
     theme: 'grid',
@@ -1106,7 +1124,7 @@ export function generateSelectedPrestationsPdf(
     },
     columnStyles: {
       0: { cellWidth: 30, halign: 'center', valign: 'middle' },
-      1: { cellWidth: 52 },
+      1: { cellWidth: 'auto' },
       2: { halign: 'right', cellWidth: 21 },
       3: { halign: 'right', cellWidth: 19, textColor: [180, 83, 9] },
       4: { halign: 'right', cellWidth: 21 },
@@ -1128,7 +1146,7 @@ export function generateSelectedPrestationsPdf(
     }
   });
 
-  const pageCount = (doc as any).internal.getNumberOfPages();
+  const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
     doc.setFontSize(7.5);
@@ -1166,5 +1184,5 @@ export function generateSelectedPrestationsPdf(
 
   const cleanSocName = mainSocNom.replace(/[^a-zA-Z0-9]/g, '_');
   const filename = `Recouvrement_${cleanSocName}_${monthPart}_${new Date().toISOString().split('T')[0]}.pdf`;
-  doc.save(filename);
+  return telechargerPdf(doc, filename);
 }

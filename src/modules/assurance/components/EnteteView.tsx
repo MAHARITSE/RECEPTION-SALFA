@@ -28,6 +28,7 @@ import { EnteteConfig, defaultEnteteConfig } from '../types';
 import { getStoredEnteteConfig, saveStoredEnteteConfig, resetStoredEnteteConfig } from '../utils/enteteStorage';
 import { maskNom } from '../utils/inputMasks';
 import jsPDF from 'jspdf';
+import { telechargerPdf } from '../../../utils/exportFichier';
 
 interface EnteteViewProps {
   value?: EnteteConfig;
@@ -163,7 +164,7 @@ export const EnteteView: React.FC<EnteteViewProps> = ({ onConfigChange, value })
     doc.setTextColor(185, 28, 28);
     doc.text('DOCUMENT SPÉCIMEN D’ESSAI D’EN-TÊTE', 12, currentY + 4);
 
-    doc.save('Test_Entete_Personnalise.pdf');
+    telechargerPdf(doc, 'Test_Entete_Personnalise.pdf');
   };
 
   const getFontFamilyStyle = () => {

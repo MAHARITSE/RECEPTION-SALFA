@@ -4,6 +4,25 @@
 > Date : 14 septembre 2026 — Périmètre : code source du dépôt (`src/`, `docs/`, puis `wamp_deploy/`).
 > Mise à jour du 14/09/2026 : le dossier **`wamp_deploy/`** (API PHP + schéma MySQL) a été créé (§S6 résolu) et `workers/` supprimé. Les risques restants sont suivis dans le plan d'action (§6).
 
+> **⚠️ État de ce document (2ᵉ revue, après durcissement de l'API MySQL).**
+> Ce qui suit reste vrai pour le **mode navigateur** (données locales) et pour les
+> écrans, mais plusieurs points §4 sont **clos côté WAMP** :
+>
+> | § | Libellé | État sur le déploiement WAMP/MySQL |
+> |---|---|---|
+> | S1 | Mots de passe en clair | ✅ Clos : bcrypt serveur, migration paresseuse, jamais renvoyés en lecture, minimum 8 caractères + liste noire, blocage après 5 échecs. |
+> | S2 | Autorisations décoratives | ✅ Clos sur l'API : ACL serveur sur `utilisateurs` (comptes et rôles), écriture seule du journal d'audit, sessions révocables. Le sélecteur de rôle de l'interface reste un confort de démonstration, sans pouvoir réel. |
+> | S3 | Données de santé non protégées | 🟠 Partiel : audit rendu non réécrivable, restriction aux postes authentifiés ; reste HTTP (pas de TLS) et chiffrement = disque (BitLocker) → `wamp_deploy/SECURITE.md`. |
+> | S4 | Perte de données | ✅ Clos pour WAMP : sauvegarde `mysqldump` planifiée + transactions ; le `sendBeacon` de fermeture n'écrase plus le travail des autres postes (différentiel + contrôle de révision `if_rev`). |
+> | S5 | Conflits multi-postes | ✅ Largement clos : numérotation atomique (`sequences`, verrou), `read_all` sous instantané cohérent, `if_rev` → HTTP 409 avec relecture-refusion-rejou. Subsiste : la fusion reste par enregistrement (pas par champ) et le stock est décrémenté côté client. |
+> | S6 | Dossier `WAMP/` absent | ✅ Clos. |
+> | L1-L4 | Latences | 🟠 Réduit, pas résolu : la sonde `poll` + l'envoi différentiel suppriment le trafic cyclique ; **la relecture complète à la connexion reste un transfert de toute la base** → à rendre incrémentale (`docs/AUDIT_WAMP_100_PAR_JOUR.md` §7.1). L3 est en partie fausse aujourd'hui : la liste de Réception est paginée (`ModuleReception.tsx:211-227`) ; le journal d'audit ne l'est pas. |
+>
+> **Chiffres à jour** : la volumétrie et les seuils de l'audit WAMP sont recalculés mesurés à l'appui dans
+> **`docs/AUDIT_WAMP_100_PAR_JOUR.md`** (blocage memory_limit estimé entre **3 semaines et 4 mois**
+> d'exploitation à 100 passages/jour, selon le `memory_limit` — et non « avant 3 ans »). Ce nouveau document
+> fait foi pour le déploiement MySQL.
+
 ---
 
 ## 1. Synthèse exécutive
@@ -11,12 +30,15 @@
 | Axe | Verdict à 10 ans / 100 patients/jour |
 |---|---|
 | **Latences & volumétrie** | 🔴 **Bloquant** : l'architecture « 1 seul état global réécrit en entier à chaque modification » ne passe pas l'échelle. Ralentissements sensibles **dès la 1ʳᵉ année**, blocage probable **avant 3 ans**. |
-| **Sécurité** | 🔴 **Critique** : mots de passe en clair, autorisations contournables en 2 minutes, données de santé non chiffrées. |
+| **Sécurité** | ~~🔴 Critique~~ → 🟠 **Corrigé sur l'API WAMP** (bcrypt, ACL serveur, sessions révocables, anti-brute-force) ; restent le HTTP sans TLS et le chiffrement du disque. Mode navigateur : toujours 🔴 (mots de passe locaux). |
 | **Durabilité des données** | 🔴 **Critique** : sauvegarde = export JSON manuel ; à ~1 Go, l'export/restauration via navigateur devient impossible. |
-| **Fiabilité multi-postes** | 🟠 **Risque financier** : fusion « dernier écrivain gagne » par enregistrement → paiements concurrents perdables, numéros de facture duplicables. |
-| **Maintenabilité 10 ans** | 🟡 Correct aujourd'hui (React 19, TS, tests Playwright), mais monolithes de 1 700–2 400 lignes et données démo embarquées dans le bundle. |
+| **Fiabilité multi-postes** | 🟠→🟢 Numérotation atomique + `read_all` cohérent + contrôle de révision (409). Reste la fusion par enregistrement (pas par champ) et le stock décrémenté côté client. |
+| **Maintenabilité 10 ans** | 🟡 Correct (React 19, TS, tests Playwright), monolithes de 1 700–2 400 lignes. (Données de démo **embarquées dans le bundle WAMP : vérifié faux** — elles sont éliminées à la compilation ; le mono-fichier pèse 3,5 Mo.) |
 
-**Conclusion : le logiciel est sain pour une démo ou un petit volume (< 1 an à 100/jour), mais ne tiendra pas 10 ans sans refonte du stockage/synchronisation et durcissement sécurité. Le plan d'action priorisé est au §6.**
+**Conclusion (actualisée) : le durcissement sécurité de l'API est fait ; le socle WAMP/MySQL est
+correct mais le protocole d'échange doit devenir incrémental pour tenir 10 ans. Plan d'action à jour :
+`docs/AUDIT_WAMP_100_PAR_JOUR.md` §5 (recette immédiate) et §7 (phases A/B/C) ; exploitation :
+`wamp_deploy/PERFORMANCE.md`.**
 
 ---
 

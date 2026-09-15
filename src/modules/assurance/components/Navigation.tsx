@@ -11,15 +11,18 @@ import {
   Layers,
   Printer,
   Type,
+  Banknote,
 } from 'lucide-react';
 import { ActiveTab } from '../types';
 
 interface NavigationProps {
   activeTab: ActiveTab;
   onTabChange: (tab: ActiveTab) => void;
+  /** Nombre de dossiers à traiter dans un onglet (affiché en pastille). */
+  badges?: Partial<Record<ActiveTab, number>>;
 }
 
-export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange }) => {
+export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange, badges }) => {
   const navItems: {
     id: ActiveTab;
     label: string;
@@ -29,6 +32,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange }
     { id: 'dashboard', label: "Vue d'ensemble", icon: LayoutDashboard },
     { id: 'prestations', label: 'Facturation', icon: FileText },
     { id: 'comptoir', label: 'Comptoir & Externe', icon: Store },
+    { id: 'reliquats', label: 'Bloc & Hospit. — reliquats', icon: Banknote },
     { id: 'paiements', label: 'Règlements', icon: CreditCard },
     { id: 'rejets', label: 'Rejets', icon: AlertTriangle },
     { id: 'historique', label: 'Historique', icon: History },
@@ -67,6 +71,12 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange }
               >
                 <Icon className={`h-4 w-4 ${isActive ? 'text-accent' : 'text-ink-faint'}`} />
                 <span>{item.label}</span>
+                {!!badges?.[item.id] && (
+                  <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
+                    title={`${badges[item.id]} dossier(s) à traiter`}>
+                    {badges[item.id]}
+                  </span>
+                )}
               </button>
             </React.Fragment>
           );

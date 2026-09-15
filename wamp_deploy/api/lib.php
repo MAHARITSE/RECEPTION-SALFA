@@ -14,8 +14,12 @@ require_once __DIR__ . '/config.php';
 
 // Version de schéma attendue par cette API (table `parametres`, clé `schema_version`).
 // v2 : table `sequences` (numérotation atomique multi-caisses) —
-// cf. wamp_deploy/database/migrations/002_sequences.sql.
-define('SALFA_SCHEMA_VERSION', 2);
+//      cf. wamp_deploy/database/migrations/002_sequences.sql.
+// v3 : table `revision` (poll léger + if_rev) et index `idx_maj` —
+//      cf. wamp_deploy/database/migrations/003_performance.sql.
+//      Sans v3, l'API reste fonctionnelle : le client retombe sur la relecture
+//      complète toutes les 5 s (comportement de la v2).
+define('SALFA_SCHEMA_VERSION', 3);
 
 /**
  * Correspondance entre les collections de l'application et les tables MySQL.
@@ -70,6 +74,189 @@ function salfa_param_keys() {
 /** Clés numériques stockées dans la table `compteurs` (ne diminuent jamais). */
 function salfa_counter_keys() {
     return array('factureCounter', 'pharmaClosingCounter');
+}
+
+/* ---------------------------------------------------------------------------
+ *  LIMITES & RÉVISION D'ÉTAT (ajoutés par l'audit « 100 patients/jour »)
+ * ------------------------------------------------------------------------- */
+
+/** Limite de corps réellement applicable : le plus petit entre la config
+ *  applicative et ce que PHP peut absorber (sinon la requête meurt en
+ *  erreur 500 opaque au lieu d'un 413 explicite). */
+function salfa_limite_corps() {
+    $config = (int) SALFA_MAX_BODY_MB * 1048576;
+    $memo = 0; // memory_limit (-1 = illimité)
+    $ml = trim((string) ini_get('memory_limit'));
+    if ($ml !== '' && $ml !== '-1') {
+        $n = (float) $ml;
+        $u = strtolower(substr($ml, -1));
+        if ($u === 'g') { $n *= 1073741824; } elseif ($u === 'm') { $n *= 1048576; } elseif ($u === 'k') { $n *= 1024; }
+        $memo = (int) $n;
+    }
+    $limite = $config;
+    // Un json_decode coûte ~4 à 5 fois la taille du texte : on ne garde que
+    // le cinquième de memory_limit comme plafond de corps.
+    if ($memo > 0) { $limite = min($limite, (int) ($memo / 5)); }
+    // post_max_size N'EST PAS inclus : l'API lit le corps brut (`php://input`),
+    // que cette limite ne borne pas (elle ne concerne que le remplissage de
+    // $_POST). La mentionner dans le message d'erreur reste utile à
+    // l'administrateur, qui importera aussi des fichiers via phpMyAdmin.
+    return $limite > 0 ? $limite : $config;
+}
+
+/** Le serveur peut-il suivre la révision d'état (migration 003 appliquée) ? */
+function salfa_revision_disponible($pdo) {
+    static $ok = null;
+    if ($ok !== null) { return $ok; }
+    try {
+        $pdo->query('SELECT 1 FROM `revision` LIMIT 1');
+        $ok = true;
+    } catch (Exception $e) {
+        $ok = false;
+    }
+    return $ok;
+}
+
+/** Révision courante de la base (null si la table `revision` est absente). */
+function salfa_revision_lire($pdo) {
+    if (!salfa_revision_disponible($pdo)) { return null; }
+    try {
+        $row = $pdo->query('SELECT `rev` FROM `revision` WHERE `id` = 1')->fetch();
+        return $row ? (int) $row['rev'] : 0;
+    } catch (Exception $e) {
+        return null;
+    }
+}
+
+/** Révision courante SOUS VERROU (pour le contrôle d'anti-écrasement `if_rev`) :
+ *  toutes les écritures incrémentant la révision dans leur transaction, la
+ *  comparaison est faite sur une valeur que personne ne peut bouger entre-temps.
+ *  Coût : les sauvegardes des postes sont sérialisées sur cette ligne — quelques
+ *  millisecondes chacune, très au-dessus du besoin à 100 passages/jour.
+ *  Retourne `null` si la table `revision` est absente (le client retombe alors
+ *  sur le comportement sans contrôle). */
+function salfa_revision_verrou($pdo) {
+    if (!salfa_revision_disponible($pdo)) { return null; }
+    try {
+        $row = $pdo->query('SELECT `rev` FROM `revision` WHERE `id` = 1 FOR UPDATE')->fetch();
+        return $row ? (int) $row['rev'] : 0;
+    } catch (Exception $e) {
+        return null;
+    }
+}
+
+/** Marque une modification de la base (utilisé par le rafraîchissement léger). */
+function salfa_revision_marquer($pdo, $increment = 1) {
+    if (!salfa_revision_disponible($pdo)) { return; }
+    try {
+        $stmt = $pdo->prepare('INSERT INTO `revision` (`id`, `rev`) VALUES (1, :i)'
+            . ' ON DUPLICATE KEY UPDATE `rev` = `rev` + :i2, `mis_a_jour` = CURRENT_TIMESTAMP');
+        $stmt->execute(array(':i' => (int) $increment, ':i2' => (int) $increment));
+    } catch (Exception $e) {
+        // La révision est un accélérateur : son échec ne bloque jamais l'écriture.
+    }
+}
+
+/** Vrai si la session porte le rôle administrateur (rôle principal ou délégué). */
+function salfa_est_admin($session) {
+    if (!is_array($session)) { return false; }
+    if (isset($session['role']) && (string) $session['role'] === 'admin') { return true; }
+    return isset($session['roles']) && is_array($session['roles']) && in_array('admin', $session['roles'], true);
+}
+
+/** Vrai si le poste est administrateur. Le jeton ne porte que le rôle
+ *  principal : à défaut, on relit les rôles délégués en base (une requête
+ *  sur clé primaire, uniquement quand c'est nécessaire). */
+function salfa_session_est_admin($pdo, $session) {
+    if (salfa_est_admin($session)) { return true; }
+    if (!is_array($session) || !isset($session['id'])) { return false; }
+    try {
+        $stmt = $pdo->prepare('SELECT `donnees` FROM `utilisateurs` WHERE `id` = :id LIMIT 1');
+        $stmt->execute(array(':id' => $session['id']));
+        $row = $stmt->fetch();
+        $obj = ($row && isset($row['donnees'])) ? json_decode($row['donnees'], true) : null;
+        if (is_array($obj)) { return salfa_est_admin($obj); }
+    } catch (Exception $e) {
+        // Base illisible : on en reste au rôle du jeton.
+    }
+    return false;
+}
+
+/** Écritures refusées si un poste non administrateur touche au dataset
+ *  `utilisateurs` (comptes et rôles) — sauf tant que la table est vide
+ *  (initialisation de la toute première base). Retourne les lignes autorisées. */
+function salfa_filtrer_utilisateurs($pdo, $lignes, $session, $est_admin) {
+    if (!is_array($lignes) || count($lignes) === 0) { return is_array($lignes) ? $lignes : array(); }
+    if ($est_admin) { return $lignes; }
+    $base_vierge = false;
+    try {
+        $base_vierge = ((int) $pdo->query('SELECT COUNT(*) FROM `utilisateurs`')->fetchColumn()) === 0;
+    } catch (Exception $e) {
+        $base_vierge = true; // table illisible : on ne bloque pas davantage
+    }
+    if ($base_vierge) { return $lignes; }
+    salfa_log('REFUS — dataset `utilisateurs` ignoré (compte non administrateur : '
+        . (isset($session['id']) ? $session['id'] : '?') . ').');
+    return array(); // ignoré, mais la sauvegarde des autres datasets aboutit
+}
+
+/** Anti- brute-force : compteur d'échecs par (compte, IP), sur disque
+ *  (aucune table à créer, survit aux redémarrages d'Apache).
+ *  Retourne array(bloque, secondes_restantes). */
+function salfa_essais_consulter($cle) {
+    $f = salfa_fichier_essais();
+    if ($f === null) { return array(false, 0); }
+    $data = @file_get_contents($f);
+    if (!is_string($data) || $data === '') { return array(false, 0); }
+    $tab = @json_decode($data, true);
+    if (!is_array($tab) || !isset($tab[$cle])) { return array(false, 0); }
+    $entree = $tab[$cle];
+    $t = isset($entree['t']) ? (int) $entree['t'] : 0;
+    $n = isset($entree['n']) ? (int) $entree['n'] : 0;
+    $duree = 15 * 60;
+    if ($n >= 5) {
+        $reste = $t + $duree - time();
+        if ($reste > 0) { return array(true, $reste); }
+        return array(false, 0);
+    }
+    // Fenêtre glissante de 10 minutes.
+    if (time() - $t > 600) { return array(false, 0); }
+    return array(false, 0);
+}
+
+/** Enregistre un échec (ou réinitialise le compteur sur succès). */
+function salfa_essais_enregistrer($cle, $reussi) {
+    $f = salfa_fichier_essais();
+    if ($f === null) { return; }
+    $tab = array();
+    $data = @file_get_contents($f);
+    if (is_string($data) && $data !== '') {
+        $lu = @json_decode($data, true);
+        if (is_array($lu)) { $tab = $lu; }
+    }
+    if ($reussi) {
+        unset($tab[$cle]);
+    } else {
+        $n = 1;
+        if (isset($tab[$cle]) && is_array($tab[$cle])) {
+            if (time() - (int) $tab[$cle]['t'] <= 600) { $n = (int) $tab[$cle]['n'] + 1; }
+        }
+        $tab[$cle] = array('n' => $n, 't' => time());
+    }
+    // On purge les entrées anciennes pour que le fichier reste petit.
+    foreach ($tab as $k => $v) {
+        if (!is_array($v) || !isset($v['t']) || time() - (int) $v['t'] > 3600) { unset($tab[$k]); }
+    }
+    @file_put_contents($f, json_encode($tab), LOCK_EX);
+}
+
+/** Emplacement du compteur d'échecs de connexion (dossier des journaux). */
+function salfa_fichier_essais() {
+    $dir = __DIR__ . '/logs';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+    }
+    return is_dir($dir) && is_writable($dir) ? $dir . '/essais.json' : null;
 }
 
 /** Connexion PDO unique (erreurs en exceptions, utf8mb4, requêtes préparées réelles). */
@@ -291,18 +478,17 @@ function salfa_normaliser_mot_de_passe($pdo, $ligne) {
 }
 
 /**
- * Exige un jeton de session valide (en-tête X-Session-Token, paramètre
- * ?token= ou champ `token` du corps — ce dernier pour sendBeacon, qui ne
- * peut pas poser d'en-tête). Répond 401 et termine sinon.
+ * Exige un jeton de session valide (en-tête X-Session-Token ou champ `token`
+ * du corps — ce dernier pour sendBeacon, qui ne peut pas poser d'en-tête).
+ * Répond 401 et termine sinon.
+ * Le jeton n'est PLUS accepté en paramètre d'URL : il se serait retrouvé dans
+ * les journaux Apache (access.log) et le referer, donc dans la nature.
  * Retourne array('id' => identifiant, 'role' => rôle principal).
  */
 function salfa_session_exige($pdo, $corps = null) {
     $jeton = '';
     if (isset($_SERVER['HTTP_X_SESSION_TOKEN']) && is_string($_SERVER['HTTP_X_SESSION_TOKEN'])) {
         $jeton = trim($_SERVER['HTTP_X_SESSION_TOKEN']);
-    }
-    if ($jeton === '' && isset($_GET['token']) && is_string($_GET['token'])) {
-        $jeton = trim($_GET['token']);
     }
     if ($jeton === '' && is_array($corps) && isset($corps['token']) && is_string($corps['token'])) {
         $jeton = trim($corps['token']);
@@ -325,6 +511,23 @@ function salfa_session_exige($pdo, $corps = null) {
             // Nettoyage accessoire : l'échec ne change pas la réponse 401.
         }
         salfa_erreur('Session expirée : reconnectez-vous.', 401);
+    }
+    // Le compte doit toujours exister : un jeton ne survit pas à la
+    // suppression (ou au retrait) du compte qui l'a reçu.
+    try {
+        $u = $pdo->prepare('SELECT 1 FROM `utilisateurs` WHERE `id` = :id LIMIT 1');
+        $u->execute(array(':id' => $row['utilisateur_id']));
+        if (!$u->fetchColumn()) {
+            $del = $pdo->prepare('DELETE FROM `sessions` WHERE `jeton` = :j');
+            $del->execute(array(':j' => $jeton));
+            salfa_erreur('Compte supprimé ou désactivé : reconnectez-vous.', 401);
+        }
+    } catch (Exception $e) {
+        if ($e instanceof PDOException) {
+            // Table `utilisateurs` illisible : on ne bloque pas l'accès.
+        } else {
+            throw $e;
+        }
     }
     return array('id' => $row['utilisateur_id'], 'role' => $row['role']);
 }

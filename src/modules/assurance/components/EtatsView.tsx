@@ -25,6 +25,7 @@ import { formatMoney, formatDate } from '../utils/formatters';
 import { maskNom } from '../utils/inputMasks';
 import { getStoredEnteteConfig } from '../utils/enteteStorage';
 import * as XLSX from 'xlsx';
+import { telechargerClasseur } from '../../../utils/exportFichier';
 import { Select } from '../../../components/Select';
 
 interface EtatsViewProps {
@@ -362,7 +363,7 @@ export const EtatsView: React.FC<EtatsViewProps> = ({
     const ws = XLSX.utils.json_to_sheet(wsData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Rapport');
-    XLSX.writeFile(wb, `${reportTitle}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    telechargerClasseur(wb, `${reportTitle}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   return (
