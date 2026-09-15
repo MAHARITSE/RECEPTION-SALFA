@@ -1,5 +1,5 @@
 import type { AppState } from '../../store';
-import type { ClientType } from '../../types';
+import type { AjoutFacturier, ClientType } from '../../types';
 import { sharedTransactions, typeClientEffectif } from './sharedData';
 import { billingFamilyResolver } from './billingFamilies';
 
@@ -41,6 +41,21 @@ export function monthlyScopeId(scope: MonthlyScope): string {
 export function collectBillingDocuments(state: AppState): BillingDocument[] {
   const transactions = sharedTransactions(state);
   const resolveFamily = billingFamilyResolver(state);
+  /** Ajouts du facturier (ventes omises / ordonnances externes) superposés aux
+   *  lignes Caisse d'une facture comptoir / externe — même mécanisme que les
+   *  prescriptions sociétés, sans jamais modifier la pièce d'origine. */
+  const ajoutsFacturier = (ajouts: AjoutFacturier[] | undefined): { items: BillingItem[]; brut: number; moderateur: number } => {
+    const lignes = ajouts || [];
+    return {
+      items: lignes.map(a => ({
+        description: a.libelle || a.code,
+        actCode: resolveFamily({ articleId: a.articleId, articleName: a.libelle, familyCode: a.code }),
+        quantity: a.quantity, unitPrice: a.prixUnitaire, amount: a.totalPrestation,
+      })),
+      brut: rounded(lignes.reduce((s, a) => s + a.totalPrestation, 0)),
+      moderateur: rounded(lignes.reduce((s, a) => s + (a.ticketModerateur || 0), 0)),
+    };
+  };
   const docs: BillingDocument[] = transactions.prestations.map(p => ({
     id: p.id, sourceId: p.sourceInvoiceId || p.id, category: 'societe', companyId: p.societeId,
     companyName: state.companies.find(c => c.id === p.societeId)?.name || p.societeNom || 'Société',
@@ -68,15 +83,16 @@ export function collectBillingDocuments(state: AppState): BillingDocument[] {
     const sale = state.ventes.find(v => v.legacyInvoiceId === invoice.id);
     if (sale?.status === 'annule') continue;
     const patient = state.patients.find(p => p.id === invoice.patientId);
+    const ajouts = ajoutsFacturier(invoice.ajoutsFacturier);
     docs.push({ id: `caisse:${invoice.id}`, sourceId: invoice.id, category,
       number: invoice.numeroFacture || sale?.numeroFacture || invoice.id, date: localBillingDate(invoice.createdAt),
       client: invoice.clientName || (patient ? `${patient.lastName} ${patient.firstName}`.trim() : categoryLabels[category]), dossier: patient?.dossier,
       matricule: patient?.matricule,
       consultationDate: localBillingDate(state.consultations.find(c => c.id === invoice.consultationId)?.date || invoice.createdAt),
-      individualGross: invoice.totalAmount, individualNet: invoice.patientCharge,
-      total: invoice.totalAmount, copay: 0, payable: invoice.totalAmount,
+      individualGross: rounded(invoice.totalAmount + ajouts.brut), individualNet: rounded(invoice.patientCharge + (ajouts.brut - ajouts.moderateur)),
+      total: rounded(invoice.totalAmount + ajouts.brut), copay: ajouts.moderateur, payable: rounded(invoice.totalAmount + (ajouts.brut - ajouts.moderateur)),
       paid: invoice.status === 'paid' && !invoice.creditSociete ? invoice.patientCharge : 0, rejected: 0,
-      items: invoice.items.map(i => ({ description: i.description, actCode: resolveFamily({ articleCode: i.code, articleName: i.description, category: i.category }), quantity: i.quantity, unitPrice: i.unitPrice, amount: i.amount })),
+      items: [...invoice.items.map(i => ({ description: i.description, actCode: resolveFamily({ articleCode: i.code, articleName: i.description, category: i.category }), quantity: i.quantity, unitPrice: i.unitPrice, amount: i.amount })), ...ajouts.items],
     });
   }
   // Standalone native sales (including external sales), without counting a
@@ -87,14 +103,15 @@ export function collectBillingDocuments(state: AppState): BillingDocument[] {
     const company = category === 'societe' ? state.companies.find(c => c.name.trim().toUpperCase() === (sale.company || '').trim().toUpperCase()) : undefined;
     if (category === 'societe' && !company) continue;
     const patient = state.patients.find(p => p.id === sale.patientId);
+    const ajouts = ajoutsFacturier(sale.ajoutsFacturier);
     docs.push({ id: `vente:${sale.id}`, sourceId: sale.id, category, companyId: company?.id, companyName: company?.name,
       number: sale.numeroFacture, date: localBillingDate(sale.dateVente),
       client: sale.clientName || (patient ? `${patient.lastName} ${patient.firstName}`.trim() : categoryLabels[category]), dossier: patient?.dossier,
       matricule: patient?.matricule, subCompany: sale.subCompany,
       consultationDate: localBillingDate(state.consultations.find(c => c.id === sale.consultationId)?.date || sale.dateVente),
-      individualGross: sale.subtotal, individualNet: sale.montantFacture,
-      total: sale.montantFacture, copay: 0, payable: sale.montantFacture, paid: sale.montantPaye, rejected: 0,
-      items: state.venteLines.filter(l => l.venteId === sale.id).map(l => ({ description: l.articleName, actCode: resolveFamily({ articleId: l.articleId, articleName: l.articleName, category: l.category }), quantity: l.quantity, unitPrice: l.unitPrice, amount: Math.round(l.quantity * l.unitPrice * (1 - l.discount / 100) * 100) / 100 })),
+      individualGross: rounded(sale.subtotal + ajouts.brut), individualNet: rounded(sale.montantFacture + (ajouts.brut - ajouts.moderateur)),
+      total: rounded(sale.montantFacture + ajouts.brut), copay: ajouts.moderateur, payable: rounded(sale.montantFacture + (ajouts.brut - ajouts.moderateur)), paid: sale.montantPaye, rejected: 0,
+      items: [...state.venteLines.filter(l => l.venteId === sale.id).map(l => ({ description: l.articleName, actCode: resolveFamily({ articleId: l.articleId, articleName: l.articleName, category: l.category }), quantity: l.quantity, unitPrice: l.unitPrice, amount: Math.round(l.quantity * l.unitPrice * (1 - l.discount / 100) * 100) / 100 })), ...ajouts.items],
     });
   }
   return docs.sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id));
