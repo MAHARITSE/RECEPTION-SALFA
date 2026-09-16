@@ -16,6 +16,7 @@ export function linkSharedReferences(state: AppState): AppState {
     } else if (!s.sharedCompany) {
       companies.push({ id: s.id, name: s.nom, paymentMode: 'Crédit', settlementMode: 'per_invoice',
         type: s.modePaiement === 'global' ? 'payeur' : 'assurance', tauxCouverture: s.tauxCouvertureDefaut,
+        natureRemise: s.natureRemise,
         blacklisted: s.blacklisted, blacklistReason: s.blacklistReason, blacklistDate: s.blacklistDate,
         blacklistUntil: s.blacklistUntil });
       societyIds.set(s.id, s.id);

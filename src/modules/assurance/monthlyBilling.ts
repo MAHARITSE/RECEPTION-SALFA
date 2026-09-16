@@ -1,7 +1,8 @@
 import type { AppState } from '../../store';
-import type { AjoutFacturier, ClientType } from '../../types';
-import { sharedTransactions, typeClientEffectif } from './sharedData';
+import type { AjoutFacturier, ClientType, NatureRemise } from '../../types';
+import { sharedPersonnes, sharedSocietes, sharedTransactions, typeClientEffectif } from './sharedData';
 import { billingFamilyResolver } from './billingFamilies';
+import { natureRemiseEffective } from './utils/natureRemise';
 
 export interface BillingItem { description: string; actCode?: string; quantity?: number; unitPrice?: number; amount: number }
 export interface BillingDocument {
@@ -10,6 +11,9 @@ export interface BillingDocument {
   matricule?: string; subCompany?: string; consultationDate?: string;
   /** Individual receipt values from the original piece, not insurer settlements. */
   individualGross?: number; individualNet?: number;
+  /** Nature de la réduction (brut − net) : ticket modérateur (défaut) ou vraie
+   *  remise — résolue à la collecte (société + dérogation de l'assuré). */
+  natureRemise?: NatureRemise;
   total: number; copay: number; payable: number; paid: number; rejected: number;
   items: BillingItem[];
 }
@@ -41,6 +45,15 @@ export function monthlyScopeId(scope: MonthlyScope): string {
 export function collectBillingDocuments(state: AppState): BillingDocument[] {
   const transactions = sharedTransactions(state);
   const resolveFamily = billingFamilyResolver(state);
+  // Réduction (brut − net) : ticket modérateur par défaut, vraie remise si la
+  // société ou l'assuré le déclare (résolu une fois par pièce).
+  const societes = sharedSocietes(state);
+  const personnes = sharedPersonnes(state);
+  const natureDe = (societeId?: string, personneId?: string): NatureRemise =>
+    natureRemiseEffective(
+      societeId ? societes.find(s => s.id === societeId) : undefined,
+      personneId ? personnes.find(p => p.id === personneId) : undefined,
+    );
   /** Ajouts du facturier (ventes omises / ordonnances externes) superposés aux
    *  lignes Caisse d'une facture comptoir / externe — même mécanisme que les
    *  prescriptions sociétés, sans jamais modifier la pièce d'origine. */
@@ -66,6 +79,7 @@ export function collectBillingDocuments(state: AppState): BillingDocument[] {
     consultationDate: localBillingDate(state.consultations.find(c => c.id === state.invoices.find(i => i.id === p.sourceInvoiceId)?.consultationId)?.date || p.date),
     individualGross: p.totalPrestation,
     individualNet: state.invoices.find(i => i.id === p.sourceInvoiceId)?.patientCharge ?? p.montantARembourser ?? p.totalPrestation - p.participation,
+    natureRemise: natureDe(p.societeId, p.personneId),
     total: p.totalPrestation, copay: p.participation, payable: p.montantARembourser ?? p.totalPrestation - p.participation,
     paid: p.totalPaye || 0, rejected: p.montantExclu || 0,
     items: p.lignes.map((l, index) => {
@@ -80,6 +94,10 @@ export function collectBillingDocuments(state: AppState): BillingDocument[] {
     // elle ne doit pas ressortir ici en double dans l'onglet Comptoir & Externe.
     const category = typeClientEffectif(state, invoice);
     if (category === 'societe') continue;
+    // Encaissement d'un TICKET MODÉRATEUR à la caisse : ce n'est pas une pièce à
+    // facturer (la quote-part figure déjà comme participation sur la prestation
+    // société, et les espèces appartiennent à la clôture de caisse).
+    if (invoice.copayTicketModerateur) continue;
     const sale = state.ventes.find(v => v.legacyInvoiceId === invoice.id);
     if (sale?.status === 'annule') continue;
     const patient = state.patients.find(p => p.id === invoice.patientId);
@@ -90,6 +108,7 @@ export function collectBillingDocuments(state: AppState): BillingDocument[] {
       matricule: patient?.matricule,
       consultationDate: localBillingDate(state.consultations.find(c => c.id === invoice.consultationId)?.date || invoice.createdAt),
       individualGross: rounded(invoice.totalAmount + ajouts.brut), individualNet: rounded(invoice.patientCharge + (ajouts.brut - ajouts.moderateur)),
+      natureRemise: natureDe(undefined, invoice.patientId),
       total: rounded(invoice.totalAmount + ajouts.brut), copay: ajouts.moderateur, payable: rounded(invoice.totalAmount + (ajouts.brut - ajouts.moderateur)),
       paid: invoice.status === 'paid' && !invoice.creditSociete ? invoice.patientCharge : 0, rejected: 0,
       items: [...invoice.items.map(i => ({ description: i.description, actCode: resolveFamily({ articleCode: i.code, articleName: i.description, category: i.category }), quantity: i.quantity, unitPrice: i.unitPrice, amount: i.amount })), ...ajouts.items],
@@ -110,6 +129,7 @@ export function collectBillingDocuments(state: AppState): BillingDocument[] {
       matricule: patient?.matricule, subCompany: sale.subCompany,
       consultationDate: localBillingDate(state.consultations.find(c => c.id === sale.consultationId)?.date || sale.dateVente),
       individualGross: rounded(sale.subtotal + ajouts.brut), individualNet: rounded(sale.montantFacture + (ajouts.brut - ajouts.moderateur)),
+      natureRemise: natureDe(company?.id, sale.patientId),
       total: rounded(sale.montantFacture + ajouts.brut), copay: ajouts.moderateur, payable: rounded(sale.montantFacture + (ajouts.brut - ajouts.moderateur)), paid: sale.montantPaye, rejected: 0,
       items: [...state.venteLines.filter(l => l.venteId === sale.id).map(l => ({ description: l.articleName, actCode: resolveFamily({ articleId: l.articleId, articleName: l.articleName, category: l.category }), quantity: l.quantity, unitPrice: l.unitPrice, amount: Math.round(l.quantity * l.unitPrice * (1 - l.discount / 100) * 100) / 100 })), ...ajouts.items],
     });
@@ -182,6 +202,8 @@ export interface BillingFactureGroup {
   dateMin: string;
   dateMax: string;
   documents: BillingDocument[];
+  /** Nature de la réduction des pièces du groupe (remise si toutes le sont). */
+  natureRemise?: NatureRemise;
   actes: number;
   total: number;
   copay: number;
@@ -227,6 +249,7 @@ export function groupBillingDocumentsByFacture(documents: BillingDocument[]): Bi
       dossier: rows.find(d => d.dossier)?.dossier, matricule: rows.find(d => d.matricule)?.matricule,
       dateMin: dates[0] || '', dateMax: dates[dates.length - 1] || '',
       documents: rows.slice().sort((a, b) => a.date.localeCompare(b.date)),
+      natureRemise: (rows.every(d => d.natureRemise === 'remise') ? 'remise' : 'ticket_moderateur') as NatureRemise,
       actes: rows.reduce((s, d) => s + d.items.length, 0),
       total, copay, payable, paid, rejected, remaining, tauxRecouvrement, statut,
     };

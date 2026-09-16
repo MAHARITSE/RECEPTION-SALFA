@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ChevronDown, ChevronRight, Printer, Receipt, AlertTriangle } from 'lucide-react';
 import type { BillingDocument } from '../../monthlyBilling';
 import type { BillingFactureGroup } from '../../monthlyBilling';
+import { natureRemiseLabel } from '../../../../utils/natureRemise';
 
 interface Props {
   factures: BillingFactureGroup[];
@@ -21,10 +22,16 @@ const statutStyles: Record<BillingFactureGroup['statut'], string> = {
 /**
  * Vue « Par Facture » de la Facturation : une ligne par numéro de facture,
  * mêmes repères que la vue Prestations du suivi assurance (période, actes,
- * total brut, ticket modérateur, part à réclamer, perçu, reste, taux, statut),
+ * total brut, ticket modérateur / remise, part à réclamer, perçu, reste, taux,
+ * statut) — l'intitulé de la réduction suit le réglage de la société / de l'assuré,
  * avec le détail des actes dépliable.
  */
 export function FacturationParFactureTable({ factures, formatMoney, isOfficialNumber, onPrint }: Props) {
+  // Réduction (brut − net) : ticket modérateur par défaut ; la colonne ne
+  // s'intitule « Remise » que si toutes les factures listées sont concernées.
+  const libelleReduction = factures.length > 0 && factures.every(f => f.natureRemise === 'remise')
+    ? 'Remise'
+    : 'Ticket modérateur';
   const [ouverts, setOuverts] = useState<Record<string, boolean>>({});
   const toggle = (key: string) => setOuverts(prev => ({ ...prev, [key]: !prev[key] }));
 
@@ -42,7 +49,7 @@ export function FacturationParFactureTable({ factures, formatMoney, isOfficialNu
       <table className="w-full text-left text-xs" aria-label="Factures regroupées par numéro">
         <thead className="bg-surface-muted text-ink-secondary">
           <tr>
-            {['N° Facture', 'Client / Société', 'Période', 'Actes', 'Total brut', 'Ticket modérateur', 'Part à réclamer', 'Perçu', 'Reste', 'Taux', 'Statut', 'Impression'].map(label => (
+            {['N° Facture', 'Client / Société', 'Période', 'Actes', 'Total brut', libelleReduction, 'Part à réclamer', 'Perçu', 'Reste', 'Taux', 'Statut', 'Impression'].map(label => (
               <th className="p-3 whitespace-nowrap" key={label}>{label}</th>
             ))}
           </tr>
@@ -75,7 +82,7 @@ export function FacturationParFactureTable({ factures, formatMoney, isOfficialNu
                   <td className="p-3 whitespace-nowrap">{f.dateMin === f.dateMax ? f.dateMin : `${f.dateMin} → ${f.dateMax}`}</td>
                   <td className="p-3 text-center">{f.actes}</td>
                   <td className="p-3 whitespace-nowrap">{formatMoney(f.total)}</td>
-                  <td className="p-3 whitespace-nowrap">{formatMoney(f.copay)}</td>
+                  <td className="p-3 whitespace-nowrap" title={`${natureRemiseLabel(f.natureRemise)} : ${formatMoney(f.copay)}`}>{formatMoney(f.copay)}</td>
                   <td className="p-3 whitespace-nowrap font-semibold">{formatMoney(f.payable)}</td>
                   <td className="p-3 whitespace-nowrap text-emerald-700">{formatMoney(f.paid)}</td>
                   <td className="p-3 whitespace-nowrap text-amber-700">{formatMoney(f.remaining)}</td>
@@ -125,7 +132,7 @@ export function FacturationParFactureTable({ factures, formatMoney, isOfficialNu
                             </ul>
                             <div className="mt-2 flex flex-wrap gap-4 border-t border-line pt-2 font-semibold">
                               <span>Total : {formatMoney(doc.total)}</span>
-                              {doc.copay > 0 && <span>Ticket modérateur : {formatMoney(doc.copay)}</span>}
+                              {doc.copay > 0 && <span>{natureRemiseLabel(doc.natureRemise)} : {formatMoney(doc.copay)}</span>}
                               <span>Part à réclamer : {formatMoney(doc.payable)}</span>
                               <span className="text-emerald-700">Perçu : {formatMoney(doc.paid)}</span>
                               {doc.rejected > 0 && <span className="text-rose-700">Rejeté : {formatMoney(doc.rejected)}</span>}

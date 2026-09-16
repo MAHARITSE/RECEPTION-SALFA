@@ -47,7 +47,9 @@ import { FacturesGroupedTable } from './prestations/FacturesGroupedTable';
 import { ChangerLiaisonModal } from './prestations/ChangerLiaisonModal';
 import { FactureDetailModal } from './prestations/FactureDetailModal';
 import { PrescriptionEditModal } from './billing/PrescriptionEditModal';
-import type { Article } from '../../../types';
+import { natureRemiseEffective, natureRemisePour } from '../utils/natureRemise';
+import { natureRemiseLabel } from '../../../utils/natureRemise';
+import type { Article, NatureRemise } from '../../../types';
 import { getPrice } from '../../../store';
 import * as XLSX from 'xlsx';
 import { telechargerClasseur } from '../../../utils/exportFichier';
@@ -87,6 +89,9 @@ export interface GroupedFacture {
   totalExclu: number;
   resteAReclamer: number;
   tauxRecouvrement: number;
+  /** Nature de la réduction (brut − net) : ticket modérateur (défaut) ou vraie
+   *  remise — résolue depuis la société et la dérogation de l'assuré. */
+  natureRemise: NatureRemise;
   statut: 'En attente' | 'Partiellement payé' | 'Payé' | 'Rejeté';
   hasMatch: boolean;
   hasDuplicate: boolean;
@@ -968,6 +973,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
       totalPaye: number;
       totalExclu: number;
       resteAReclamer: number;
+      natureRemise: NatureRemise;
       hasMatch: boolean;
       hasDuplicate: boolean;
       bordereaux: Array<{
@@ -988,6 +994,9 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
       const socNom = p.societeNom || getSocieteNom(p.societeId);
       const pDate = p.date ? p.date.split('T')[0] : '';
       const attBordereaux = paymentsMap.prestBordereauxMap[p.id] || paymentsMap.prestBordereauxMap[p.numeroFacture] || [];
+      // Réduction = ticket modérateur (quote-part de l'assuré) par défaut, ou
+      // vraie remise si la société / cet assuré est réglé ainsi.
+      const nature = natureRemiseEffective(societes.find(s => s.id === p.societeId), personne);
 
       if (!map.has(num)) {
         const sousSet = new Set<string>();
@@ -1016,6 +1025,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
           totalPaye: fin.totalPaye,
           totalExclu: fin.totalExclu,
           resteAReclamer: fin.resteAPayer,
+          natureRemise: nature,
           hasMatch: recInfo.hasMatch,
           hasDuplicate: recInfo.hasDuplicate,
           bordereaux: [...attBordereaux],
@@ -1037,6 +1047,9 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
         grp.totalPaye += fin.totalPaye;
         grp.totalExclu += fin.totalExclu;
         grp.resteAReclamer += fin.resteAPayer;
+        // Une facture peut mêler plusieurs assurés : dès que les natures
+        // diffèrent, on retombe sur le libellé par défaut (ticket modérateur).
+        if (nature !== grp.natureRemise) grp.natureRemise = 'ticket_moderateur';
         if (recInfo.hasMatch) grp.hasMatch = true;
         if (recInfo.hasDuplicate) grp.hasDuplicate = true;
 
@@ -1085,6 +1098,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
         totalExclu: grp.totalExclu,
         resteAReclamer: Math.max(0, grp.resteAReclamer),
         tauxRecouvrement,
+        natureRemise: grp.natureRemise,
         statut,
         hasMatch: grp.hasMatch,
         hasDuplicate: grp.hasDuplicate,
@@ -3111,7 +3125,9 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
 
                 <div className="flex justify-between items-center bg-indigo-50/60 p-3 rounded-lg border border-indigo-100 text-xs">
                   <div>
-                    <span className="text-ink-muted mr-2">Ticket Modérateur Estimé :</span>
+                    <span className="text-ink-muted mr-2" title="Nature de la réduction réglée dans la gestion des sociétés (ou sur la fiche de l'assuré)">
+                      {natureRemiseLabel(natureRemisePour(societes, personnes, formData.societeId, formData.personneId))} Estimé{natureRemisePour(societes, personnes, formData.societeId, formData.personneId) === 'remise' ? 'e' : ''} :
+                    </span>
                     <span className="font-bold text-amber-700">{formatMoney(formData.participation)}</span>
                   </div>
                   <div>
@@ -3228,7 +3244,9 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-ink text-sm font-semibold mb-1">Ticket Modérateur</label>
+                  <label className="block text-ink text-sm font-semibold mb-1">
+                    {natureRemiseLabel(natureRemisePour(societes, personnes, lineEditContext?.prestation.societeId, lineEditContext?.prestation.personneId))}
+                  </label>
                   <input
                     type="number"
                     min="0"
@@ -3426,6 +3444,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
           prestation={prescriptionEditCible}
           familles={familles}
           articles={articles}
+          natureRemise={natureRemisePour(societes, personnes, prescriptionEditCible.societeId, prescriptionEditCible.personneId)}
           onClose={() => setPrescriptionEditCible(null)}
           onSave={(next) => {
             onSavePrestation(next);

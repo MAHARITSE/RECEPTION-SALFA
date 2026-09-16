@@ -12,7 +12,10 @@
     "test:theme": "playwright test tests/theme.spec.ts",
     "test:printing": "playwright test tests/printing.spec.ts",
     "test:assurance": "playwright test tests/assurance*.spec.ts",
-    "test:monthly-billing": "playwright test tests/monthly-billing.spec.ts"
+    "test:monthly-billing": "playwright test tests/monthly-billing.spec.ts",
+    "test:nature-remise": "playwright test tests/nature-remise.spec.ts",
+    "test:copay": "playwright test tests/copay-caisse.spec.ts tests/copay-facturation.spec.ts",
+    "test:phone": "playwright test tests/phone-input.spec.ts"
   },
   "dependencies": {
     "@types/uuid": "^10.0.0",

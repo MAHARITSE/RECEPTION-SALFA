@@ -4,6 +4,7 @@ import { INVOICE_HEADER_STYLE, invoiceHeaderMarkup } from '../../utils/invoiceHe
 import { printDocument } from '../../utils/printDocument';
 import { groupBillingItemsByFamily } from './billingFamilies';
 import { billingFacility, localBillingDate, billingTotals, type BillingDocument, type MonthlyInvoice } from './monthlyBilling';
+import { libelleReductionCommun, libelleReductionCommunCourt, natureRemiseLabel } from '../../utils/natureRemise';
 
 const escape = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]!));
 const decimal = (value: number) => new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
@@ -46,14 +47,14 @@ export function billingAmountInWords(value: number, currency: string): string {
 // Native pagination handles variable-height rows and repeats the column headings.
 type PrintMode = 'monthly' | 'individual' | 'duo' | 'fusion';
 const css = (mode: PrintMode) => `@page{size:${(mode === 'duo' || mode === 'fusion') ? 'A4 landscape' : `${mode === 'monthly' ? 'A4' : 'A5'} portrait`};margin:${mode === 'monthly' ? '12mm 10mm 16mm' : (mode === 'duo' || mode === 'fusion') ? '8mm' : '8mm 7mm 12mm'};@bottom-left{content:"Page " counter(page) "/" counter(pages);font:9px Arial,sans-serif;color:#000}}
-*{box-sizing:border-box}body{font:12px Arial,sans-serif;color:#000;background:#fff;margin:0}h1{font-size:19px;text-align:center;margin:8px 0 14px}p{margin:8px 0}table{font:inherit;width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #000;padding:4px;overflow-wrap:anywhere;vertical-align:top}th{text-align:center;font-weight:bold}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}.number{text-align:right;white-space:nowrap}.center{text-align:center}.summary{break-inside:avoid;page-break-inside:avoid}.totals{width:40%;margin-left:auto;margin-top:-1px}.totals th{text-align:right}.totals th{width:62%}.words{margin-top:12px}.invoice-date{text-align:right;margin-top:14px}.note{font-size:9px;margin-top:12px}.individual .identity{margin-bottom:18px}.individual .identity p{margin:9px 0}.individual .net{font-weight:bold}.individual{font-size:10px}.individual h1{font-size:16px}.individual .totals{width:40%;margin-left:60%}.individual .totals th{width:62%}.individual .note{font-size:8px}.monthly{font-size:10px}.monthly h1{font-size:16px;margin-bottom:18px}.monthly .period{margin-bottom:12px}.monthly .invoice-number{text-align:center;margin-bottom:16px}.monthly th,.monthly td{padding:3px 2px}.monthly .acts{font-size:9px;line-height:1.25}.monthly .grand-total{font-weight:bold}.monthly .number{font-variant-numeric:tabular-nums}.monthly .note{font-size:8px}.duo-page{display:flex;gap:5mm;align-items:flex-start;break-after:page;page-break-after:always}.duo-half{flex:1;min-width:0}.duo-half+.duo-half{border-left:1px dashed #999;padding-left:5mm}
+*{box-sizing:border-box}body{font:12px Arial,sans-serif;color:#000;background:#fff;margin:0}h1{font-size:19px;text-align:center;margin:8px 0 14px}p{margin:8px 0}table{font:inherit;width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #000;padding:4px;overflow-wrap:anywhere;vertical-align:top}th{text-align:center;font-weight:bold}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}.number{text-align:right;white-space:nowrap}.center{text-align:center}.summary{break-inside:avoid;page-break-inside:avoid}.totals{width:40%;margin-left:auto;margin-top:-1px}.totals th{text-align:right}.totals th{width:55%}.words{margin-top:12px}.invoice-date{text-align:right;margin-top:14px}.note{font-size:9px;margin-top:12px}.individual .identity{margin-bottom:18px}.individual .identity p{margin:9px 0}.individual .net{font-weight:bold}.individual{font-size:10px}.individual h1{font-size:16px}.individual .totals{width:40%;margin-left:60%}.individual .totals th{width:55%}.individual .note{font-size:8px}.monthly{font-size:10px}.monthly h1{font-size:16px;margin-bottom:18px}.monthly .period{margin-bottom:12px}.monthly .invoice-number{text-align:center;margin-bottom:16px}.monthly th,.monthly td{padding:3px 2px}.monthly .acts{font-size:9px;line-height:1.25}.monthly .grand-total{font-weight:bold}.monthly .number{font-variant-numeric:tabular-nums}.monthly .note{font-size:8px}.duo-page{display:flex;gap:5mm;align-items:flex-start;break-after:page;page-break-after:always}.duo-half{flex:1;min-width:0}.duo-half+.duo-half{border-left:1px dashed #999;padding-left:5mm}
 /* Chaque facture du 2-par-page garde son propre en-tête, limité à sa
    demi-feuille A5 : jamais un en-tête unique étendu sur la feuille entière. */
 .duo-half>.invoice-header{margin-bottom:4mm}
 .fusion{font-size:10px}.fusion h1{font-size:16px}.fusion-flow{columns:2;column-gap:8mm;column-fill:auto;column-rule:1px dashed #999}
 /* Facture fusionnée : l'en-tête appartient à la PREMIÈRE colonne (première
    page) ; la colonne suivante — la « 2e page » — n'en porte aucun. */
-.fusion-flow>.invoice-header{margin-bottom:4mm}.fusion .identity{margin-bottom:10px}.fusion .identity p{margin:5px 0}.fusion .totals{width:62%;margin-left:38%;margin-top:6px}.fusion .net{font-weight:bold}.fusion .words{margin-top:8px}.fusion .note{font-size:8px}`;
+.fusion-flow>.invoice-header{margin-bottom:4mm}.fusion .identity{margin-bottom:10px}.fusion .identity p{margin:5px 0}.fusion .totals{width:62%;margin-left:38%;margin-top:6px}.fusion .totals th{width:71%}.fusion .net{font-weight:bold}.fusion .words{margin-top:8px}.fusion .note{font-size:8px}`;
 
 function shell(number: string, kind: PrintMode, content: string, settings?: TicketSettings): string {
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${escape(number)}</title><style>${css(kind)}${INVOICE_HEADER_STYLE}</style></head><body class="${kind}">${settings ? invoiceHeaderMarkup(settings) : ''}${content}</body></html>`;
@@ -81,18 +82,21 @@ function individualContent(invoice: MonthlyInvoice, settings?: TicketSettings): 
   const gross = document.individualGross ?? document.total;
   const net = document.individualNet ?? document.payable;
   const reduction = Math.round((gross - net) * 100) / 100;
+  // Ticket modérateur (quote-part de l'assuré) par défaut, vraie remise si la
+  // société / l'assuré est réglé ainsi : le montant ne change pas, l'intitulé si.
+  const libelleReduction = natureRemiseLabel(document.natureRemise);
   const payer = document.companyName || (document.category === 'societe' ? invoice.recipient : 'CLIENT COMPTOIR');
   return `
     ${invoiceHeader(settings)}<h1>FACTURE&nbsp; ${escape(invoice.number)}</h1>
     <div class="identity"><p>Date de consultation :&emsp; ${escape(dateLabel(document.consultationDate || document.date))}</p>
     <p>Nom :&emsp; <strong>${escape(document.client)}</strong></p>
     <p>Prise en charge :&emsp; ${escape(payer)}</p></div>
-    <table aria-label="Articles facturés"><colgroup><col style="width:5%"><col style="width:55%"><col style="width:8%"><col style="width:14%"><col style="width:18%"></colgroup>
+    <table aria-label="Articles facturés"><colgroup><col style="width:5%"><col style="width:41%"><col style="width:18%"><col style="width:18%"><col style="width:18%"></colgroup>
     <thead><tr><th>N°</th><th>Libellé Article</th><th>Qté</th><th>Prix</th><th>Montant</th></tr></thead>
     <tbody>${document.items.map((item, index) => `<tr><td class="number">${index + 1}</td><td>${escape(item.description)}</td><td class="number">${item.quantity == null ? '—' : quantite(item.quantity)}</td><td class="number">${item.unitPrice == null ? '—' : decimal(item.unitPrice)}</td><td class="number">${decimal(item.quantity != null && item.unitPrice != null ? item.quantity * item.unitPrice : item.amount)}</td></tr>`).join('') || '<tr><td colspan="5">Voir les articles sur la pièce d’origine.</td></tr>'}</tbody></table>
     <div class="summary"><table class="totals" aria-label="Totaux individuels"><tbody>
     <tr><th>Total Brut</th><td class="number">${decimal(gross)}</td></tr>
-    <tr><th>Remise/Participation</th><td class="number">${decimal(reduction)}</td></tr>
+    <tr><th>${escape(libelleReduction)}</th><td class="number">${decimal(reduction)}</td></tr>
     <tr class="net"><th>Net à payer</th><td class="number">${decimal(net)}</td></tr></tbody></table>
     <p class="words">Arrêtée à la somme de : ${escape(billingAmountInWords(net, invoice.facility.currency))}</p>
     <p class="invoice-date">Date de facture :&emsp; ${escape(dateLabel(invoice.issuedAt))}</p>
@@ -120,12 +124,13 @@ function acts(document: BillingDocument): string {
 export function billingPrintHtml(invoice: MonthlyInvoice, monthly = true, settings?: TicketSettings): string {
   if (!monthly) return individualHtml(invoice, settings);
   const documents = [...invoice.documents].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  const libelleParticipation = libelleReductionCommunCourt(documents.map(d => d.natureRemise));
   return shell(invoice.number, 'monthly', `
     <h1>Doit : ${escape(invoice.recipient)}</h1>
     <p class="period">Mois de prise en charge : <strong>${escape(monthLabel(invoice.month))}</strong></p>
     <p class="invoice-number">Facture N° : <strong>${escape(invoice.number)}</strong></p>
     <table aria-label="Détail de la facture société"><colgroup><col style="width:4%"><col style="width:8%"><col style="width:9%"><col style="width:28%"><col style="width:18%"><col style="width:11%"><col style="width:11%"><col style="width:11%"></colgroup>
-    <thead><tr><th>N°</th><th>Date</th><th>Mlle</th><th>Nom et Prénom</th><th>Acte médicale/Prix</th><th>Montant</th><th>Participat°</th><th>Net à Payer</th></tr></thead>
+    <thead><tr><th>N°</th><th>Date</th><th>Mlle</th><th>Nom et Prénom</th><th>Acte médicale/Prix</th><th>Montant</th><th>${escape(libelleParticipation)}</th><th>Net à Payer</th></tr></thead>
     <tbody>${documents.map((d, index) => `<tr data-source-id="${escape(d.sourceId)}" title="Facture ${escape(d.number)}"><td class="number">${index + 1}</td><td class="center">${escape(dateLabel(d.date, true))}</td><td class="center">${escape(d.matricule || d.dossier || '—')}</td><td>${escape(d.client)}${d.subCompany ? `<br>(${escape(d.subCompany)})` : ''}</td><td class="acts">${acts(d)}</td><td class="number">${decimal(d.total)}</td><td class="number">${decimal(d.copay)}</td><td class="number">${decimal(d.payable)}</td></tr>`).join('')}
     <tr class="grand-total"><td colspan="5">TOTAL (${escape(invoice.facility.currency)})</td><td class="number">${decimal(invoice.total)}</td><td class="number">${decimal(invoice.copay)}</td><td class="number">${decimal(invoice.payable)}</td></tr></tbody></table>
     <div class="summary"><p class="words">Arrêtée à la somme de : ${escape(billingAmountInWords(invoice.payable, invoice.facility.currency))}</p>
@@ -159,6 +164,9 @@ function mergedContent(documents: BillingDocument[], clientName: string, issuedA
   const net = Math.round(pieces.reduce((s, d) => s + (d.individualNet ?? d.payable), 0) * 100) / 100;
   const paid = Math.round(pieces.reduce((s, d) => s + d.paid, 0) * 100) / 100;
   const reduction = Math.round((gross - net) * 100) / 100;
+  // Plusieurs pièces peuvent mêler ticket modérateur et vraie remise : dans ce
+  // cas l'intitulé historique « Remise/Participation » est conservé.
+  const libelleReduction = libelleReductionCommun(pieces.map(d => d.natureRemise));
   const dates = pieces.map(d => d.date).filter(Boolean).sort();
   const periode = !dates.length ? '—' : dates[0] === dates[dates.length - 1]
     ? dateLabel(dates[0])
@@ -174,12 +182,12 @@ function mergedContent(documents: BillingDocument[], clientName: string, issuedA
     ${invoiceHeader(settings)}<h1>FACTURE&nbsp; ${escape(pieces[0].number)}</h1>
     <div class="identity"><p>Nom :&emsp; <strong>${escape(clientName)}</strong></p>
     <p>Période :&emsp; ${escape(periode)}</p></div>
-    <table aria-label="Articles de la facture"><colgroup><col style="width:6%"><col style="width:54%"><col style="width:8%"><col style="width:14%"><col style="width:18%"></colgroup>
+    <table aria-label="Articles de la facture"><colgroup><col style="width:6%"><col style="width:40%"><col style="width:18%"><col style="width:18%"><col style="width:18%"></colgroup>
     <thead><tr><th>N°</th><th>Libellé Article</th><th>Qté</th><th>Prix</th><th>Montant</th></tr></thead>
     <tbody>${lignes}</tbody></table>
     <div class="summary"><table class="totals" aria-label="Totaux fusionnés"><tbody>
     <tr><th>Total Brut</th><td class="number">${decimal(gross)}</td></tr>
-    <tr><th>Remise/Participation</th><td class="number">${decimal(reduction)}</td></tr>
+    <tr><th>${escape(libelleReduction)}</th><td class="number">${decimal(reduction)}</td></tr>
     <tr class="net"><th>Net à payer</th><td class="number">${decimal(net)}</td></tr>
     <tr><th>Encaissé</th><td class="number">${decimal(paid)}</td></tr></tbody></table>
     <p class="words">Arrêtée à la somme de : ${escape(billingAmountInWords(net, currency))}</p>

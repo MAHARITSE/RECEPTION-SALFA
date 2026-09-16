@@ -3,6 +3,8 @@ import { Users, Plus, Search, Edit3, Trash2, User, Phone, Mail, Calendar, X, Bui
 import { Personne, Societe, Famille } from '../types';
 import { generateId, formatDate } from '../utils/formatters';
 import { maskNom } from '../utils/inputMasks';
+import { natureRemiseEffective, societeNatureRemise } from '../utils/natureRemise';
+import { NATURES_REMISE, natureRemiseBadge } from '../../../utils/natureRemise';
 
 interface PersonnesViewProps {
   personnes: Personne[];
@@ -47,6 +49,7 @@ export const PersonnesView: React.FC<PersonnesViewProps> = ({
   });
 
   const getSocieteNom = (id: string) => societes.find(s => s.id === id)?.nom || 'Société';
+  const getSociete = (id?: string) => societes.find(s => s.id === id);
 
   const handleOpenCreate = () => {
     setEditingPersonne(null);
@@ -87,6 +90,8 @@ export const PersonnesView: React.FC<PersonnesViewProps> = ({
       societeId: formData.societeId!,
       qualite: formData.qualite as any || 'Adhérent Principal',
       familleCode: formData.familleCode || 'CONS',
+      // Dérogation individuelle : vide = l'assuré suit le réglage de sa société.
+      natureRemise: formData.natureRemise || undefined,
       dateNaissance: formData.dateNaissance,
       telephone: formData.telephone,
       email: formData.email,
@@ -157,7 +162,25 @@ export const PersonnesView: React.FC<PersonnesViewProps> = ({
                 filtered.map(p => (
                   <tr key={p.id} className="hover:bg-surface-muted transition">
                     <td className="py-3 px-3 font-mono font-bold text-indigo-700">{p.matricule}</td>
-                    <td className="py-3 px-3 font-semibold text-ink-strong">{p.nomPrenom}{!p.sharedPatient && <span className="block text-[10px] text-amber-700">Ancien assuré non relié à Réception</span>}</td>
+                    <td className="py-3 px-3 font-semibold text-ink-strong">
+                      {p.nomPrenom}
+                      {!p.sharedPatient && <span className="block text-[10px] text-amber-700">Ancien assuré non relié à Réception</span>}
+                      {(() => {
+                        const societe = getSociete(p.societeId);
+                        const nature = natureRemiseEffective(societe, p);
+                        const derogation = !!p.natureRemise && p.natureRemise !== societeNatureRemise(societe);
+                        return (
+                          <span
+                            className={`mt-1 inline-block text-[9px] font-bold px-1.5 py-0.5 rounded border ${natureRemiseBadge(nature)}`}
+                            title={derogation
+                              ? `Dérogation individuelle : ${nature === 'remise' ? 'vraie remise accordée sur le prix' : 'ticket modérateur à la charge de l’assuré'} (la société « ${societe?.nom || '—'} » est réglée sur « ${societeNatureRemise(societe) === 'remise' ? 'Remise' : 'Ticket modérateur'} »)`
+                              : `Réglage de la société « ${societe?.nom || '—'} » : ${nature === 'remise' ? 'vraie remise accordée sur le prix' : 'ticket modérateur à la charge de l’assuré'}`}
+                          >
+                            {nature === 'remise' ? '% Remise' : 'Ticket mod.'}{derogation ? ' · dérogation' : ''}
+                          </span>
+                        );
+                      })()}
+                    </td>
                     <td className="py-3 px-3 text-ink">{getSocieteNom(p.societeId)}</td>
                     <td className="py-3 px-3">
                       <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium ${
@@ -277,6 +300,27 @@ export const PersonnesView: React.FC<PersonnesViewProps> = ({
                     <option key={s.id} value={s.id}>{s.nom}</option>
                   ))}
                 </select>
+              </div>
+
+              {/* Dérogation individuelle : ticket modérateur ou vraie remise */}
+              <div>
+                <label className="block text-ink font-semibold mb-1">Réduction facturée (brut − net)</label>
+                <select
+                  value={formData.natureRemise || ''}
+                  onChange={(e) => setFormData(p => ({ ...p, natureRemise: (e.target.value || undefined) as any }))}
+                  className="w-full p-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                >
+                  <option value="">
+                    Comme la société — {societeNatureRemise(getSociete(formData.societeId)) === 'remise' ? 'Remise' : 'Ticket modérateur'}
+                  </option>
+                  {NATURES_REMISE.map(nature => (
+                    <option key={nature.value} value={nature.value}>{nature.label}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[10px] text-ink-faint leading-snug">
+                  {NATURES_REMISE.find(n => n.value === (formData.natureRemise || societeNatureRemise(getSociete(formData.societeId))))?.description}
+                  {' '}Aucun montant n'est modifié : seul le libellé de la différence brut − net change.
+                </p>
               </div>
 
               <div>

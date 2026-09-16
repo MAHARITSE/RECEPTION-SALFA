@@ -199,6 +199,7 @@ export function resolveSocieteFactureCode(state: AppState, companyName?: string)
         nom: company?.name || name,
         code,
         tauxCouvertureDefaut: company?.tauxCouverture ?? 100,
+        natureRemise: company?.natureRemise,
       };
   return { code, societeUpsert: upsert };
 }
@@ -373,10 +374,20 @@ export function createVente(
   if (montantPaye >= tot.montantFacture && tot.montantFacture > 0) status = 'paid';
   else if (montantPaye > 0) status = 'partiel';
 
+  // Chaque ligne vendue appartient à une famille ; la vente est rattachée à la
+  // famille de ses lignes (dominante si la vente mélange plusieurs familles).
+  const venteLines: VenteLine[] = lines.map(l => ({
+    id: uuidv4(),
+    venteId,
+    ...l,
+    family: familleLigneVente(state, l),
+  }));
+
   const vente: Vente = {
     ...data,
     id: venteId,
     numeroFacture,
+    family: normalizeFamilyCode(data.family) || familleVente(state, venteLines),
     subtotal: tot.subtotal,
     remiseMontant: tot.remiseMontant,
     montantFacture: tot.montantFacture,
@@ -387,12 +398,6 @@ export function createVente(
     dateVente: data.dateVente || now,
     createdAt: now,
   };
-
-  const venteLines: VenteLine[] = lines.map(l => ({
-    id: uuidv4(),
-    venteId,
-    ...l,
-  }));
 
   state.ventes = [...(state.ventes || []), vente];
   state.venteLines = [...(state.venteLines || []), ...venteLines];
@@ -533,12 +538,25 @@ export function migrateLegacyToVentes(state: AppState): { migratedInvoices: numb
     // Une facture déjà numérotée à l'émission conserve son numéro ; les anciennes
     // reçoivent le format officiel calculé à leur date de création.
     const num = inv.numeroFacture || allocateLegacyNumber(inv.clientType, invCompany, inv.createdAt);
+    // Lignes de la vente (famille de l'article vendue reprise du catalogue).
+    const lignesFacture: VenteLine[] = inv.items.map((it) => ({
+      id: uuidv4(),
+      venteId,
+      articleName: it.description,
+      quantity: 1,
+      unitPrice: it.amount,
+      discount: 0,
+      category: it.category as VenteLine['category'],
+      family: familleLigneVente(state, { articleName: it.description, category: it.category }),
+      dateSort: inv.createdAt.substring(0, 10),
+    }));
     const vente: Vente = {
       id: venteId,
       patientId: inv.patientId,
       consultationId: inv.consultationId,
       numeroFacture: num,
       type: vtype,
+      family: familleVente(state, lignesFacture),
       clientType: inv.clientType,
       clientName: inv.clientName,
       company: invCompany,
@@ -559,16 +577,7 @@ export function migrateLegacyToVentes(state: AppState): { migratedInvoices: numb
       legacyInvoiceId: inv.id,
     };
     newVentes.push(vente);
-    newLines.push(...inv.items.map((it, idx) => ({
-      id: uuidv4(),
-      venteId,
-      articleName: it.description,
-      quantity: 1,
-      unitPrice: it.amount,
-      discount: 0,
-      category: it.category as VenteLine['category'],
-      dateSort: inv.createdAt.substring(0, 10),
-    })));
+    newLines.push(...lignesFacture);
     migratedInvoices++;
   }
 
@@ -585,11 +594,26 @@ export function migrateLegacyToVentes(state: AppState): { migratedInvoices: numb
     const status: Vente['status'] = totalPaye >= tot.montantFacture && tot.montantFacture > 0 ? 'paid'
       : totalPaye > 0 ? 'partiel' : 'pending';
     const patient = hb.patientId ? state.patients.find(p => p.id === hb.patientId) : undefined;
+    const lignesHb: VenteLine[] = hb.lines.map(l => ({
+      id: uuidv4(),
+      venteId,
+      articleName: l.articleName,
+      quantity: l.quantity,
+      unitPrice: l.unitPrice,
+      discount: l.discount,
+      category: (vtype === 'bloc' ? 'bloc' : 'hospitalization') as VenteLine['category'],
+      family: familleLigneVente(state, {
+        articleName: l.articleName,
+        category: vtype === 'bloc' ? 'bloc' : 'hospitalization',
+      }),
+      dateSort: l.dateSort,
+    }));
     const vente: Vente = {
       id: venteId,
       patientId: hb.patientId,
       numeroFacture: num,
       type: vtype,
+      family: familleVente(state, lignesHb),
       clientType: hb.clientType,
       clientName: patient ? `${patient.firstName} ${patient.lastName}` : hb.patientName,
       company: hb.company,
@@ -608,16 +632,7 @@ export function migrateLegacyToVentes(state: AppState): { migratedInvoices: numb
       legacyHbRecordId: hb.id,
     };
     newVentes.push(vente);
-    newLines.push(...hb.lines.map(l => ({
-      id: uuidv4(),
-      venteId,
-      articleName: l.articleName,
-      quantity: l.quantity,
-      unitPrice: l.unitPrice,
-      discount: l.discount,
-      category: (vtype === 'bloc' ? 'bloc' : 'hospitalization') as VenteLine['category'],
-      dateSort: l.dateSort,
-    })));
+    newLines.push(...lignesHb);
     newPaiments.push(...hb.payments.map(p => ({
       id: uuidv4(),
       venteId,
@@ -942,88 +957,17 @@ export function addNotification(s: AppState, targetRole: UserRole, message: stri
   s.notifications = [n, ...(s.notifications || [])]; return n;
 }
 
-export const DEFAULT_FAMILLES: Famille[] = [
-  { id: 'fam-medic', code: 'MEDIC', name: 'Médicaments', color: '#0D47A1', order: 1 },
-  { id: 'fam-labo', code: 'LABO', name: 'Laboratoire', color: '#10B981', order: 2 },
-  { id: 'fam-echo', code: 'ECHO', name: 'Échographie', color: '#F59E0B', order: 3 },
-  { id: 'fam-hosp', code: 'HOSP', name: 'Hospitalisation', color: '#F97316', order: 4, manageStock: false },
-  // Conservé pour les données déjà présentes et les consommables dentaires.
-  { id: 'fam-dent', code: 'DENT', name: 'Dentaire', color: '#8B5CF6', order: 5 },
-];
-
-// Base familles standard : normalise vers majuscules et convertit l'ancien code LAB vers LABO
-export function normalizeFamilyCode(code?: string): string {
-  const c = (code || '').trim().toUpperCase();
-  return c === 'LAB' ? 'LABO' : c;
-}
-
-export const ARTICLE_FAMILIES: ArticleFamily[] = DEFAULT_FAMILLES.map((f) => f.code);
-
-export function getArticleFamilyCatalog(familles: Famille[] = []): Famille[] {
-  const byCode = new Map<string, Famille>();
-  DEFAULT_FAMILLES.forEach((f) => byCode.set(f.code, f));
-  familles.forEach((f, idx) => {
-    const code = normalizeFamilyCode(f.code);
-    if (!code) return;
-    byCode.set(code, { ...f, code, order: f.order ?? idx + 1 });
-  });
-  return Array.from(byCode.values()).sort((a, b) => (a.order ?? 999) - (b.order ?? 999) || a.name.localeCompare(b.name));
-}
-
-export function familyLabel(f: ArticleFamily | string | undefined, familles: Famille[] = []): string {
-  const code = normalizeFamilyCode(f);
-  const fam = getArticleFamilyCatalog(familles).find((x) => x.code === code);
-  return fam?.name || code || '—';
-}
-
-/**
- * La famille gère-t-elle son stock ?
- * Défaut : `true` (gérée) lorsque le drapeau `manageStock` n'est pas renseigné.
- */
-export function familyManagesStock(code: string | undefined, familles: Famille[] = []): boolean {
-  const c = normalizeFamilyCode(code);
-  const fam = getArticleFamilyCatalog(familles).find((x) => x.code === c);
-  return fam?.manageStock !== false;
-}
-
-export function isLabFamily(code?: string): boolean {
-  const c = normalizeFamilyCode(code);
-  return c === 'LABO' || c === 'LAB';
-}
-
-export function isEchoFamily(code?: string): boolean {
-  return normalizeFamilyCode(code) === 'ECHO';
-}
-
-/** Famille Hospitalisation (actes et forfaits d'hospitalisation, non gérés en stock). */
-export function isHospFamily(code?: string): boolean {
-  return normalizeFamilyCode(code) === 'HOSP';
-}
-
-export function isMedicationEntryFamily(code?: string): boolean {
-  return !isLabFamily(code) && !isEchoFamily(code) && !isHospFamily(code);
-}
-
-/**
- * Normalise la base des familles : MEDIC / LABO / ECHO sont toujours présents,
- * LAB est migré vers LABO, et les articles suivent le code normalisé.
- */
-export function normalizeFamilyBases(state: AppState): AppState {
-  const seen = new Set<string>();
-  const normalizedExisting = (state.familles || [])
-    .map((f, idx) => ({ ...f, code: normalizeFamilyCode(f.code), order: f.order ?? idx + 1 }))
-    .filter((f) => {
-      if (!f.code || seen.has(f.code)) return false;
-      seen.add(f.code);
-      return true;
-    });
-  const merged = getArticleFamilyCatalog(normalizedExisting).map((f, idx) => ({ ...f, order: idx + 1 }));
-  return {
-    ...state,
-    familles: merged,
-    articles: (state.articles || []).map((a) => ({ ...a, family: normalizeFamilyCode(a.family) })),
-  };
-}
+// Familles du dépôt : catalogue, gestion du stock et rattachement des ventes.
+// Règles isolées dans src/utils/familles.ts (testables hors navigateur) et
+// ré-exportées ici pour ne casser aucun import existant.
+import {
+  ARTICLE_FAMILIES, DEFAULT_FAMILLES, FAMILLE_AUTRES, familleLigneVente, familleVente,
+  familyLabel, familyManagesStock, getArticleFamilyCatalog, isConsultFamily, isEchoFamily,
+  isHospFamily, isLabFamily, isMedicationEntryFamily, normalizeFamilyBases, normalizeFamilyCode,
+  normalizeVenteFamilies,
+} from './utils/familles';
+// Ré-export intégral : les modules continuent d'importer ces helpers depuis `../store`.
+export * from './utils/familles';
 
 export const TRANSFER_CATEGORIES: TransferCategory[] = ['central', 'hospitalisation', 'bloc', 'approvisionnement'];
 export function transferCategoryLabel(c: TransferCategory): string {
@@ -1441,7 +1385,11 @@ function normalizeInvoiceItemCategories(state: AppState): AppState {
 function consoliderFacturesComptoirValidees(state: AppState): AppState {
   const arrondi2 = (n: number) => Math.round((n || 0) * 100) / 100;
   const payees = state.invoices.filter(i =>
-    i.status === 'paid' && i.paidAt && i.patientId && !i.isExternal && !i.creditSociete && i.clientType !== 'societe');
+    i.status === 'paid' && i.paidAt && i.patientId && !i.isExternal && !i.creditSociete && i.clientType !== 'societe'
+    // L'encaissement d'un ticket modérateur reste une pièce distincte : il ne doit
+    // jamais être absorbé par la facture comptoir du même lot (montant + détail de
+    // la quote-part conservés tels quels pour la clôture et le ticket du patient).
+    && !i.copayTicketModerateur);
   const lots = new Map<string, Invoice[]>();
   for (const inv of payees) {
     const clef = `${inv.patientId}|${inv.paidAt}|${inv.paidBy || ''}`;
@@ -1531,7 +1479,12 @@ export function prepareLoadedState(state: AppState): AppState {
       `[articles unifiés] base locale synchronisée : ${addedLab} article(s) LABO, ${addedEcho} article(s) ECHO et ${addedHosp} article(s) HOSP intégrés à la table articles, catalogue legacy réaligné.`
     );
   }
-  return syncSharedInvoiceBalances(unified);
+  // Toute vente est rattachée à une famille et chaque ligne vendue à la famille de
+  // son article. Placé APRÈS l'unification du catalogue : les actes laboratoire /
+  // échographie / hospitalisation ajoutés permettent d'identifier un maximum de
+  // lignes par article plutôt que par simple catégorie.
+  const withFamilies = normalizeVenteFamilies(unified);
+  return syncSharedInvoiceBalances(withFamilies);
 }
 
 /**
@@ -1617,6 +1570,20 @@ export { todayIsoDate, companySuspensionExpired, companyIsBlocked, companyBlockL
 export type { CompanyOption } from './utils/companyStatus';
 import { subCompaniesOf } from './utils/companyStatus';
 
+/* ====== NATURE DE LA RÉDUCTION (TICKET MODÉRATEUR / VRAIE REMISE) ====== */
+
+// Implémentations dans `utils/natureRemise` (module autonome, testable partout) :
+// la différence brut − net est PAR DÉFAUT le ticket modérateur (quote-part de
+// l'assuré) ; certaines sociétés — ou certains assurés précis — accordent en
+// réalité une VRAIE REMISE. Les montants ne changent pas, seul le libellé suit.
+export {
+  NATURE_REMISE_DEFAUT, NATURES_REMISE, natureRemiseOuDefaut, natureRemiseLabel,
+  natureRemiseLabelCourt, natureRemiseDescription, estRemiseReelle, companyNatureRemise,
+  natureRemiseBadge, libelleLigneReduction, libelleReductionCommun, libelleReductionCommunCourt,
+  invoiceNatureRemise, invoiceReductionLabel,
+} from './utils/natureRemise';
+export type { NatureRemiseOption } from './utils/natureRemise';
+
 /** Sous-sociétés / services déjà enregistrés pour une société (saisie assistée). */
 export function sousSocietesConnues(state: AppState, companyName?: string): string[] {
   const nomSociete = (state.companies || []);
@@ -1662,6 +1629,8 @@ export function upsertCompany(state: AppState, data: Partial<Company> & { name: 
     settlementMode: data.settlementMode || existing?.settlementMode || 'monthly_global',
     type: data.type || companyTypeOf(existing) || 'payeur',
     tauxCouverture: data.tauxCouverture ?? existing?.tauxCouverture,
+    // Réduction (brut − net) : ticket modérateur par défaut, vraie remise si déclaré.
+    natureRemise: data.natureRemise ?? existing?.natureRemise,
     notes: data.notes ?? existing?.notes,
     createdAt: existing?.createdAt || new Date().toISOString(),
   };
@@ -1720,7 +1689,9 @@ export function invoiceAssuranceBrut(invoice: Invoice): number {
  */
 export function invoiceAssuranceARembourser(invoice: Invoice): number {
   const suivi = invoice.assuranceSuivi;
-  if (suivi?.montantARembourser != null && suivi.montantARembourser > 0) return suivi.montantARembourser;
+  // Un net EXPLICITE fait foi, y compris à 0 (acte totalement exclu : la quote-part
+  // a été encaissée en espèces à la caisse, rien n'est réclamé à la société).
+  if (suivi?.montantARembourser != null) return Math.max(0, suivi.montantARembourser);
   return invoiceAssuranceBrut(invoice);
 }
 

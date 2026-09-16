@@ -28,6 +28,52 @@ Chaque société appartient à l'une de ces familles, choisie dans la fiche **So
 
 Le choix est enregistré dans la base commune : `payeur` (Payeur global) ou `assurance` (Paiement partiel) sur `companies`, complété par `modePaiement` dans `assuranceSocietes`. Le taux de couverture reste modifiable à la main dans les deux cas.
 
+## Ticket modérateur ou vraie remise
+
+La différence entre le **total brut** et le **net** d'une pièce prise en charge est, par défaut, le **ticket modérateur** : la quote-part qui reste à la charge de l'assuré. Pour certaines sociétés, cette différence est en réalité une **vraie remise** accordée sur le prix — elle n'est due ni par l'assuré, ni par la société.
+
+Le choix se fait dans la fiche **Sociétés** (bloc *Réduction facturée (Total brut − Net)*) :
+
+| Réglage | Sens |
+|---|---|
+| **Ticket modérateur** (défaut) | Quote-part / participation restant à la charge de l'assuré. |
+| **Remise** | Réduction définitive du montant facturé, due par personne. |
+
+Comme certaines personnes seulement sont concernées au sein d'une même société, chaque **assuré** peut porter une **dérogation** dans sa fiche (onglet *Assurés*, champ *Réduction facturée*) : *Comme la société*, *Ticket modérateur* ou *Remise*. La carte de la société rappelle le nombre d'assurés en dérogation.
+
+Résolution, dans l'ordre : dérogation de l'assuré → réglage de la société → ticket modérateur.
+
+**Aucun montant n'est modifié** : le brut, le net et la différence restent ceux de la pièce d'origine. Seul l'intitulé change, partout où le contexte est connu :
+
+- factures imprimées (A5 de la caisse, facture individuelle / 2 par page, facture fusionnée, relevé mensuel) ;
+- écrans du suivi (détail d'une facture, tableau des factures groupées, saisie d'une prescription, facturation « par facture »).
+
+Enregistrement : `companies.natureRemise` (base commune) + `assuranceSocietes[].natureRemise`, dérogation dans `assurancePersonnes[].natureRemise`.
+
+### Encaissement du ticket modérateur à la caisse
+
+La nature choisie **commande l'encaissement** au moment du paiement d'un client société :
+
+| Nature | À la caisse |
+|---|---|
+| **Ticket modérateur** | La quote-part de l'assuré est **encaissée en espèces** et un ticket lui est remis ; la société n'est créditée que du **net**. |
+| **Remise** | Rien à encaisser : le crédit société reste **intégral**. |
+
+La quote-part est calculée avec la **même répartition que la facturation** (`repartirPrestation`) : taux de couverture de la société, puis exclusions d'assuré et de famille d'actes (la part exclue reste due par le patient). Elle est nulle — donc rien à encaisser — si la prise en charge est de 100 %.
+
+Déroulé pour le caissier :
+
+1. la file d'attente affiche un badge **💰 Ticket mod.** avec le montant à encaisser ;
+2. la fenêtre de paiement détaille *Total prestations* / *Montant à porter en crédit société* / *À encaisser*, avec le champ **Espèces reçues** (pré-rempli) et la **monnaie à rendre** ; la validation est refusée tant que la somme n'est pas saisie ;
+3. deux tickets sortent : **PRISE EN CHARGE — CRÉDIT SOCIÉTÉ** (net, rappel de la quote-part réglée en espèces) et **REÇU — TICKET MODÉRATEUR** (brut, crédit société, total payé en espèces).
+
+Écritures produites :
+
+- les factures créditées à la société portent le net dans `patientCharge` et `assuranceSuivi.montantARembourser` → la facturation société ne réclame que ce net, la quote-part apparaissant comme participation ;
+- une facture d'espèces distincte (`clientType = 'comptoir'`, `creditSociete = false`, `copayTicketModerateur`) porte la quote-part : elle seule entre dans les encaissements et la clôture Z du caissier, et elle n'est jamais réclamée à la société ni listée comme pièce à facturer.
+
+Calculs : `src/utils/copayCaisse.ts` (répartition + métadonnées), intégration dans `src/components/ModuleCaisse.tsx`, tickets dans `src/utils/printTicket.ts`. Tests : `tests/copay-caisse.spec.ts`, `tests/copay-facturation.spec.ts`.
+
 ## Exclusions d'une société
 
 Une société peut **exclure** ce qu'elle ne prend pas en charge. Le bloc *Exclusions* de la fiche société (et le bouton **Exclusions** de chaque carte) permet d'ajouter :

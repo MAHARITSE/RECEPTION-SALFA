@@ -22,6 +22,13 @@ Application complète de gestion clinique et hospitalière (HIS — Hospital Inf
    - **Numérotation officielle des factures** : `26FA0427102` = année (26) + diminutif facture (FA) + mois (04) + jour (27) + numéro d'ordre du jour (102). Pour les sociétés : `FA-07/BSA/26-014` = diminutif facture (FA) + mois des prescriptions (07) + code société ou diminutif enregistré automatiquement dans la société (BSA) + année (26) + ordre d'établissement dans le mois (014) — suite logique commune à toutes les sociétés (ex. le même mois : -013 JIRAMA, -014 BSA, -015 COPEFRITO).
    - Gestion des remises, acomptes et règlements multi-modes (Espèces, Chèque, Virement, Mobile Money).
    - Reçus et factures au format d'impression standard et tickets 80x80mm.
+   - **Factures A5 (individuelle) et A4 (société)** : les colonnes **Qté, Prix et
+     Montant ont exactement la même largeur que la case des totaux** (90 px en A5,
+     18 % de la page en A4) — les « cages » de chiffres du tableau et du
+     récapitulatif s'alignent verticalement. L'**en-tête par défaut** (identité
+     SALFA, NIF, STAT, e-mail) est **identique sur les deux formats** ; il est
+     remplacé par l'en-tête personnalisé dès qu'il est activé
+     (Administration → En-tête Facture).
    - Clôture de caisse de garde avec récapitulatif comptable.
 
 4. **🛡️ Suivi assurance — nouveau module**
@@ -43,6 +50,19 @@ Application complète de gestion clinique et hospitalière (HIS — Hospital Inf
 
 6. **📦 Magasinier & Stock Central**
    - Gestion du catalogue d'articles (Médicaments, Consommables labo/dentaire/écho).
+   - **Familles d'articles** : Médicaments, **Consultation**, Laboratoire,
+     Échographie, Hospitalisation, Dentaire et **Autres**.
+     **Seuls les Médicaments sont gérés en stock** (mouvements, alertes stock bas /
+     rupture, contrôle de vente à la caisse) : les actes et services se vendent sans
+     stock ni alerte. Une autre famille peut être activée à la main dans sa fiche
+     (`Gestion du stock`), le réglage explicite restant prioritaire.
+   - **Chaque article appartient à une famille** (famille obligatoire à la création,
+     un article non classé est rattaché à « Autres »), **chaque article vendu porte la
+     famille de son article** et **chaque vente est rattachée à une famille** : celle
+     de ses lignes, sinon la famille dominante (montant, puis nombre de lignes, puis
+     ordre du catalogue) pour une vente mixte. Les bases existantes sont complétées
+     automatiquement au chargement (`normalizeVenteFamilies`), sans réécrire une
+     famille déjà enregistrée.
    - 3 prix de vente par article (Comptoir, Société, Externe) + prix d'Achat.
    - Gestion des fournisseurs, réceptions de commandes (Style Sage Line) et transferts entre dépôts.
 
@@ -165,6 +185,34 @@ sont pas envoyées à MySQL et restent dans le profil / navigateur utilisé. La
 session de connexion n'est pas conservée : il faut se reconnecter après avoir
 fermé l'application.
 
+### ☁️ Hébergement statique du build navigateur (Cloudflare Pages, Netlify…)
+
+Le build navigateur (`npm run build` → **`dist/index.html`**, fichier unique
+auto-suffisant) peut être hébergé tel quel sur un hébergeur statique — par exemple
+**Cloudflare Pages** : *Create a project → Direct Upload* (ou un dépôt avec la
+commande de build `npm run build` et le dossier de sortie `dist`).
+
+> ⚠️ **Ce qui est inclus dans ce fichier, et ce qui ne l'est pas.**
+> `dist/index.html` embarque l'application **et les données par défaut**
+> (`src/data/localData.json` : familles, articles, réglages d'impression, jeu de
+> démonstration). En revanche, **tout ce qui est saisi dans l'application reste dans
+> le navigateur de l'utilisateur** (IndexedDB) : l'**en-tête de facture personnalisé**
+> (Administration → En-tête Facture), les logos, l'établissement, les sociétés, les
+> patients… **ne font donc PAS partie du déploiement**.
+>
+> C'est la cause habituelle d'un écart d'**en-têtes** entre la version déployée et la
+> version locale : la version déployée affiche l'**en-tête par défaut intégré**
+> (identité SALFA / NIF / STAT / e-mail, identique en A5 et en A4, défini par
+> `ETABLISSEMENT_SALFA` dans `src/utils/printSalfaInvoice.ts`) tant qu'aucun en-tête
+> personnalisé n'a été enregistré **dans ce navigateur-là**.
+>
+> Pour obtenir exactement le même rendu partout :
+> 1. soit enregistrer l'en-tête personnalisé sur chaque poste utilisé (il est
+>    conservé dans le navigateur, et synchronisé dans MySQL en version WAMP) ;
+> 2. soit modifier `ETABLISSEMENT_SALFA` / les réglages par défaut dans
+>    `src/data/localData.json`, puis **recompiler** (`npm run build`) et
+>    **redéployer** le nouveau `dist/index.html`.
+
 ### 🔄 Recompiler (depuis la source commune)
 
 ```bash
@@ -177,18 +225,33 @@ npm run build:wamp     # version WAMP (VITE_WAMP_MODE=1 via .env.wamp) → dist/
 
 ## 🧪 Jeu de données de démonstration pour l'analyse (3 mois)
 
-`src/data/localData.json` contient un jeu de **démo cohérent sur 3 mois pleins
-révolus (Juin–Août 2026)** destiné à l'analyse : patients comptoir + salariés
-conventionnés (liés à une société), consultations, **factures individuelles
-(comptoir / société / externe)**, ventes (miroir unifié), demandes de laboratoire,
-parcours patient, et **comptes de facturation mensuels des sociétés** (mois
-soldés + mois impayés) pour alimenter le module Facturation Société.
+`src/data/localData.json` contient un jeu de **démo cohérent sur les 3 derniers
+mois (17/06/2026 → 16/09/2026, fenêtre qui se termine aujourd'hui)** destiné à
+l'analyse : patients comptoir + salariés conventionnés (liés à une société),
+consultations, **factures individuelles (comptoir / société / externe)**, ventes
+(miroir unifié), demandes de laboratoire, parcours patient, et **comptes de
+facturation mensuels des sociétés** (mois soldés + mois impayés) pour alimenter le
+module Facturation Société.
+
+Le jeu respecte les règles métier en vigueur :
+
+- **7 familles** (Médicaments, Consultation, Laboratoire, Échographie,
+  Hospitalisation, Dentaire, Autres) et **seuls les articles Médicaments portent du
+  stock** (stock pharmacie et dépôt central recalculés à partir des achats,
+  transferts, délivrances et ventes de la fenêtre — aucune référence médicament à
+  zéro, les actes et services sont à « Non géré ») ;
+- **toutes les ventes et toutes les lignes vendues sont rattachées à une famille**
+  (0 ligne sans famille) ;
+- l'**établissement principal** et les **réglages d'impression** par défaut portent
+  les mêmes mentions que les factures imprimées (NIF, téléphone, e-mail).
 
 - **Régénérer** le jeu (idempotent, il nettoie sa précédente génération) :
 
   ```bash
-  node generate_data_3mois.cjs
-  npm run build      # pour embarquer les nouvelles données dans dist/index.html
+  node scripts/regen_3mois.cjs      # → src/data/localData.json (version navigateur)
+  node scripts/seed_sql_3mois.cjs   # → section « données de démonstration » du SQL WAMP
+  npm run build                     # embarque les nouvelles données dans dist/index.html
+  npm run build:wamp                # puis copier dist/index.html vers wamp_deploy/index.html
   ```
 
 - **Charger ces données dans la version navigateur déjà ouverte** : connectez‑vous

@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 /**
  * Régénération COMPLÈTE des données de démonstration sur les 3 derniers mois
- * (16/06/2026 → 15/09/2026, se termine aujourd'hui).
+ * (17/06/2026 → 16/09/2026, se termine aujourd'hui).
+ *
+ * - Les FAMILLES sont réécrites depuis le catalogue par défaut (Consultation et
+ *   Autres incluses) et SEULS LES MÉDICAMENTS sont gérés en stock.
+ * - TOUTE vente est rattachée à une famille et TOUT article vendu appartient à
+ *   une famille (celle de son article au catalogue, sinon celle de sa catégorie,
+ *   sinon « Autres »).
  *
  * - Les tables de RÉFÉRENCE sont conservées (utilisateurs, sociétés, articles,
  *   familles, catalogue labo, établissements, fournisseurs, services dépôt).
@@ -42,8 +48,8 @@ const short = (id) => id.split('-')[0];
 const round50 = (n) => Math.round(n / 50) * 50;
 
 // ------------------------------------------------------------- fenêtre ----
-const START = new Date(Date.UTC(2026, 5, 16)); // 16/06/2026
-const END = new Date(Date.UTC(2026, 8, 15));   // 15/09/2026 (aujourd'hui)
+const START = new Date(Date.UTC(2026, 5, 17)); // 17/06/2026
+const END = new Date(Date.UTC(2026, 8, 16));   // 16/09/2026 (aujourd'hui)
 const days = [];
 for (let d = new Date(START); d <= END; d.setUTCDate(d.getUTCDate() + 1)) {
   if (d.getUTCDay() !== 0) days.push(new Date(d)); // fermé le dimanche
@@ -65,6 +71,65 @@ const U_BIL = U('USR-BIL'), U_REC = U('USR-REC'), U_MAG = U('USR-MAG'), U_LAB = 
 const pharmas = users.filter(u => u.role === 'pharmacy');
 const companies = data.companies.map(c => c.name);
 const articles = data.articles;
+
+// ------------------------------------------------------------- familles ----
+// Catalogue IDENTIQUE à DEFAULT_FAMILLES (src/store.ts) : SEULS LES MÉDICAMENTS
+// sont gérés en stock ; consultation, laboratoire, échographie, hospitalisation,
+// dentaire et « autres » sont des actes / services sans stock.
+const FAMILLES = [
+  { id: 'fam-medic', code: 'MEDIC', name: 'Médicaments', color: '#0D47A1', order: 1, manageStock: true },
+  { id: 'fam-consult', code: 'CONSULT', name: 'Consultation', color: '#0EA5E9', order: 2, manageStock: false },
+  { id: 'fam-labo', code: 'LABO', name: 'Laboratoire', color: '#10B981', order: 3, manageStock: false },
+  { id: 'fam-echo', code: 'ECHO', name: 'Échographie', color: '#F59E0B', order: 4, manageStock: false },
+  { id: 'fam-hosp', code: 'HOSP', name: 'Hospitalisation', color: '#F97316', order: 5, manageStock: false },
+  { id: 'fam-dent', code: 'DENT', name: 'Dentaire', color: '#8B5CF6', order: 6, manageStock: false },
+  { id: 'fam-autres', code: 'AUTRES', name: 'Autres', color: '#64748B', order: 7, manageStock: false },
+];
+const FAMILLE_AUTRES = 'AUTRES';
+const FAMILLE_PAR_CATEGORIE = {
+  pharmacy: 'MEDIC', medicament: 'MEDIC', lab: 'LABO', labo: 'LABO', echo: 'ECHO',
+  consultation: 'CONSULT', consult: 'CONSULT', surgery: 'HOSP', hospitalization: 'HOSP',
+  hospitalisation: 'HOSP', bloc: 'HOSP', externe: FAMILLE_AUTRES,
+};
+const normFam = (c) => String(c || '').trim().toUpperCase();
+const gereStock = (c) => {
+  const f = FAMILLES.find(x => x.code === normFam(c));
+  return f ? f.manageStock === true : normFam(c) === 'MEDIC';
+};
+// Chaque article appartient à une famille (repli : « Autres »).
+articles.forEach(a => { a.family = normFam(a.family) || FAMILLE_AUTRES; });
+const articleParNom = (nom) => {
+  const n = String(nom || '').trim().toLowerCase();
+  return n ? articles.find(a => String(a.name || '').trim().toLowerCase() === n) : undefined;
+};
+/** Famille d'une ligne vendue : celle de l'article, sinon celle de sa catégorie. */
+const familleLigne = (articleName, category, deja) => {
+  if (normFam(deja)) return normFam(deja);
+  const art = articleParNom(articleName);
+  if (art) return art.family;
+  return FAMILLE_PAR_CATEGORIE[String(category || '').trim().toLowerCase()] || FAMILLE_AUTRES;
+};
+/**
+ * Famille d'une vente : commune à ses lignes, sinon la famille DOMINANTE
+ * (montant, puis nombre de lignes, puis ordre du catalogue) — « Autres » ne sert
+ * qu'aux éléments non classés.
+ */
+const familleVente = (lignes) => {
+  if (!lignes.length) return FAMILLE_AUTRES;
+  const ordre = (code) => { const i = FAMILLES.findIndex(f => f.code === code); return i < 0 ? FAMILLES.length : i; };
+  const poids = new Map();
+  for (const l of lignes) {
+    const f = familleLigne(l.articleName, l.category, l.family);
+    const p = poids.get(f) || { montant: 0, lignes: 0 };
+    p.montant += Math.max(0, Number(l.amount ?? ((l.quantity || 0) * (l.unitPrice || 0)) * (1 - (l.discount || 0) / 100)));
+    p.lignes += 1;
+    poids.set(f, p);
+  }
+  if (poids.size === 1) return [...poids.keys()][0];
+  return [...poids.entries()].sort((a, b) =>
+    b[1].montant - a[1].montant || b[1].lignes - a[1].lignes || ordre(a[0]) - ordre(b[0]))[0][0];
+};
+
 const medicArticles = articles.filter(a => a.family === 'MEDIC' && !a.saleBlocked);
 const echoArticles = articles.filter(a => a.family === 'ECHO');
 const labCatalog = data.labCatalog;
@@ -297,6 +362,8 @@ function genererVisite(day) {
   const vente = {
     id: uuid(), patientId: patient.id, consultationId: consultation.id,
     numeroFacture: numeroFacture(), type: typeVente, clientType, clientName,
+    // Toute vente est rattachée à une famille (celle de ses lignes).
+    family: familleVente(items),
     subtotal: totalAmount, remisePct: 0, remiseMontant: 0,
     montantFacture: totalAmount,
     montantPaye: paidNow ? totalAmount : 0,
@@ -317,6 +384,7 @@ function genererVisite(day) {
       id: uuid(), venteId: vente.id, dateSort: ymd(consultDate),
       articleName: it.description, quantity: it.quantity, unitPrice: it.unitPrice,
       discount: 0, category: it.category,
+      family: familleLigne(it.description, it.category),
     });
   }
   if (paidNow) {
@@ -423,6 +491,7 @@ function genererVenteExterne(day) {
   const vente = {
     id: uuid(), patientId: undefined, consultationId: undefined,
     numeroFacture: numeroFacture(), type: 'externe', clientType: 'externe', clientName: extName,
+    family: familleVente(items),
     subtotal: total, remisePct: 0, remiseMontant: 0, montantFacture: total,
     montantPaye: total, status: 'paid', isExterne: true, source: 'caisse',
     dateVente: iso(createdAt), datePaiement: iso(createdAt), paidAt: iso(createdAt),
@@ -431,7 +500,7 @@ function genererVenteExterne(day) {
   };
   ventes.push(vente);
   for (const it of items) {
-    venteLines.push({ id: uuid(), venteId: vente.id, dateSort: ymd(createdAt), articleName: it.description, quantity: it.quantity, unitPrice: it.unitPrice, discount: 0, category: it.category });
+    venteLines.push({ id: uuid(), venteId: vente.id, dateSort: ymd(createdAt), articleName: it.description, quantity: it.quantity, unitPrice: it.unitPrice, discount: 0, category: it.category, family: familleLigne(it.description, it.category) });
     stockMovements.push({
       id: uuid(), type: 'exit', articleId: it.code, articleName: it.description,
       quantity: it.quantity, fromLocation: 'pharmacie', toLocation: 'client_externe',
@@ -482,6 +551,7 @@ function genererHb(day) {
     id: uuid(), patientId: patient.id, consultationId: undefined,
     numeroFacture: numeroFacture(), type: type === 'hospit' ? 'hospitalisation' : 'bloc',
     clientType, clientName: hb.patientName, company: patient.company,
+    family: 'HOSP', // hospitalisation et bloc opératoire : famille Hospitalisation
     subtotal: total, remisePct: 0, remiseMontant: 0, montantFacture: total,
     montantPaye: total, status: 'paid', isExterne: false, source: 'caisse',
     dateVente: iso(openedAt), datePaiement: paidAt, paidAt,
@@ -490,7 +560,10 @@ function genererHb(day) {
   };
   ventes.push(vente);
   for (const l of lines) {
-    venteLines.push({ id: uuid(), venteId: vente.id, dateSort: l.dateSort, articleName: l.articleName, quantity: l.quantity, unitPrice: l.unitPrice, discount: 0, category: type === 'hospit' ? 'hospitalisation' : 'bloc' });
+    // Catégorie CANONIQUE de la ligne ('hospitalization', comme le type VenteLine) :
+    // c'est elle qui résout la famille de facturation (HOSP / BLOC).
+    const catLigne = type === 'hospit' ? 'hospitalization' : 'bloc';
+    venteLines.push({ id: uuid(), venteId: vente.id, dateSort: l.dateSort, articleName: l.articleName, quantity: l.quantity, unitPrice: l.unitPrice, discount: 0, category: catLigne, family: familleLigne(l.articleName, catLigne) });
   }
   ventePayments.push({ id: uuid(), venteId: vente.id, amount: total, method: 'Virement', date: paidAt, paidBy: cashier.name, paidByUserId: cashier.id });
   journey.push({ id: uuid(), patientId: patient.id, timestamp: iso(openedAt), department: type === 'hospit' ? 'hospitalisation' : 'bloc', action: type === 'hospit' ? 'Admission hospitalisation' : 'Passage au bloc opératoire', status: 'in_consultation', actorId: U_REC.id, actorName: U_REC.name });
@@ -610,11 +683,12 @@ for (const mk of moisListe) {
   for (const fournisseur of fournisseurs) {
     for (let k = 0; k < nbAchats; k++) {
       const ref = `BL-2026-${String(++blSeq).padStart(4, '0')}`;
-      const jourMin = mk === '2026-06' ? 16 : 3; // fenêtre commence le 16/06
-      const date = new Date(Date.UTC(2026, moisNum, int(jourMin, mk === '2026-09' ? 12 : 26), int(8, 10), int(0, 59), int(0, 59)));
+      const jourMin = mk === '2026-06' ? 17 : 3; // fenêtre commence le 17/06
+      const date = new Date(Date.UTC(2026, moisNum, int(jourMin, mk === '2026-09' ? 16 : 26), int(8, 10), int(0, 59), int(0, 59)));
       if (date > END) continue;
       const headerId = uuid();
-      const pool = fournisseur === 'DISPHAR LABO' ? articles.filter(a => a.family === 'LABO' || a.family === 'MEDIC') : medicArticles;
+      // Seuls les médicaments sont gérés en stock : les achats ne portent que sur eux.
+      const pool = medicArticles;
       const nbLignes = int(2, 5);
       let totalQty = 0;
       for (let i = 0; i < nbLignes; i++) {
@@ -672,7 +746,7 @@ for (const mk of moisListe) {
     const day = pick(days.filter(d => monthKey(d) === mk));
     const date = atHour(day, int(10, 15), int(0, 59));
     const svc = pick(svcPool);
-    const art = pick(articles.filter(a => a.family !== 'ECHO'));
+    const art = pick(medicArticles); // dispersion : familles gérées en stock uniquement
     const qty = int(10, 60);
     const trId = uuid();
     const demandeLe = iso(addMin(date, -int(240, 2880)));
@@ -701,7 +775,8 @@ for (const mk of moisListe) {
 for (const [idx, mk] of ['2026-06', '2026-07', '2026-08'].entries()) {
   const moisNum = parseInt(mk.slice(5, 7), 10) - 1;
   const startedAt = new Date(Date.UTC(2026, moisNum, idx === 1 ? 31 : 30, 16, 0, int(0, 59)));
-  const linesInv = articles.map(art => {
+  const articlesInventories = articles.filter(a => gereStock(a.family));
+  const linesInv = articlesInventories.map(art => {
     const theoreticalQty = int(50, 1500);
     const difference = chance(0.12) ? -int(1, 4) : 0;
     if (difference !== 0) {
@@ -719,7 +794,7 @@ for (const [idx, mk] of ['2026-06', '2026-07', '2026-08'].entries()) {
     startedAt: iso(startedAt), completedAt: iso(addMin(startedAt, 120)),
     startedBy: U_MAG.id, startedByName: U_MAG.name, lines: linesInv,
   });
-  audit(addMin(startedAt, 120), U_MAG, 'INVENTAIRE', `Inventaire dépôt central ${MOIS_FR[mk.slice(5, 7)]} 2026 — ${articles.length} article(s) comptés`);
+  audit(addMin(startedAt, 120), U_MAG, 'INVENTAIRE', `Inventaire dépôt central ${MOIS_FR[mk.slice(5, 7)]} 2026 — ${articlesInventories.length} article(s) géré(s) en stock comptés`);
 }
 
 // ------------------------------------------------ clôtures livraisons pharma
@@ -747,7 +822,7 @@ for (const mk of moisListe) {
     notifications.push({ id: uuid(), targetRole: 'pharmacy', message: `⚠️ Stock bas en pharmacie : ${art.name} (${int(0, 8)} restant)`, type: chance(0.25) ? 'critical' : 'warning', timestamp: notifTs(mk, 8), read: false });
   }
   for (let i = 0; i < 3; i++) {
-    const art = pick(articles.filter(a => a.family === 'MEDIC' || a.family === 'LABO'));
+    const art = pick(medicArticles);
     notifications.push({ id: uuid(), targetRole: 'magasinier', message: `Stock central faible : ${art.name} — réapprovisionnement conseillé`, type: 'warning', timestamp: notifTs(mk, 9), read: chance(0.5) });
   }
 }
@@ -759,6 +834,66 @@ messages.push(
   { id: uuid(), from: 'USR-ADMIN', fromName: U('USR-ADMIN').name, to: 'billing', subject: 'Facturation société', content: 'Merci de relancer les règlements société du mois en cours avant la fin de semaine.', timestamp: iso(addDays(END, -1)), read: false },
 );
 
+// ------------------------------------- établissement / réglages d'impression -
+// Les documents imprimés (factures A5 / A4) portent l'identité SALFA définie par
+// `ETABLISSEMENT_SALFA` dans src/utils/printSalfaInvoice.ts. L'établissement
+// principal et les réglages d'impression des données par défaut sont alignés sur
+// ces MÊMES mentions (NIF, téléphone, e-mail) : une installation neuve — build
+// statique déployé ou base WAMP — affiche et imprime la même identité que la base
+// locale, sans réglage manuel.
+const IDENTITE_SALFA = {
+  nif: '5000767080',
+  stat: '851 125 120 120 001 36',
+  telephone: '038 34 092 61',
+  telephone2: '034 50 670 90',
+  email: 'salfa.tulear@gmail.com',
+};
+const etablissements = Array.isArray(data.etablissements) ? data.etablissements : [];
+const principal = etablissements.find(e => e && e.isPrincipal) || etablissements[0];
+if (principal) {
+  principal.nif = principal.nif || IDENTITE_SALFA.nif;
+  principal.stat = principal.stat || IDENTITE_SALFA.stat;
+  principal.phone = principal.phone || IDENTITE_SALFA.telephone;
+  principal.phone2 = principal.phone2 || IDENTITE_SALFA.telephone2;
+  principal.email = principal.email || IDENTITE_SALFA.email;
+}
+const ts = data.ticketSettings || (data.ticketSettings = {});
+ts.facilityName = ts.facilityName || (principal ? (principal.tradeName || principal.name) : '');
+ts.address = ts.address || (principal ? principal.address : '');
+ts.nif = ts.nif || (principal && principal.nif) || IDENTITE_SALFA.nif;
+ts.phone = ts.phone || (principal && principal.phone) || IDENTITE_SALFA.telephone;
+ts.email = ts.email || (principal && principal.email) || IDENTITE_SALFA.email;
+
+// ------------------------------------------------------------ stock final -
+// SEULS LES MÉDICAMENTS sont gérés en stock : leur état final est recalculé à
+// partir des mouvements de la fenêtre (achats, transferts, sorties, écarts
+// d'inventaire) et d'un stock d'ouverture suffisant pour rester plausible.
+// Les actes / services (consultation, laboratoire, échographie, hospitalisation,
+// dentaire, autres) ne portent aucun stock.
+const fluxParArticle = new Map();
+for (const m of stockMovements) {
+  const f = fluxParArticle.get(m.articleId) || { central: 0, pharmacie: 0 };
+  const q = Number(m.quantity) || 0;
+  if (m.type === 'entry' && m.toLocation === 'central') f.central += q;
+  else if (m.type === 'transfer') {
+    if (m.fromLocation === 'central') f.central -= q;
+    if (m.toLocation === 'pharmacie') f.pharmacie += q;
+  } else if (m.type === 'exit' && m.fromLocation === 'pharmacie') f.pharmacie -= q;
+  else if (m.type === 'inventory_adjust') f.central -= q;
+  fluxParArticle.set(m.articleId, f);
+}
+for (const a of articles) {
+  if (!gereStock(a.family)) { a.stockCentral = 0; a.stockPharmacie = 0; continue; }
+  const flux = fluxParArticle.get(a.id) || { central: 0, pharmacie: 0 };
+  const minC = Number(a.minStockCentral) || 0;
+  const minP = Number(a.minStockPharmacie) || 0;
+  const tendu = chance(0.18); // quelques références en stock bas, pour les alertes
+  const ouvC = tendu ? Math.max(0, minC + int(0, 20) - flux.central) : Math.max(int(150, 700), minC + int(60, 250) - flux.central);
+  const ouvP = tendu ? Math.max(0, minP + int(0, 10) - flux.pharmacie) : Math.max(int(120, 450), minP + int(40, 150) - flux.pharmacie);
+  a.stockCentral = Math.max(0, Math.round(ouvC + flux.central));
+  a.stockPharmacie = Math.max(0, Math.round(ouvP + flux.pharmacie));
+}
+
 // ------------------------------------------------------- assemblage final -
 ventes.sort((a, b) => a.dateVente.localeCompare(b.dateVente));
 invoices.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -767,6 +902,7 @@ stockMovements.sort((a, b) => a.date.localeCompare(b.date));
 auditLogs.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
 Object.assign(data, {
+  familles: FAMILLES,
   patients, consultations, invoices, ventes, venteLines, ventePayments,
   cashClosings, stockTransfers, stockEntries, stockMovements, movementHeaders,
   movementLines, inventorySessions, pharmaDeliveryItems, pharmaDeliveryClosings,
@@ -778,6 +914,9 @@ Object.assign(data, {
 fs.writeFileSync(FILE, JSON.stringify(data, null, 2));
 console.log('✅ Données régénérées sur la fenêtre', ymd(START), '→', ymd(END));
 console.log({
+  familles: FAMILLES.length,
+  famillesVentes: ventes.reduce((acc, v) => { acc[v.family] = (acc[v.family] || 0) + 1; return acc; }, {}),
+  lignesSansFamille: venteLines.filter(l => !l.family).length,
   patients: patients.length, consultations: consultations.length, invoices: invoices.length,
   ventes: ventes.length, venteLines: venteLines.length, paiements: ventePayments.length,
   cloturesCaisse: cashClosings.length, labRequests: labRequests.length,

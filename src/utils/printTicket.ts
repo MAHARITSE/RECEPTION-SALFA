@@ -1,6 +1,6 @@
 import { printDocument } from './printDocument';
 import type { ExamTicketLine } from './examReceipts';
-import type { Invoice, Patient, TicketSettings, User, Prescription, LabRequest, Company, Consultation, PatientJourneyEvent, EchoRequest, HbRecord, PharmaDeliveryClosing, PharmaClosingStockRow } from '../types';
+import type { CopayTicketModerateur, Invoice, Patient, TicketSettings, User, Prescription, LabRequest, Company, Consultation, PatientJourneyEvent, EchoRequest, HbRecord, PharmaDeliveryClosing, PharmaClosingStockRow } from '../types';
 
 /** Échappe les caractères HTML réservés dans une chaîne.
  *  Décode d'abord les entités HTML déjà présentes pour éviter le
@@ -99,7 +99,7 @@ export function printPaymentTicket(
   patient?: Patient,
   cashier?: User,
   company?: Company,
-  opts?: { creditSociete?: boolean; prescriberName?: string },
+  opts?: { creditSociete?: boolean; prescriberName?: string; copay?: CopayTicketModerateur | null },
 ) {
   const date = new Date(invoice.paidAt || invoice.createdAt);
   // Facture validée en CRÉDIT SOCIÉTÉ : aucun encaissement en espèces.
@@ -109,13 +109,32 @@ export function printPaymentTicket(
     : invoice.clientName || 'Client comptoir';
   // Médecin prescripteur (vente externe) : repris sur le ticket quand il est connu.
   const prescriberName = (opts?.prescriberName || invoice.prescriberName || '').trim();
+  /**
+   * TICKET MODÉRATEUR (quote-part de l'assuré). Deux pièces sont concernées :
+   *  - le ticket d'ESPÈCES remis au patient (`copayTicketModerateur` porté par la
+   *    facture comptoir) : il détaille brut / crédit société / somme réglée ;
+   *  - le ticket de CRÉDIT SOCIÉTÉ qui l'accompagne : il rappelle la quote-part
+   *    encaissée en espèces et le net porté au compte de la société.
+   */
+  const copay = opts?.copay || invoice.copayTicketModerateur;
+  const copayMontant = Math.max(0, Number(copay?.montant) || 0);
+  const copayEspeces = !credit && copayMontant > 0;
+  const copaySurCredit = credit && copayMontant > 0;
   const detailRows = [
     patient?.dossier ? `<div>Dossier : ${escapeHtml(patient.dossier)}</div>` : '',
     patient?.company ? `<div>Société : ${escapeHtml(patient.company)}</div>` : '',
     company ? `<div>Société : ${escapeHtml(company.name)}</div>` : '',
+    copay?.societeNom && !patient?.company && !company ? `<div>Société : ${escapeHtml(copay.societeNom)}</div>` : '',
     prescriberName ? `<div>Médecin prescripteur : ${escapeHtml(prescriberName)}</div>` : '',
+    copayEspeces && copay?.numeroFactureSociete ? `<div>Facture société : ${escapeHtml(copay.numeroFactureSociete)}</div>` : '',
     cashier ? `<div>${credit ? 'Validé par' : 'Caissier'} : ${escapeHtml(cashier.name)}</div>` : '',
-    credit ? '<div class="bold">Règlement : CRÉDIT SOCIÉTÉ (sans espèces)</div>' : '',
+    credit
+      ? `<div class="bold">Règlement : ${copaySurCredit ? 'CRÉDIT SOCIÉTÉ + ESPÈCES (ticket modérateur)' : 'CRÉDIT SOCIÉTÉ (sans espèces)'}</div>`
+      : '',
+    copayEspeces ? '<div class="bold">Règlement : ESPÈCES — TICKET MODÉRATEUR</div>' : '',
+    copayEspeces && (copay?.montantExclu || 0) > 0
+      ? `<div class="small">dont acte(s) exclu(s) de la prise en charge : ${money(copay!.montantExclu || 0)}</div>`
+      : '',
     invoice.isExternal ? '<div><i>Vente directe comptoir</i></div>' : '',
   ].filter(Boolean).join('');
   const itemRows = invoice.items
@@ -124,29 +143,45 @@ export function printPaymentTicket(
         `<tr><td>${escapeHtml(item.description)}${item.quantity != null && item.quantity > 1 ? ` ×${item.quantity}` : ''}</td><td class="amount">${money(item.amount)}</td></tr>`,
     )
     .join('');
+  // Totaux : décomposition brut / crédit société / somme réglée dès qu'une
+  // quote-part est en jeu ; total simple sinon.
+  const totalRows = copayEspeces || copaySurCredit
+    ? `
+      <tr><td>Total prestations</td><td class="amount">${money(copay?.brut ?? invoice.totalAmount)}</td></tr>
+      <tr><td>Crédit société</td><td class="amount">${money(copay?.partSociete ?? 0)}</td></tr>
+      <tr class="total"><td>${copayEspeces ? 'TOTAL PAYÉ (ESPÈCES)' : 'TOTAL CRÉDIT SOCIÉTÉ'}</td><td class="amount">${money(copayEspeces ? copayMontant : invoice.patientCharge)}</td></tr>`
+    : `
+      <tr><td>Total articles</td><td class="amount">${money(invoice.totalAmount)}</td></tr>
+      <tr class="total"><td>${credit ? 'TOTAL CRÉDIT SOCIÉTÉ' : 'TOTAL PAYÉ'}</td><td class="amount">${money(invoice.patientCharge)}</td></tr>`;
   const bodyHtml = `
     <div class="bold">${escapeHtml(customer)}</div>
     ${detailRows}
     <div class="rule"></div>
     <table>${itemRows}</table>
     <div class="rule"></div>
-    <table>
-      <tr><td>Total articles</td><td class="amount">${money(invoice.totalAmount)}</td></tr>
-      <tr class="total"><td>${credit ? 'TOTAL CRÉDIT SOCIÉTÉ' : 'TOTAL PAYÉ'}</td><td class="amount">${money(invoice.patientCharge)}</td></tr>
+    <table>${totalRows}
     </table>
   `;
+  const titre = copayEspeces
+    ? 'REÇU — TICKET MODÉRATEUR'
+    : credit ? 'PRISE EN CHARGE — CRÉDIT SOCIÉTÉ' : (settings.receiptTitle || 'REÇU DE PAIEMENT');
+  const piedDePage = copayEspeces
+    ? "Quote-part de l'assuré réglée en espèces — le solde est porté au crédit de la société."
+    : credit
+      ? (copaySurCredit
+        ? 'Ticket modérateur encaissé en espèces à la caisse — le net est porté au crédit de la société.'
+        : 'Montant porté au crédit de la société — règlement ultérieur par la société.')
+      : settings.footerMessage;
   const html = buildTicketHtml({
     settings,
-    title: credit ? 'PRISE EN CHARGE — CRÉDIT SOCIÉTÉ' : (settings.receiptTitle || 'REÇU DE PAIEMENT'),
+    title: titre,
     // Numéro de facture officiel (ex: 26FA0427102 ou FA-07/BSA/26-014) sinon référence technique.
     reference: invoice.numeroFacture || invoice.id.slice(0, 8).toUpperCase(),
     date,
     bodyHtml,
-    footerNote: credit
-      ? 'Montant porté au crédit de la société — règlement ultérieur par la société.'
-      : settings.footerMessage,
+    footerNote: piedDePage,
   });
-  printDocument(html, credit ? 'Prise en charge crédit société' : 'Reçu de paiement', ticketCopies(settings));
+  printDocument(html, copayEspeces ? 'Reçu ticket modérateur' : (credit ? 'Prise en charge crédit société' : 'Reçu de paiement'), ticketCopies(settings));
 }
 
 /* ============================================================
