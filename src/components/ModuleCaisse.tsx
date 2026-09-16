@@ -12,6 +12,7 @@ import {
   addAuditLog, addNotification, formatAr, formatNum, roundTo2, getPrice, calculateAge,
   normalizeDossierNumber, isDossierTaken, addJourneyEvent, generatePharmaClosingNumber, purgePatientFromQueue,
   familyManagesStock, isLabFamily, isEchoFamily, allocateFactureNumber, allocateFactureNumberAsync, allocateFactureNumbersAsync, applySocieteUpsert, collectExistingFactureNumbers, companyIsBlocked, companyOptions, sousSocietesConnues,
+  invoiceNatureRemise,
 } from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText, RefreshCw } from 'lucide-react';
 import { SearchableSelect, optionsFromValues } from './SearchableSelect';
@@ -1863,7 +1864,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                         <td className="p-2 text-center space-y-1.5">
                           {receiptButtons(() => prepareReceipts(group.invoices, inv), inv.items.some(item => item.category === 'lab'), inv.items.some(item => item.category === 'echo'))}
                           <button
-                            onClick={() => printSalfaIndividualInvoice(effectiveTicketSettings, inv, pat || undefined, comp)}
+                            onClick={() => printSalfaIndividualInvoice(effectiveTicketSettings, inv, pat || undefined, comp, invoiceNatureRemise(state, inv))}
                             className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px] font-bold cursor-pointer inline-flex items-center gap-1"
                             title="Imprimer Reçu / Facture A5"
                           >

@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react';
 import { X, Lock, Trash2, Save, FilePlus2, Plus } from 'lucide-react';
 import type { Prestation, LignePrestation, Famille } from '../../types';
-import type { Article, ClientType } from '../../../../types';
+import type { Article, ClientType, NatureRemise } from '../../../../types';
+import { natureRemiseLabel, natureRemiseLabelCourt } from '../../../../utils/natureRemise';
 import { getPrice, formatAr } from '../../../../store';
 import { formatDate } from '../../utils/formatters';
 
@@ -33,6 +34,10 @@ interface Props {
   articles?: Article[];
   /** Grille de prix à l'ajout d'un article du catalogue ('societe' par défaut). */
   tarif?: ClientType;
+  /** Nature de la réduction (brut − net) de la société / de l'assuré :
+   *  ticket modérateur (défaut) ou vraie remise. Ne change aucun montant,
+   *  seulement l'intitulé de la colonne saisie. */
+  natureRemise?: NatureRemise;
   onClose: () => void;
   /** Reçoit la prescription complète (lignes d'origine intactes + ajouts). */
   onSave: (next: Prestation) => void;
@@ -42,13 +47,17 @@ interface Props {
  * Éditeur de PRESCRIPTION du facturier — même ergonomie que la Saisie Sage
  * du bloc / hospitalisation (Caisse) :
  *  - barre de saisie : acte/article (recherche ↑↓ Entrée dans le catalogue),
- *    code famille, Qté, Rem%, P.U., Montant calculé, Ticket mod. ;
+ *    code famille, Qté, Rem%, P.U., Montant calculé, Ticket mod. / Remise ;
  *  - boutons Nouveau / Supprimer / Enregistrer (Entrée valide la ligne) ;
  *  - tableau des lignes : actes Caisse 🔒 (verrouillés, non cliquables) puis
  *    les ajouts du facturier (clic = recharger dans la barre pour correction) ;
  *  - pied de tableau TOTAL + enregistrement de la prescription.
  */
-export function PrescriptionEditModal({ prestation, familles, articles = [], tarif = 'societe', onClose, onSave }: Props) {
+export function PrescriptionEditModal({ prestation, familles, articles = [], tarif = 'societe', natureRemise, onClose, onSave }: Props) {
+  // Intitulé de la part non réclamée à la société : ticket modérateur (défaut)
+  // ou vraie remise accordée sur le prix.
+  const libellePart = natureRemiseLabelCourt(natureRemise);
+  const libellePartLong = natureRemiseLabel(natureRemise);
   const originales = prestation.lignes.filter(l => !l.origine || l.origine === 'caisse');
   const [ajouts, setAjouts] = useState<LignePrestation[]>(() =>
     prestation.lignes.filter(l => l.origine === 'omission' || l.origine === 'ordonnance_externe').map(l => ({ ...l })));
@@ -108,7 +117,7 @@ export function PrescriptionEditModal({ prestation, familles, articles = [], tar
     if (!form.libelle.trim() && !form.code.trim()) return setErreur('Saisissez un acte / article (ou au moins un code).');
     const montant = montantDe(form);
     if (!(montant > 0)) return setErreur('Le montant de la ligne doit être supérieur à 0.');
-    if ((form.ticketModerateur || 0) < 0 || (form.ticketModerateur || 0) > montant) return setErreur('Ticket modérateur invalide (entre 0 et le montant).');
+    if ((form.ticketModerateur || 0) < 0 || (form.ticketModerateur || 0) > montant) return setErreur(`${libellePartLong} invalide (entre 0 et le montant).`);
     const ligne: LignePrestation = {
       id: editionId || `${prestation.id}:facturier:${Date.now()}`,
       prestationId: prestation.id, code: form.code || 'CONS', libelle: form.libelle.trim().toUpperCase(),
@@ -131,7 +140,7 @@ export function PrescriptionEditModal({ prestation, familles, articles = [], tar
     for (const a of ajouts) {
       if (!a.libelle?.trim() && !a.code?.trim()) return setErreur('Chaque ligne ajoutée doit avoir un libellé ou un code.');
       if (!(a.totalPrestation > 0)) return setErreur(`Montant attendu sur « ${a.libelle || a.code} ».`);
-      if ((a.ticketModerateur || 0) < 0 || (a.ticketModerateur || 0) > a.totalPrestation) return setErreur(`Ticket modérateur invalide sur « ${a.libelle || a.code} ».`);
+      if ((a.ticketModerateur || 0) < 0 || (a.ticketModerateur || 0) > a.totalPrestation) return setErreur(`${libellePartLong} invalide sur « ${a.libelle || a.code} ».`);
     }
     const lignes: LignePrestation[] = [...originales.map(l => ({ ...l })), ...ajouts];
     const totalPrestation = arrondi2(lignes.reduce((s, l) => s + l.totalPrestation, 0));
@@ -238,7 +247,7 @@ export function PrescriptionEditModal({ prestation, familles, articles = [], tar
                     className="w-full bg-surface-active border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono font-bold text-ink" />
                 </div>
                 <div className="w-20">
-                  <label className="block text-[10px] font-bold text-ink-muted mb-0.5">Ticket mod.</label>
+                  <label className="block text-[10px] font-bold text-ink-muted mb-0.5" title={libellePartLong}>{libellePart}</label>
                   <input type="number" min={0} value={form.ticketModerateur}
                     onChange={e => setForm(f => ({ ...f, ticketModerateur: parseFloat(e.target.value) || 0 }))}
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); enregistrerLigne(); } }}
@@ -269,7 +278,7 @@ export function PrescriptionEditModal({ prestation, familles, articles = [], tar
                     <th className="p-1 font-normal text-center w-12">Rem%</th>
                     <th className="p-1 font-normal text-right w-20">P.U.</th>
                     <th className="p-1 font-normal text-right w-24">Montant</th>
-                    <th className="p-1 font-normal text-right w-20">Ticket</th>
+                    <th className="p-1 font-normal text-right w-20" title={libellePartLong}>{natureRemise === 'remise' ? 'Remise' : 'Ticket'}</th>
                     <th className="p-1 font-normal w-6"></th>
                   </tr>
                 </thead>

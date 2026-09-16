@@ -13,6 +13,7 @@ import { PrescriptionEditModal } from './billing/PrescriptionEditModal';
 import { FusionPrescriptionModal } from './billing/FusionPrescriptionModal';
 import { PaiementGlobalModal } from './billing/PaiementGlobalModal';
 import { societeEstPayeurGlobal } from '../utils/societeExclusions';
+import { natureRemisePour } from '../utils/natureRemise';
 import { formatDate } from '../utils/formatters';
 
 type Props = PrestationsViewProps & {
@@ -284,6 +285,7 @@ export function BillingWorkspace({ state, setState, reliquatsAHuiter = 0, onOuvr
         prestation={prescription}
         familles={details.familles}
         articles={state.articles}
+        natureRemise={natureRemisePour(details.societes, details.personnes, prescription.societeId, prescription.personneId)}
         onClose={() => setPrescription(null)}
         onSave={enregistrerPrescription}
       />

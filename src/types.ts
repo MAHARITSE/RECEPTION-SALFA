@@ -537,6 +537,17 @@ export interface Etablissement {
 /** Sous-mode de règlement des factures société */
 export type CompanySettlementMode = 'monthly_global' | 'per_invoice';
 
+/**
+ * NATURE DE LA RÉDUCTION (total brut − net) sur les pièces d'une société :
+ *  - 'ticket_moderateur' (DÉFAUT) : la différence est le ticket modérateur,
+ *    c'est-à-dire la quote-part qui reste à la charge de l'assuré ;
+ *  - 'remise' : la différence est une VRAIE REMISE — une réduction de prix
+ *    accordée, que personne ne doit (ni l'assuré, ni la société).
+ * Les montants (brut, net, différence) sont inchangés : seule la nature — et
+ * donc le libellé porté sur les factures, relevés et écrans — change.
+ */
+export type NatureRemise = 'ticket_moderateur' | 'remise';
+
 export interface Company {
   id: string;
   name: string;
@@ -555,6 +566,13 @@ export interface Company {
   type?: CompanyType;
   /** Taux de couverture par défaut (% pris en charge) pour les assurances. */
   tauxCouverture?: number;
+  /**
+   * Nature de la réduction (brut − net) appliquée aux pièces de cette société :
+   * ticket modérateur (défaut, part restant à la charge de l'assuré) ou vraie
+   * remise accordée sur le prix. Certains assurés peuvent déroger à ce réglage
+   * (dérogation portée par la fiche assuré du suivi assurance).
+   */
+  natureRemise?: NatureRemise;
   notes?: string;
   createdAt?: string;
   /**

@@ -4,6 +4,7 @@ import { INVOICE_HEADER_STYLE, invoiceHeaderMarkup } from '../../utils/invoiceHe
 import { printDocument } from '../../utils/printDocument';
 import { groupBillingItemsByFamily } from './billingFamilies';
 import { billingFacility, localBillingDate, billingTotals, type BillingDocument, type MonthlyInvoice } from './monthlyBilling';
+import { libelleReductionCommun, libelleReductionCommunCourt, natureRemiseLabel } from '../../utils/natureRemise';
 
 const escape = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]!));
 const decimal = (value: number) => new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
@@ -81,6 +82,9 @@ function individualContent(invoice: MonthlyInvoice, settings?: TicketSettings): 
   const gross = document.individualGross ?? document.total;
   const net = document.individualNet ?? document.payable;
   const reduction = Math.round((gross - net) * 100) / 100;
+  // Ticket modérateur (quote-part de l'assuré) par défaut, vraie remise si la
+  // société / l'assuré est réglé ainsi : le montant ne change pas, l'intitulé si.
+  const libelleReduction = natureRemiseLabel(document.natureRemise);
   const payer = document.companyName || (document.category === 'societe' ? invoice.recipient : 'CLIENT COMPTOIR');
   return `
     ${invoiceHeader(settings)}<h1>FACTURE&nbsp; ${escape(invoice.number)}</h1>
@@ -92,7 +96,7 @@ function individualContent(invoice: MonthlyInvoice, settings?: TicketSettings): 
     <tbody>${document.items.map((item, index) => `<tr><td class="number">${index + 1}</td><td>${escape(item.description)}</td><td class="number">${item.quantity == null ? '—' : quantite(item.quantity)}</td><td class="number">${item.unitPrice == null ? '—' : decimal(item.unitPrice)}</td><td class="number">${decimal(item.quantity != null && item.unitPrice != null ? item.quantity * item.unitPrice : item.amount)}</td></tr>`).join('') || '<tr><td colspan="5">Voir les articles sur la pièce d’origine.</td></tr>'}</tbody></table>
     <div class="summary"><table class="totals" aria-label="Totaux individuels"><tbody>
     <tr><th>Total Brut</th><td class="number">${decimal(gross)}</td></tr>
-    <tr><th>Remise/Participation</th><td class="number">${decimal(reduction)}</td></tr>
+    <tr><th>${escape(libelleReduction)}</th><td class="number">${decimal(reduction)}</td></tr>
     <tr class="net"><th>Net à payer</th><td class="number">${decimal(net)}</td></tr></tbody></table>
     <p class="words">Arrêtée à la somme de : ${escape(billingAmountInWords(net, invoice.facility.currency))}</p>
     <p class="invoice-date">Date de facture :&emsp; ${escape(dateLabel(invoice.issuedAt))}</p>
@@ -120,12 +124,13 @@ function acts(document: BillingDocument): string {
 export function billingPrintHtml(invoice: MonthlyInvoice, monthly = true, settings?: TicketSettings): string {
   if (!monthly) return individualHtml(invoice, settings);
   const documents = [...invoice.documents].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  const libelleParticipation = libelleReductionCommunCourt(documents.map(d => d.natureRemise));
   return shell(invoice.number, 'monthly', `
     <h1>Doit : ${escape(invoice.recipient)}</h1>
     <p class="period">Mois de prise en charge : <strong>${escape(monthLabel(invoice.month))}</strong></p>
     <p class="invoice-number">Facture N° : <strong>${escape(invoice.number)}</strong></p>
     <table aria-label="Détail de la facture société"><colgroup><col style="width:4%"><col style="width:8%"><col style="width:9%"><col style="width:28%"><col style="width:18%"><col style="width:11%"><col style="width:11%"><col style="width:11%"></colgroup>
-    <thead><tr><th>N°</th><th>Date</th><th>Mlle</th><th>Nom et Prénom</th><th>Acte médicale/Prix</th><th>Montant</th><th>Participat°</th><th>Net à Payer</th></tr></thead>
+    <thead><tr><th>N°</th><th>Date</th><th>Mlle</th><th>Nom et Prénom</th><th>Acte médicale/Prix</th><th>Montant</th><th>${escape(libelleParticipation)}</th><th>Net à Payer</th></tr></thead>
     <tbody>${documents.map((d, index) => `<tr data-source-id="${escape(d.sourceId)}" title="Facture ${escape(d.number)}"><td class="number">${index + 1}</td><td class="center">${escape(dateLabel(d.date, true))}</td><td class="center">${escape(d.matricule || d.dossier || '—')}</td><td>${escape(d.client)}${d.subCompany ? `<br>(${escape(d.subCompany)})` : ''}</td><td class="acts">${acts(d)}</td><td class="number">${decimal(d.total)}</td><td class="number">${decimal(d.copay)}</td><td class="number">${decimal(d.payable)}</td></tr>`).join('')}
     <tr class="grand-total"><td colspan="5">TOTAL (${escape(invoice.facility.currency)})</td><td class="number">${decimal(invoice.total)}</td><td class="number">${decimal(invoice.copay)}</td><td class="number">${decimal(invoice.payable)}</td></tr></tbody></table>
     <div class="summary"><p class="words">Arrêtée à la somme de : ${escape(billingAmountInWords(invoice.payable, invoice.facility.currency))}</p>
@@ -159,6 +164,9 @@ function mergedContent(documents: BillingDocument[], clientName: string, issuedA
   const net = Math.round(pieces.reduce((s, d) => s + (d.individualNet ?? d.payable), 0) * 100) / 100;
   const paid = Math.round(pieces.reduce((s, d) => s + d.paid, 0) * 100) / 100;
   const reduction = Math.round((gross - net) * 100) / 100;
+  // Plusieurs pièces peuvent mêler ticket modérateur et vraie remise : dans ce
+  // cas l'intitulé historique « Remise/Participation » est conservé.
+  const libelleReduction = libelleReductionCommun(pieces.map(d => d.natureRemise));
   const dates = pieces.map(d => d.date).filter(Boolean).sort();
   const periode = !dates.length ? '—' : dates[0] === dates[dates.length - 1]
     ? dateLabel(dates[0])
@@ -179,7 +187,7 @@ function mergedContent(documents: BillingDocument[], clientName: string, issuedA
     <tbody>${lignes}</tbody></table>
     <div class="summary"><table class="totals" aria-label="Totaux fusionnés"><tbody>
     <tr><th>Total Brut</th><td class="number">${decimal(gross)}</td></tr>
-    <tr><th>Remise/Participation</th><td class="number">${decimal(reduction)}</td></tr>
+    <tr><th>${escape(libelleReduction)}</th><td class="number">${decimal(reduction)}</td></tr>
     <tr class="net"><th>Net à payer</th><td class="number">${decimal(net)}</td></tr>
     <tr><th>Encaissé</th><td class="number">${decimal(paid)}</td></tr></tbody></table>
     <p class="words">Arrêtée à la somme de : ${escape(billingAmountInWords(net, currency))}</p>

@@ -789,12 +789,14 @@ ventes ──N:1──> users (createdBy, paidBy)
 
 | Structure | Relations et rôle |
 |---|---|
-| `companies` | `paymentMode = Crédit` obligatoire; `settlementMode` vaut `monthly_global` ou `per_invoice`. |
+| `companies` | `paymentMode = Crédit` obligatoire; `settlementMode` vaut `monthly_global` ou `per_invoice`; `natureRemise` vaut `ticket_moderateur` (défaut) ou `remise`. |
 | `patients.company` | FK logique vers une société pour un salarié conventionné; `matricule` identifie le salarié fictif. |
 | `invoices` / `ventes` | Référencent le patient, la consultation et, pour le crédit, la société. |
 | `companyBillingAccounts` | Relevé mensuel : `company`, `month`, `invoiceIds`, totaux, solde et statut. |
 | `CompanyBillingPayment` | Règlement d'un relevé global mensuel, avec mode, référence, date et factures concernées. |
 | `ventePayments` | Règlements individuels/partiels des ventes ou factures. |
+
+**Nature de la réduction (brut − net)** : sur une pièce prise en charge, la différence entre le total brut et le net est, par défaut, le **ticket modérateur** (quote-part restant à la charge de l'assuré). Certaines sociétés — ou certains assurés précis — accordent en réalité une **vraie remise** sur le prix : personne ne la doit. Le réglage se fait dans la gestion des sociétés (`companies.natureRemise`, complété par `assuranceSocietes[].natureRemise`) avec une dérogation par assuré (`assurancePersonnes[].natureRemise`). Aucun montant n'est recalculé : seule la nature, donc l'intitulé porté sur les factures, relevés et écrans, change (« Ticket modérateur » ↔ « Remise »).
 
 **Règle de parcours** : tout patient vu par le médecin (comptoir **ou** société) est envoyé à la caisse pour validation du paiement. À la caisse, un client société n'est **jamais encaissé en espèces** : la validation porte la facture en `creditSociete = true` (le montant devient une dette de la société, soldée ensuite dans le module « Facturation sociétés »). Une fois validée par le médecin, la personne quitte la file d'attente du médecin.
 

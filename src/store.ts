@@ -199,6 +199,7 @@ export function resolveSocieteFactureCode(state: AppState, companyName?: string)
         nom: company?.name || name,
         code,
         tauxCouvertureDefaut: company?.tauxCouverture ?? 100,
+        natureRemise: company?.natureRemise,
       };
   return { code, societeUpsert: upsert };
 }
@@ -1617,6 +1618,20 @@ export { todayIsoDate, companySuspensionExpired, companyIsBlocked, companyBlockL
 export type { CompanyOption } from './utils/companyStatus';
 import { subCompaniesOf } from './utils/companyStatus';
 
+/* ====== NATURE DE LA RÉDUCTION (TICKET MODÉRATEUR / VRAIE REMISE) ====== */
+
+// Implémentations dans `utils/natureRemise` (module autonome, testable partout) :
+// la différence brut − net est PAR DÉFAUT le ticket modérateur (quote-part de
+// l'assuré) ; certaines sociétés — ou certains assurés précis — accordent en
+// réalité une VRAIE REMISE. Les montants ne changent pas, seul le libellé suit.
+export {
+  NATURE_REMISE_DEFAUT, NATURES_REMISE, natureRemiseOuDefaut, natureRemiseLabel,
+  natureRemiseLabelCourt, natureRemiseDescription, estRemiseReelle, companyNatureRemise,
+  natureRemiseBadge, libelleLigneReduction, libelleReductionCommun, libelleReductionCommunCourt,
+  invoiceNatureRemise, invoiceReductionLabel,
+} from './utils/natureRemise';
+export type { NatureRemiseOption } from './utils/natureRemise';
+
 /** Sous-sociétés / services déjà enregistrés pour une société (saisie assistée). */
 export function sousSocietesConnues(state: AppState, companyName?: string): string[] {
   const nomSociete = (state.companies || []);
@@ -1662,6 +1677,8 @@ export function upsertCompany(state: AppState, data: Partial<Company> & { name: 
     settlementMode: data.settlementMode || existing?.settlementMode || 'monthly_global',
     type: data.type || companyTypeOf(existing) || 'payeur',
     tauxCouverture: data.tauxCouverture ?? existing?.tauxCouverture,
+    // Réduction (brut − net) : ticket modérateur par défaut, vraie remise si déclaré.
+    natureRemise: data.natureRemise ?? existing?.natureRemise,
     notes: data.notes ?? existing?.notes,
     createdAt: existing?.createdAt || new Date().toISOString(),
   };

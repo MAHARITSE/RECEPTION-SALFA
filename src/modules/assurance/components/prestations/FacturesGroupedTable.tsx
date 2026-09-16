@@ -20,6 +20,7 @@ import {
 import { GroupedFacture, FactureSortField } from '../PrestationsView';
 import { formatDate, formatMoney } from '../../utils/formatters';
 import { Personne, Prestation } from '../../types';
+import { natureRemiseLabelCourt } from '../../../../utils/natureRemise';
 
 interface FacturesGroupedTableProps {
   factures: GroupedFacture[];
@@ -46,6 +47,12 @@ export const FacturesGroupedTable: React.FC<FacturesGroupedTableProps> = ({
   getPersonne,
   getPrestationFinancials,
 }) => {
+  // Réduction (brut − net) : ticket modérateur par défaut ; la colonne ne
+  // s'intitule « Remise » que si toutes les factures affichées sont concernées.
+  const libelleReductionColonne = factures.length > 0 && factures.every(f => f.natureRemise === 'remise')
+    ? 'Remise'
+    : 'Ticket Mod.';
+
   const renderSortIcon = (field: FactureSortField) => {
     if (factureSortField !== field) {
       return <ArrowUpDown className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />;
@@ -145,8 +152,8 @@ export const FacturesGroupedTable: React.FC<FacturesGroupedTableProps> = ({
                 onClick={() => onSort('totalTicketMod')}
                 className={`py-3 px-3 text-right cursor-pointer group hover:bg-surface-hover/80 transition ${factureSortField === 'totalTicketMod' ? 'bg-indigo-50/60 text-indigo-900 font-bold' : ''}`}
               >
-                <div className="flex items-center justify-end">
-                  <span>Ticket Mod.</span>
+                <div className="flex items-center justify-end" title="Nature de la réduction (total brut − net) : ticket modérateur à la charge de l'assuré, ou vraie remise accordée — réglable dans la gestion des sociétés">
+                  <span>{libelleReductionColonne}</span>
                   {renderSortIcon('totalTicketMod')}
                 </div>
               </th>
@@ -283,8 +290,12 @@ export const FacturesGroupedTable: React.FC<FacturesGroupedTableProps> = ({
                         {formatMoney(facture.totalFacture)}
                       </td>
 
-                      {/* Ticket Modérateur */}
-                      <td className="py-3 px-3 text-right font-mono text-amber-700 whitespace-nowrap font-medium">
+                      {/* Ticket modérateur ou vraie remise (selon la société / l'assuré) */}
+                      <td
+                        className={`py-3 px-3 text-right font-mono whitespace-nowrap font-medium ${facture.natureRemise === 'remise' ? 'text-emerald-700' : 'text-amber-700'}`}
+                        title={`${natureRemiseLabelCourt(facture.natureRemise)} : ${formatMoney(facture.totalTicketMod)}`}
+                      >
+                        {facture.natureRemise === 'remise' && <span className="text-[9px] font-bold uppercase mr-1 text-emerald-600">%</span>}
                         {formatMoney(facture.totalTicketMod)}
                       </td>
 
@@ -396,7 +407,7 @@ export const FacturesGroupedTable: React.FC<FacturesGroupedTableProps> = ({
                                     <th className="py-2 px-2.5">Sous-Société</th>
                                     <th className="py-2 px-2.5 text-center">Actes</th>
                                     <th className="py-2 px-2.5 text-right">Montant Brut</th>
-                                    <th className="py-2 px-2.5 text-right">Ticket Mod.</th>
+                                    <th className="py-2 px-2.5 text-right">{natureRemiseLabelCourt(facture.natureRemise)}</th>
                                     <th className="py-2 px-2.5 text-right">Part Assurance</th>
                                     <th className="py-2 px-2.5 text-right text-emerald-700">Total Perçu</th>
                                     <th className="py-2 px-2.5 text-right text-rose-700">Reste</th>

@@ -28,6 +28,28 @@ Chaque société appartient à l'une de ces familles, choisie dans la fiche **So
 
 Le choix est enregistré dans la base commune : `payeur` (Payeur global) ou `assurance` (Paiement partiel) sur `companies`, complété par `modePaiement` dans `assuranceSocietes`. Le taux de couverture reste modifiable à la main dans les deux cas.
 
+## Ticket modérateur ou vraie remise
+
+La différence entre le **total brut** et le **net** d'une pièce prise en charge est, par défaut, le **ticket modérateur** : la quote-part qui reste à la charge de l'assuré. Pour certaines sociétés, cette différence est en réalité une **vraie remise** accordée sur le prix — elle n'est due ni par l'assuré, ni par la société.
+
+Le choix se fait dans la fiche **Sociétés** (bloc *Réduction facturée (Total brut − Net)*) :
+
+| Réglage | Sens |
+|---|---|
+| **Ticket modérateur** (défaut) | Quote-part / participation restant à la charge de l'assuré. |
+| **Remise** | Réduction définitive du montant facturé, due par personne. |
+
+Comme certaines personnes seulement sont concernées au sein d'une même société, chaque **assuré** peut porter une **dérogation** dans sa fiche (onglet *Assurés*, champ *Réduction facturée*) : *Comme la société*, *Ticket modérateur* ou *Remise*. La carte de la société rappelle le nombre d'assurés en dérogation.
+
+Résolution, dans l'ordre : dérogation de l'assuré → réglage de la société → ticket modérateur.
+
+**Aucun montant n'est modifié** : le brut, le net et la différence restent ceux de la pièce d'origine. Seul l'intitulé change, partout où le contexte est connu :
+
+- factures imprimées (A5 de la caisse, facture individuelle / 2 par page, facture fusionnée, relevé mensuel) ;
+- écrans du suivi (détail d'une facture, tableau des factures groupées, saisie d'une prescription, facturation « par facture »).
+
+Enregistrement : `companies.natureRemise` (base commune) + `assuranceSocietes[].natureRemise`, dérogation dans `assurancePersonnes[].natureRemise`.
+
 ## Exclusions d'une société
 
 Une société peut **exclure** ce qu'elle ne prend pas en charge. Le bloc *Exclusions* de la fiche société (et le bouton **Exclusions** de chaque carte) permet d'ajouter :

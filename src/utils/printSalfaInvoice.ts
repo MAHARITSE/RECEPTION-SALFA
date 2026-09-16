@@ -1,6 +1,7 @@
 import { printDocument } from './printDocument';
 import { INVOICE_HEADER_STYLE, invoiceHeaderMarkup } from './invoiceHeader';
-import type { Invoice, Patient, Company, TicketSettings } from '../types';
+import type { Invoice, Patient, Company, TicketSettings, NatureRemise } from '../types';
+import { companyNatureRemise, natureRemiseLabel, natureRemiseOuDefaut } from './natureRemise';
 
 /** Échappe les caractères HTML réservés */
 const escapeHtml = (value: unknown) => {
@@ -149,6 +150,8 @@ export function salfaIndividualInvoiceHtml(
   invoice: Invoice,
   patient?: Patient,
   company?: Company,
+  /** Nature de la réduction résolue par l'appelant (dérogation de l'assuré comprise). */
+  natureRemise?: NatureRemise,
 ): string {
   const dateObj = new Date(invoice.paidAt || invoice.createdAt);
   const dateConsultation = dateObj.toLocaleDateString('fr-FR');
@@ -170,6 +173,11 @@ export function salfaIndividualInvoiceHtml(
   const totalBrut = invoice.totalAmount;
   const remise = (invoice as any).companyCoverage ? (invoice.totalAmount - invoice.patientCharge) : (invoice.totalAmount - invoice.patientCharge);
   const netAPayer = invoice.patientCharge;
+  // La différence brut − net est PAR DÉFAUT le ticket modérateur (quote-part de
+  // l'assuré) ; pour les sociétés / assurés réglés en « remise », c'est une vraie
+  // remise accordée sur le prix. Le montant reste le même, seul l'intitulé suit.
+  const natureReduction = natureRemiseOuDefaut(natureRemise ?? companyNatureRemise(company));
+  const libelleReduction = natureRemiseLabel(natureReduction);
 
   const montantLettres = numberToFrenchWords(netAPayer);
 
@@ -406,7 +414,7 @@ export function salfaIndividualInvoiceHtml(
         <td class="val">${formatArDec(totalBrut)}</td>
       </tr>
       <tr>
-        <td class="lbl">Remise/Participat</td>
+        <td class="lbl">${escapeHtml(libelleReduction)}</td>
         <td class="val">${formatArDec(remise)}</td>
       </tr>
       <tr>
@@ -436,8 +444,9 @@ export function printSalfaIndividualInvoice(
   invoice: Invoice,
   patient?: Patient,
   company?: Company,
+  natureRemise?: NatureRemise,
 ): void {
-  printDocument(salfaIndividualInvoiceHtml(settings, invoice, patient, company), 'Facture individuelle SALFA');
+  printDocument(salfaIndividualInvoiceHtml(settings, invoice, patient, company, natureRemise), 'Facture individuelle SALFA');
 }
 
 /**
@@ -455,6 +464,9 @@ export function salfaCompanyMonthlyInvoiceHtml(
   patientsList: Patient[],
 ) {
   const dateToday = new Date().toLocaleDateString('fr-FR');
+  // Colonne « Participat° » = ticket modérateur, sauf société réglée en remise.
+  const estRemise = companyNatureRemise(company) === 'remise';
+  const libelleParticipation = estRemise ? 'Remise' : 'Participat°';
 
   let totalMontantGlobal = 0;
   let totalParticipatGlobal = 0;
@@ -688,7 +700,7 @@ export function salfaCompanyMonthlyInvoiceHtml(
         <th>Nom et Prénom</th>
         <th style="width: 140px;">Acte médicale/Prix</th>
         <th style="width: 90px;">Montant</th>
-        <th style="width: 80px;">Participat°</th>
+        <th style="width: 80px;">${escapeHtml(libelleParticipation)}</th>
         <th style="width: 90px;">Net à Payer</th>
       </tr>
     </thead>

@@ -1,3 +1,8 @@
+import type { NatureRemise } from '../../types';
+
+/** Nature de la réduction (brut − net) : ticket modérateur (défaut) ou vraie remise. */
+export type { NatureRemise };
+
 /**
  * Grande famille d'organisme payeur :
  *  - 'global'  : PAYEUR GLOBAL — règle la totalité de la facture en une seule
@@ -60,6 +65,13 @@ export interface Societe {
   email?: string;
   adresse?: string;
   tauxCouvertureDefaut: number; // e.g. 80%
+  /**
+   * Nature de la réduction (total brut − net) pour cette société :
+   *  - 'ticket_moderateur' (DÉFAUT) : quote-part restant à la charge de l'assuré ;
+   *  - 'remise' : vraie remise accordée sur le prix, due par personne.
+   * Un assuré peut déroger à ce réglage (voir `Personne.natureRemise`).
+   */
+  natureRemise?: NatureRemise;
   sousSocietes?: string[];
   /** Payeur global ou paiement partiel (assurance). */
   modePaiement?: SocieteModePaiement;
@@ -88,6 +100,13 @@ export interface Personne {
   telephone?: string;
   email?: string;
   tauxCouverture?: number;
+  /**
+   * DÉROGATION individuelle : nature de la réduction pour CET assuré.
+   * Vide = il suit le réglage de sa société (`Societe.natureRemise`).
+   * Certaines personnes d'une société en ticket modérateur bénéficient d'une
+   * vraie remise (et inversement).
+   */
+  natureRemise?: NatureRemise;
   statut?: 'Actif' | 'Inactif' | string;
 }
 

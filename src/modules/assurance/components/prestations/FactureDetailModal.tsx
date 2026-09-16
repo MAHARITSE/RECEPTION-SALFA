@@ -17,6 +17,7 @@ import {
 import { GroupedFacture } from '../PrestationsView';
 import { formatDate, formatMoney } from '../../utils/formatters';
 import { Personne, Societe, Prestation, LignePrestation, ligneEstMedicament, LIBELLE_NATURE_MEDICAMENT } from '../../types';
+import { natureRemiseLabel, natureRemiseLabelCourt } from '../../../../utils/natureRemise';
 
 interface FactureDetailModalProps {
   facture: GroupedFacture | null;
@@ -147,8 +148,17 @@ export const FactureDetailModal: React.FC<FactureDetailModalProps> = ({
             <div className="text-base font-bold font-mono mt-0.5">{formatMoney(facture.totalFacture)}</div>
           </div>
           <div>
-            <div className="text-[10px] uppercase font-bold text-amber-400 tracking-wider">Ticket Modérateur</div>
-            <div className="text-base font-bold font-mono text-amber-300 mt-0.5">{formatMoney(facture.totalTicketMod)}</div>
+            {/* Réduction (brut − net) : ticket modérateur de l'assuré par défaut,
+                vraie remise si la société / cet assuré est réglé ainsi. */}
+            <div
+              className={`text-[10px] uppercase font-bold tracking-wider ${facture.natureRemise === 'remise' ? 'text-emerald-400' : 'text-amber-400'}`}
+              title={facture.natureRemise === 'remise'
+                ? 'Vraie remise accordée sur le prix : elle n’est due ni par l’assuré, ni par la société'
+                : 'Ticket modérateur : quote-part restant à la charge de l’assuré'}
+            >
+              {natureRemiseLabel(facture.natureRemise)}
+            </div>
+            <div className={`text-base font-bold font-mono mt-0.5 ${facture.natureRemise === 'remise' ? 'text-emerald-300' : 'text-amber-300'}`}>{formatMoney(facture.totalTicketMod)}</div>
           </div>
           <div>
             <div className="text-[10px] uppercase font-bold text-sky-400 tracking-wider">Part Assurance Réclamée</div>
@@ -254,7 +264,7 @@ export const FactureDetailModal: React.FC<FactureDetailModalProps> = ({
                             <th className="py-1 px-2">Description de l'acte</th>
                             <th className="py-1 px-2">Nature</th>
                             <th className="py-1 px-2 text-right">Montant Brut</th>
-                            <th className="py-1 px-2 text-right">Ticket Mod.</th>
+                            <th className="py-1 px-2 text-right">{natureRemiseLabelCourt(facture.natureRemise)}</th>
                             <th className="py-1 px-2 text-right">Part Assurance</th>
                             <th className="py-1 px-2 text-right text-emerald-700">Payé</th>
                             <th className="py-1 px-2 text-right text-rose-600">Rejeté</th>

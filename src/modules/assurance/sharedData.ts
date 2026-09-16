@@ -2,6 +2,7 @@ import type { AppState } from '../../store';
 import type { Company, Patient, Invoice } from '../../types';
 import type { Societe, Personne, Famille, Prestation, Paiement, LignePaiement, LignePrestation } from './types';
 import { societeDiminutive } from '../../utils/factureNumber';
+import { natureRemiseOuDefaut } from '../../utils/natureRemise';
 import { reconcilePrestationsWithPaiements } from './utils/reconcile';
 
 const key = (value?: string) => (value || '').trim().normalize('NFKC').toUpperCase();
@@ -20,6 +21,9 @@ export function sharedSocietes(state: AppState): Societe[] {
     // il sera enregistré dans la société dès la première facture émise à la caisse.
     return { ...extra, sharedCompany: true, id: company.id, nom: company.name, code: extra?.code || societeDiminutive(company.name),
       tauxCouvertureDefaut: company.tauxCouverture ?? extra?.tauxCouvertureDefaut ?? 100,
+      // Réduction (brut − net) : ticket modérateur par défaut, vraie remise si la
+      // société (ou la fiche assurance) le déclare.
+      natureRemise: extra?.natureRemise ?? company.natureRemise,
       // « Payeur global » (règlement en une fois) ou « Paiement partiel » (assurance, par assuré / par acte).
       modePaiement: extra?.modePaiement ?? (company.type === 'assurance' ? 'partiel' : 'global'),
       exclusions: extra?.exclusions,
@@ -332,10 +336,13 @@ function saveSocietes(state: AppState, rows: Societe[]): AppState {
       // Rattachement au type commun : 'payeur' = payeur global, 'assurance' = paiement partiel.
       type: s.modePaiement ? (s.modePaiement === 'global' ? 'payeur' : 'assurance') : (existing?.type || 'assurance'),
       tauxCouverture: s.tauxCouvertureDefaut, createdAt: existing?.createdAt || new Date().toISOString(),
+      // La nature de la réduction (ticket modérateur / vraie remise) est partagée
+      // avec la base commune : la caisse et la facturation l'impriment aussi.
+      natureRemise: natureRemiseOuDefaut(s.natureRemise),
       blacklisted: s.blacklisted, blacklistReason: s.blacklistReason, blacklistDate: s.blacklistDate,
       blacklistUntil: s.blacklistUntil };
   });
-  return { ...state, companies, assuranceSocietes: rows.map(s => ({ ...s, sharedCompany: true })),
+  return { ...state, companies, assuranceSocietes: rows.map(s => ({ ...s, sharedCompany: true, natureRemise: natureRemiseOuDefaut(s.natureRemise) })),
     patients: state.patients.map(p => renames.has(key(p.company)) ? { ...p, company: renames.get(key(p.company)) } : p),
     ventes: state.ventes.map(v => renames.has(key(v.company)) ? { ...v, company: renames.get(key(v.company)) } : v),
     companyBillingAccounts: state.companyBillingAccounts.map(a => renames.has(key(a.company)) ? { ...a, company: renames.get(key(a.company))! } : a) };
@@ -360,7 +367,9 @@ function savePersonnes(state: AppState, rows: Personne[]): AppState {
       throw new Error(`Patient « ${row.nomPrenom} » absent de Réception. Créez son dossier dans Réception avant de l'affilier ou d'importer sa prestation.`);
     }
   }
-  return { ...state, patients, assurancePersonnes: rows.filter(r => !r.sharedPatient || r.email || r.familleCode || r.tauxCouverture !== undefined || r.statut).map(({ dossier: _, ...r }) => r) };
+  // La dérogation individuelle de nature de réduction (ticket modérateur / vraie
+  // remise) fait partie des compléments assurance conservés pour un patient partagé.
+  return { ...state, patients, assurancePersonnes: rows.filter(r => !r.sharedPatient || r.email || r.familleCode || r.tauxCouverture !== undefined || r.natureRemise !== undefined || r.statut).map(({ dossier: _, ...r }) => r) };
 }
 
 function saveFamilles(state: AppState, rows: Famille[]): AppState {
