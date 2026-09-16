@@ -74,7 +74,9 @@ export default function ModuleMagasinier({ state, setState }: Props) {
   // === FAMILLES ===
   const [showFamModal, setShowFamModal] = useState(false);
   const [editingFamId, setEditingFamId] = useState<string | null>(null);
-  const [famForm, setFamForm] = useState({ code: '', name: '', color: '#0D47A1', manageStock: true });
+  // Seuls les MÉDICAMENTS sont gérés en stock : une nouvelle famille (acte,
+  // service, consultation, autres…) ne l'est pas par défaut.
+  const [famForm, setFamForm] = useState({ code: '', name: '', color: '#0D47A1', manageStock: false });
 
   // === FOURNISSEURS ===
   const [searchSup, setSearchSup] = useState('');
@@ -271,13 +273,13 @@ export default function ModuleMagasinier({ state, setState }: Props) {
   // ============ FAMILLES ============
   const openNewFamilleModal = () => {
     setEditingFamId(null);
-    setFamForm({ code: '', name: '', color: '#0D47A1', manageStock: true });
+    setFamForm({ code: '', name: '', color: '#0D47A1', manageStock: false });
     setShowFamModal(true);
   };
 
   const openEditFamilleModal = (f: Famille) => {
     setEditingFamId(f.id);
-    setFamForm({ code: f.code, name: f.name, color: f.color, manageStock: f.manageStock !== false });
+    setFamForm({ code: f.code, name: f.name, color: f.color, manageStock: managesStockForFamily(f.code) });
     setShowFamModal(true);
   };
 
@@ -1426,7 +1428,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {familles.map(f => {
                   const count = state.articles.filter(a => normalizeFamilyCode(a.family) === normalizeFamilyCode(f.code)).length;
-                  const managesStock = f.manageStock !== false;
+                  const managesStock = managesStockForFamily(f.code);
                   return (
                     <div key={f.id} className="bg-surface border rounded-xl shadow-sm overflow-hidden p-4 space-y-3">
                       <div className="flex items-center justify-between">
@@ -1482,6 +1484,11 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                       </div>
                       <div>
                         <label className="font-bold block mb-1.5">Gestion du stock</label>
+                        <p className="text-[10px] text-ink-muted mb-1.5 leading-snug">
+                          Seule la famille <strong>Médicaments</strong> est gérée en stock : les actes et services
+                          (consultation, laboratoire, échographie, hospitalisation, dentaire, autres) se vendent
+                          sans stock ni alerte.
+                        </p>
                         <div className="grid grid-cols-2 gap-2">
                           <button
                             type="button"

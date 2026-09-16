@@ -65,12 +65,15 @@ const MAX_OCTETS = 600000;
 
 const lignes = [
   DEBUT,
-  '-- Données de démonstration régénérées : fenêtre 16/06/2026 → 15/09/2026',
+  '-- Données de démonstration régénérées : fenêtre 17/06/2026 → 16/09/2026',
   `-- Générées le ${new Date().toISOString().slice(0, 10)} par scripts/regen_3mois.cjs + scripts/seed_sql_3mois.cjs`,
   '-- ATTENTION : cette section SUPPRIME les lignes existantes des tables',
   '-- transactionnelles puis insère le nouveau jeu de données (demande utilisateur :',
-  '-- « supprime toutes les données et régénère 3 mois »). Les tables de référence',
-  '-- (utilisateurs, articles, sociétés, familles…) ne sont PAS touchées.',
+  '-- « supprime toutes les données et régénère 3 mois »).',
+  '-- Les autres tables de référence (utilisateurs, sociétés, fournisseurs…) ne sont',
+  '-- PAS touchées ; `familles` et `articles` sont mises à jour par UPSERT (sans',
+  '-- suppression) : familles Consultation et Autres ajoutées, seuls les Médicaments',
+  '-- gérés en stock, chaque article rattaché à une famille.',
   '',
   'SET FOREIGN_KEY_CHECKS = 0;',
   '',
@@ -84,9 +87,10 @@ lignes.push('');
 
 // 2) INSERT par table (chunks < 600 Ko), format identique à la sauvegarde
 let totalLignes = 0;
-for (const [key, table] of TABLES) {
+const inserer = (key, table, commentaire) => {
   const rows = Array.isArray(DATA[key]) ? DATA[key] : [];
   totalLignes += rows.length;
+  if (commentaire) lignes.push(commentaire);
   lignes.push(`-- \`${table}\` : ${rows.length} ligne(s)`);
   let chunk = [];
   let poids = 0;
@@ -105,7 +109,16 @@ for (const [key, table] of TABLES) {
   });
   flush();
   lignes.push('');
-}
+};
+for (const [key, table] of TABLES) inserer(key, table);
+
+// 2bis) Tables de référence concernées par l'évolution « familles » : UPSERT seul
+// (aucune suppression) pour qu'une base WAMP existante reçoive le nouveau
+// catalogue de familles et la famille / le stock de chaque article.
+inserer('familles', 'familles',
+  '-- Référence : catalogue des familles (Consultation + Autres ; seuls les Médicaments sont gérés en stock)');
+inserer('articles', 'articles',
+  '-- Référence : articles (famille obligatoire, stock recalculé pour les médicaments)');
 
 // 3) Compteurs
 lignes.push('-- Compteurs (factures, clôtures pharmacie)');

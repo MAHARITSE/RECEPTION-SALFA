@@ -43,6 +43,32 @@ const INVOICE_HEADER_CSS = `
 `;
 
 /**
+ * Identité de l'établissement imprimée en tête des factures SALFA lorsque
+ * l'en-tête personnalisé (Administration → En-tête Facture) n'est pas activé.
+ *
+ * Les factures A5 (individuelle) et A4 (société) puisent dans ces MÊMES
+ * mentions : NIF, STAT et e-mail strictement identiques d'une pièce à l'autre,
+ * afin qu'aucune différence d'en-tête n'apparaisse entre les documents ni entre
+ * la base locale et la version déployée.
+ */
+const ETABLISSEMENT_SALFA = {
+  eglise: 'FIANGONANA LOTERANA MALAGASY',
+  egliseTraduction: '(EGLISE LUTHERIENNE MALGACHE - MALAGASY LUTHERAN CHURCH)',
+  synode: 'SYNODAM-PARITANY FIHERENANA TOLIARA',
+  salfa: "SAMPAN'ASA LOTERANA MOMBA NY FAHASALAMANA",
+  departement: 'DEPARTEMENT DE SANTE - HEALTH DEPARTMENT',
+  dispensaire: 'DISPENSAIRE TANAMBAO - TOBY BETELA TOLIARA',
+  hopital: 'HOPITALY LOTERANA TOLIARY TANAMBAO - BP : 99 Tél : 038 34 092 61-034 50 670 90',
+  nif: '5000767080',
+  stat: '851 125 120 120 001 36',
+  email: 'salfa.tulear@gmail.com',
+} as const;
+
+/** Ligne NIF / STAT / e-mail commune aux factures A5 et A4. */
+const mentionsLegalesSalfa = () => `      <div class="sub">NIF: ${ETABLISSEMENT_SALFA.nif} &nbsp; STAT: ${ETABLISSEMENT_SALFA.stat}</div>
+      <div class="sub">E-mail: ${ETABLISSEMENT_SALFA.email}</div>`;
+
+/**
  * Retourne l'en-tête de facture personnalisé s'il est activé et non vide,
  * sinon `null` (le document utilisera alors son en-tête par défaut intégré).
  */
@@ -192,13 +218,12 @@ export function salfaIndividualInvoiceHtml(
       </svg>
     </div>
     <div class="header-text">
-      <div class="title-lg">FIANGONANA LOTERANA MALAGASY</div>
-      <div class="sub">(EGLISE LUTHERIENNE MALGACHE - MALAGASY LUTHERAN CHURCH)</div>
-      <div class="title-lg" style="margin-top:3px;">SAMPAN'ASA LOTERANA MOMBA NY FAHASALAMANA</div>
-      <div class="sub">DEPARTEMENT DE SANTE - HEALTH DEPARTMENT</div>
-      <div class="title-lg" style="margin-top:3px;">DISPENSAIRE TANAMBAO - TOBY BETELA TOLIARA</div>
-      <div class="sub">NIF: 5000767080 &nbsp; STAT: 851 125 120 120 001 36</div>
-      <div class="sub">E-mail: salfa.tulear@gmail.com</div>
+      <div class="title-lg">${ETABLISSEMENT_SALFA.eglise}</div>
+      <div class="sub">${ETABLISSEMENT_SALFA.egliseTraduction}</div>
+      <div class="title-lg" style="margin-top:3px;">${ETABLISSEMENT_SALFA.salfa}</div>
+      <div class="sub">${ETABLISSEMENT_SALFA.departement}</div>
+      <div class="title-lg" style="margin-top:3px;">${ETABLISSEMENT_SALFA.dispensaire}</div>
+${mentionsLegalesSalfa()}
     </div>
     ${settings.secondLogoUrl ? `<div class="logo-container"><img src="${escapeHtml(settings.secondLogoUrl)}" alt="Logo Société" /></div>` : `<div class="logo-container">
       <svg width="50" height="50" viewBox="0 0 100 100">
@@ -217,9 +242,9 @@ export function salfaIndividualInvoiceHtml(
     <tr>
       <td style="text-align: center;">${idx + 1}</td>
       <td style="text-align: left; font-weight: 500;">${(item.description || '').toUpperCase()}</td>
-      <td style="text-align: right;">${formatArDec(qty)}</td>
-      <td style="text-align: right;">${formatArDec(unitPrice)}</td>
-      <td style="text-align: right;">${formatArDec(item.amount)}</td>
+      <td class="num" style="text-align: right;">${formatArDec(qty)}</td>
+      <td class="num" style="text-align: right;">${formatArDec(unitPrice)}</td>
+      <td class="num" style="text-align: right;">${formatArDec(item.amount)}</td>
     </tr>
   `;
   }).join('');
@@ -320,10 +345,20 @@ export function salfaIndividualInvoiceHtml(
       border-collapse: collapse;
       margin-top: 10px;
       font-size: 10px;
+      /* Largeurs de colonnes respectées au pixel : le libellé prend le reste. */
+      table-layout: fixed;
     }
     table.invoice-table th, table.invoice-table td {
       border: 1px solid #000;
       padding: 4px 6px;
+      overflow-wrap: anywhere;
+    }
+    /* Colonnes numériques de MÊME largeur : Qté = Prix = Montant = la case des
+       totaux (Total Brut / réduction / Net à payer). Les « cages » de chiffres
+       du tableau et du récapitulatif ont donc exactement la même largeur et
+       s'alignent verticalement sur la page A5. */
+    table.invoice-table th.num, table.invoice-table td.num {
+      width: 90px;
     }
     table.invoice-table th {
       font-weight: bold;
@@ -339,17 +374,22 @@ export function salfaIndividualInvoiceHtml(
       border-collapse: collapse;
       width: 220px;
       font-size: 10px;
+      table-layout: fixed;
     }
     table.summary-table td {
       border: 1px solid #000;
       padding: 4px 6px;
+      overflow-wrap: anywhere;
     }
     table.summary-table td.lbl {
+      width: 130px;
       font-weight: bold;
       text-align: right;
       background-color: #f8f8f8;
     }
+    /* 90 px : la même largeur que les colonnes Qté / Prix / Montant du tableau. */
     table.summary-table td.val {
+      width: 90px;
       text-align: right;
       font-weight: bold;
     }
@@ -397,9 +437,9 @@ export function salfaIndividualInvoiceHtml(
       <tr>
         <th style="width: 30px;">N</th>
         <th>Libellé Article</th>
-        <th style="width: 50px;">Qté</th>
-        <th style="width: 80px;">Prix</th>
-        <th style="width: 90px;">Montant</th>
+        <th class="num">Qté</th>
+        <th class="num">Prix</th>
+        <th class="num">Montant</th>
       </tr>
     </thead>
     <tbody>
@@ -539,13 +579,13 @@ export function salfaCompanyMonthlyInvoiceHtml(
       </svg>
     </div>
     <div class="header-text">
-      <div class="title-lg">FIANGONANA LOTERANA MALAGASY</div>
-      <div class="sub">(EGLISE LUTHERIENNE MALGACHE - MALAGASY LUTHERAN CHURCH)</div>
-      <div class="sub" style="font-weight:bold;">SYNODAM-PARITANY FIHERENANA TOLIARA</div>
-      <div class="title-lg" style="margin-top:3px;">SAMPAN'ASA LOTERANA MOMBA NY FAHASALAMANA (SALFA)</div>
-      <div class="sub">DEPARTEMENT DE SANTE - HEALTH DEPARTMENT</div>
-      <div class="title-lg" style="margin-top:3px;">HOPITALY LOTERANA TOLIARY TANAMBAO - BP : 99 Tél : 038 34 092 61-034 50 670 90</div>
-      <div class="sub">NIF: 5000767080 &nbsp; STAT: 851 125 120 120 001FIANGONANA LOTERANA MALAGASY</div>
+      <div class="title-lg">${ETABLISSEMENT_SALFA.eglise}</div>
+      <div class="sub">${ETABLISSEMENT_SALFA.egliseTraduction}</div>
+      <div class="sub" style="font-weight:bold;">${ETABLISSEMENT_SALFA.synode}</div>
+      <div class="title-lg" style="margin-top:3px;">${ETABLISSEMENT_SALFA.salfa} (SALFA)</div>
+      <div class="sub">${ETABLISSEMENT_SALFA.departement}</div>
+      <div class="title-lg" style="margin-top:3px;">${ETABLISSEMENT_SALFA.hopital}</div>
+${mentionsLegalesSalfa()}
     </div>
     ${settings.secondLogoUrl ? `<div class="logo-container"><img src="${escapeHtml(settings.secondLogoUrl)}" alt="Logo Société" /></div>` : `<div class="logo-container">
       <svg width="60" height="60" viewBox="0 0 100 100">
@@ -700,7 +740,7 @@ export function salfaCompanyMonthlyInvoiceHtml(
         <th>Nom et Prénom</th>
         <th style="width: 140px;">Acte médicale/Prix</th>
         <th style="width: 90px;">Montant</th>
-        <th style="width: 80px;">${escapeHtml(libelleParticipation)}</th>
+        <th style="width: 90px;">${escapeHtml(libelleParticipation)}</th>
         <th style="width: 90px;">Net à Payer</th>
       </tr>
     </thead>

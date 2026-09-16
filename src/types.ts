@@ -822,6 +822,13 @@ export interface VenteLine {
   discount: number;
   /** Catégorie (pour les états : pharmacie / labo / hospit…). */
   category?: 'consultation' | 'lab' | 'pharmacy' | 'surgery' | 'hospitalization' | 'echo' | 'bloc' | 'externe';
+  /**
+   * FAMILLE de l'article vendu (code du catalogue des familles : MEDIC, CONSULT,
+   * LABO, ECHO, HOSP, DENT, AUTRES…). Tout article vendu appartient à une
+   * famille : elle est reprise de l'article du catalogue, à défaut déduite de la
+   * catégorie, à défaut « AUTRES » (`familleLigneVente`).
+   */
+  family?: string;
   /** 📅 Date d'acte / de sortie — conservée pour l'historique. */
   dateSort?: string;
 }
@@ -838,6 +845,12 @@ export interface Vente {
   numeroFacture: string;
   /** Nature de la vente. */
   type: VenteType;
+  /**
+   * FAMILLE de la vente : famille commune de ses lignes, sinon la famille
+   * dominante en montant, sinon « AUTRES » pour une vente vraiment mixte
+   * (`familleVente`). Toute vente est donc rattachée à une famille.
+   */
+  family?: string;
   /** Type de client (comptoir / societe / externe) — détermine la grille de prix. */
   clientType: ClientType;
   /** Nom du client (renseigné pour externes ou société). */
