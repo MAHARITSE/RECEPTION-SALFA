@@ -50,6 +50,30 @@ Résolution, dans l'ordre : dérogation de l'assuré → réglage de la sociét�
 
 Enregistrement : `companies.natureRemise` (base commune) + `assuranceSocietes[].natureRemise`, dérogation dans `assurancePersonnes[].natureRemise`.
 
+### Encaissement du ticket modérateur à la caisse
+
+La nature choisie **commande l'encaissement** au moment du paiement d'un client société :
+
+| Nature | À la caisse |
+|---|---|
+| **Ticket modérateur** | La quote-part de l'assuré est **encaissée en espèces** et un ticket lui est remis ; la société n'est créditée que du **net**. |
+| **Remise** | Rien à encaisser : le crédit société reste **intégral**. |
+
+La quote-part est calculée avec la **même répartition que la facturation** (`repartirPrestation`) : taux de couverture de la société, puis exclusions d'assuré et de famille d'actes (la part exclue reste due par le patient). Elle est nulle — donc rien à encaisser — si la prise en charge est de 100 %.
+
+Déroulé pour le caissier :
+
+1. la file d'attente affiche un badge **💰 Ticket mod.** avec le montant à encaisser ;
+2. la fenêtre de paiement détaille *Total prestations* / *Montant à porter en crédit société* / *À encaisser*, avec le champ **Espèces reçues** (pré-rempli) et la **monnaie à rendre** ; la validation est refusée tant que la somme n'est pas saisie ;
+3. deux tickets sortent : **PRISE EN CHARGE — CRÉDIT SOCIÉTÉ** (net, rappel de la quote-part réglée en espèces) et **REÇU — TICKET MODÉRATEUR** (brut, crédit société, total payé en espèces).
+
+Écritures produites :
+
+- les factures créditées à la société portent le net dans `patientCharge` et `assuranceSuivi.montantARembourser` → la facturation société ne réclame que ce net, la quote-part apparaissant comme participation ;
+- une facture d'espèces distincte (`clientType = 'comptoir'`, `creditSociete = false`, `copayTicketModerateur`) porte la quote-part : elle seule entre dans les encaissements et la clôture Z du caissier, et elle n'est jamais réclamée à la société ni listée comme pièce à facturer.
+
+Calculs : `src/utils/copayCaisse.ts` (répartition + métadonnées), intégration dans `src/components/ModuleCaisse.tsx`, tickets dans `src/utils/printTicket.ts`. Tests : `tests/copay-caisse.spec.ts`, `tests/copay-facturation.spec.ts`.
+
 ## Exclusions d'une société
 
 Une société peut **exclure** ce qu'elle ne prend pas en charge. Le bloc *Exclusions* de la fiche société (et le bouton **Exclusions** de chaque carte) permet d'ajouter :

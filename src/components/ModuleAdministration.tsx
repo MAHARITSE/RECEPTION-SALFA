@@ -371,7 +371,10 @@ export default function ModuleAdministration({ state, setState }: Props) {
 
   // Stats calculation
   const todayInvoices = state.invoices.filter(i => i.status === 'paid' && new Date(i.paidAt || '').toDateString() === new Date().toDateString());
-  const totalRevenue = todayInvoices.reduce((s, i) => s + i.patientCharge, 0);
+  // Recettes = espèces réellement encaissées : les factures validées en CRÉDIT
+  // SOCIÉTÉ ne rapportent rien à la caisse (seul leur ticket modérateur éventuel,
+  // porté par une facture d'espèces distincte, est encaissé).
+  const totalRevenue = todayInvoices.reduce((s, i) => s + (i.creditSociete ? 0 : i.patientCharge), 0);
 
   const lowStockArticles = state.articles.filter((a) => {
     if (!familyManagesStock(a.family, state.familles)) return false; // famille non gérée en stock

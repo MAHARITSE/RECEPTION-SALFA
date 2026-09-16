@@ -185,13 +185,14 @@ Toutes les entités sont stockées dans des tableaux typés TypeScript.
 | `clientType` | `ClientType` | Type client |
 | `items` | `InvoiceItem[]` | Lignes de facture |
 | `totalAmount` | `number` | Montant total |
-| `patientCharge` | `number` | À charge patient |
+| `patientCharge` | `number` | À charge patient. Sur une facture de crédit société portant un ticket modérateur, c'est le **net crédité à la société** (le brut reste dans `totalAmount`, la quote-part ayant été encaissée en espèces sur sa propre facture). |
 | `status` | `'pending' \| 'paid'` | Statut |
 | `paidAt` | `string?` | Date paiement |
 | `paidBy` | `string?` | Payé par (userId) |
 | `createdAt` | `string (ISO)` | Date création |
 | `isExternal` | `boolean` | Vente externe ? |
-| `creditSociete` | `boolean?` | Paiement validé par la caisse en CRÉDIT SOCIÉTÉ (aucune espèce encaissée — la somme est portée au compte de la société). Ces factures sont exclues des encaissements et clôtures de caisse. |
+| `creditSociete` | `boolean?` | Paiement validé par la caisse en CRÉDIT SOCIÉTÉ (la somme est portée au compte de la société). Ces factures sont exclues des encaissements et clôtures de caisse. Le **ticket modérateur** éventuel est, lui, encaissé en espèces sur une facture distincte (`copayTicketModerateur`). |
+| `copayTicketModerateur` | `CopayTicketModerateur?` | Quote-part de l'assuré : `brut`, `partSociete`, `montant` (espèces), `natureRemise`, `taux`, `montantExclu`, société concernée et factures sources. Porté par la facture de crédit société **et** par la facture d'espèces du ticket modérateur (`clientType = 'comptoir'`, `creditSociete = false`) — cette dernière entre dans les encaissements et la clôture Z, mais n'est jamais réclamée à la société. |
 | `closingId` | `string?` | FK → cashClosings.id |
 
 ---
@@ -798,6 +799,8 @@ ventes ──N:1──> users (createdBy, paidBy)
 
 **Nature de la réduction (brut − net)** : sur une pièce prise en charge, la différence entre le total brut et le net est, par défaut, le **ticket modérateur** (quote-part restant à la charge de l'assuré). Certaines sociétés — ou certains assurés précis — accordent en réalité une **vraie remise** sur le prix : personne ne la doit. Le réglage se fait dans la gestion des sociétés (`companies.natureRemise`, complété par `assuranceSocietes[].natureRemise`) avec une dérogation par assuré (`assurancePersonnes[].natureRemise`). Aucun montant n'est recalculé : seule la nature, donc l'intitulé porté sur les factures, relevés et écrans, change (« Ticket modérateur » ↔ « Remise »).
 
-**Règle de parcours** : tout patient vu par le médecin (comptoir **ou** société) est envoyé à la caisse pour validation du paiement. À la caisse, un client société n'est **jamais encaissé en espèces** : la validation porte la facture en `creditSociete = true` (le montant devient une dette de la société, soldée ensuite dans le module « Facturation sociétés »). Une fois validée par le médecin, la personne quitte la file d'attente du médecin.
+**Règle de parcours** : tout patient vu par le médecin (comptoir **ou** société) est envoyé à la caisse pour validation du paiement. À la caisse, la part prise en charge d'un client société n'est **jamais encaissée en espèces** : la validation porte la facture en `creditSociete = true` (le **net** devient une dette de la société, soldée ensuite dans le module « Facturation sociétés »). Une fois validée par le médecin, la personne quitte la file d'attente du médecin.
+
+**Ticket modérateur à la caisse** : quand la réduction de la société est un **ticket modérateur** (et non une vraie remise), la quote-part de l'assuré — brut − part prise en charge, d'après le taux de couverture et les exclusions de la société — est **encaissée en espèces au moment du paiement** et un **ticket** est remis au patient. La caisse affiche le montant à encaisser dans la file d'attente et dans la fenêtre de paiement (champ *Espèces reçues*, monnaie à rendre), bloque la validation tant que la somme n'est pas saisie, puis produit deux pièces : la prise en charge **crédit société** (net) et le **reçu — ticket modérateur** (espèces). La facture d'espèces suit le circuit comptoir : elle entre dans les encaissements et la clôture Z du caissier, sans jamais être réclamée à la société. Avec une **remise** (ou une prise en charge à 100 %), rien n'est encaissé : le crédit société reste intégral.
 
 Les tableaux de l'interface doivent appliquer recherche, filtres de date et pagination/limitation avant d'afficher ce volume de démonstration.

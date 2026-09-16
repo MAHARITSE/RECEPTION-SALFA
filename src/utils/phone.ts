@@ -46,3 +46,32 @@ export function formatPhoneDigits(digits: string): string {
 export function formatPhoneValue(raw: string): string {
   return formatPhoneDigits(raw);
 }
+
+/**
+ * Nombre de CHIFFRES situés avant une position donnée (les espaces de formatage
+ * ne comptent pas). Sert à mémoriser la position du curseur pendant la frappe.
+ */
+export function chiffresAvant(value: string, caret: number): number {
+  const debut = Math.max(0, Math.min(caret ?? 0, (value || '').length));
+  return ((value || '').slice(0, debut).match(/\d/g) || []).length;
+}
+
+/**
+ * Position du curseur dans la valeur FORMATÉE : juste après le n-ième chiffre.
+ * Les espaces insérés par le formatage sont sautés, ce qui évite que le curseur
+ * recule et que les chiffres suivants soient insérés au milieu du numéro
+ * (ex. « 383 40 892 61 0 » au lieu de « 038 34 092 61 »).
+ */
+export function caretApresFormatage(n: number, formatted: string): number {
+  const valeur = formatted || '';
+  if (n <= 0) return 0;
+  let vus = 0;
+  for (let i = 0; i < valeur.length; i++) {
+    if (/\d/.test(valeur[i])) {
+      vus++;
+      if (vus === n) return i + 1;
+    }
+  }
+  // Moins de chiffres que prévu (suppression, collage partiel) : fin de la valeur.
+  return valeur.length;
+}

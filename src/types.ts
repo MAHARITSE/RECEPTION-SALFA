@@ -268,6 +268,21 @@ export interface Invoice {
    * Ces factures sont exclues des encaissements / clôtures de caisse.
    */
   creditSociete?: boolean;
+  /**
+   * TICKET MODÉRATEUR — QUOTE-PART DE L'ASSURÉ.
+   * Quand la réduction d'une société est un TICKET MODÉRATEUR (et non une vraie
+   * remise), la part de l'assuré est encaissée EN ESPÈCES à la caisse au moment
+   * du paiement, et la société n'est créditée que du net.
+   *
+   * Le champ est porté par les deux pièces produites :
+   *  - la facture de CRÉDIT SOCIÉTÉ (`creditSociete: true`) : `totalAmount`
+   *    reste le brut, `patientCharge` devient la part créditée à la société et
+   *    `copayTicketModerateur.montant` la quote-part réglée par le patient ;
+   *  - la facture d'ESPÈCES du ticket modérateur (`creditSociete: false`,
+   *    `clientType: 'comptoir'`) : `patientCharge` = quote-part encaissée,
+   *    intégrée aux encaissements et à la clôture Z de la caisse.
+   */
+  copayTicketModerateur?: CopayTicketModerateur;
   /** Identifiant de la clôture Z ayant intégré cette facture. */
   closingId?: string;
   /**
@@ -276,6 +291,37 @@ export interface Invoice {
    * dans le module de suivi des assurances.
    */
   assuranceSuivi?: AssuranceSuivi;
+}
+
+/**
+ * Détail de la quote-part (ticket modérateur) encaissée à la caisse sur un
+ * dossier pris en charge par une société. Les montants sont issus de la
+ * répartition contractuelle de la société (taux de couverture + exclusions
+ * d'assuré / de famille d'actes) — voir `src/utils/copayCaisse.ts`.
+ */
+export interface CopayTicketModerateur {
+  /** Total brut des prestations (avant répartition société / assuré). */
+  brut: number;
+  /** Part créditée à la société (montant à rembourser). */
+  partSociete: number;
+  /** Quote-part réglée EN ESPÈCES par le patient à la caisse. */
+  montant: number;
+  /** Nature de la réduction appliquée : toujours 'ticket_moderateur' ici. */
+  natureRemise?: NatureRemise;
+  /** Société concernée (nom de la base Réception + identifiant commun). */
+  societeNom?: string;
+  societeId?: string;
+  /** Taux de couverture contractuel appliqué (0 à 100). */
+  taux?: number;
+  /**
+   * Part bloquée par une exclusion (assuré exclu ou famille d'actes non prise
+   * en charge) : elle reste due par le patient et est INCLUSE dans `montant`.
+   */
+  montantExclu?: number;
+  /** Factures de crédit société soldées par cet encaissement. */
+  sourceInvoiceIds?: string[];
+  /** Numéro de la facture société associée (reprise sur le ticket espèces). */
+  numeroFactureSociete?: string;
 }
 
 /** Instantané de clôture de caisse. Les montants sont figés pour permettre la réimpression. */

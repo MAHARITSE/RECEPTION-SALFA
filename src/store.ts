@@ -1442,7 +1442,11 @@ function normalizeInvoiceItemCategories(state: AppState): AppState {
 function consoliderFacturesComptoirValidees(state: AppState): AppState {
   const arrondi2 = (n: number) => Math.round((n || 0) * 100) / 100;
   const payees = state.invoices.filter(i =>
-    i.status === 'paid' && i.paidAt && i.patientId && !i.isExternal && !i.creditSociete && i.clientType !== 'societe');
+    i.status === 'paid' && i.paidAt && i.patientId && !i.isExternal && !i.creditSociete && i.clientType !== 'societe'
+    // L'encaissement d'un ticket modérateur reste une pièce distincte : il ne doit
+    // jamais être absorbé par la facture comptoir du même lot (montant + détail de
+    // la quote-part conservés tels quels pour la clôture et le ticket du patient).
+    && !i.copayTicketModerateur);
   const lots = new Map<string, Invoice[]>();
   for (const inv of payees) {
     const clef = `${inv.patientId}|${inv.paidAt}|${inv.paidBy || ''}`;
@@ -1737,7 +1741,9 @@ export function invoiceAssuranceBrut(invoice: Invoice): number {
  */
 export function invoiceAssuranceARembourser(invoice: Invoice): number {
   const suivi = invoice.assuranceSuivi;
-  if (suivi?.montantARembourser != null && suivi.montantARembourser > 0) return suivi.montantARembourser;
+  // Un net EXPLICITE fait foi, y compris à 0 (acte totalement exclu : la quote-part
+  // a été encaissée en espèces à la caisse, rien n'est réclamé à la société).
+  if (suivi?.montantARembourser != null) return Math.max(0, suivi.montantARembourser);
   return invoiceAssuranceBrut(invoice);
 }
 

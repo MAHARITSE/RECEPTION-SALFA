@@ -94,6 +94,10 @@ export function collectBillingDocuments(state: AppState): BillingDocument[] {
     // elle ne doit pas ressortir ici en double dans l'onglet Comptoir & Externe.
     const category = typeClientEffectif(state, invoice);
     if (category === 'societe') continue;
+    // Encaissement d'un TICKET MODÉRATEUR à la caisse : ce n'est pas une pièce à
+    // facturer (la quote-part figure déjà comme participation sur la prestation
+    // société, et les espèces appartiennent à la clôture de caisse).
+    if (invoice.copayTicketModerateur) continue;
     const sale = state.ventes.find(v => v.legacyInvoiceId === invoice.id);
     if (sale?.status === 'annule') continue;
     const patient = state.patients.find(p => p.id === invoice.patientId);
