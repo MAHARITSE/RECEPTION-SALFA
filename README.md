@@ -228,3 +228,13 @@ npx playwright test tests/credentials.spec.ts
 - Facture société : **A4 portrait**.
 - Facture individuelle : **A5 portrait**.
 - Les tickets POS et la police du corps des factures ne sont pas modifiés.
+- **L’en-tête ne coiffe que la première page.** Rien n’est étendu ni répété sur la
+  deuxième page : une facture longue (individuelle A5, société A4, fusion) poursuit ses
+  articles avec les seuls titres de colonnes ; le numéro de page imprimé suit la
+  pagination réelle (`Page 2/3`).
+- **Impression multiple « 2 par page A4 »** (fiche client Comptoir & Externe) : chaque
+  facture porte **son propre en-tête**, cantonné à sa moitié de feuille A5 — deux
+  en-têtes séparés par feuille, jamais un en-tête unique étendu sur la largeur.
+- **Fusion de factures** : la facture imprimée porte le **numéro de la plus ancienne**
+  des factures fusionnées, ses articles sont mis à la suite (aucune ligne d’origine
+  n’est listée) et l’en-tête reste dans la première colonne, donc en première page.

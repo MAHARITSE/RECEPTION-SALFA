@@ -137,14 +137,19 @@ export function formatArDec(n: number): string {
 }
 
 /**
- * Génère et imprime la Facture Individuelle / Reçu Client au format officiel SALFA (A5/A4).
+ * Construit le document de la Facture Individuelle / Reçu Client au format
+ * officiel SALFA (A5/A4) — séparé de l'impression pour être vérifiable.
+ *
+ * L'en-tête n'est posé QU'UNE fois, en tête de la première page : il ne
+ * s'étend pas et ne se répète jamais sur la deuxième page d'une facture
+ * longue (les articles, eux, continuent avec les titres de colonnes).
  */
-export function printSalfaIndividualInvoice(
+export function salfaIndividualInvoiceHtml(
   settings: TicketSettings,
   invoice: Invoice,
   patient?: Patient,
   company?: Company,
-) {
+): string {
   const dateObj = new Date(invoice.paidAt || invoice.createdAt);
   const dateConsultation = dateObj.toLocaleDateString('fr-FR');
   const dateFacture = new Date().toLocaleDateString('fr-FR');
@@ -220,6 +225,11 @@ export function printSalfaIndividualInvoice(
     @page {
       size: A5 portrait;
       margin: 8mm;
+      @bottom-left {
+        content: "Page " counter(page) "/" counter(pages);
+        font: 9px Arial, Helvetica, sans-serif;
+        color: #000;
+      }
     }
     @media print {
       body { width: 100%; margin: 0; padding: 0; }
@@ -232,6 +242,14 @@ export function printSalfaIndividualInvoice(
       background: #fff;
       padding: 10px;
       line-height: 1.3;
+    }
+    /* L'en-tête reste sur la première page : jamais de coupure à l'intérieur,
+       jamais de ligne du tableau détachée juste après lui. */
+    .header, .invoice-header {
+      break-inside: avoid;
+      page-break-inside: avoid;
+      break-after: avoid;
+      page-break-after: avoid;
     }
     .header {
       display: flex;
@@ -403,20 +421,32 @@ export function printSalfaIndividualInvoice(
   </div>
 
   <div class="footer-block">
-    <span>Page 1/1</span>
     <span>Date de facture : <strong>${dateFacture}</strong></span>
   </div>
 
 </body>
 </html>`;
 
-  printDocument(html, 'Facture individuelle SALFA');
+  return html;
+}
+
+/** Imprime la Facture Individuelle / Reçu Client (A5) via la file d'impression. */
+export function printSalfaIndividualInvoice(
+  settings: TicketSettings,
+  invoice: Invoice,
+  patient?: Patient,
+  company?: Company,
+): void {
+  printDocument(salfaIndividualInvoiceHtml(settings, invoice, patient, company), 'Facture individuelle SALFA');
 }
 
 /**
- * Génère et imprime la Facture Récapitulative Société au format officiel SALFA (A4).
+ * Construit le document de la Facture Récapitulative Société au format officiel
+ * SALFA (A4) — séparé de l'impression pour être vérifiable. Comme pour la facture
+ * individuelle, l'en-tête coiffe la seule première page : une facture société
+ * longue ne le répète pas sur les pages suivantes.
  */
-export function printSalfaCompanyMonthlyInvoice(
+export function salfaCompanyMonthlyInvoiceHtml(
   settings: TicketSettings,
   company: Company,
   invoices: Invoice[],
@@ -533,6 +563,14 @@ export function printSalfaCompanyMonthlyInvoice(
       background: #fff;
       padding: 10px;
       line-height: 1.35;
+    }
+    /* En-tête de la première page uniquement : jamais étendu ni répété sur la
+       deuxième page d'une facture société longue. */
+    .header, .invoice-header {
+      break-inside: avoid;
+      page-break-inside: avoid;
+      break-after: avoid;
+      page-break-after: avoid;
     }
     .header {
       display: flex;
@@ -682,5 +720,20 @@ export function printSalfaCompanyMonthlyInvoice(
 </body>
 </html>`;
 
-  printDocument(html, 'Facture récapitulative société SALFA');
+  return html;
+}
+
+/** Imprime la Facture Récapitulative Société (A4) via la file d'impression. */
+export function printSalfaCompanyMonthlyInvoice(
+  settings: TicketSettings,
+  company: Company,
+  invoices: Invoice[],
+  monthYearStr: string,
+  invoiceNumber: string,
+  patientsList: Patient[],
+): void {
+  printDocument(
+    salfaCompanyMonthlyInvoiceHtml(settings, company, invoices, monthYearStr, invoiceNumber, patientsList),
+    'Facture récapitulative société SALFA',
+  );
 }

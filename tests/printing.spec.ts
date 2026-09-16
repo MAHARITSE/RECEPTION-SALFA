@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { getExamReceipts } from '../src/utils/examReceipts';
+import { salfaCompanyMonthlyInvoiceHtml, salfaIndividualInvoiceHtml } from '../src/utils/printSalfaInvoice';
 import type { AppState } from '../src/store';
 import type { Consultation, EchoRequest, Invoice, LabRequest, Patient, TicketSettings } from '../src/types';
 
@@ -470,4 +471,47 @@ test('les factures SALFA A5 et les bons thermiques partagent la même file', asy
   await expectJobs(page, 2);
   expect(await page.evaluate(() => window.__printAttempts[1].title)).toBe("BON D'ÉCHOGRAPHIE");
   await closePrint(page);
+});
+
+test('facture A5 : un seul en-tête, en première page, pagination imprimée sur toutes les pages', async ({ page }, testInfo) => {
+  // Facture longue : 45 lignes, donc plusieurs pages A5.
+  const longInvoice: Invoice = {
+    ...invoice('test-invoice-a5', 'lab'), numeroFacture: '26FA0915042',
+    items: Array.from({ length: 45 }, (_, index) => ({
+      category: 'lab' as const, description: `ANALYSE ${index + 1} AVEC UN LIBELLÉ ASSEZ LONG POUR TENIR SUR PLUSIEURS PAGES`, amount: 3000,
+    })),
+  };
+  longInvoice.totalAmount = 135000; longInvoice.patientCharge = 135000;
+  const html = salfaIndividualInvoiceHtml(settings, longInvoice, patient);
+  // L'en-tête n'est posé qu'une fois : rien à répéter ni à étendre page 2.
+  expect(html.match(/<div class="header">/g)).toHaveLength(1);
+  // Le numéro de page n'est plus figé à « 1/1 » : il suit la pagination réelle.
+  expect(html).not.toContain('Page 1/1');
+  expect(html).toContain('counter(page)');
+  expect(html).toContain('counter(pages)');
+  await page.setContent(html);
+  const header = page.locator('.header');
+  await expect(header).toHaveCount(1);
+  // L'en-tête ne se coupe pas et ne se détache pas de la première ligne du tableau.
+  await expect(header).toHaveCSS('break-after', 'avoid');
+  await expect(header).toHaveCSS('break-inside', 'avoid');
+  const pdf = await page.pdf({ path: testInfo.outputPath('facture-a5-longue.pdf'), preferCSSPageSize: true, displayHeaderFooter: false });
+  expect((pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length).toBeGreaterThan(1);
+});
+
+test('facture société A4 longue : l’en-tête reste cantonné à la première page', async ({ page }, testInfo) => {
+  // 60 bénéficiaires : la facture société s'étend sur plusieurs pages A4.
+  const beneficiaires = Array.from({ length: 60 }, (_, index) => ({
+    ...invoices[0], id: `long-societe-${index}`, numeroFacture: `26FA09${String(index).padStart(5, '0')}`,
+    totalAmount: 2000, patientCharge: 2000,
+    items: [{ category: 'lab' as const, description: `ANALYSE ${index + 1}`, amount: 2000 }],
+  }));
+  const html = salfaCompanyMonthlyInvoiceHtml(settings, { id: 'c', name: 'SOCIÉTÉ TEST', paymentMode: 'Crédit', settlementMode: 'per_invoice', type: 'assurance' } as never, beneficiaires, 'Septembre 2026', 'FM-2026-09-0001', [patient]);
+  expect(html.match(/<div class="header">/g)).toHaveLength(1);
+  expect(html).toContain('break-after:avoid');
+  await page.setContent(html);
+  await expect(page.locator('.header')).toHaveCount(1);
+  await expect(page.locator('.header')).toHaveCSS('break-after', 'avoid');
+  const pdf = await page.pdf({ path: testInfo.outputPath('facture-societe-longue.pdf'), preferCSSPageSize: true, displayHeaderFooter: false });
+  expect((pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length).toBeGreaterThan(1);
 });
