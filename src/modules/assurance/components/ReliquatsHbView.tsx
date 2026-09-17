@@ -12,6 +12,7 @@ import {
   FILTRES_RELICATS_PAR_DEFAUT, listerReliquatsHb, lignesExcelReliquats, synthetiserReliquats,
   type FiltreTypeHb, type ReliquatHb, type TriReliquat,
 } from '../utils/reliquatsHb';
+import MoneyInput from '../../../components/MoneyInput';
 
 type Props = { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>> };
 
@@ -378,9 +379,10 @@ export function ReliquatsHbView({ state, setState }: Props) {
               <div className="rounded-xl border border-rose-300 bg-rose-50 p-2 dark:border-rose-500/30 dark:bg-rose-500/10"><dt className="text-ink-muted">Reste dû</dt><dd className="mt-0.5 font-mono text-sm font-bold text-rose-700 dark:text-rose-300">{formatMoney(encaissement.ligne.reste)}</dd></div>
             </dl>
             <label className="mt-4 block text-xs font-semibold text-ink-secondary">Montant reçu ({devise})
-              <input type="number" min={0} step="0.01" autoFocus value={encaissement.montant}
-                onChange={e => setEncaissement(prev => (prev ? { ...prev, montant: e.target.value } : prev))}
+              <MoneyInput value={Number(encaissement.montant) || 0} decimals={2} autoFocus
+                onChange={n => setEncaissement(prev => (prev ? { ...prev, montant: String(n) } : prev))}
                 onKeyDown={e => { if (e.key === 'Enter') enregistrerEncaissement(); }}
+                ariaLabel="Montant reçu" title="Montant reçu — séparateur de milliers automatique (ex : 49 450)"
                 className="mt-1 w-full rounded-xl border border-line bg-field px-3 py-2 font-mono text-sm text-ink" />
             </label>
             <div className="mt-2 flex flex-wrap gap-1.5">

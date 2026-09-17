@@ -159,13 +159,15 @@ export function generateUniqueSocieteCode(name: string, existingCodes: string[])
 }
 
 /** Rassemble tous les numéros de facture déjà émis : ventes, factures caisse,
- *  dossiers hospitalisation/bloc, prestations assurance ET registre des numéros
- *  attribués puis retirés (suppression de factures en attente). */
+ *  dossiers hospitalisation/bloc, prestations assurance, factures GLOBALE
+ *  mensuelles (société FA-MM/CODE/YY-NNN / comptoir FM-) ET registre des
+ *  numéros attribués puis retirés (suppression de factures en attente). */
 export function collectExistingFactureNumbers(state: {
   ventes?: Array<{ numeroFacture?: string }>;
   invoices?: Array<{ numeroFacture?: string }>;
   hbRecords?: Array<{ numeroFacture?: string }>;
   assurancePrestations?: Array<{ numeroFacture?: string }>;
+  monthlyInvoices?: Array<{ number?: string }>;
   issuedFactureNumbers?: string[];
 }): string[] {
   const keep = (n?: string): n is string => typeof n === 'string' && n.trim().length > 0;
@@ -175,5 +177,6 @@ export function collectExistingFactureNumbers(state: {
     ...(state.invoices || []).map(i => i.numeroFacture).filter(keep),
     ...(state.hbRecords || []).map(h => h.numeroFacture).filter(keep),
     ...(state.assurancePrestations || []).map(p => p.numeroFacture).filter(keep),
+    ...(state.monthlyInvoices || []).map(m => m.number).filter(keep),
   ];
 }

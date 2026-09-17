@@ -151,6 +151,8 @@ export interface LabRequest {
   requestedBy?: string;       // id du demandeur
   requestedAt?: string;
   invoiceId?: string;         // facture liée (pour les demandes autonomes)
+  /** Remise en % accordée par le médecin sur le prix catalogue (0 si absente). */
+  discount?: number;
   price?: number;
   results?: LabResult[];
   completedAt?: string;
@@ -210,6 +212,8 @@ export interface EchoRequest {
   requestedBy?: string;
   requestedAt?: string;
   invoiceId?: string;
+  /** Remise en % accordée par le médecin sur le prix catalogue (0 si absente). */
+  discount?: number;
   price?: number;
   completedAt?: string;
 }
@@ -240,8 +244,11 @@ export interface Invoice {
   patientCharge: number; status: 'pending' | 'paid';
   /**
    * Numéro de facture officiel attribué à l'émission :
-   *  - client société : FA-MM/CODE/YY-NNN (ex: FA-07/BSA/26-014) ;
-   *  - autres clients : AAFAMMJJ + ordre du jour (ex: 26FA0427102).
+   *  - factures journalières individuelles (caisse, labo/écho, hospit/bloc) :
+   *    AAFAMMJJ + ordre du jour (ex: 26FA0427102), SANS DISTINCTION société /
+   *    comptoir / externe ;
+   *  - facture GLOBALE mensuelle société (module Facturation, vue par facture) :
+   *    FA-MM/CODE/YY-NNN (ex: FA-07/BSA/26-014).
    * Absent sur les anciennes factures (migration : numéro FAC-AAAA-NNNN de la vente liée).
    */
   numeroFacture?: string;
@@ -283,6 +290,14 @@ export interface Invoice {
    *    intégrée aux encaissements et à la clôture Z de la caisse.
    */
   copayTicketModerateur?: CopayTicketModerateur;
+  /**
+   * REMISE SOCIÉTÉ (nature « remise ») : quote-part du taux contractuel convertie
+   * en vraie remise — personne ne la paye (ni le patient, ni la société ; la
+   * société est créditée du brut). Portée pour mémoire : elle est affichée sur
+   * le ticket de caisse (ligne « Remise (non encaissée) ») et conservée sur la
+   * facture pour les réimpressions.
+   */
+  remiseNonEncaise?: number;
   /** Identifiant de la clôture Z ayant intégré cette facture. */
   closingId?: string;
   /**

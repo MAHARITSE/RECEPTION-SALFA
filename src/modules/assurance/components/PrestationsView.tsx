@@ -54,6 +54,7 @@ import { getPrice } from '../../../store';
 import * as XLSX from 'xlsx';
 import { telechargerClasseur } from '../../../utils/exportFichier';
 import { Select } from '../../../components/Select';
+import MoneyInput from '../../../components/MoneyInput';
 
 export type PrestationViewMode = 'detaillee' | 'factures';
 
@@ -3063,12 +3064,12 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
 
                           <div className="w-24">
                             <label className="block text-[9px] text-ink-muted mb-0.5">P.U.</label>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
+                            <MoneyInput
                               value={prixUnitaireAffiche(ligne)}
-                              onChange={(e) => handleLineChange(idx, 'prixUnitaire', e.target.value)}
+                              onChange={(n) => handleLineChange(idx, 'prixUnitaire', n)}
+                              decimals={2}
+                              ariaLabel="Prix unitaire"
+                              title="Prix unitaire — séparateur de milliers automatique (ex : 49 450)"
                               className="w-full p-1.5 border border-line-strong rounded text-right font-mono"
                             />
                           </div>
@@ -3233,26 +3234,25 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-ink text-sm font-semibold mb-1">Montant Brut *</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
+                  <MoneyInput
                     value={lineEditForm.totalPrestation}
-                    onChange={(e) => setLineEditForm(prev => ({ ...prev, totalPrestation: Number(e.target.value) }))}
+                    onChange={(n) => setLineEditForm(prev => ({ ...prev, totalPrestation: n }))}
+                    decimals={2}
+                    ariaLabel="Montant brut"
+                    title="Montant brut — séparateur de milliers automatique (ex : 49 450)"
                     className="w-full p-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-right font-bold"
-                    required
                   />
                 </div>
                 <div>
                   <label className="block text-ink text-sm font-semibold mb-1">
                     {natureRemiseLabel(natureRemisePour(societes, personnes, lineEditContext?.prestation.societeId, lineEditContext?.prestation.personneId))}
                   </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
+                  <MoneyInput
                     value={lineEditForm.ticketModerateur}
-                    onChange={(e) => setLineEditForm(prev => ({ ...prev, ticketModerateur: Number(e.target.value) }))}
+                    onChange={(n) => setLineEditForm(prev => ({ ...prev, ticketModerateur: n }))}
+                    decimals={2}
+                    ariaLabel="Ticket modérateur"
+                    title="Séparateur de milliers automatique (ex : 49 450)"
                     className="w-full p-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-right font-bold text-amber-700"
                   />
                 </div>
@@ -3305,14 +3305,10 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
                 <label className="block text-ink text-sm font-semibold mb-1">
                   Montant à exclure (Max: {formatMoney(lineExcludeContext.maxExclu)}) *
                 </label>
-                <input
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  max={lineExcludeContext.ligne.totalPrestation || lineExcludeContext.maxExclu}
+                <MoneyInput
                   value={lineExcludeForm.montant}
-                  onChange={(e) => {
-                    const inputVal = Number(e.target.value) || 0;
+                  onChange={(n) => {
+                    const inputVal = n || 0;
                     const totalActe = lineExcludeContext.ligne.totalPrestation || lineExcludeContext.maxExclu;
                     if (totalActe > 0 && inputVal > totalActe) {
                       setLineExcludeForm(prev => ({ ...prev, montant: totalActe }));
@@ -3320,8 +3316,10 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
                       setLineExcludeForm(prev => ({ ...prev, montant: Math.max(0, inputVal) }));
                     }
                   }}
+                  decimals={2}
+                  ariaLabel="Montant à exclure"
+                  title="Montant à exclure — séparateur de milliers automatique (ex : 49 450)"
                   className="w-full p-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-rose-500 focus:outline-none text-right font-bold text-rose-700"
-                  required
                 />
               </div>
               
@@ -3387,22 +3385,20 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
                 <label className="block text-ink text-sm font-semibold mb-1">
                   Montant à rejeter / exclure (Max: {formatMoney(factureExcludeContext.maxExclu)}) *
                 </label>
-                <input
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  max={factureExcludeContext.maxExclu}
+                <MoneyInput
                   value={factureExcludeForm.montant}
-                  onChange={(e) => {
-                    const inputVal = Number(e.target.value) || 0;
+                  onChange={(n) => {
+                    const inputVal = n || 0;
                     if (inputVal > factureExcludeContext.maxExclu) {
                       setFactureExcludeForm(prev => ({ ...prev, montant: factureExcludeContext.maxExclu }));
                     } else {
                       setFactureExcludeForm(prev => ({ ...prev, montant: Math.max(0, inputVal) }));
                     }
                   }}
+                  decimals={2}
+                  ariaLabel="Montant à rejeter / exclure"
+                  title="Montant à rejeter — séparateur de milliers automatique (ex : 49 450)"
                   className="w-full p-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-rose-500 focus:outline-none text-right font-bold text-rose-700"
-                  required
                 />
               </div>
               

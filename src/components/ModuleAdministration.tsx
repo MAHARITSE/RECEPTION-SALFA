@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { UserRole, TicketSettings, User } from '../types';
 import { formatAr, addAuditLog, familyManagesStock } from '../store';
+import { normaliserRecherche } from '../utils/recherche';
 import { IS_WAMP_BUILD, setWampPassword } from '../wamp';
 import { credentialAutofillOptOut, passwordInputOptOut } from '../utils/credentialAutofill';
 import { exporterSauvegardeSql } from '../utils/sauvegarde';
@@ -385,17 +386,19 @@ export default function ModuleAdministration({ state, setState }: Props) {
 
   // Filtering
   const filteredUsers = state.users.filter((u) => {
-    const matchesSearch = u.name.toLowerCase().includes(searchUser.toLowerCase()) ||
-      u.id.toLowerCase().includes(searchUser.toLowerCase()) ||
-      roleLabels[u.role]?.toLowerCase().includes(searchUser.toLowerCase());
+    const q = normaliserRecherche(searchUser);
+    const matchesSearch = q === '' || normaliserRecherche(u.name).includes(q) ||
+      normaliserRecherche(u.id).includes(q) ||
+      normaliserRecherche(roleLabels[u.role] ?? '').includes(q);
     const matchesRole = userRoleFilter === 'all' || u.role === userRoleFilter;
     return matchesSearch && matchesRole;
   });
 
   const filteredAuditLogs = state.auditLogs.filter((log) => {
-    const matchesSearch = log.userName.toLowerCase().includes(searchAudit.toLowerCase()) ||
-      log.action.toLowerCase().includes(searchAudit.toLowerCase()) ||
-      log.details.toLowerCase().includes(searchAudit.toLowerCase());
+    const q = normaliserRecherche(searchAudit);
+    const matchesSearch = q === '' || normaliserRecherche(log.userName).includes(q) ||
+      normaliserRecherche(log.action).includes(q) ||
+      normaliserRecherche(log.details).includes(q);
     
     if (auditCategoryFilter === 'all') return matchesSearch;
     if (auditCategoryFilter === 'users') return matchesSearch && (log.action.includes('UTILISATEUR') || log.action.includes('PASSWORD'));

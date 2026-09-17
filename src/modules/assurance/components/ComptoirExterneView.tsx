@@ -374,7 +374,9 @@ export function ComptoirExterneView({ state, setState }: Props) {
                     {affiches.map(d => {
                       const nbAjouts = ajoutsDuDoc(d).length;
                       return (
-                      <tr key={d.id} className="border-t border-line hover:bg-surface-hover">
+                      <tr key={d.id} className="border-t border-line hover:bg-surface-hover cursor-pointer"
+                          title="Double-clic : ouvrir la prescription (ventes omises / ordonnances externes)"
+                          onDoubleClick={() => setPrescriptionDoc(d)}>
                         <td className="p-2.5">
                           <input type="checkbox" aria-label={`Sélectionner la facture ${d.number}`} title="Sélectionner pour l'impression 2 par page A4 ou la fusion"
                             checked={!!selection[d.id]}
@@ -382,9 +384,7 @@ export function ComptoirExterneView({ state, setState }: Props) {
                             className="w-4 h-4 accent-indigo-600 cursor-pointer" />
                         </td>
                         <td className="p-2.5 whitespace-nowrap">{formatDate(d.date)}</td>
-                        <td className="p-2.5 font-mono font-semibold cursor-pointer hover:text-indigo-700 dark:hover:text-indigo-300 underline decoration-dotted underline-offset-2"
-                            title="Double-clic : ouvrir la prescription (ventes omises / ordonnances externes)"
-                            onDoubleClick={() => setPrescriptionDoc(d)}>
+                        <td className="p-2.5 font-mono font-semibold hover:text-indigo-700 dark:hover:text-indigo-300 underline decoration-dotted underline-offset-2">
                           {d.number}
                           {nbAjouts > 0 && <span className="ml-1.5 inline-block px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300 text-[10px] font-bold" title="Lignes ajoutées par le facturier">+{nbAjouts}</span>}
                         </td>

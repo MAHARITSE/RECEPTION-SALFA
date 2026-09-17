@@ -6,11 +6,14 @@ import type { Societe } from '../modules/assurance/types';
 import { allocateFactureNumber, allocateFactureNumberAsync, applySocieteUpsert, collectExistingFactureNumbers } from '../store';
 import { SearchableSelect, optionsFromValues } from './SearchableSelect';
 import { SuggestionInput, classerSuggestions, motsIdentite } from './SuggestionInput';
+import MoneyInput from './MoneyInput';
 import {
   addAuditLog, addNotification, addJourneyEvent, LAB_NORMS,
   labCategoryLabel, LAB_CATEGORIES, normalizeDossierNumber, isDossierTaken, calculateAge, formatAr, getLabCatalog, companyIsBlocked, companyOptions, sousSocietesConnues,
 } from '../store';
 import { printLabResultTicket } from '../utils/printTicket';
+import { normaliserRecherche } from '../utils/recherche';
+import { suggestionNavKeyDown } from '../utils/suggestionNav';
 import { PhoneInput } from './PhoneInput';
 import {
   FlaskConical, CheckCircle, AlertTriangle, Send, Microscope, FileSearch,
@@ -50,6 +53,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
   // Nouvelle demande
   const [showNew, setShowNew] = useState(false);
   const [patSearch, setPatSearch] = useState('');
+  const [patSearchIdx, setPatSearchIdx] = useState(0);
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [newPat, setNewPat] = useState({ dossier: '', lastName: '', firstName: '', gender: 'F' as 'M' | 'F', dateOfBirth: '', contact: '', clientType: 'comptoir' as ClientType, company: '' });
 
@@ -94,7 +98,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
   const createExam = () => {
     if (!examForm.name.trim() || !examForm.code.trim()) { alert('Le code et le nom de l\'examen sont obligatoires.'); return; }
     const code = examForm.code.trim().toUpperCase();
-    if (currentLabCatalog.some((e) => e.code.toLowerCase() === code.toLowerCase()) || state.labCatalog.some((e) => e.code.toLowerCase() === code.toLowerCase())) { alert('Ce code existe déjà dans le catalogue.'); return; }
+    if (currentLabCatalog.some((e) => normaliserRecherche(e.code) === normaliserRecherche(code)) || state.labCatalog.some((e) => normaliserRecherche(e.code) === normaliserRecherche(code))) { alert('Ce code existe déjà dans le catalogue.'); return; }
     const params = examForm.parameters.length
       ? examForm.parameters
       : (document.getElementById('lab-params') as HTMLInputElement)?.value.split(/[,\n;]+/).map((s) => s.trim()).filter(Boolean) || [];
@@ -224,8 +228,8 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
   const filtered = visibleLabs
     .filter((d) => {
       if (search) {
-        const q = search.toLowerCase();
-        if (!d.patientName.toLowerCase().includes(q) && !(d.lr.examType.toLowerCase().includes(q))) return false;
+        const q = normaliserRecherche(search);
+        if (q && !(normaliserRecherche(d.patientName).includes(q) || normaliserRecherche(d.lr.examType).includes(q))) return false;
       }
       if (filterCat !== 'all' && (d.lr.category || 'autre') !== filterCat) return false;
       if (tab === 'awaiting') return isAwaitingStatus(d);
@@ -347,7 +351,7 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
 
   // ---- Nouvelle demande ----
   const patFiltered = patSearch.length >= 1
-    ? state.patients.filter((p) => !p.blacklisted && (`${p.lastName} ${p.firstName}`.toLowerCase().includes(patSearch.toLowerCase()) || p.dossier.toLowerCase().includes(patSearch.toLowerCase())))
+    ? state.patients.filter((p) => { const q = normaliserRecherche(patSearch); return !p.blacklisted && (q === '' || normaliserRecherche(`${p.lastName} ${p.firstName}`).includes(q) || normaliserRecherche(p.dossier).includes(q)); })
     : [];
 
   const createNewPatient = () => {
@@ -396,7 +400,8 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
     const reqIds: string[] = [];
 
     // Numérotation officielle de la facture d'analyses en attente :
-    // FA-MM/CODE/YY-NNN pour les sociétés, AAFAMMJJ + ordre du jour sinon.
+    // AAFAMMJJ + ordre du jour (26FA0917001), sans distinction société /
+    // comptoir / externe (FA-MM/CODE = facture GLOBALE mensuelle, module Facturation).
     // Numéro réservé atomiquement : échec → on alerte et on ne crée RIEN.
     let allocated: FactureNumberAllocation;
     try {
@@ -748,12 +753,12 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
                 <div>
                   <h4 className="font-semibold text-sm mb-2">1. Patient</h4>
                   <div className="relative"><Search className="absolute left-3 top-2.5 w-4 h-4 text-ink-faint" />
-                    <input type="text" value={patSearch} onChange={(e) => setPatSearch(e.target.value)} className="w-full pl-9 pr-3 py-2 border border-line-strong rounded-lg outline-none focus:ring-2 focus:ring-cyan-500" placeholder="Rechercher un patient enregistré..." />
+                    <input type="text" value={patSearch} onChange={(e) => { setPatSearch(e.target.value); setPatSearchIdx(0); }} onKeyDown={suggestionNavKeyDown({ open: patFiltered.length > 0, count: patFiltered.length, index: patSearchIdx, onIndex: setPatSearchIdx, onPick: (i) => { if (patFiltered[i]) setSelectedPatientId(patFiltered[i].id); }, onEscape: () => setPatSearch('') })} className="w-full pl-9 pr-3 py-2 border border-line-strong rounded-lg outline-none focus:ring-2 focus:ring-cyan-500" placeholder="Rechercher un patient enregistré... (↑↓ Entrée)" />
                   </div>
                   {patFiltered.length > 0 && (
                     <div className="border rounded-lg mt-2 max-h-40 overflow-y-auto divide-y">
-                      {patFiltered.map((p) => (
-                        <div key={p.id} onClick={() => setSelectedPatientId(p.id)} className="p-2 hover:bg-cyan-50 dark:hover:bg-cyan-500/8 cursor-pointer text-sm flex justify-between">
+                      {patFiltered.map((p, i) => (
+                        <div key={p.id} onClick={() => setSelectedPatientId(p.id)} className={`p-2 cursor-pointer text-sm flex justify-between ${i === patSearchIdx ? 'bg-cyan-50 dark:bg-cyan-500/10' : 'hover:bg-cyan-50 dark:hover:bg-cyan-500/8'}`}>
                           <span className="font-medium">{p.lastName} {p.firstName}</span>
                           <span className="text-xs text-ink-faint">{p.dossier} · {p.clientType === 'societe' ? p.company : 'Comptoir'}</span>
                         </div>
@@ -933,10 +938,10 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
                 <input id="lab-params" onChange={(e) => setExamForm({ ...examForm, parameters: e.target.value.split(/[,\n;]+/).map((s) => s.trim()).filter(Boolean) })} placeholder="Glucose, Sodium, Potassium" className="w-full px-2 py-1.5 border rounded outline-none" />
               </div>
               <div className="grid grid-cols-4 gap-2">
-                <div><label className="block text-[10px] font-bold text-ink-secondary mb-1">Prix Comptoir</label><input type="number" value={examForm.priceComptoir} onChange={(e) => setExamForm({ ...examForm, priceComptoir: parseFloat(e.target.value) || 0 })} className="w-full px-2 py-1.5 border rounded outline-none" /></div>
-                <div><label className="block text-[10px] font-bold text-ink-secondary mb-1">Prix Société</label><input type="number" value={examForm.priceSociete} onChange={(e) => setExamForm({ ...examForm, priceSociete: parseFloat(e.target.value) || 0 })} className="w-full px-2 py-1.5 border rounded outline-none" /></div>
-                <div><label className="block text-[10px] font-bold text-ink-secondary mb-1">Prix Externe</label><input type="number" value={examForm.priceExterne} onChange={(e) => setExamForm({ ...examForm, priceExterne: parseFloat(e.target.value) || 0 })} className="w-full px-2 py-1.5 border rounded outline-none" /></div>
-                <div><label className="block text-[10px] font-bold text-ink-secondary mb-1">Prix Urgent</label><input type="number" value={examForm.urgentPrice} onChange={(e) => setExamForm({ ...examForm, urgentPrice: parseFloat(e.target.value) || 0 })} className="w-full px-2 py-1.5 border rounded outline-none" /></div>
+                <div><label className="block text-[10px] font-bold text-ink-secondary mb-1">Prix Comptoir</label><MoneyInput value={examForm.priceComptoir} onChange={(n) => setExamForm({ ...examForm, priceComptoir: n })} decimals={2} ariaLabel="Prix comptoir" title="Séparateur de milliers automatique (ex : 49 450)" className="w-full px-2 py-1.5 border rounded outline-none" /></div>
+                <div><label className="block text-[10px] font-bold text-ink-secondary mb-1">Prix Société</label><MoneyInput value={examForm.priceSociete} onChange={(n) => setExamForm({ ...examForm, priceSociete: n })} decimals={2} ariaLabel="Prix société" title="Séparateur de milliers automatique (ex : 49 450)" className="w-full px-2 py-1.5 border rounded outline-none" /></div>
+                <div><label className="block text-[10px] font-bold text-ink-secondary mb-1">Prix Externe</label><MoneyInput value={examForm.priceExterne} onChange={(n) => setExamForm({ ...examForm, priceExterne: n })} decimals={2} ariaLabel="Prix externe" title="Séparateur de milliers automatique (ex : 49 450)" className="w-full px-2 py-1.5 border rounded outline-none" /></div>
+                <div><label className="block text-[10px] font-bold text-ink-secondary mb-1">Prix Urgent</label><MoneyInput value={examForm.urgentPrice} onChange={(n) => setExamForm({ ...examForm, urgentPrice: n })} decimals={2} ariaLabel="Prix urgent" title="Séparateur de milliers automatique (ex : 49 450)" className="w-full px-2 py-1.5 border rounded outline-none" /></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="block text-xs font-bold text-ink-secondary mb-1">Délai (heures)</label><input type="number" value={examForm.durationHours} onChange={(e) => setExamForm({ ...examForm, durationHours: parseInt(e.target.value) || 0 })} className="w-full px-2 py-1.5 border rounded outline-none" /></div>

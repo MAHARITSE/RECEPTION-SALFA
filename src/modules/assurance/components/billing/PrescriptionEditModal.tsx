@@ -5,6 +5,7 @@ import type { Article, ClientType, NatureRemise } from '../../../../types';
 import { natureRemiseLabel, natureRemiseLabelCourt } from '../../../../utils/natureRemise';
 import { getPrice, formatAr } from '../../../../store';
 import { formatDate } from '../../utils/formatters';
+import MoneyInput from '../../../../components/MoneyInput';
 
 type OrigineAjout = 'omission' | 'ordonnance_externe';
 
@@ -236,9 +237,11 @@ export function PrescriptionEditModal({ prestation, familles, articles = [], tar
                 </div>
                 <div className="w-24">
                   <label className="block text-[10px] font-bold text-ink-muted mb-0.5">P.U.</label>
-                  <input type="number" min={0} value={form.prixUnitaire}
-                    onChange={e => setForm(f => ({ ...f, prixUnitaire: parseFloat(e.target.value) || 0 }))}
+                  <MoneyInput value={form.prixUnitaire}
+                    onChange={n => setForm(f => ({ ...f, prixUnitaire: n }))}
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); enregistrerLigne(); } }}
+                    ariaLabel="Prix unitaire"
+                    title="Prix unitaire — séparateur de milliers automatique (ex : 49 450)"
                     className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-accent text-ink-strong" />
                 </div>
                 <div className="w-24">
@@ -248,9 +251,11 @@ export function PrescriptionEditModal({ prestation, familles, articles = [], tar
                 </div>
                 <div className="w-20">
                   <label className="block text-[10px] font-bold text-ink-muted mb-0.5" title={libellePartLong}>{libellePart}</label>
-                  <input type="number" min={0} value={form.ticketModerateur}
-                    onChange={e => setForm(f => ({ ...f, ticketModerateur: parseFloat(e.target.value) || 0 }))}
+                  <MoneyInput value={form.ticketModerateur}
+                    onChange={n => setForm(f => ({ ...f, ticketModerateur: n }))}
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); enregistrerLigne(); } }}
+                    ariaLabel="Ticket modérateur"
+                    title="Séparateur de milliers automatique (ex : 49 450)"
                     className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-accent text-ink-strong" />
                 </div>
               </div>

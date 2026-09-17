@@ -3,8 +3,10 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Article, TransferCategory } from '../types';
 import { familyLabel, formatAr, formatNum, transferCategoryLabel, transferCategoryColor, TRANSFER_CATEGORIES } from '../store';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
+import { normaliserRecherche } from '../utils/recherche';
 import { Plus, Trash2, Save, X, Send, Edit3 } from 'lucide-react';
 import { Select } from './Select';
+import MoneyInput from './MoneyInput';
 
 export interface ReqLine {
   id: string;
@@ -105,7 +107,7 @@ export default function DemandeAchatForm({
   if (!open) return null;
 
   const reqFiltered = reqSearch.length >= 1
-    ? articles.filter(a => a.name.toLowerCase().includes(reqSearch.toLowerCase()))
+    ? articles.filter(a => { const q = normaliserRecherche(reqSearch); return q === '' || normaliserRecherche(a.name).includes(q); })
     : [];
 
   const reqSelectArticle = (articleId: string) => {
@@ -345,9 +347,11 @@ export default function DemandeAchatForm({
                 </div>
 
                 <div className="w-24"><label className="block text-[10px] font-bold text-ink-muted mb-0.5">P. Achat</label>
-                  <input type="number" min={0} value={reqLineForm.purchasePrice}
-                    onChange={e => setReqLineForm(prev => ({ ...prev, purchasePrice: parseFloat(e.target.value) || 0, amount: prev.quantity * (parseFloat(e.target.value) || 0) }))}
+                  <MoneyInput value={reqLineForm.purchasePrice}
+                    onChange={n => setReqLineForm(prev => ({ ...prev, purchasePrice: n, amount: prev.quantity * n }))}
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); reqSaveLine(); } }}
+                    ariaLabel="Prix d'achat"
+                    title="Prix d'achat — séparateur de milliers automatique (ex : 49 450)"
                     className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-line-control text-ink-strong" />
                 </div>
 

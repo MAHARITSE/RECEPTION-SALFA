@@ -255,8 +255,11 @@ ${mentionsLegalesSalfa()}
   <meta charset="utf-8">
   <title>Facture ${invNumber}</title>
   <style>
+    /* Feuille A4 PAYSAGE même pour UNE seule facture individuelle : la facture
+       occupe la moitié GAUCHE de la feuille (format A5) et la moitié droite
+       reste libre pour l'utilisateur. Pointillé central = ligne de découpe. */
     @page {
-      size: A5 portrait;
+      size: A4 landscape;
       margin: 8mm;
       @bottom-left {
         content: "Page " counter(page) "/" counter(pages);
@@ -273,8 +276,25 @@ ${mentionsLegalesSalfa()}
       font-size: 11px;
       color: #000;
       background: #fff;
-      padding: 10px;
+      margin: 0;
+      padding: 0;
       line-height: 1.3;
+    }
+    /* Ligne de découpe AU CENTRE de la feuille : marge gauche 8 mm +
+       colonne 140 mm = 148 mm ≈ le centre exact de l'A4 paysage (148,5 mm).
+       La facture garde sa largeur d'avant (132 mm de contenu, comme sur
+       l'ancienne page A5) ; la moitié droite (une page A5 entière) est libre. */
+    .a4-duo { display: flex; align-items: flex-start; }
+    .a4-duo .invoice-half {
+      flex: 0 0 140mm;
+      width: 140mm;
+      padding-right: 8mm;
+    }
+    .a4-duo .free-half {
+      flex: 1;
+      min-width: 0;
+      border-left: 1px dashed #999;
+      margin-left: 0.5mm;
     }
     /* L'en-tête reste sur la première page : jamais de coupure à l'intérieur,
        jamais de ligne du tableau détachée juste après lui. */
@@ -360,6 +380,12 @@ ${mentionsLegalesSalfa()}
     table.invoice-table th.num, table.invoice-table td.num {
       width: 90px;
     }
+    /* Colonne Qté plus fine (les quantités sont courtes) : le libellé gagne
+       de la place, les colonnes Prix / Montant gardent leur largeur 90 px
+       (alignement des totaux conservé). */
+    table.invoice-table th:nth-child(3), table.invoice-table td:nth-child(3) {
+      width: 60px;
+    }
     table.invoice-table th {
       font-weight: bold;
       text-align: center;
@@ -372,7 +398,7 @@ ${mentionsLegalesSalfa()}
     }
     table.summary-table {
       border-collapse: collapse;
-      width: 220px;
+      width: 310px;
       font-size: 10px;
       table-layout: fixed;
     }
@@ -387,9 +413,12 @@ ${mentionsLegalesSalfa()}
       text-align: right;
       background-color: #f8f8f8;
     }
-    /* 90 px : la même largeur que les colonnes Qté / Prix / Montant du tableau. */
+    /* 180 px : la case « Total Brut » COMMENCE exactement où FINIT la colonne
+       Qté du tableau (fin Qté = bord droit − 180 px, car Prix 90 + Montant 90
+       s'étendent jusqu'au bord droit de la facture) et s'aligne en bout avec
+       la colonne Montant. */
     table.summary-table td.val {
-      width: 90px;
+      width: 180px;
       text-align: right;
       font-weight: bold;
     }
@@ -409,6 +438,8 @@ ${mentionsLegalesSalfa()}
   </style>
 </head>
 <body>
+  <div class="a4-duo">
+  <div class="invoice-half">
   ${headerMarkup}
 
   <div class="doc-title">FACTURE &nbsp; ${invNumber}</div>
@@ -453,10 +484,10 @@ ${mentionsLegalesSalfa()}
         <td class="lbl">Total Brut</td>
         <td class="val">${formatArDec(totalBrut)}</td>
       </tr>
-      <tr>
+      ${remise > 0 ? `<tr>
         <td class="lbl">${escapeHtml(libelleReduction)}</td>
         <td class="val">${formatArDec(remise)}</td>
-      </tr>
+      </tr>` : ''}
       <tr>
         <td class="lbl">Net à payer</td>
         <td class="val">${formatArDec(netAPayer)}</td>
@@ -470,6 +501,9 @@ ${mentionsLegalesSalfa()}
 
   <div class="footer-block">
     <span>Date de facture : <strong>${dateFacture}</strong></span>
+  </div>
+  </div>
+  <div class="free-half" aria-hidden="true"></div>
   </div>
 
 </body>

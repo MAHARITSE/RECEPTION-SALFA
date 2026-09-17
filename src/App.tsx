@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, Component, type ReactNode, type ErrorInfo } from 'react';
 import type { User } from './types';
 import { createInitialState, prepareLoadedState, migrateLegacyToVentes, normalizeFamilyBases, addAuditLog, addNotification, type AppState } from './store';
+import { migrateMonthlyInvoiceNumbers } from './modules/assurance/monthlyBilling';
 import { loadStateFromBrowser, saveStateToBrowser, subscribeBrowserState, readBrowserMeta } from './browserDb';
 import { mergeStates, sameBusinessData } from './syncMerge';
 import {
@@ -443,6 +444,20 @@ function AppInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Migration idempotente : les factures GLOBALE mensuelle société émises dans
+  // l'ancien format FM-YYYY-MM-NNNN reçoivent le format officiel FA-MM/CODE/YY-NNN.
+  useEffect(() => {
+    setState((prev) => {
+      const next = { ...prev };
+      const n = migrateMonthlyInvoiceNumbers(next);
+      if (n === 0) return prev;
+      // eslint-disable-next-line no-console
+      console.info(`[facturation] migration : ${n} facture(s) mensuelle(s) société renumérotée(s) en FA-MM/CODE/YY-NNN.`);
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Migration idempotente : base familles MEDIC / LAB / ECHO et ancien code LABO -> LAB.
   useEffect(() => {
     setState((prev) => {
@@ -655,7 +670,7 @@ function AppInner() {
           onMarkRead={handleMarkRead}
           onNotificationAction={handleNotificationAction}
           onOpenMessaging={() => handleOpenMessagingWithRecipient(null)}
-          onOpenMedicalRecord={(patientId) => handleOpenMedicalRecord(patientId)}
+          onOpenMedicalRecord={state.currentUser.role === 'doctor' ? (patientId) => handleOpenMedicalRecord(patientId) : undefined}
           unreadMessages={myMsgCount}
         >
           <ModuleDossierMedical state={state} patientId={medicalRecordPatientId} onBack={() => { setView('staff'); setMedicalRecordPatientId(null); }} />
@@ -682,7 +697,7 @@ function AppInner() {
   return (
     <>
       <MiseEnPage user={state.currentUser} patients={state.patients} notifications={state.notifications} onLogout={handleLogout} onMarkRead={handleMarkRead} onNotificationAction={handleNotificationAction}
-        onOpenMessaging={() => handleOpenMessagingWithRecipient(null)} onOpenMedicalRecord={state.currentUser.role === 'doctor' || state.currentUser.role === 'admin' ? handleOpenMedicalRecord : undefined} onBackupSql={handleBackupSql} unreadMessages={myMsgCount}
+        onOpenMessaging={() => handleOpenMessagingWithRecipient(null)} onOpenMedicalRecord={state.currentUser.role === 'doctor' ? handleOpenMedicalRecord : undefined} unreadMessages={myMsgCount}
         onChangeRole={(role) => setState((prev) => ({ ...prev, currentUser: { ...prev.currentUser!, role } }))}
         fullHeight={state.currentUser.role === 'admin'}>
         <ModuleErrorBoundary onReset={handleLogout}>

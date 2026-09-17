@@ -153,11 +153,17 @@ export function stockAlertStatus(a: Article, location: 'central' | 'pharmacie'):
 }
 
 /* ====== NUMÉROTATION DES FACTURES ======
- * Format officiel (voir src/utils/factureNumber.ts) :
- *  - client société : FA-MM/CODE/YY-NNN (ex: FA-07/BSA/26-014) — mois des prescriptions,
- *    code société (diminutif créé et enregistré si absent), ordre d'établissement du
- *    mois : séquence globale partagée par toutes les sociétés (-013 JIRAMA, -014 BSA…) ;
- *  - autres clients : AAFAMMJJ + ordre du jour (ex: 26FA0427102). */
+ * Formats officiels (voir src/utils/factureNumber.ts) :
+ *  - FACTURE GLOBALE SOCIÉTÉ (mensuelle, établie dans le module Facturation —
+ *    vue par facture) : FA-MM/CODE/YY-NNN (ex: FA-07/BSA/26-014) — mois des
+ *    prescriptions, code société (diminutif créé et enregistré si absent),
+ *    ordre d'établissement du mois : séquence globale partagée par toutes les
+ *    sociétés (-013 JIRAMA, -014 BSA…). Réserve EXCLUSIVE à ce document :
+ *    demandé explicitement via `factureGlobale: true`.
+ *  - FACTURES JOURNALIÈRES INDIVIDUELLES (validées à la caisse, labo/écho du
+ *    médecin, hospit/bloc) : AAFAMMJJ + ordre du jour (ex: 26FA0427001)
+ *    — SANS DISTINCTION de client : société, comptoir et externe reçoivent
+ *    tous ce format. */
 /** Construit un numéro de facture de la forme "FAC-YYYY-NNNN" (format historique). */
 export function generateFactureNumber(prefix: string = 'FAC', counter: number = 1): string {
   const year = new Date().getFullYear();
@@ -223,8 +229,9 @@ export interface FactureNumberAllocation {
 
 /**
  * Attribue le numéro de facture officiel (version SYNCHRONE, calcul local) :
- *  - client société → FA-MM/CODE/YY-NNN (mois des prescriptions, code société) ;
- *  - autres clients → AAFAMMJJ + ordre du jour (ex: 26FA0427102).
+ *  - facture GLOBALE société mensuelle (`factureGlobale: true`) → FA-MM/CODE/YY-NNN ;
+ *  - TOUTES les factures journalières individuelles → AAFAMMJJ + ordre du jour
+ *    (ex: 26FA0427102), sans distinction société / comptoir / externe.
  * `numbers` permet d'enchaîner plusieurs attributions dans un même traitement
  * (le numéro renvoyé doit y être ajouté par l'appelant).
  *
@@ -235,13 +242,15 @@ export interface FactureNumberAllocation {
  */
 export function allocateFactureNumber(
   state: AppState,
-  opts: { clientType?: ClientType; company?: string; invoiceDate?: string; prescriptionDate?: string; numbers?: string[] },
+  opts: { clientType?: ClientType; company?: string; invoiceDate?: string; prescriptionDate?: string; numbers?: string[]; factureGlobale?: boolean },
 ): FactureNumberAllocation {
   const numbers = opts.numbers ?? collectExistingFactureNumbers(state);
   const now = new Date();
   const parsedInvoiceDate = opts.invoiceDate ? new Date(opts.invoiceDate) : now;
   const invoiceDate = Number.isFinite(parsedInvoiceDate.getTime()) ? parsedInvoiceDate : now;
-  if (opts.clientType === 'societe' && (opts.company || '').trim()) {
+  // FA-MM/CODE/YY-NNN réservé à la facture GLOBALE mensuelle société,
+  // demandée explicitement ; toute facture journalière prend le format du jour.
+  if (opts.factureGlobale === true && opts.clientType === 'societe' && (opts.company || '').trim()) {
     const resolved = resolveSocieteFactureCode(state, opts.company);
     const parsedPresc = opts.prescriptionDate ? new Date(opts.prescriptionDate) : invoiceDate;
     const prescDate = Number.isFinite(parsedPresc.getTime()) ? parsedPresc : invoiceDate;
@@ -258,6 +267,14 @@ export interface FactureNumberSpec {
   company?: string;
   invoiceDate?: string;
   prescriptionDate?: string;
+  /**
+   * VRAI uniquement pour la FACTURE GLOBALE mensuelle société établie dans le
+   * module Facturation (vue par facture) : seul ce document reçoit le format
+   * FA-MM/CODE/YY-NNN. Toutes les factures journalières individuelles
+   * validées à la caisse reçoivent AAFAMMJJ + ordre du jour, sans distinction
+   * société / comptoir / externe.
+   */
+  factureGlobale?: boolean;
 }
 
 /**
@@ -276,7 +293,9 @@ export async function allocateFactureNumbersAsync(
   const resolved = specs.map((opts) => {
     const parsedInvoiceDate = opts.invoiceDate ? new Date(opts.invoiceDate) : now;
     const invoiceDate = Number.isFinite(parsedInvoiceDate.getTime()) ? parsedInvoiceDate : now;
-    if (opts.clientType === 'societe' && (opts.company || '').trim()) {
+    // FA-MM/CODE/YY-NNN réservé à la facture GLOBALE mensuelle société ;
+    // toute facture journalière (même société) prend le format du jour.
+    if (opts.factureGlobale === true && opts.clientType === 'societe' && (opts.company || '').trim()) {
       const code = resolveSocieteFactureCode(state, opts.company);
       const parsedPresc = opts.prescriptionDate ? new Date(opts.prescriptionDate) : invoiceDate;
       const prescDate = Number.isFinite(parsedPresc.getTime()) ? parsedPresc : invoiceDate;
@@ -354,7 +373,9 @@ export function createVente(
   state.factureCounter = (state.factureCounter || 0) + 1;
   let numeroFacture = data.numeroFacture;
   if (!numeroFacture) {
-    // Numérotation officielle : FA-MM/CODE/YY-NNN pour les sociétés, AAFAMMJJ + ordre du jour sinon.
+    // Numérotation officielle : AAFAMMJJ + ordre du jour pour TOUTES les factures
+    // journalières (société / comptoir / externe) — FA-MM/CODE = facture globale
+    // mensuelle, attribuée dans le module Facturation.
     // REPLI local : les écrans pré-attribuent le numéro (allocateFactureNumbersAsync)
     // et le passent dans `data.numeroFacture`. Ce calcul synchrone ne sert plus
     // qu'aux chemins mono-fil sans écran (imports, migrations) — sûrs car un
@@ -502,8 +523,10 @@ export function migrateLegacyToVentes(state: AppState): { migratedInvoices: numb
   let counter = state.factureCounter || 0;
 
   // Numérotation officielle : les numéros déjà émis sont rassemblés une fois,
-  // puis chaque facture migrée reçoit le format en vigueur à sa date
-  // (ordre du jour 26FA0427102 / sociétés FA-07/BSA/26-014).
+  // puis chaque facture journalière migrée reçoit le format du jour
+  // (AAFAMMJJ + ordre, ex: 26FA0427102) — sans distinction de client.
+  // (Le format FA-MM/CODE/YY-NNN est réservé à la facture GLOBALE mensuelle
+  //  société, attribuée dans le module Facturation.)
   const numbers = collectExistingFactureNumbers(state);
   const allocateLegacyNumber = (
     clientType: ClientType,

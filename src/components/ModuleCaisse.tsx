@@ -11,7 +11,7 @@ import type { Societe } from '../modules/assurance/types';
 import {
   addAuditLog, addNotification, formatAr, formatNum, roundTo2, getPrice, calculateAge,
   normalizeDossierNumber, isDossierTaken, addJourneyEvent, generatePharmaClosingNumber, purgePatientFromQueue,
-  familyManagesStock, isLabFamily, isEchoFamily, allocateFactureNumber, allocateFactureNumberAsync, allocateFactureNumbersAsync, applySocieteUpsert, collectExistingFactureNumbers, companyIsBlocked, companyOptions, sousSocietesConnues,
+  familyManagesStock, isLabFamily, isEchoFamily, isConsultFamily, allocateFactureNumber, allocateFactureNumberAsync, allocateFactureNumbersAsync, applySocieteUpsert, collectExistingFactureNumbers, companyIsBlocked, companyOptions, sousSocietesConnues,
   invoiceNatureRemise,
 } from '../store';
 import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText, RefreshCw } from 'lucide-react';
@@ -20,12 +20,16 @@ import { SuggestionInput, classerSuggestions, motsIdentite } from './SuggestionI
 import { printPaymentTicket as openThermalTicket, printClosingTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket, printPharmaDeliveryClosingTicket } from '../utils/printTicket';
 import { hbLineAmt, hbReste } from '../utils/hbDossier';
 import {
-  baseCommuneCaisse, copayMetadata, repartirItemsCaisse, repartirLotCaisse, societeEtPersonneParmi,
+  baseCommuneCaisse, copayMetadata, repartirItemsCaisse, repartirLotCaisse, societeEtPersonneParmi, quotePartSiTicketModerateur,
   type RepartitionCopay,
 } from '../utils/copayCaisse';
+import { normaliserRecherche } from '../utils/recherche';
+import { suggestionNavKeyDown } from '../utils/suggestionNav';
+import { useFlashInfo, FlashInfoBanner } from './FlashInfo';
 import { printSalfaIndividualInvoice } from '../utils/printSalfaInvoice';
 import { getExamReceipts, type ExamReceipts } from '../utils/examReceipts';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
+import MoneyInput from './MoneyInput';
 import ConfirmModal from './ConfirmModal';
 import AlerteArticleIndisponible from './AlerteArticleIndisponible';
 import { PhoneInput } from './PhoneInput';
@@ -156,7 +160,11 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       // Vente externe : seul le médecin prescripteur SAISI figure sur le ticket
       // (conservé sur la facture ; jamais le libellé « Vente Externe (…) »).
       const ticketPrescriber = invoice.isExternal ? invoice.prescriberName : undefined;
-      openThermalTicket(effectiveTicketSettings, invoice, patient, cashier, undefined, ticketPrescriber ? { prescriberName: ticketPrescriber } : undefined);
+      openThermalTicket(effectiveTicketSettings, invoice, patient, cashier, undefined, {
+        ...(ticketPrescriber ? { prescriberName: ticketPrescriber } : {}),
+        // Remise société (quote-part du taux non encaissée) — affichée sur le ticket.
+        ...(invoice.remiseNonEncaise ? { remise: invoice.remiseNonEncaise } : {}),
+      });
     }
     if ((kind === 'all' || kind === 'lab') && exams.labLines.length) {
       printLabRequestTicket(effectiveTicketSettings, ticketPatient, prescriber, date, exams.labLines);
@@ -215,7 +223,9 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   };
 
   /** Numéro de facture officiel d'un nouveau dossier hospit/bloc :
-   *  FA-MM/CODE/YY-NNN pour les sociétés, AAFAMMJJ + ordre du jour sinon.
+   *  AAFAMMJJ + ordre du jour (26FA0917001), sans distinction société /
+   *  comptoir / externe (le format FA-MM/CODE est réservé à la facture
+   *  GLOBALE mensuelle du module Facturation).
    *  Réservé atomiquement : JETTE une erreur si la numérotation échoue. */
   const hbNumeroFacture = async (clientType: ClientType, company?: string): Promise<string> => {
     const allocated = await allocateFactureNumberAsync(state, {
@@ -243,6 +253,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
   // HB Modal: patient search/add (ALL fields like reception)
   const [hbPatSearch, setHbPatSearch] = useState('');
+  const [hbPatIdx, setHbPatIdx] = useState(0);
   const [hbNewPat, setHbNewPat] = useState({ dossier: '', lastName: '', firstName: '', dateOfBirth: '', gender: 'M' as 'M'|'F', contact: '', address: '', matricule: '', ssn: '', insureName: '', clientType: 'comptoir' as ClientType, company: '', subCompany: '' });
 
   // Saisie assistée du nouveau patient : valeurs déjà connues dans la base
@@ -426,6 +437,40 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const copayManquant = copayDu > 0 ? Math.max(0, roundTo2(copayDu - copayEspeces)) : 0;
   const copayMonnaie = copayDu > 0 ? Math.max(0, roundTo2(copayEspeces - copayDu)) : 0;
 
+  /**
+   * Répartition PIÈCE PAR PIÈCE (factures analyses / échographies / consultation
+   * en attente + médicaments) : le ticket modérateur ou la remise des examens du
+   * médecin arrive à la caisse visible — même calcul que la validation.
+   */
+  const copayLotPreview = useMemo(() => {
+    if (!selPatient || selPatient.clientType !== 'societe') return null;
+    const svc = pendingServiceInvoices.filter(i => i.patientId === selPatient.id);
+    const meds = medicationItemsOf(getConsults(selPatient.id));
+    const pieces = [
+      ...svc.map(s => ({
+        id: s.id,
+        label: s.items.some(it => it.category === 'lab') ? 'Analyses' : s.items.some(it => it.category === 'echo') ? 'Échographies' : 'Consultation',
+        numero: s.numeroFacture || undefined,
+        items: s.items,
+      })),
+      ...(meds.length > 0 ? [{ id: 'meds', label: 'Médicaments', numero: undefined, items: meds }] : []),
+    ];
+    if (pieces.length === 0) return null;
+    const { societe, personne } = societeEtPersonneParmi(selPatient, baseCommune.societes, baseCommune.personnes);
+    const lot = repartirLotCaisse({ societe, personne, factures: pieces.map(p => ({ items: p.items })) });
+    return {
+      societe: societe || null,
+      nature: lot.total.nature,
+      pieces: pieces.map((p, i) => ({
+        ...p,
+        brut: lot.parFacture[i]?.brut ?? 0,
+        quote: lot.parFacture[i]?.ticketModerateur ?? 0,
+        remise: lot.parFacture[i] ? quotePartSiTicketModerateur({ societe, personne, items: p.items }) : 0,
+      })),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selPatient, state.consultations, state.invoices, baseCommune]);
+
   // Confirmation Modal State
   const [confirmModalState, setConfirmModalState] = useState<{
     isOpen: boolean;
@@ -466,6 +511,8 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     });
   };
 
+  // Blocage de validation non bloquant : info ~2 s puis reprise de saisie.
+  const { message: flashMsg, flash } = useFlashInfo();
   const showAlert = (message: string, title: string = 'Information', type: 'warning' | 'info' | 'danger' = 'warning') => {
     setConfirmModalState({
       isOpen: true,
@@ -538,9 +585,10 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     const medicationItems: InvoiceItem[] = medicationItemsOf(unpaidConsults);
     const serviceInvoices = pendingServiceInvoices.filter(i => i.patientId === selPatient.id);
     const serviceItems = serviceInvoices.flatMap(i => i.items);
-    // Numérotation officielle des factures réglées :
-    //  - client société → FA-MM/CODE/YY-NNN (mois des prescriptions, code société) ;
-    //  - autres clients → AAFAMMJJ + ordre du jour (ex: 26FA0427102).
+    // Numérotation officielle des factures journalières réglées : AAFAMMJJ +
+    // ordre du jour (ex: 26FA0427001) SANS DISTINCTION société / comptoir /
+    // externe — le format FA-MM/CODE/YY-NNN est réservé à la facture GLOBALE
+    // mensuelle du module Facturation.
     // Les factures de services (labo/écho) en attente reçoivent leur numéro dans
     // l'ordre chronologique, puis la facture médicaments — le tout en UN SEUL
     // lot atomique (attribué plus bas, après le cas « passage sans facturation »).
@@ -580,6 +628,27 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       : null;
     const copay = lotCopay && lotCopay.total.aEncaisser ? lotCopay.total : null;
     const copayMontant = copay ? roundTo2(copay.ticketModerateur) : 0;
+    /**
+     * NATURE « REMISE » (société ou dérogation de l'assuré) : la quote-part du
+     * taux contractuel est une vraie remise — personne ne la paye (ni le
+     * patient, ni la société) — et elle est AFFICHÉE comme « Remise » sur le
+     * ticket de caisse. (Nature « ticket modérateur » : cette même somme est
+     * encaissée en espèces ci-dessus.)
+     */
+    const remiseSociete = isSocieteCredit && !copay && lotCopay?.total.nature === 'remise' && societeCopay
+      ? quotePartSiTicketModerateur({ societe: societeCopay, personne: personneCopay, items: unifiedItems })
+      : 0;
+    const remiseParFacture = new Map<string, number>();
+    if (remiseSociete > 0 && societeCopay) {
+      for (const svc of serviceInvoices) {
+        const q = quotePartSiTicketModerateur({ societe: societeCopay, personne: personneCopay, items: svc.items });
+        if (q > 0) remiseParFacture.set(svc.id, q);
+      }
+      if (medicationItems.length > 0) {
+        const q = quotePartSiTicketModerateur({ societe: societeCopay, personne: personneCopay, items: medicationItems });
+        if (q > 0) remiseParFacture.set(COPAY_MEDS_KEY, q);
+      }
+    }
     /** Répartition facture par facture (net crédité à la société + quote-part). */
     const copayParFacture = new Map<string, RepartitionCopay>();
     if (copay && lotCopay) {
@@ -598,10 +667,10 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     // jamais consommer un numéro de facture.
     const copayEspecesRecues = copayMontant > 0 ? roundTo2(Number(copayCash) || 0) : 0;
     if (copayMontant > 0 && copayEspecesRecues < copayMontant) {
-      showAlert(
-        `Le ticket modérateur de ${formatAr(copayMontant)} doit être encaissé en espèces avant de valider le crédit société.\nMontant saisi : ${formatAr(copayEspecesRecues)} — reste à encaisser : ${formatAr(roundTo2(copayMontant - copayEspecesRecues))}.`,
-        'Ticket modérateur non encaissé',
-        'danger',
+      // Info brève (~2 s) puis reprise de saisie dans le champ « Espèces reçues ».
+      flash(
+        `Ticket modérateur de ${formatAr(copayMontant)} à encaisser en espèces — reste : ${formatAr(roundTo2(copayMontant - copayEspecesRecues))}.`,
+        document.getElementById('copayCash') as HTMLElement | null,
       );
       payingRef.current = false;
       return;
@@ -704,6 +773,8 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         copayTicketModerateur: copayMeds && copayMeds.ticketModerateur > 0
           ? copayMetadata(copayMeds, { numeroFactureSociete: medsNumeroSociete })
           : undefined,
+        // Remise société (quote-part du taux convertie en remise) — affichée sur le ticket.
+        remiseNonEncaise: remiseParFacture.get(COPAY_MEDS_KEY) || undefined,
       } : null;
     } else {
       // COMPTOIR / EXTERNE : facture UNIFIÉE médicaments + services — la
@@ -753,6 +824,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
           ...inv, items: unifiedItems, totalAmount: total,
           patientCharge: isSocieteCredit ? partSocieteTotale : total,
           copayTicketModerateur: printCopay || inv.copayTicketModerateur,
+          remiseNonEncaise: remiseSociete > 0 ? remiseSociete : inv.remiseNonEncaise,
         }
       : {
           id: serviceInvoices[0]?.id || `caisse-${uuidv4()}`, patientId: selPatient.id,
@@ -761,6 +833,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
           patientCharge: isSocieteCredit ? partSocieteTotale : total, numeroFacture: printNumero,
           status: 'paid', paidAt, paidBy: state.currentUser?.id || '', createdAt: paidAt, isExternal: false, creditSociete: isSocieteCredit,
           copayTicketModerateur: printCopay,
+          remiseNonEncaise: remiseSociete > 0 ? remiseSociete : undefined,
         };
 
     // Libellé du règlement société (journal d'audit + parcours du patient).
@@ -802,6 +875,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                     copayTicketModerateur: rep && rep.ticketModerateur > 0
                       ? copayMetadata(rep, { numeroFactureSociete: i.numeroFacture || allocatedNumbers.get(i.id) })
                       : i.copayTicketModerateur,
+                    remiseNonEncaise: remiseParFacture.get(i.id) || i.remiseNonEncaise,
                     // VALIDATION = situation du patient au moment de la validation :
                     // des factures services créées quand le patient était encore
                     // « comptoir » (ou avant son rattachement société) suivent son
@@ -879,7 +953,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   // Les articles bloqués à la vente restent visibles (marqués en rouge « BLOQUÉ ») :
   // le caissier reçoit une notification rouge centrée s'il tente de les sélectionner.
   const extFiltered = extSearch.length >= 1
-    ? state.articles.filter(a => a.name.toLowerCase().includes(extSearch.toLowerCase()))
+    ? state.articles.filter(a => { const q = normaliserRecherche(extSearch); return q === '' || normaliserRecherche(a.name).includes(q); })
     : [];
   const extLineAmt = (l: HbLine) => roundTo2(l.unitPrice * l.quantity * (1 - l.discount / 100));
   const extArticlesTotal = extLines.reduce((s, l) => s + extLineAmt(l), 0);
@@ -963,6 +1037,21 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     if (extLines.length === 0) return;
     // Ne pas valider l'encaissement si une ligne de vente est en cours de saisie mais non enregistrée
     if (blockIfUnsavedDraftLine(extLineForm, extLines, { entityLabel: 'l\'article' })) return;
+    // RÈGLE : la saisie du médecin prescripteur est OBLIGATOIRE avant d'encaisser,
+    // SAUF si toutes les lignes de la vente sont des articles de la famille
+    // Consultation (la consultation porte déjà le nom du médecin qui la fait).
+    const toutesConsultations = extLines.every((l) => {
+      const art = state.articles.find((a) => a.name === l.articleName);
+      return !!art && isConsultFamily(art.family);
+    });
+    if (!toutesConsultations && !extPrescripteur.trim()) {
+      // Info brève (~2 s) puis reprise de saisie dans le champ (comme « Diagnostic * » chez le médecin).
+      flash(
+        "Médecin prescripteur obligatoire avant d'encaisser (sauf si la vente ne contient que des articles de la famille Consultation).",
+        document.getElementById('ext-prescripteur') as HTMLElement | null,
+      );
+      return;
+    }
     // Contrôle blocage vente au moment de l'encaissement
     const blockedLines = extLines.filter((l) => {
       const art = state.articles.find((a) => a.name === l.articleName);
@@ -1030,7 +1119,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     // Prescripteur saisi : rattaché au médecin de la base quand il existe
     // (identifiant réel), sinon conservé tel quel ; à défaut, libellé caisse.
     const prescripteurSaisi = extPrescripteur.trim();
-    const medecinBase = prescripteurSaisi ? state.users.find(u => u.role === 'doctor' && u.name.trim().toLowerCase() === prescripteurSaisi.toLowerCase()) : undefined;
+    const medecinBase = prescripteurSaisi ? state.users.find(u => u.role === 'doctor' && normaliserRecherche(u.name) === normaliserRecherche(prescripteurSaisi)) : undefined;
     const extDoctor: User = prescripteurSaisi
       ? { id: medecinBase?.id || 'EXTERNE', name: prescripteurSaisi, role: 'doctor' }
       : { id: 'CASHIER', name: state.currentUser?.name ? `Vente Externe (${state.currentUser.name})` : 'Vente Externe', role: 'cashier' };
@@ -1154,7 +1243,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       });
       // Le prescripteur saisi (hors centre) rejoint la base de la saisie assistée.
       const prescripteurs = prev.prescripteursExternes || [];
-      const prescripteursExternes = prescripteurSaisi && !prescripteurs.some(n => (n || '').trim().toLowerCase() === prescripteurSaisi.toLowerCase())
+      const prescripteursExternes = prescripteurSaisi && !prescripteurs.some(n => normaliserRecherche(n) === normaliserRecherche(prescripteurSaisi))
         ? [...prescripteurs, prescripteurSaisi]
         : prescripteurs;
       const next = {
@@ -1185,7 +1274,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   // Les montants d'un dossier hospit/bloc viennent de `utils/hbDossier` : caisse,
   // pharmacie de garde et facturation calculent donc exactement pareil (`hbLineAmt`
   // et `hbReste` sont importés en haut du fichier).
-  const hbPatFiltered = hbPatSearch.length >= 1 ? state.patients.filter(p => `${p.lastName} ${p.firstName}`.toLowerCase().includes(hbPatSearch.toLowerCase()) || p.dossier.toLowerCase().includes(hbPatSearch.toLowerCase())) : [];
+  const hbPatFiltered = hbPatSearch.length >= 1 ? state.patients.filter(p => { const q = normaliserRecherche(hbPatSearch); return q === '' || normaliserRecherche(`${p.lastName} ${p.firstName}`).includes(q) || normaliserRecherche(p.dossier).includes(q); }) : [];
 
   const hbSelectPatient = async (patientId: string) => {
     const p = state.patients.find(x => x.id === patientId);
@@ -1223,10 +1312,14 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   };
 
   const hbAddNewPatient = async () => {
-    if (!hbNewPat.lastName || !hbNewPat.firstName) { alert('Nom et prénom requis'); return; }
+    // Info brève (~2 s) puis reprise de saisie dans le champ concerné.
+    if (!hbNewPat.lastName || !hbNewPat.firstName) {
+      flash('Nom et prénom requis.', document.getElementById(!hbNewPat.lastName ? 'caisse-nouveau-nom' : 'caisse-nouveau-prenom') as HTMLElement | null);
+      return;
+    }
     const dossier = normalizeDossierNumber(hbNewPat.dossier);
-    if (!dossier) { alert('Le numéro de dossier est obligatoire (saisie manuelle, majuscules).'); return; }
-    if (isDossierTaken(state.patients, dossier)) { alert('Ce numéro de dossier existe déjà.'); return; }
+    if (!dossier) { flash('Le numéro de dossier est obligatoire (saisie manuelle, majuscules).', document.getElementById('caisse-nouveau-dossier') as HTMLElement | null); return; }
+    if (isDossierTaken(state.patients, dossier)) { flash('Ce numéro de dossier existe déjà.', document.getElementById('caisse-nouveau-dossier') as HTMLElement | null); return; }
     const np = {
       id: uuidv4(), dossier,
       firstName: hbNewPat.firstName.toUpperCase(), lastName: hbNewPat.lastName.toUpperCase(),
@@ -1263,7 +1356,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
   // Article modal for hospit/bloc — exclure articles bloqués
   const hbArtFiltered = hbArtSearch.length >= 1
-    ? state.articles.filter(a => a.name.toLowerCase().includes(hbArtSearch.toLowerCase()) && !a.saleBlocked)
+    ? state.articles.filter(a => { const q = normaliserRecherche(hbArtSearch); return (q === '' || normaliserRecherche(a.name).includes(q)) && !a.saleBlocked; })
     : [];
 
   const hbArtNew = () => {
@@ -1772,6 +1865,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
   return (
     <div className="space-y-4 flex flex-col">
+      <FlashInfoBanner message={flashMsg} />
       {lastReceipt && (
         <section aria-label="Dernier encaissement" className="bg-surface border border-line rounded-xl p-3 flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -1870,8 +1964,8 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                 <div className="p-3 bg-purple-50 dark:bg-purple-500/8 border border-purple-200 dark:border-purple-500/25 rounded-lg"><h3 className="font-bold text-purple-800 dark:text-purple-300"><ShoppingCart className="w-5 h-5 inline" /> Vente Directe — Client Externe</h3></div>
                 <div className="flex items-end gap-2 -mt-1">
                   <div className="flex-1">
-                    <label className="block text-[9px] text-ink-muted" title="Généralement un médecin hors de notre centre. Saisie assistée par les prescripteurs déjà enregistrés (la base s'enrichit à chaque vente) et les médecins de l'hôpital — une valeur libre est acceptée.">Médecin prescripteur (facultatif — hors centre)</label>
-                    <SuggestionInput mode="contient" value={extPrescripteur} onChange={setExtPrescripteur} suggestions={suggestionsPrescripteurs}
+                    <label className="block text-[9px] text-ink-muted" title="Obligatoire avant d'encaisser, sauf si la vente ne contient que des articles de la famille Consultation. Généralement un médecin hors de notre centre. Saisie assistée par les prescripteurs déjà enregistrés (la base s'enrichit à chaque vente) et les médecins de l'hôpital — une valeur libre est acceptée.">Médecin prescripteur (obligatoire avant encaissement — sauf famille Consultation)</label>
+                    <SuggestionInput mode="contient" id="ext-prescripteur" value={extPrescripteur} onChange={setExtPrescripteur} suggestions={suggestionsPrescripteurs}
                       ariaLabel="Médecin prescripteur" placeholder="Ex : Dr RAKOTOARISOA (Clinique Fanihy)" maxSuggestions={8}
                       className="w-full bg-surface border border-purple-300 dark:border-purple-500/40 rounded px-2 py-1 text-xs outline-none focus:border-accent" />
                   </div>
@@ -1979,7 +2073,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                             <button onClick={() => deleteHbRecord(record.id)} className="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs cursor-pointer transition font-medium flex items-center gap-1" title="Supprimer ce dossier (Facture 0 Ar)"><Trash2 className="w-3.5 h-3.5" /> Supprimer</button>
                           )}
                           {reste > 0 && <>
-                            <input type="number" min={1} max={reste} value={hbPayAmounts[record.id] || ''} onChange={e => setHbPayAmounts(prev => ({ ...prev, [record.id]: Math.max(0, Math.min(parseFloat(e.target.value) || 0, reste)) }))} className="w-24 px-2 py-1 border rounded text-xs text-right outline-none" placeholder="Montant" />
+                            <MoneyInput value={hbPayAmounts[record.id] || 0} onChange={n => setHbPayAmounts(prev => ({ ...prev, [record.id]: Math.max(0, Math.min(n, reste)) }))} className="w-24 px-2 py-1 border rounded text-xs text-right outline-none" placeholder="Montant" ariaLabel="Montant à payer" title="Montant à payer — séparateur de milliers automatique (ex : 49 450)" />
                             <button onClick={() => addPartialPay(record.id)} disabled={!hbPayAmounts[record.id] || hbPayAmounts[record.id] > reste} className="px-2 py-1 bg-amber-600 text-white rounded text-xs cursor-pointer disabled:opacity-40">💰 Payer</button>
                           </>}
                           {!record.dischargedAt ? (
@@ -2109,8 +2203,8 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
           <div className="p-4 space-y-3">
             {/* Search existing */}
             <div><label className="block text-sm font-medium mb-1">Rechercher patient existant</label>
-              <input type="text" value={hbPatSearch} onChange={e => setHbPatSearch(e.target.value)} className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-accent/25" placeholder="🔍 Nom, prénom ou dossier..." autoFocus />
-              {hbPatFiltered.length > 0 && <div className="border rounded-lg mt-1 max-h-40 overflow-y-auto">{hbPatFiltered.map(p => (<div key={p.id} onClick={() => hbSelectPatient(p.id)} className="p-2 hover:bg-blue-50 dark:hover:bg-cyan-500/8 cursor-pointer text-sm flex justify-between border-b"><span className="font-medium">{p.lastName} {p.firstName}</span><span className="text-ink-faint text-xs">{p.dossier} | {p.clientType === 'societe' ? `🏢 ${p.company}` : '🏪 Comptoir'}</span></div>))}</div>}
+              <input type="text" value={hbPatSearch} onChange={e => { setHbPatSearch(e.target.value); setHbPatIdx(0); }} onKeyDown={suggestionNavKeyDown({ open: hbPatFiltered.length > 0, count: hbPatFiltered.length, index: hbPatIdx, onIndex: setHbPatIdx, onPick: (i) => { if (hbPatFiltered[i]) hbSelectPatient(hbPatFiltered[i].id); }, onEscape: () => setHbPatSearch('') })} className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-accent/25" placeholder="🔍 Nom, prénom ou dossier... (↑↓ Entrée)" autoFocus />
+              {hbPatFiltered.length > 0 && <div className="border rounded-lg mt-1 max-h-40 overflow-y-auto">{hbPatFiltered.map((p, i) => (<div key={p.id} onClick={() => hbSelectPatient(p.id)} className={`p-2 cursor-pointer text-sm flex justify-between border-b ${i === hbPatIdx ? 'bg-blue-100 dark:bg-cyan-500/15' : 'hover:bg-blue-50 dark:hover:bg-cyan-500/8'}`}><span className="font-medium">{p.lastName} {p.firstName}</span><span className="text-ink-faint text-xs">{p.dossier} | {p.clientType === 'societe' ? `🏢 ${p.company}` : '🏪 Comptoir'}</span></div>))}</div>}
             </div>
             <div className="border-t pt-3">
               <h4 className="font-bold text-sm mb-2">Ou créer un nouveau patient :</h4>
@@ -2277,11 +2371,13 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                     </div>
                     <div className="w-24">
                       <label className="block text-[10px] font-bold text-ink-muted mb-0.5">P.U.</label>
-                      <input
-                        type="number"
+                      <MoneyInput
                         value={hbArtForm.unitPrice}
-                        onChange={e => setHbArtForm(prev => ({ ...prev, unitPrice: parseFloat(e.target.value) || 0 }))}
+                        onChange={n => setHbArtForm(prev => ({ ...prev, unitPrice: n }))}
+                        decimals={2}
                         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
+                        ariaLabel="Prix unitaire"
+                        title="Prix unitaire — séparateur de milliers automatique (ex : 49 450)"
                         className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-accent text-ink-strong"
                       />
                     </div>
@@ -2768,15 +2864,12 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                       <label htmlFor="copayCash" className="block text-[11px] font-bold text-amber-900 dark:text-amber-300 mb-0.5">
                         Espèces reçues du patient
                       </label>
-                      <input
+                      <MoneyInput
                         id="copayCash"
-                        type="number"
-                        min={0}
-                        step={100}
-                        inputMode="numeric"
-                        value={copayCash}
-                        onChange={e => setCopayCash(e.target.value)}
-                        aria-label="Espèces reçues pour le ticket modérateur"
+                        value={Number(copayCash) || 0}
+                        onChange={n => setCopayCash(n === 0 ? '' : String(n))}
+                        ariaLabel="Espèces reçues pour le ticket modérateur"
+                        title="Espèces reçues — séparateur de milliers automatique (ex : 49 450)"
                         className={`w-full px-3 py-2 border rounded-lg bg-surface font-mono text-sm font-bold focus:outline-none focus:ring-2 ${copayManquant > 0 ? 'border-rose-400 focus:ring-rose-400' : 'border-amber-300 focus:ring-amber-500'}`}
                       />
                     </div>
@@ -2805,6 +2898,37 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                 <div className="flex justify-between text-sm font-semibold border-t-2 pt-2 text-ink-secondary">
                   <span>Total prestations</span>
                   <span className="font-mono">{formatAr(copayPreview.brut)}</span>
+                </div>
+              )}
+              {/* RÉPARTITION PIÈCE PAR PIÈCE : le ticket modérateur / la remise des
+                  analyses et échographies du médecin arrive à la caisse visible. */}
+              {selPatient.clientType === 'societe' && copayLotPreview && (
+                <div className="mb-3 border border-line rounded-lg overflow-hidden">
+                  <table className="w-full text-[11px]">
+                    <thead>
+                      <tr className="bg-surface-muted text-ink-muted">
+                        <th className="text-left p-1.5 font-semibold">Pièce</th>
+                        <th className="text-right p-1.5 font-semibold">Brut</th>
+                        <th className="text-right p-1.5 font-semibold">{copayLotPreview.nature === 'remise' ? 'Remise (non payée)' : 'Ticket mod. (à payer)'}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {copayLotPreview.pieces.map(pc => (
+                        <tr key={pc.id} className="border-t border-line-soft">
+                          <td className="p-1.5">{pc.label}{pc.numero ? <span className="text-ink-faint"> — {pc.numero}</span> : null}</td>
+                          <td className="p-1.5 text-right font-mono">{formatAr(pc.brut)}</td>
+                          <td className={`p-1.5 text-right font-mono font-bold ${copayLotPreview.nature === 'remise' ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                            {formatAr(copayLotPreview.nature === 'remise' ? pc.remise : pc.quote)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {!copayLotPreview.societe && (
+                    <div className="p-1.5 text-[10px] bg-orange-50 dark:bg-orange-500/10 text-orange-800 dark:text-orange-300">
+                      ⚠ Société « {selPatient.company || 'inconnue'} » non reconnue dans la base assurance — aucune quote-part calculée (crédit société intégral).
+                    </div>
+                  )}
                 </div>
               )}
               <div className={`flex justify-between text-xl font-bold ${selPatient.clientType === 'societe' ? 'text-blue-800 dark:text-cyan-300' : ''} ${copayDu > 0 ? 'pt-1' : 'border-t-2 pt-2'} mb-4`}>
