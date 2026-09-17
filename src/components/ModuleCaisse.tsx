@@ -1015,11 +1015,12 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     if (art && managesStock(art) && extLineForm.quantity > art.stockPharmacie) {
       if (!confirm(`⚠️ Stock pharmacie insuffisant pour « ${art.name} » : ${art.stockPharmacie} disponible(s), ${extLineForm.quantity} demandée(s).\n\nEnregistrer quand même ?`)) return;
     }
-    const lineToSave: HbLine = { ...extLineForm, dateSort: extLineForm.dateSort || new Date().toISOString().split('T')[0] };
+    // RÈGLE : un client externe n'a JAMAIS de remise (prix catalogue externe) et
+    // la date de sortie n'est plus saisie en caisse — la date du jour fait foi.
+    const lineToSave: HbLine = { ...extLineForm, discount: 0, dateSort: new Date().toISOString().split('T')[0] };
     if (extIsNew || !extLines.find(l => l.id === extLineForm.id)) setExtLines([...extLines, lineToSave]);
     else setExtLines(extLines.map(l => l.id === extLineForm.id ? lineToSave : l));
     setExtIsNew(false);
-    // La date n'est PAS réinitialisée après validation : une personne peut faire sortir plusieurs médicaments le même jour
     setExtLineForm(prev => ({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: prev.dateSort || new Date().toISOString().split('T')[0] }));
     setTimeout(() => extSearchRef.current?.focus(), 50);
   };
@@ -2002,10 +2003,8 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                         })}</div>}
                       </div>
                       <div className="w-14"><label className="block text-[9px] text-ink-muted">Qté</label><input type="number" min={1} value={extLineForm.quantity} onChange={e => setExtLineForm({...extLineForm, quantity: parseFloat(e.target.value)||1})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-surface border border-line-strong rounded px-1 py-0.5 text-xs text-right font-mono outline-none" /></div>
-                      <div className="w-14"><label className="block text-[9px] text-ink-muted">Rem%</label><input type="number" min={0} max={100} value={extLineForm.discount} onChange={e => setExtLineForm({...extLineForm, discount: parseFloat(e.target.value)||0})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-surface border border-line-strong rounded px-1 py-0.5 text-xs text-right font-mono outline-none" /></div>
                       <div className="w-20"><label className="block text-[9px] text-ink-muted">P.U.</label><input readOnly value={formatAr(extLineForm.unitPrice)} className="w-full bg-surface-active border border-line-strong rounded px-1 py-0.5 text-xs text-right font-mono" /></div>
                       <div className="w-24"><label className="block text-[9px] text-ink-muted">Montant</label><input readOnly value={formatAr(extLineAmt(extLineForm))} className="w-full bg-surface-active border border-line-strong rounded px-1 py-0.5 text-xs text-right font-mono font-bold" /></div>
-                      <div className="w-32"><label className="block text-[9px] text-ink-muted" title="La date est conservée après chaque validation : plusieurs sorties possibles le même jour">Date sortie 📌</label><input type="date" value={extLineForm.dateSort || ''} onChange={e => setExtLineForm({...extLineForm, dateSort: e.target.value})} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); extSaveLine(); }}} className="w-full bg-surface border border-line-strong rounded px-1 py-0.5 text-xs font-mono outline-none focus:border-accent" title="Date de sortie — conservée après validation de la ligne" /></div>
                     </div>
                     <div className="flex justify-end gap-1 mt-1">
                       <button onClick={() => { if (extSelLineId) { setExtLines(extLines.filter(l => l.id !== extSelLineId)); setExtSelLineId(null); }}} disabled={!extSelLineId} className="px-2 py-0.5 bg-surface border border-line-strong rounded text-[10px] disabled:opacity-40 cursor-pointer"><Trash2 className="h-3 w-3 text-rose-600 dark:text-rose-400 inline" /></button>
@@ -2013,14 +2012,15 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                     </div>
                   </div>
                   <div className="bg-surface mx-2 mb-2 border-t border-line-strong overflow-x-auto rounded-b">
-                    <table className="w-full text-[11px]"><thead className="bg-surface-muted border-b text-ink-secondary"><tr className="divide-x divide-line"><th className="p-1 min-w-[130px]">Article</th><th className="p-1 text-right w-12">Qté</th><th className="p-1 text-center w-12">Rem%</th><th className="p-1 text-right w-20">P.U.</th><th className="p-1 text-right w-24">Montant</th><th className="p-1 w-28">Date sortie</th></tr></thead>
-                      <tbody className="divide-y font-mono">{extLines.map(l => (<tr key={l.id} onClick={() => { setExtSelLineId(l.id); setExtLineForm({...l}); setExtIsNew(false); }} className={`cursor-pointer divide-x divide-line ${l.id === extSelLineId ? 'bg-blue-500 text-white' : 'hover:bg-surface-muted'}`}><td className="p-1 font-sans">{l.articleName}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 text-center">{l.discount > 0 ? `${l.discount}%` : '—'}</td><td className="p-1 text-right">{formatNum(l.unitPrice)}</td><td className="p-1 text-right font-bold">{formatNum(extLineAmt(l))}</td><td className="p-1 font-sans text-ink-muted">{l.dateSort || '—'}</td></tr>))}
-                        {extLines.length === 0 && <tr><td colSpan={6} className="p-3 text-center text-ink-faint font-sans">Tapez un article</td></tr>}
+                    <table className="w-full text-[11px]"><thead className="bg-surface-muted border-b text-ink-secondary"><tr className="divide-x divide-line"><th className="p-1 min-w-[130px]">Article</th><th className="p-1 text-right w-12">Qté</th><th className="p-1 text-right w-20">P.U.</th><th className="p-1 text-right w-24">Montant</th></tr></thead>
+                      <tbody className="divide-y font-mono">{extLines.map(l => (<tr key={l.id} onClick={() => { setExtSelLineId(l.id); setExtLineForm({...l}); setExtIsNew(false); }} className={`cursor-pointer divide-x divide-line ${l.id === extSelLineId ? 'bg-blue-500 text-white' : 'hover:bg-surface-muted'}`}><td className="p-1 font-sans">{l.articleName}</td><td className="p-1 text-right">{l.quantity}</td><td className="p-1 text-right">{formatNum(l.unitPrice)}</td><td className="p-1 text-right font-bold">{formatNum(extLineAmt(l))}</td></tr>))}
+                        {extLines.length === 0 && <tr><td colSpan={4} className="p-3 text-center text-ink-faint font-sans">Tapez un article</td></tr>}
                       </tbody>
-                      {extLines.length > 0 && <tfoot className="bg-emerald-50 dark:bg-emerald-500/8 border-t-2 border-emerald-300 dark:border-emerald-500/40"><tr><td colSpan={4} className="p-1 text-right font-bold font-sans">SOUS-TOTAL ARTICLES:</td><td colSpan={2} className="p-1 text-right font-mono font-bold text-lg">{formatAr(extArticlesTotal)}</td></tr></tfoot>}
+                      {extLines.length > 0 && <tfoot className="bg-emerald-50 dark:bg-emerald-500/8 border-t-2 border-emerald-300 dark:border-emerald-500/40"><tr><td colSpan={3} className="p-1 text-right font-bold font-sans">SOUS-TOTAL ARTICLES:</td><td colSpan={1} className="p-1 text-right font-mono font-bold text-lg">{formatAr(extArticlesTotal)}</td></tr></tfoot>}
                     </table>
                   </div>
                 </div>
+                <p className="text-[10px] text-purple-700/80 dark:text-purple-300/80 italic text-center">Client externe : prix catalogue « externe » — <strong>jamais de remise</strong> (la remise est réservée aux clients comptoir comme réduction commerciale, ou accordée par contrat à certaines sociétés).</p>
                 <button onClick={extPay} disabled={extLines.length === 0} className="w-full py-3 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 disabled:opacity-40 cursor-pointer flex items-center justify-center gap-2"><CreditCard className="w-5 h-5" /> Encaisser {formatAr(extTotal)}</button>
 
               </div>
@@ -2923,6 +2923,15 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                         </tr>
                       ))}
                     </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-line bg-surface-muted/60">
+                        <td className="p-1.5 font-bold">{copayLotPreview.nature === 'remise' ? 'TOTAL — remise (non payée)' : 'TOTAL — part à payer par le patient'}</td>
+                        <td className="p-1.5 text-right font-mono font-bold">{formatAr(copayLotPreview.pieces.reduce((s, pc) => s + pc.brut, 0))}</td>
+                        <td className={`p-1.5 text-right font-mono font-bold ${copayLotPreview.nature === 'remise' ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                          {formatAr(copayLotPreview.pieces.reduce((s, pc) => s + (copayLotPreview.nature === 'remise' ? pc.remise : pc.quote), 0))}
+                        </td>
+                      </tr>
+                    </tfoot>
                   </table>
                   {!copayLotPreview.societe && (
                     <div className="p-1.5 text-[10px] bg-orange-50 dark:bg-orange-500/10 text-orange-800 dark:text-orange-300">
@@ -2931,12 +2940,22 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                   )}
                 </div>
               )}
-              <div className={`flex justify-between text-xl font-bold ${selPatient.clientType === 'societe' ? 'text-blue-800 dark:text-cyan-300' : ''} ${copayDu > 0 ? 'pt-1' : 'border-t-2 pt-2'} mb-4`}>
+              <div className={`flex justify-between text-xl font-bold ${selPatient.clientType === 'societe' ? 'text-blue-800 dark:text-cyan-300' : ''} ${copayDu > 0 ? 'pt-1' : 'border-t-2 pt-2'} mb-2`}>
                 <span>{selPatient.clientType === 'societe' ? 'MONTANT À PORTER EN CRÉDIT SOCIÉTÉ' : 'À PAYER'}</span>
                 <span className={`font-mono ${selPatient.clientType === 'societe' ? 'text-blue-600 dark:text-cyan-400' : 'text-amber-600 dark:text-amber-400'}`}>
                   {formatAr(selPatient.clientType === 'societe' && copayPreview ? copayPreview.partSociete : getPendingAmount(selPatient))}
                 </span>
               </div>
+              {selPatient.clientType === 'societe' && copayPreview && (
+                <div className={`flex justify-between items-center rounded-lg px-2.5 py-1.5 mb-4 border ${copayDu > 0 ? 'bg-amber-50 dark:bg-amber-500/10 border-amber-300 dark:border-amber-500/25' : 'bg-surface-muted border-line'}`}>
+                  <span className={`font-bold text-sm ${copayDu > 0 ? 'text-amber-800 dark:text-amber-300' : 'text-ink-secondary'}`}>
+                    PART À PAYER PAR LE PATIENT{copayPreview.nature === 'remise' ? ' (remise — non due)' : copayDu > 0 ? ' (ticket modérateur)' : ''}
+                  </span>
+                  <span className={`font-mono font-bold text-base ${copayDu > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-ink'}`}>
+                    {formatAr(copayDu)}
+                  </span>
+                </div>
+              )}
               {selPatient.clientType === 'societe' ? (
                 copayDu > 0 ? (
                   <div className="space-y-2">
