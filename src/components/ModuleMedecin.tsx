@@ -312,7 +312,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [state.companies, state.patients, state.assuranceSocietes, state.assurancePersonnes],
   );
-  const copayDraftInfo = (items: { amount: number; category: 'lab' | 'echo' }[]) => {
+  const copayDraftInfo = (items: { amount: number; category: 'lab' | 'echo' | 'pharmacy' }[]) => {
     if (!selectedPatient || clientType !== 'societe' || items.length === 0) return null;
     const { societe, personne } = societeEtPersonneParmi(selectedPatient, baseCommune.societes, baseCommune.personnes);
     if (!societe) return { kind: 'unknown' as const, company: selectedPatient.company || 'inconnue' };
@@ -376,6 +376,47 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
 
   const lineAmount = (l: Prescription) => roundTo2(l.unitPrice * l.quantity * (1 - l.discount / 100));
   const totalPres = lines.reduce((s, l) => s + lineAmount(l), 0);
+  const medsCopayInfo = useMemo(
+    () => copayDraftInfo(lines.map(l => ({ amount: lineAmount(l), category: 'pharmacy' as const }))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedPatient, clientType, lines, baseCommune, state.articles],
+  );
+
+  /**
+   * Ligne « prise en charge société » commune aux trois brouillons (médicaments,
+   * analyses, échographies). Elle affiche TOUJOURS la part à payer par le patient :
+   * ticket modérateur à régler en espèces, ou 0 Ar (remise / intégral / société
+   * inconnue) quand tout part en crédit société.
+   */
+  const copaySocieteLine = (info: NonNullable<ReturnType<typeof copayDraftInfo>>, box = false) => {
+    const b = box ? 'border rounded-lg' : 'border-t';
+    if (info.kind === 'ticket_moderateur') {
+      return (
+        <div className={`p-2 text-[10px] leading-relaxed bg-amber-50 dark:bg-amber-500/10 text-amber-900 dark:text-amber-300 ${b} border-amber-200 dark:border-amber-500/25`}>
+          🏢 <strong>{info.nom}</strong> (taux {info.taux} %) prend en charge {formatAr(info.partSociete)}. 👤 <strong>Part à payer par le patient (ticket modérateur) : {formatAr(info.copay)}</strong> — à régler en espèces à la caisse lors de son passage{info.montantExclu > 0 ? ` (dont exclusions ${formatAr(info.montantExclu)})` : ''}.
+        </div>
+      );
+    }
+    if (info.kind === 'remise') {
+      return (
+        <div className={`p-2 text-[10px] leading-relaxed bg-emerald-50 dark:bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 ${b} border-emerald-200 dark:border-emerald-500/25`}>
+          🏢 <strong>{info.nom}</strong> — <strong>REMISE</strong>{info.taux && info.taux < 100 ? ` : la quote-part de ${formatAr(info.remise)} (taux ${info.taux} %) n'est due ni par la société ni par le patient` : ''} — le total part en crédit société. 👤 <strong>Part à payer par le patient : {formatAr(0)}</strong>.
+        </div>
+      );
+    }
+    if (info.kind === 'integrality') {
+      return (
+        <div className={`p-2 text-[10px] leading-relaxed bg-blue-50 dark:bg-cyan-500/10 text-blue-800 dark:text-cyan-300 ${b} border-blue-200 dark:border-cyan-500/25`}>
+          🏢 <strong>{info.nom}</strong> — prise en charge intégrale ({formatAr(info.brut)}) : le total part en crédit société. 👤 <strong>Part à payer par le patient : {formatAr(0)}</strong>.
+        </div>
+      );
+    }
+    return (
+      <div className={`p-2 text-[10px] leading-relaxed bg-orange-50 dark:bg-orange-500/10 text-orange-800 dark:text-orange-300 ${b} border-orange-200 dark:border-orange-500/25`}>
+        ⚠ Société « {info.company} » non reconnue dans la base assurance — validation en crédit société intégral (aucune quote-part calculée ; rien à payer par le patient).
+      </div>
+    );
+  };
 
   const selectPatient = (pid: string) => {
     if (pid === selectedPatientId) {
@@ -1206,7 +1247,9 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
             const completedLabs = patientLabs.filter(lr => lr.status === 'completed' && lr.results && lr.results.length > 0 && estRecent(lr));
             const inProgressLabs = patientLabs.filter(lr => lr.status !== 'completed');
 
-            if (patientLabs.length === 0) return null;
+            // Ne pas afficher le bloc s'il n'y a aucun résultat disponible
+            // (évite l'affichage « 0 disponible » quand rien n'est prêt).
+            if (completedLabs.length === 0) return null;
 
             return (
               <div className="bg-surface rounded-xl shadow-sm border border-cyan-200 dark:border-cyan-500/25 overflow-hidden">
@@ -1226,15 +1269,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                 </div>
 
                 <div className="p-3 space-y-3 max-h-80 overflow-y-auto bg-surface-muted/50 divide-y divide-line">
-                  {completedLabs.length === 0 ? (
-                    <p className="text-xs text-ink-muted italic py-2 text-center">
-                      {patientLabs.some(lr => lr.status === 'completed')
-                        ? 'Aucun résultat récent (moins d’une semaine) — les résultats anciens sont masqués.'
-                        : inProgressLabs.length > 0
-                          ? 'Aucun résultat d’analyse encore disponible. Les demandes sont en cours de traitement au laboratoire.'
-                          : 'Aucun résultat d’analyse disponible.'}
-                    </p>
-                  ) : (
+                  {(
                     completedLabs.map((lr) => {
                       const hasAbnormal = (lr.results || []).some((r) => r.isAbnormal) || lr.biologicalAlert;
                       return (
@@ -1432,6 +1467,10 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                 </tfoot>}
               </table>
             </div>
+            {/* Prise en charge société des médicaments + part à payer par le patient */}
+            {lines.length > 0 && medsCopayInfo && (
+              <div className="mx-2 mb-2">{copaySocieteLine(medsCopayInfo, true)}</div>
+            )}
           </div>
 
           {/* SAISIE DES EXAMENS LABORATOIRE ET ÉCHOGRAPHIE CÔTE À CÔTE */}
@@ -1497,25 +1536,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                       <span>Total analyses</span>
                       <span className="font-mono text-sm">{formatAr(labTotal)}</span>
                     </div>
-                    {laboCopayInfo && (
-                      laboCopayInfo.kind === 'ticket_moderateur' ? (
-                        <div className="p-2 text-[10px] leading-relaxed bg-amber-50 dark:bg-amber-500/10 text-amber-900 dark:text-amber-300 border-t border-amber-200 dark:border-amber-500/25">
-                          🏢 <strong>{laboCopayInfo.nom}</strong> (taux {laboCopayInfo.taux} %) prend en charge {formatAr(laboCopayInfo.partSociete)} — <strong>TICKET MODÉRATEUR {formatAr(laboCopayInfo.copay)} : à payer par le patient à la caisse</strong> lors de son passage{laboCopayInfo.montantExclu > 0 ? ` (dont exclusions ${formatAr(laboCopayInfo.montantExclu)})` : ''}.
-                        </div>
-                      ) : laboCopayInfo.kind === 'remise' ? (
-                        <div className="p-2 text-[10px] leading-relaxed bg-emerald-50 dark:bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border-t border-emerald-200 dark:border-emerald-500/25">
-                          🏢 <strong>{laboCopayInfo.nom}</strong> — <strong>REMISE</strong>{laboCopayInfo.taux && laboCopayInfo.taux < 100 ? ` : la quote-part de ${formatAr(laboCopayInfo.remise)} (taux ${laboCopayInfo.taux} %) n'est pas à payer par le patient` : ''} — le total part en crédit société.
-                        </div>
-                      ) : laboCopayInfo.kind === 'integrality' ? (
-                        <div className="p-2 text-[10px] leading-relaxed bg-blue-50 dark:bg-cyan-500/10 text-blue-800 dark:text-cyan-300 border-t border-blue-200 dark:border-cyan-500/25">
-                          🏢 <strong>{laboCopayInfo.nom}</strong> — prise en charge intégrale ({formatAr(laboCopayInfo.brut)}) : rien à payer par le patient, crédit société.
-                        </div>
-                      ) : (
-                        <div className="p-2 text-[10px] leading-relaxed bg-orange-50 dark:bg-orange-500/10 text-orange-800 dark:text-orange-300 border-t border-orange-200 dark:border-orange-500/25">
-                          ⚠ Société « {laboCopayInfo.company} » non reconnue dans la base assurance — validation en crédit société intégral (aucune quote-part calculée).
-                        </div>
-                      )
-                    )}
+                    {laboCopayInfo && copaySocieteLine(laboCopayInfo)}
                   </div>
                 ) : (
                   <p className="text-xs text-ink-faint text-center py-4 border border-dashed border-line rounded-lg bg-surface-muted/50">Aucune analyse sélectionnée — recherchez ci-dessus.</p>
@@ -1590,25 +1611,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                       <span>Total échographies</span>
                       <span className="font-mono text-sm">{formatAr(echoTotal)}</span>
                     </div>
-                    {echoCopayInfo && (
-                      echoCopayInfo.kind === 'ticket_moderateur' ? (
-                        <div className="p-2 text-[10px] leading-relaxed bg-amber-50 dark:bg-amber-500/10 text-amber-900 dark:text-amber-300 border-t border-amber-200 dark:border-amber-500/25">
-                          🏢 <strong>{echoCopayInfo.nom}</strong> (taux {echoCopayInfo.taux} %) prend en charge {formatAr(echoCopayInfo.partSociete)} — <strong>TICKET MODÉRATEUR {formatAr(echoCopayInfo.copay)} : à payer par le patient à la caisse</strong> lors de son passage{echoCopayInfo.montantExclu > 0 ? ` (dont exclusions ${formatAr(echoCopayInfo.montantExclu)})` : ''}.
-                        </div>
-                      ) : echoCopayInfo.kind === 'remise' ? (
-                        <div className="p-2 text-[10px] leading-relaxed bg-emerald-50 dark:bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border-t border-emerald-200 dark:border-emerald-500/25">
-                          🏢 <strong>{echoCopayInfo.nom}</strong> — <strong>REMISE</strong>{echoCopayInfo.taux && echoCopayInfo.taux < 100 ? ` : la quote-part de ${formatAr(echoCopayInfo.remise)} (taux ${echoCopayInfo.taux} %) n'est pas à payer par le patient` : ''} — le total part en crédit société.
-                        </div>
-                      ) : echoCopayInfo.kind === 'integrality' ? (
-                        <div className="p-2 text-[10px] leading-relaxed bg-blue-50 dark:bg-cyan-500/10 text-blue-800 dark:text-cyan-300 border-t border-blue-200 dark:border-cyan-500/25">
-                          🏢 <strong>{echoCopayInfo.nom}</strong> — prise en charge intégrale ({formatAr(echoCopayInfo.brut)}) : rien à payer par le patient, crédit société.
-                        </div>
-                      ) : (
-                        <div className="p-2 text-[10px] leading-relaxed bg-orange-50 dark:bg-orange-500/10 text-orange-800 dark:text-orange-300 border-t border-orange-200 dark:border-orange-500/25">
-                          ⚠ Société « {echoCopayInfo.company} » non reconnue dans la base assurance — validation en crédit société intégral (aucune quote-part calculée).
-                        </div>
-                      )
-                    )}
+                    {echoCopayInfo && copaySocieteLine(echoCopayInfo)}
                   </div>
                 ) : (
                   <p className="text-xs text-ink-faint text-center py-4 border border-dashed border-line rounded-lg bg-surface-muted/50">Aucune échographie sélectionnée — recherchez ci-dessus.</p>
