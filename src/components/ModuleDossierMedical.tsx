@@ -3,6 +3,7 @@ import type { AppState } from '../store';
 import { labCategoryLabel, paidPrescriptionsForConsultation, safeInvoiceItemDescriptions } from '../store';
 import type { LabRequest, Consultation, Invoice, HbRecord } from '../types';
 import { printDossierTicket, printLabResultTicket } from '../utils/printTicket';
+import { normaliserRecherche } from '../utils/recherche';
 import {
   ArrowLeft, Printer, Search, FileText, FlaskConical, Stethoscope,
   Receipt, AlertTriangle, Droplets, Pill, Clock, Calendar, Activity,
@@ -249,15 +250,15 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
 
   // ---- Vue liste (aucun patient sélectionné) ----
   if (!patient) {
-    const q = search.toLowerCase();
+    const q = normaliserRecherche(search);
     const list = state.patients
       .filter((p) => !p.blacklisted)
       .filter(
         (p) =>
           !q ||
-          p.firstName.toLowerCase().includes(q) ||
-          p.lastName.toLowerCase().includes(q) ||
-          p.dossier.toLowerCase().includes(q),
+          normaliserRecherche(p.firstName).includes(q) ||
+          normaliserRecherche(p.lastName).includes(q) ||
+          normaliserRecherche(p.dossier).includes(q),
       )
       .sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime());
     return (

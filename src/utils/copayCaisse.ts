@@ -186,6 +186,23 @@ export function copayMetadata(r: RepartitionCopay, extra?: {
   };
 }
 
+/**
+ * Quote-part « comme si » (taux contractuel + exclusions), calculée SANS tenir
+ * compte de la nature de la réduction. C'est le montant qui, en nature
+ * « ticket modérateur », serait encaissé en espèces ; en nature « remise », il
+ * devient une vraie remise — personne ne le paie — et il doit être affiché
+ * comme tel (ticket de caisse, aperçus médecin / caisse).
+ */
+export function quotePartSiTicketModerateur(params: {
+  societe?: Societe | null;
+  personne?: Personne | null;
+  items: InvoiceItem[];
+}): number {
+  if (!params.societe) return 0;
+  const rep = repartirPrestation(params.societe, lignesDepuisItems(params.items), params.personne);
+  return arrondi2(Math.max(0, rep.totalPrestation - rep.montantARembourser));
+}
+
 /** Libellé du règlement affiché sur le ticket d'espèces du ticket modérateur. */
 export function copayLibelleReglement(r?: RepartitionCopay | null): string {
   return r && r.nature === 'remise' ? 'REMISE (rien à encaisser)' : 'ESPÈCES (ticket modérateur)';

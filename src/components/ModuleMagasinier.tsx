@@ -13,6 +13,7 @@ import {
   createMovementWithLines, familyManagesStock,
 } from '../store';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
+import { normaliserRecherche } from '../utils/recherche';
 import { PhoneInput } from './PhoneInput';
 import {
   Package, PackageCheck, PackagePlus, Search, Truck, Plus, Trash2, Save, Check,
@@ -21,6 +22,7 @@ import {
   Calendar, CreditCard, ShoppingBag, Barcode, Bell, BellOff
 } from 'lucide-react';
 import { Select } from './Select';
+import MoneyInput from './MoneyInput';
 
 interface Props { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>; }
 type Tab = 'stock' | 'articles' | 'familles' | 'fournisseurs' | 'appro' | 'requests' | 'inventory' | 'movements' | 'services';
@@ -371,7 +373,7 @@ export default function ModuleMagasinier({ state, setState }: Props) {
 
   // ============ ACHATS & APPROVISIONNEMENT ============
   const purchaseFiltered = purchaseSearch.length >= 1
-    ? state.articles.filter((a) => managesStockForFamily(a.family) && a.name.toLowerCase().includes(purchaseSearch.toLowerCase()))
+    ? state.articles.filter((a) => { const q = normaliserRecherche(purchaseSearch); return managesStockForFamily(a.family) && (q === '' || normaliserRecherche(a.name).includes(q)); })
     : [];
 
   const purchaseSelectArticle = (articleId: string) => {
@@ -862,22 +864,22 @@ export default function ModuleMagasinier({ state, setState }: Props) {
 
   // Filtres
   const filteredStockArticles = state.articles.filter((a) => {
-    const q = searchStock.toLowerCase();
-    const matchQ = a.name.toLowerCase().includes(q) || labelForFamily(a.family).toLowerCase().includes(q) || (a.barcode || '').includes(q);
+    const q = normaliserRecherche(searchStock);
+    const matchQ = q === '' || normaliserRecherche(a.name).includes(q) || normaliserRecherche(labelForFamily(a.family)).includes(q) || (a.barcode || '').includes(searchStock);
     const matchFam = familyStockFilter === 'all' || normalizeFamilyCode(a.family) === normalizeFamilyCode(familyStockFilter);
     return matchQ && matchFam;
   });
 
   const filteredCatalogArticles = state.articles.filter((a) => {
-    const q = searchArticle.toLowerCase();
-    const matchQ = a.name.toLowerCase().includes(q) || labelForFamily(a.family).toLowerCase().includes(q) || (a.barcode || '').includes(q) || (a.code || '').toLowerCase().includes(q);
+    const q = normaliserRecherche(searchArticle);
+    const matchQ = q === '' || normaliserRecherche(a.name).includes(q) || normaliserRecherche(labelForFamily(a.family)).includes(q) || (a.barcode || '').includes(searchArticle) || (a.code || '').includes(searchArticle);
     const matchFam = familyCatalogFilter === 'all' || normalizeFamilyCode(a.family) === normalizeFamilyCode(familyCatalogFilter);
     return matchQ && matchFam;
   });
 
   const filteredSuppliers = fournisseurs.filter((f) => {
-    const q = searchSup.toLowerCase();
-    return f.name.toLowerCase().includes(q) || (f.phone || '').includes(q) || (f.email || '').toLowerCase().includes(q);
+    const q = normaliserRecherche(searchSup);
+    return q === '' || normaliserRecherche(f.name).includes(q) || (f.phone || '').includes(searchSup) || normaliserRecherche(f.email ?? '').includes(q);
   });
 
   const pendingRequests = state.stockTransfers.filter((t) => {
@@ -1336,19 +1338,19 @@ export default function ModuleMagasinier({ state, setState }: Props) {
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                           <div>
                             <label className="block text-[11px] font-semibold text-ink-secondary mb-0.5">Prix d'Achat</label>
-                            <input type="number" min={0} value={artForm.purchasePrice} onChange={e => setArtForm({ ...artForm, purchasePrice: parseFloat(e.target.value) || 0 })} className="w-full px-2 py-1.5 border rounded font-mono text-sm" />
+                            <MoneyInput value={artForm.purchasePrice} onChange={n => setArtForm({ ...artForm, purchasePrice: n })} decimals={2} ariaLabel="Prix d'achat" title="Séparateur de milliers automatique (ex : 49 450)" className="w-full px-2 py-1.5 border rounded font-mono text-sm" />
                           </div>
                           <div>
                             <label className="block text-[11px] font-semibold text-blue-700 dark:text-cyan-400 mb-0.5">Prix Comptoir</label>
-                            <input type="number" min={0} value={artForm.priceComptoir} onChange={e => setArtForm({ ...artForm, priceComptoir: parseFloat(e.target.value) || 0 })} className="w-full px-2 py-1.5 border rounded font-mono text-sm" />
+                            <MoneyInput value={artForm.priceComptoir} onChange={n => setArtForm({ ...artForm, priceComptoir: n })} decimals={2} ariaLabel="Prix comptoir" title="Séparateur de milliers automatique (ex : 49 450)" className="w-full px-2 py-1.5 border rounded font-mono text-sm" />
                           </div>
                           <div>
                             <label className="block text-[11px] font-semibold text-indigo-700 dark:text-indigo-400 mb-0.5">Prix Société</label>
-                            <input type="number" min={0} value={artForm.priceSociete} onChange={e => setArtForm({ ...artForm, priceSociete: parseFloat(e.target.value) || 0 })} className="w-full px-2 py-1.5 border rounded font-mono text-sm" />
+                            <MoneyInput value={artForm.priceSociete} onChange={n => setArtForm({ ...artForm, priceSociete: n })} decimals={2} ariaLabel="Prix société" title="Séparateur de milliers automatique (ex : 49 450)" className="w-full px-2 py-1.5 border rounded font-mono text-sm" />
                           </div>
                           <div>
                             <label className="block text-[11px] font-semibold text-purple-700 dark:text-purple-400 mb-0.5">Prix Externe</label>
-                            <input type="number" min={0} value={artForm.priceExterne} onChange={e => setArtForm({ ...artForm, priceExterne: parseFloat(e.target.value) || 0 })} className="w-full px-2 py-1.5 border rounded font-mono text-sm" />
+                            <MoneyInput value={artForm.priceExterne} onChange={n => setArtForm({ ...artForm, priceExterne: n })} decimals={2} ariaLabel="Prix externe" title="Séparateur de milliers automatique (ex : 49 450)" className="w-full px-2 py-1.5 border rounded font-mono text-sm" />
                           </div>
                         </div>
                       </div>

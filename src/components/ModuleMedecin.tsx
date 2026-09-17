@@ -13,6 +13,10 @@ import {
 } from '../store';
 import type { EchoExamCatalog } from '../store';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
+import { normaliserRecherche } from '../utils/recherche';
+import { suggestionNavKeyDown } from '../utils/suggestionNav';
+import { useFlashInfo, FlashInfoBanner } from './FlashInfo';
+import { baseCommuneCaisse, societeEtPersonneParmi, repartirItemsCaisse, quotePartSiTicketModerateur } from '../utils/copayCaisse';
 import AlerteArticleIndisponible from './AlerteArticleIndisponible';
 import type { ArticleAlertInfo } from './AlerteArticleIndisponible';
 import { printLabResultTicket } from '../utils/printTicket';
@@ -43,6 +47,10 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
   const [articleAlert, setArticleAlert] = useState<ArticleAlertInfo | null>(null);
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [patientSearchIdx, setPatientSearchIdx] = useState(0);
+  const diagnosisRef = useRef<HTMLTextAreaElement>(null);
+  // Blocage de validation non bloquant : info ~2 s puis reprise de saisie.
+  const { message: flashMsg, flash } = useFlashInfo();
   const [articleSearch, setArticleSearch] = useState('');
   const [artSearchIdx, setArtSearchIdx] = useState(0);
   const [consultForm, setConsultForm] = useState({ visitReason: '', diagnosis: '', notes: '', isEmergency: false, hospitalizeRequested: false, surgeryRequested: false });
@@ -68,14 +76,20 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
   } | null>(null);
 
   // ---- Demandes d'analyses (Laboratoire) saisies par le médecin ----
+  // Chaque saisie garde la remise % en vigueur au moment de son ajout
+  // (champ « Rem% » posé à côté de la recherche d'analyse).
   const [labSearch, setLabSearch] = useState('');
-  const [labDraft, setLabDraft] = useState<{ examId: string; urgent: boolean }[]>([]);
+  const [labDraft, setLabDraft] = useState<{ examId: string; urgent: boolean; discount?: number }[]>([]);
+  const [labRemise, setLabRemise] = useState(0);
   const [labSearchIdx, setLabSearchIdx] = useState(0);
   const labSearchRef = useRef<HTMLInputElement>(null);
 
   // ---- Demandes d'échographie ----
+  // Chaque saisie garde la remise % en vigueur au moment de son ajout
+  // (champ « Rem% » posé à côté de la recherche d'échographie).
   const [echoSearch, setEchoSearch] = useState('');
-  const [echoDraft, setEchoDraft] = useState<{ examId: string; urgent: boolean; notes?: string }[]>([]);
+  const [echoDraft, setEchoDraft] = useState<{ examId: string; urgent: boolean; notes?: string; discount?: number }[]>([]);
+  const [echoRemise, setEchoRemise] = useState(0);
   const [echoSearchIdx, setEchoSearchIdx] = useState(0);
   const echoSearchRef = useRef<HTMLInputElement>(null);
 
@@ -249,7 +263,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
       const db = new Date(b.lastVisitAt || b.registeredAt).getTime() || 0;
       return db - da;
     });
-  const searchResults = searchQuery.length >= 2 ? state.patients.filter((p) => { const q = searchQuery.toLowerCase(); return p.firstName.toLowerCase().includes(q) || p.lastName.toLowerCase().includes(q) || p.dossier.toLowerCase().includes(q); }) : [];
+  const searchResults = searchQuery.length >= 2 ? state.patients.filter((p) => { const q = normaliserRecherche(searchQuery); return q === '' || normaliserRecherche(p.firstName).includes(q) || normaliserRecherche(p.lastName).includes(q) || normaliserRecherche(p.dossier).includes(q); }) : [];
   const patientConsultations = selectedPatientId ? state.consultations.filter((c) => c.patientId === selectedPatientId) : [];
   const clientType = selectedPatient?.clientType || 'comptoir';
 
@@ -259,7 +273,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
 
   // Catalogue labo : recherche + prix + brouillon de demandes d'analyses
   const labFiltered = labSearch.length >= 1
-    ? currentLabCatalog.filter((e) => e.name.toLowerCase().includes(labSearch.toLowerCase()) || e.code.toLowerCase().includes(labSearch.toLowerCase()))
+    ? currentLabCatalog.filter((e) => { const q = normaliserRecherche(labSearch); return q === '' || normaliserRecherche(e.name).includes(q) || normaliserRecherche(e.code).includes(q); })
     : [];
   const priceForExam = (examId: string, ct: ClientType, urgent: boolean) => {
     const e = currentLabCatalog.find((x) => x.id === examId);
@@ -267,11 +281,14 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     if (urgent) return e.urgentPrice;
     return ct === 'societe' ? e.priceSociete : ct === 'externe' ? e.priceExterne : e.priceComptoir;
   };
-  const labTotal = labDraft.reduce((s, d) => s + priceForExam(d.examId, clientType, d.urgent), 0);
+  /** Prix d'une analyse après remise % (remise par saisie). */
+  const labPriceAfterDiscount = (d: { examId: string; urgent: boolean; discount?: number }) =>
+    roundTo2(priceForExam(d.examId, clientType, d.urgent) * (1 - (d.discount || 0) / 100));
+  const labTotal = labDraft.reduce((s, d) => s + labPriceAfterDiscount(d), 0);
 
   // Catalogue écho : recherche + prix + brouillon de demandes d'échographies
   const echoFiltered = echoSearch.length >= 1
-    ? currentEchoCatalog.filter((e) => e.name.toLowerCase().includes(echoSearch.toLowerCase()) || e.code.toLowerCase().includes(echoSearch.toLowerCase()))
+    ? currentEchoCatalog.filter((e) => { const q = normaliserRecherche(echoSearch); return q === '' || normaliserRecherche(e.name).includes(q) || normaliserRecherche(e.code).includes(q); })
     : [];
   const echoPriceForExam = (examId: string, ct: ClientType, urgent: boolean) => {
     const e = currentEchoCatalog.find((x) => x.id === examId);
@@ -279,17 +296,56 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     if (urgent) return e.urgentPrice;
     return ct === 'societe' ? e.priceSociete : ct === 'externe' ? e.priceExterne : e.priceComptoir;
   };
-  const echoTotal = echoDraft.reduce((s, d) => s + echoPriceForExam(d.examId, clientType, d.urgent), 0);
+  /** Prix d'une échographie après remise % (remise par saisie). */
+  const echoPriceAfterDiscount = (d: { examId: string; urgent: boolean; discount?: number }) =>
+    roundTo2(echoPriceForExam(d.examId, clientType, d.urgent) * (1 - (d.discount || 0) / 100));
+  const echoTotal = echoDraft.reduce((s, d) => s + echoPriceAfterDiscount(d), 0);
+
+  /* ===== RELATION SOCIÉTÉ : TICKET MODÉRATEUR vs REMISE (brouillons labo/écho) =====
+   * Même calcul que la caisse : pour un client société, la quote-part
+   * (taux contractuel + exclusions) est une PARTICIPATION que le patient
+   * encaisse à la caisse SI la nature de la société est « ticket modérateur » ;
+   * si la nature est « remise », cette somme n'est PAS payée (elle est déjà
+   * incluse dans le prix société facturé). */
+  const baseCommune = useMemo(
+    () => baseCommuneCaisse(state),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.companies, state.patients, state.assuranceSocietes, state.assurancePersonnes],
+  );
+  const copayDraftInfo = (items: { amount: number; category: 'lab' | 'echo' }[]) => {
+    if (!selectedPatient || clientType !== 'societe' || items.length === 0) return null;
+    const { societe, personne } = societeEtPersonneParmi(selectedPatient, baseCommune.societes, baseCommune.personnes);
+    if (!societe) return { kind: 'unknown' as const, company: selectedPatient.company || 'inconnue' };
+    const invItems = items.map(it => ({ description: '', quantity: 1, unitPrice: it.amount, amount: it.amount, category: it.category }));
+    const rep = repartirItemsCaisse({ societe, personne, items: invItems });
+    if (rep.nature === 'remise') {
+      return { kind: 'remise' as const, nom: societe.nom, brut: rep.brut, remise: quotePartSiTicketModerateur({ societe, personne, items: invItems }), taux: Number(societe.tauxCouvertureDefaut) || 0 };
+    }
+    if (rep.aEncaisser) {
+      return { kind: 'ticket_moderateur' as const, nom: societe.nom, brut: rep.brut, partSociete: rep.partSociete, copay: rep.ticketModerateur, taux: rep.taux, montantExclu: rep.montantExclu };
+    }
+    return { kind: 'integrality' as const, nom: societe.nom, brut: rep.brut, partSociete: rep.partSociete };
+  };
+  const laboCopayInfo = useMemo(
+    () => copayDraftInfo(labDraft.map(d => ({ amount: labPriceAfterDiscount(d), category: 'lab' as const }))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedPatient, clientType, labDraft, labRemise, baseCommune, state.articles],
+  );
+  const echoCopayInfo = useMemo(
+    () => copayDraftInfo(echoDraft.map(d => ({ amount: echoPriceAfterDiscount(d), category: 'echo' as const }))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedPatient, clientType, echoDraft, echoRemise, baseCommune, state.articles],
+  );
 
   const addLabExam = (examId: string) => {
-    setLabDraft((prev) => (prev.some((d) => d.examId === examId) ? prev : [...prev, { examId, urgent: false }]));
+    setLabDraft((prev) => (prev.some((d) => d.examId === examId) ? prev : [...prev, { examId, urgent: false, discount: labRemise }]));
     setLabSearch('');
   };
   const removeLabExam = (examId: string) => setLabDraft(labDraft.filter((d) => d.examId !== examId));
   const toggleLabUrgent = (examId: string) => setLabDraft(labDraft.map((d) => (d.examId === examId ? { ...d, urgent: !d.urgent } : d)));
 
   const addEchoExam = (examId: string) => {
-    setEchoDraft((prev) => (prev.some((d) => d.examId === examId) ? prev : [...prev, { examId, urgent: false, notes: '' }]));
+    setEchoDraft((prev) => (prev.some((d) => d.examId === examId) ? prev : [...prev, { examId, urgent: false, notes: '', discount: echoRemise }]));
     setEchoSearch('');
   };
   const removeEchoExam = (examId: string) => setEchoDraft(echoDraft.filter((d) => d.examId !== examId));
@@ -300,7 +356,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
   // et Hospitalisation (HOSP). Les autres familles (MEDIC, DENT, familles ajoutées...)
   // restent disponibles.
   const filteredArticles = articleSearch.length >= 1
-    ? state.articles.filter((a) => isMedicationEntryFamily(a.family) && a.name.toLowerCase().includes(articleSearch.toLowerCase()))
+    ? state.articles.filter((a) => { const q = normaliserRecherche(articleSearch); return isMedicationEntryFamily(a.family) && (q === '' || normaliserRecherche(a.name).includes(q)); })
     : [];
 
   const today = new Date().toDateString();
@@ -331,6 +387,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     editSnapshotRef.current = null;
     setSelectedPatientId(pid); setLines([]); setSelectedLineId(null); setIsNewLine(false); setView('consultation');
     setLabDraft([]); setLabSearch(''); setEchoDraft([]); setEchoSearch('');
+    setLabRemise(0); setEchoRemise(0);
     setLabDraftIdx(-1); setEchoDraftIdx(-1);
     setArticleSearch('');
     setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
@@ -394,6 +451,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     setLines([]); setSearchQuery(''); setSelectedLineId(null); setIsNewLine(false);
     setArticleSearch(''); setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
     setLabDraft([]); setLabSearch(''); setEchoDraft([]); setEchoSearch('');
+    setLabRemise(0); setEchoRemise(0);
     setLabDraftIdx(-1); setEchoDraftIdx(-1);
     setView('queue');
     submittingRef.current = false;
@@ -726,17 +784,17 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     setIsNewLine(false);
     setArticleSearch('');
     setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
-    // Restaurer les demandes d'analyses labo dans le brouillon
+    // Restaurer les demandes d'analyses labo dans le brouillon (remise comprise)
     const restoredLabDraft = (c.labRequests || []).map((lr) => {
       const catalogMatch = state.labCatalog.find((e) => e.name === lr.examType && e.code === lr.code);
-      return catalogMatch ? { examId: catalogMatch.id, urgent: lr.urgent } : null;
-    }).filter((d): d is { examId: string; urgent: boolean } => d !== null);
+      return catalogMatch ? { examId: catalogMatch.id, urgent: lr.urgent, discount: lr.discount || 0 } : null;
+    }).filter((d): d is { examId: string; urgent: boolean; discount: number } => d !== null);
     setLabDraft(restoredLabDraft); setLabSearch(''); setLabSearchIdx(0);
-    // Restaurer les demandes d'échographie dans le brouillon
+    // Restaurer les demandes d'échographie dans le brouillon (remise comprise)
     const restoredEchoDraft = (c.echoRequests || []).map((er) => {
       const catalogMatch = ECHO_CATALOG.find((e) => e.name === er.examType);
-      return catalogMatch ? { examId: catalogMatch.id, urgent: er.urgent, notes: er.notes || '' } : null;
-    }).filter((d): d is { examId: string; urgent: boolean; notes: string } => d !== null);
+      return catalogMatch ? { examId: catalogMatch.id, urgent: er.urgent, notes: er.notes || '', discount: er.discount || 0 } : null;
+    }).filter((d): d is { examId: string; urgent: boolean; notes: string; discount: number } => d !== null);
     setEchoDraft(restoredEchoDraft); setEchoSearch(''); setEchoSearchIdx(0);
     setState((prev) => {
       const invoiceIds = consultationInvoiceIds(prev, cid);
@@ -759,7 +817,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
   };
 
   const submitConsultation = async (force = false) => {
-    if (!selectedPatientId || !selectedPatient || !consultForm.diagnosis) { alert('Diagnostic obligatoire'); return; }
+    if (!selectedPatientId || !selectedPatient || !consultForm.diagnosis) { flash('Diagnostic obligatoire — complétez le champ « Diagnostic * ».', diagnosisRef.current); return; }
     // Ne pas valider si une ligne d'ordonnance est en cours de saisie mais non enregistrée
     if (blockIfUnsavedDraftLine(lineForm, lines, { entityLabel: 'le médicament' })) return;
     // Dernier contrôle avant validation : notification rouge centrée si l'ordonnance contient
@@ -799,7 +857,8 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     const ct = clientType;
     const consultId = uuidv4();
     // Numérotation officielle des factures labo / écho créées en attente :
-    // FA-MM/CODE/YY-NNN pour les sociétés, AAFAMMJJ + ordre du jour sinon.
+    // AAFAMMJJ + ordre du jour (26FA0917001), SANS DISTINCTION société /
+    // comptoir / externe (FA-MM/CODE = facture GLOBALE mensuelle, module Facturation).
     // UN SEUL lot atomique pour les factures labo + écho de cette consultation.
     // Échec → on alerte et on ne valide RIEN (garde anti double-soumission levée).
     const numeroSpecs: FactureNumberSpec[] = [
@@ -828,13 +887,15 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
       const examCode = e?.code || 'LAB';
       const category = e?.category;
       const parameters = e?.parameters ? [...e.parameters] : [examName];
-      const sampleType = e?.sampleType || 'Sang veineux';
-      const price = priceForExam(d.examId, ct, d.urgent);
+        const sampleType = e?.sampleType || 'Sang veineux';
+      // Remise par saisie : le prix facturé est le prix catalogue remisé.
+      const discount = Math.max(0, Math.min(100, d.discount || 0));
+      const price = roundTo2(priceForExam(d.examId, ct, d.urgent) * (1 - discount / 100));
       return {
         id: uuidv4(), patientId: selectedPatientId, consultationId: consultId, examType: examName, code: examCode,
         category, parameters, urgent: d.urgent, status: 'pending' as const,
         sampleType, requestedBy: state.currentUser?.id || '', requestedAt: new Date().toISOString(),
-        invoiceId: labInvoiceId || undefined, price,
+        invoiceId: labInvoiceId || undefined, discount: discount > 0 ? discount : undefined, price,
       };
     });
     // ---- Échographies -> facture en attente (bon imprimé à la CAISSE après paiement) ----
@@ -842,12 +903,15 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     const newEchoRequests: EchoRequest[] = echoDraft.map((d) => {
       const e = currentEchoCatalog.find((x) => x.id === d.examId) || ECHO_CATALOG.find((x) => x.id === d.examId);
       const examName = e ? e.name : 'Échographie';
-      const price = echoPriceForExam(d.examId, ct, d.urgent);
+      // Remise par saisie : le prix facturé est le prix catalogue remisé.
+      const discount = Math.max(0, Math.min(100, d.discount || 0));
+      const price = roundTo2(echoPriceForExam(d.examId, ct, d.urgent) * (1 - discount / 100));
       return {
         id: uuidv4(), patientId: selectedPatientId, consultationId: consultId,
         examType: examName, notes: d.notes || undefined, urgent: d.urgent,
         status: 'pending' as const, requestedBy: state.currentUser?.id || '',
-        requestedAt: new Date().toISOString(), invoiceId: echoInvoiceId || undefined, price,
+        requestedAt: new Date().toISOString(), invoiceId: echoInvoiceId || undefined,
+        discount: discount > 0 ? discount : undefined, price,
       };
     });
 
@@ -915,6 +979,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     setLines([]); setSearchQuery(''); setSelectedLineId(null); setIsNewLine(false);
     setArticleSearch(''); setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
     setLabDraft([]); setLabSearch(''); setEchoDraft([]); setEchoSearch('');
+    setLabRemise(0); setEchoRemise(0);
     setLabDraftIdx(-1); setEchoDraftIdx(-1);
     setView('queue');
     submittingRef.current = false;
@@ -922,6 +987,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
 
   return (
     <div className="space-y-3">
+      <FlashInfoBanner message={flashMsg} />
       {toastFeedback && (
         <div className="fixed inset-0 z-[9999] pointer-events-none flex items-center justify-center p-4">
           <div className="pointer-events-auto max-w-md w-full p-4 sm:p-5 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 text-white rounded-2xl shadow-2xl border border-emerald-300/40 dark:border-emerald-500/16 flex items-center justify-between gap-4 animate-in fade-in zoom-in-95">
@@ -960,8 +1026,8 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
       {view === 'queue' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="space-y-3">
-            <div className="bg-surface rounded-xl shadow-sm border p-3"><div className="relative"><Search className="absolute left-3 top-2.5 w-4 h-4 text-ink-faint" /><input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-9 pr-4 py-2 border rounded-lg outline-none text-sm" placeholder="Rechercher patient..." /></div>
-              {searchQuery.length >= 2 && searchResults.length > 0 && <div className="mt-2 max-h-40 overflow-y-auto border rounded divide-y">{searchResults.map((p) => (<div key={p.id} onClick={() => selectPatient(p.id)} className="p-2 hover:bg-emerald-50 dark:hover:bg-emerald-500/8 cursor-pointer text-sm">{p.lastName} {p.firstName} ({p.dossier})</div>))}</div>}
+            <div className="bg-surface rounded-xl shadow-sm border p-3"><div className="relative"><Search className="absolute left-3 top-2.5 w-4 h-4 text-ink-faint" /><input type="text" value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setPatientSearchIdx(0); }} onKeyDown={suggestionNavKeyDown({ open: searchQuery.length >= 2 && searchResults.length > 0, count: searchResults.length, index: patientSearchIdx, onIndex: setPatientSearchIdx, onPick: (i) => { if (searchResults[i]) selectPatient(searchResults[i].id); }, onEscape: () => setSearchQuery('') })} className="w-full pl-9 pr-4 py-2 border rounded-lg outline-none text-sm" placeholder="Rechercher patient... (↑↓ Entrée)" /></div>
+              {searchQuery.length >= 2 && searchResults.length > 0 && <div className="mt-2 max-h-40 overflow-y-auto border rounded divide-y">{searchResults.map((p, i) => (<div key={p.id} onClick={() => selectPatient(p.id)} className={`p-2 hover:bg-emerald-50 dark:hover:bg-emerald-500/8 cursor-pointer text-sm ${i === patientSearchIdx ? 'bg-emerald-50 dark:bg-emerald-500/10' : ''}`}>{p.lastName} {p.firstName} ({p.dossier})</div>))}</div>}
             </div>
             <div className="bg-surface rounded-xl shadow-sm border overflow-hidden">
               <div className="p-3 border-b bg-amber-50 dark:bg-amber-500/8 flex items-center justify-between gap-2">
@@ -1129,7 +1195,15 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                 patientLabs.push(lr);
               }
             }
-            const completedLabs = patientLabs.filter(lr => lr.status === 'completed' && lr.results && lr.results.length > 0);
+            // NE PAS AFFICHER DIRECTEMENT les résultats anciens : seules les
+            // analyses réalisées depuis MOINS D'UNE SEMAINE sont affichées.
+            const UNE_SEMAINE_MS = 7 * 24 * 60 * 60 * 1000;
+            const estRecent = (lr: LabRequest) => {
+              const t = new Date(lr.completedAt || lr.requestedAt || 0).getTime();
+              if (!t) return true; // aucune date connue : on préfère afficher
+              return Date.now() - t < UNE_SEMAINE_MS;
+            };
+            const completedLabs = patientLabs.filter(lr => lr.status === 'completed' && lr.results && lr.results.length > 0 && estRecent(lr));
             const inProgressLabs = patientLabs.filter(lr => lr.status !== 'completed');
 
             if (patientLabs.length === 0) return null;
@@ -1154,7 +1228,11 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                 <div className="p-3 space-y-3 max-h-80 overflow-y-auto bg-surface-muted/50 divide-y divide-line">
                   {completedLabs.length === 0 ? (
                     <p className="text-xs text-ink-muted italic py-2 text-center">
-                      Aucun résultat d'analyse encore disponible. Les demandes sont en cours de traitement au laboratoire.
+                      {patientLabs.some(lr => lr.status === 'completed')
+                        ? 'Aucun résultat récent (moins d’une semaine) — les résultats anciens sont masqués.'
+                        : inProgressLabs.length > 0
+                          ? 'Aucun résultat d’analyse encore disponible. Les demandes sont en cours de traitement au laboratoire.'
+                          : 'Aucun résultat d’analyse disponible.'}
                     </p>
                   ) : (
                     completedLabs.map((lr) => {
@@ -1264,7 +1342,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
               <h4 className="font-semibold mb-1 text-xs"><FileText className="w-3 h-3 text-emerald-500 inline" /> Consultation</h4>
               <div className="space-y-1">
                 <input type="text" value={consultForm.visitReason} onChange={(e)=>setConsultForm({...consultForm,visitReason:e.target.value})} className="w-full px-2 py-0.5 border rounded text-xs outline-none" placeholder="Motif (optionnel)" />
-                <textarea value={consultForm.diagnosis} onChange={(e)=>setConsultForm({...consultForm,diagnosis:e.target.value})} className="w-full px-2 py-0.5 border border-red-300 dark:border-red-500/40 rounded text-xs outline-none" rows={2} placeholder="Diagnostic * (obligatoire)" />
+                <textarea ref={diagnosisRef} value={consultForm.diagnosis} onChange={(e)=>setConsultForm({...consultForm,diagnosis:e.target.value})} className="w-full px-2 py-0.5 border border-red-300 dark:border-red-500/40 rounded text-xs outline-none" rows={2} placeholder="Diagnostic * (obligatoire)" />
                 <textarea value={consultForm.notes} onChange={(e)=>setConsultForm({...consultForm,notes:e.target.value})} className="w-full px-2 py-0.5 border rounded text-xs outline-none" rows={1} placeholder="Notes" />
                 <div className="flex gap-3 text-[10px]">
                   <label className="cursor-pointer"><input type="checkbox" checked={consultForm.isEmergency} onChange={(e)=>setConsultForm({...consultForm,isEmergency:e.target.checked})} /> <span className="text-red-600 dark:text-red-400">🚨 Urgence</span></label>
@@ -1365,7 +1443,8 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                   <h4 className="font-bold text-sm flex items-center gap-2 text-ink-strong"><FlaskConical className="w-4 h-4 text-cyan-600 dark:text-cyan-400" /> Demandes d'analyses (Labo)</h4>
                   <span className="text-[10px] text-ink-faint hidden sm:block">A facturer en caisse</span>
                 </div>
-                <div className="relative mb-2">
+                <div className="flex items-end gap-2 mb-2">
+                  <div className="relative flex-1 min-w-0">
                   <Search className="absolute left-3 top-2.5 w-4 h-4 text-ink-faint" />
                   <input ref={labSearchRef} type="text" value={labSearch} onChange={(e) => { setLabSearch(e.target.value); setLabSearchIdx(0); }} onKeyDown={handleLabSearchKeyDown} className="w-full pl-9 pr-3 py-2 border border-line-strong rounded-lg outline-none focus:ring-2 focus:ring-cyan-500 text-sm" placeholder="Rechercher analyse (NFS, Glycémie...) ↑↓ ↵" />
                   {labSearch.length >= 1 && labFiltered.length > 0 && (
@@ -1381,6 +1460,13 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                       })}
                     </div>
                   )}
+                  </div>
+                  <div className="w-24 shrink-0" title="Remise % appliquée aux analyses ajoutées à partir de maintenant — chaque saisie garde la remise en vigueur au moment de son ajout">
+                    <label className="block text-[9px] font-bold text-ink-muted text-center mb-0.5">Rem%</label>
+                    <input type="number" min={0} max={100} value={labRemise}
+                      onChange={(e) => setLabRemise(Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)))}
+                      className="w-full px-1.5 py-2 border border-line-strong rounded-lg text-right font-mono text-sm outline-none focus:ring-2 focus:ring-cyan-500 bg-surface" />
+                  </div>
                 </div>
               </div>
               <div>
@@ -1398,16 +1484,38 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
                             <label className="flex items-center gap-1 text-[10px] cursor-pointer"><input type="checkbox" checked={d.urgent} onChange={() => toggleLabUrgent(d.examId)} className="w-3.5 h-3.5" /> <span className="text-red-600 dark:text-red-400 font-semibold">Urgent</span></label>
-                            <span className="font-mono font-bold text-ink w-20 text-right">{formatAr(priceForExam(d.examId, clientType, d.urgent))}</span>
+                            {d.discount ? <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-cyan-100 dark:bg-cyan-500/15 text-cyan-700 dark:text-cyan-400" title="Remise appliquée à cette analyse — champ « Rem% » à côté de la recherche">Rem {d.discount}%</span> : null}
+                            <span className="font-mono font-bold text-ink w-20 text-right" title={d.discount ? `Prix catalogue ${formatAr(priceForExam(d.examId, clientType, d.urgent))} − remise ${d.discount} %` : 'Prix catalogue'}>
+                              {formatAr(labPriceAfterDiscount(d))}{d.discount ? <span className="text-[9px] text-ink-faint line-through mr-1">{formatAr(priceForExam(d.examId, clientType, d.urgent))}</span> : null}
+                            </span>
                             <button onClick={() => removeLabExam(d.examId)} className="text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-300 cursor-pointer p-0.5" title="Retirer"><Trash2 className="w-3.5 h-3.5" /></button>
                           </div>
                         </div>
                       );
                     })}
-                    <div className="flex justify-between items-center p-2 bg-cyan-100/70 dark:bg-cyan-500/10 text-xs font-bold text-cyan-900 dark:text-cyan-300 rounded-b-lg">
+                    <div className="flex justify-between items-center p-2 bg-cyan-100/70 dark:bg-cyan-500/10 text-xs font-bold text-cyan-900 dark:text-cyan-300">
                       <span>Total analyses</span>
                       <span className="font-mono text-sm">{formatAr(labTotal)}</span>
                     </div>
+                    {laboCopayInfo && (
+                      laboCopayInfo.kind === 'ticket_moderateur' ? (
+                        <div className="p-2 text-[10px] leading-relaxed bg-amber-50 dark:bg-amber-500/10 text-amber-900 dark:text-amber-300 border-t border-amber-200 dark:border-amber-500/25">
+                          🏢 <strong>{laboCopayInfo.nom}</strong> (taux {laboCopayInfo.taux} %) prend en charge {formatAr(laboCopayInfo.partSociete)} — <strong>TICKET MODÉRATEUR {formatAr(laboCopayInfo.copay)} : à payer par le patient à la caisse</strong> lors de son passage{laboCopayInfo.montantExclu > 0 ? ` (dont exclusions ${formatAr(laboCopayInfo.montantExclu)})` : ''}.
+                        </div>
+                      ) : laboCopayInfo.kind === 'remise' ? (
+                        <div className="p-2 text-[10px] leading-relaxed bg-emerald-50 dark:bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border-t border-emerald-200 dark:border-emerald-500/25">
+                          🏢 <strong>{laboCopayInfo.nom}</strong> — <strong>REMISE</strong>{laboCopayInfo.taux && laboCopayInfo.taux < 100 ? ` : la quote-part de ${formatAr(laboCopayInfo.remise)} (taux ${laboCopayInfo.taux} %) n'est pas à payer par le patient` : ''} — le total part en crédit société.
+                        </div>
+                      ) : laboCopayInfo.kind === 'integrality' ? (
+                        <div className="p-2 text-[10px] leading-relaxed bg-blue-50 dark:bg-cyan-500/10 text-blue-800 dark:text-cyan-300 border-t border-blue-200 dark:border-cyan-500/25">
+                          🏢 <strong>{laboCopayInfo.nom}</strong> — prise en charge intégrale ({formatAr(laboCopayInfo.brut)}) : rien à payer par le patient, crédit société.
+                        </div>
+                      ) : (
+                        <div className="p-2 text-[10px] leading-relaxed bg-orange-50 dark:bg-orange-500/10 text-orange-800 dark:text-orange-300 border-t border-orange-200 dark:border-orange-500/25">
+                          ⚠ Société « {laboCopayInfo.company} » non reconnue dans la base assurance — validation en crédit société intégral (aucune quote-part calculée).
+                        </div>
+                      )
+                    )}
                   </div>
                 ) : (
                   <p className="text-xs text-ink-faint text-center py-4 border border-dashed border-line rounded-lg bg-surface-muted/50">Aucune analyse sélectionnée — recherchez ci-dessus.</p>
@@ -1422,7 +1530,8 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                   <h4 className="font-bold text-sm flex items-center gap-2 text-ink-strong"><Scan className="w-4 h-4 text-indigo-600 dark:text-indigo-400" /> Demandes d'échographie</h4>
                   <span className="text-[10px] text-ink-faint hidden sm:block">A facturer en caisse</span>
                 </div>
-                <div className="relative mb-2">
+                <div className="flex items-end gap-2 mb-2">
+                  <div className="relative flex-1 min-w-0">
                   <Search className="absolute left-3 top-2.5 w-4 h-4 text-ink-faint" />
                   <input ref={echoSearchRef} type="text" value={echoSearch} onChange={(e) => { setEchoSearch(e.target.value); setEchoSearchIdx(0); }} onKeyDown={handleEchoSearchKeyDown} className="w-full pl-9 pr-3 py-2 border border-line-strong rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-sm" placeholder="Rechercher échographie (Abdominale, Pelvienne...) ↑↓ ↵" />
                   {echoSearch.length >= 1 && echoFiltered.length > 0 && (
@@ -1438,6 +1547,13 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                       })}
                     </div>
                   )}
+                  </div>
+                  <div className="w-24 shrink-0" title="Remise % appliquée aux échographies ajoutées à partir de maintenant — chaque saisie garde la remise en vigueur au moment de son ajout">
+                    <label className="block text-[9px] font-bold text-ink-muted text-center mb-0.5">Rem%</label>
+                    <input type="number" min={0} max={100} value={echoRemise}
+                      onChange={(e) => setEchoRemise(Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)))}
+                      className="w-full px-1.5 py-2 border border-line-strong rounded-lg text-right font-mono text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-surface" />
+                  </div>
                 </div>
               </div>
               <div>
@@ -1461,16 +1577,38 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
                             <label className="flex items-center gap-1 text-[10px] cursor-pointer"><input type="checkbox" checked={d.urgent} onChange={() => toggleEchoUrgent(d.examId)} className="w-3.5 h-3.5" /> <span className="text-red-600 dark:text-red-400 font-semibold">Urgent</span></label>
-                            <span className="font-mono font-bold text-ink w-20 text-right">{formatAr(echoPriceForExam(d.examId, clientType, d.urgent))}</span>
+                            {d.discount ? <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400" title="Remise appliquée à cette échographie — champ « Rem% » à côté de la recherche">Rem {d.discount}%</span> : null}
+                            <span className="font-mono font-bold text-ink w-20 text-right" title={d.discount ? `Prix catalogue ${formatAr(echoPriceForExam(d.examId, clientType, d.urgent))} − remise ${d.discount} %` : 'Prix catalogue'}>
+                              {formatAr(echoPriceAfterDiscount(d))}{d.discount ? <span className="text-[9px] text-ink-faint line-through mr-1">{formatAr(echoPriceForExam(d.examId, clientType, d.urgent))}</span> : null}
+                            </span>
                             <button onClick={() => removeEchoExam(d.examId)} className="text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-300 cursor-pointer p-0.5" title="Retirer"><Trash2 className="w-3.5 h-3.5" /></button>
                           </div>
                         </div>
                       );
                     })}
-                    <div className="flex justify-between items-center p-2 bg-indigo-100/70 dark:bg-indigo-500/10 text-xs font-bold text-indigo-900 dark:text-indigo-300 rounded-b-lg">
+                    <div className="flex justify-between items-center p-2 bg-indigo-100/70 dark:bg-indigo-500/10 text-xs font-bold text-indigo-900 dark:text-indigo-300">
                       <span>Total échographies</span>
                       <span className="font-mono text-sm">{formatAr(echoTotal)}</span>
                     </div>
+                    {echoCopayInfo && (
+                      echoCopayInfo.kind === 'ticket_moderateur' ? (
+                        <div className="p-2 text-[10px] leading-relaxed bg-amber-50 dark:bg-amber-500/10 text-amber-900 dark:text-amber-300 border-t border-amber-200 dark:border-amber-500/25">
+                          🏢 <strong>{echoCopayInfo.nom}</strong> (taux {echoCopayInfo.taux} %) prend en charge {formatAr(echoCopayInfo.partSociete)} — <strong>TICKET MODÉRATEUR {formatAr(echoCopayInfo.copay)} : à payer par le patient à la caisse</strong> lors de son passage{echoCopayInfo.montantExclu > 0 ? ` (dont exclusions ${formatAr(echoCopayInfo.montantExclu)})` : ''}.
+                        </div>
+                      ) : echoCopayInfo.kind === 'remise' ? (
+                        <div className="p-2 text-[10px] leading-relaxed bg-emerald-50 dark:bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border-t border-emerald-200 dark:border-emerald-500/25">
+                          🏢 <strong>{echoCopayInfo.nom}</strong> — <strong>REMISE</strong>{echoCopayInfo.taux && echoCopayInfo.taux < 100 ? ` : la quote-part de ${formatAr(echoCopayInfo.remise)} (taux ${echoCopayInfo.taux} %) n'est pas à payer par le patient` : ''} — le total part en crédit société.
+                        </div>
+                      ) : echoCopayInfo.kind === 'integrality' ? (
+                        <div className="p-2 text-[10px] leading-relaxed bg-blue-50 dark:bg-cyan-500/10 text-blue-800 dark:text-cyan-300 border-t border-blue-200 dark:border-cyan-500/25">
+                          🏢 <strong>{echoCopayInfo.nom}</strong> — prise en charge intégrale ({formatAr(echoCopayInfo.brut)}) : rien à payer par le patient, crédit société.
+                        </div>
+                      ) : (
+                        <div className="p-2 text-[10px] leading-relaxed bg-orange-50 dark:bg-orange-500/10 text-orange-800 dark:text-orange-300 border-t border-orange-200 dark:border-orange-500/25">
+                          ⚠ Société « {echoCopayInfo.company} » non reconnue dans la base assurance — validation en crédit société intégral (aucune quote-part calculée).
+                        </div>
+                      )
+                    )}
                   </div>
                 ) : (
                   <p className="text-xs text-ink-faint text-center py-4 border border-dashed border-line rounded-lg bg-surface-muted/50">Aucune échographie sélectionnée — recherchez ci-dessus.</p>

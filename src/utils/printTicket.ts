@@ -99,7 +99,7 @@ export function printPaymentTicket(
   patient?: Patient,
   cashier?: User,
   company?: Company,
-  opts?: { creditSociete?: boolean; prescriberName?: string; copay?: CopayTicketModerateur | null },
+  opts?: { creditSociete?: boolean; prescriberName?: string; copay?: CopayTicketModerateur | null; remise?: number },
 ) {
   const date = new Date(invoice.paidAt || invoice.createdAt);
   // Facture validée en CRÉDIT SOCIÉTÉ : aucun encaissement en espèces.
@@ -120,6 +120,22 @@ export function printPaymentTicket(
   const copayMontant = Math.max(0, Number(copay?.montant) || 0);
   const copayEspeces = !credit && copayMontant > 0;
   const copaySurCredit = credit && copayMontant > 0;
+  /**
+   * Écart « total brut − montant encaissé ». Sa NATURE dépend de la métadonnée
+   * copay (ticket modérateur) qui n'existe QUE quand la réduction est une
+   * quote-part due par l'assuré : une vraie remise, elle, ne laisse rien à
+   * encaisser (ni chez l'assuré, ni chez la société) et n'est pas tracée.
+   *  - copay présent  → l'écart est une PARTICIPATION (ticket modérateur) ;
+   *  - copay absent   → l'écart est une REMISE accordée à la caisse.
+   */
+  const remiseSansCopay = Math.round(((Number(invoice.totalAmount) || 0) - (Number(invoice.patientCharge) || 0)) * 100) / 100;
+  /**
+   * REMISE SOCIÉTÉ (nature « remise » de la société / de l'assuré) : la
+   * quote-part du taux contractuel convertie en remise — personne ne la
+   * paye. Montant distinct de l'écart brut−net (ici la société est créditée
+   * du brut) : c'est l'information « cette somme n'a pas été payée ».
+   */
+  const remiseSociete = Math.max(0, Number(opts?.remise ?? invoice.remiseNonEncaise) || 0);
   const detailRows = [
     patient?.dossier ? `<div>Dossier : ${escapeHtml(patient.dossier)}</div>` : '',
     patient?.company ? `<div>Société : ${escapeHtml(patient.company)}</div>` : '',
@@ -143,15 +159,29 @@ export function printPaymentTicket(
         `<tr><td>${escapeHtml(item.description)}${item.quantity != null && item.quantity > 1 ? ` ×${item.quantity}` : ''}</td><td class="amount">${money(item.amount)}</td></tr>`,
     )
     .join('');
-  // Totaux : décomposition brut / crédit société / somme réglée dès qu'une
-  // quote-part est en jeu ; total simple sinon.
-  const totalRows = copayEspeces || copaySurCredit
+  // Totaux : la différence entre le total brut et le montant encaissé est
+  // TOUJOURS affichée avec sa nature — « Participation (ticket mod.) » quand la
+  // quote-part est due par l'assuré, « Remise » quand il s'agit d'une vraie
+  // réduction accordée (aucune métadonnée copay en ce cas).
+  const remiseLine = (montant: number) =>
+    montant > 0 ? `<tr><td>Remise</td><td class="amount">- ${money(montant)}</td></tr>` : '';
+  const totalRows = copayEspeces
     ? `
-      <tr><td>Total prestations</td><td class="amount">${money(copay?.brut ?? invoice.totalAmount)}</td></tr>
+      <tr><td>Total prestations (brut)</td><td class="amount">${money(copay?.brut ?? invoice.totalAmount)}</td></tr>
       <tr><td>Crédit société</td><td class="amount">${money(copay?.partSociete ?? 0)}</td></tr>
-      <tr class="total"><td>${copayEspeces ? 'TOTAL PAYÉ (ESPÈCES)' : 'TOTAL CRÉDIT SOCIÉTÉ'}</td><td class="amount">${money(copayEspeces ? copayMontant : invoice.patientCharge)}</td></tr>`
-    : `
+      <tr><td>Participation (ticket mod.)</td><td class="amount">${money(copayMontant)}</td></tr>
+      ${remiseLine(copayMontant - (Number(invoice.patientCharge) || 0))}
+      <tr class="total"><td>TOTAL PAYÉ (ESPÈCES)</td><td class="amount">${money(invoice.patientCharge)}</td></tr>`
+    : copaySurCredit
+      ? `
+      <tr><td>Total prestations (brut)</td><td class="amount">${money(copay?.brut ?? invoice.totalAmount)}</td></tr>
+      <tr><td>Participation assuré (espèces)</td><td class="amount">${money(copayMontant)}</td></tr>
+      ${remiseLine(copayMontant - (Number(invoice.patientCharge) || 0))}
+      <tr class="total"><td>TOTAL CRÉDIT SOCIÉTÉ</td><td class="amount">${money(invoice.patientCharge)}</td></tr>`
+      : `
       <tr><td>Total articles</td><td class="amount">${money(invoice.totalAmount)}</td></tr>
+      ${remiseLine(remiseSansCopay)}
+      ${remiseSociete > 0 ? `<tr><td>Remise (non encaissée)</td><td class="amount">- ${money(remiseSociete)}</td></tr>` : ''}
       <tr class="total"><td>${credit ? 'TOTAL CRÉDIT SOCIÉTÉ' : 'TOTAL PAYÉ'}</td><td class="amount">${money(invoice.patientCharge)}</td></tr>`;
   const bodyHtml = `
     <div class="bold">${escapeHtml(customer)}</div>

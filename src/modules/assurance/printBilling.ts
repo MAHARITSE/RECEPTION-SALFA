@@ -91,7 +91,7 @@ function individualContent(invoice: MonthlyInvoice, settings?: TicketSettings): 
     <div class="identity"><p>Date de consultation :&emsp; ${escape(dateLabel(document.consultationDate || document.date))}</p>
     <p>Nom :&emsp; <strong>${escape(document.client)}</strong></p>
     <p>Prise en charge :&emsp; ${escape(payer)}</p></div>
-    <table aria-label="Articles facturés"><colgroup><col style="width:5%"><col style="width:41%"><col style="width:18%"><col style="width:18%"><col style="width:18%"></colgroup>
+    <table aria-label="Articles facturés"><colgroup><col style="width:5%"><col style="width:49%"><col style="width:10%"><col style="width:18%"><col style="width:18%"></colgroup>
     <thead><tr><th>N°</th><th>Libellé Article</th><th>Qté</th><th>Prix</th><th>Montant</th></tr></thead>
     <tbody>${document.items.map((item, index) => `<tr><td class="number">${index + 1}</td><td>${escape(item.description)}</td><td class="number">${item.quantity == null ? '—' : quantite(item.quantity)}</td><td class="number">${item.unitPrice == null ? '—' : decimal(item.unitPrice)}</td><td class="number">${decimal(item.quantity != null && item.unitPrice != null ? item.quantity * item.unitPrice : item.amount)}</td></tr>`).join('') || '<tr><td colspan="5">Voir les articles sur la pièce d’origine.</td></tr>'}</tbody></table>
     <div class="summary"><table class="totals" aria-label="Totaux individuels"><tbody>
@@ -141,7 +141,13 @@ export function printMonthlyInvoice(invoice: MonthlyInvoice, settings?: TicketSe
   printDocument(billingPrintHtml(invoice, true, settings), `Facture mensuelle ${invoice.number}`);
 }
 export function individualBillingPrintHtml(state: AppState, document: BillingDocument, printedAt = new Date().toISOString()): string {
-  return billingPrintHtml(documentToInvoice(state, document, printedAt), false, state.ticketSettings);
+  const invoice = documentToInvoice(state, document, printedAt);
+  // MÊME MISE EN PAGE QUE LE « 2 PAR PAGE » : la facture individuelle est posée
+  // sur une feuille A4 PAYSAGE, cantonnée à la moitié GAUCHE (un pointillé
+  // marque la découpe) — la moitié droite reste libre, même pour UNE seule
+  // facture.
+  return shell(invoice.number, 'duo',
+    `<div class="duo-page"><div class="individual duo-half">${individualContent(invoice, state.ticketSettings)}</div><div class="duo-half" aria-hidden="true"></div></div>`);
 }
 export function printIndividualBillingDocument(state: AppState, document: BillingDocument): void {
   printDocument(individualBillingPrintHtml(state, document), `Facture ${document.number}`);
@@ -182,7 +188,7 @@ function mergedContent(documents: BillingDocument[], clientName: string, issuedA
     ${invoiceHeader(settings)}<h1>FACTURE&nbsp; ${escape(pieces[0].number)}</h1>
     <div class="identity"><p>Nom :&emsp; <strong>${escape(clientName)}</strong></p>
     <p>Période :&emsp; ${escape(periode)}</p></div>
-    <table aria-label="Articles de la facture"><colgroup><col style="width:6%"><col style="width:40%"><col style="width:18%"><col style="width:18%"><col style="width:18%"></colgroup>
+    <table aria-label="Articles de la facture"><colgroup><col style="width:6%"><col style="width:48%"><col style="width:10%"><col style="width:18%"><col style="width:18%"></colgroup>
     <thead><tr><th>N°</th><th>Libellé Article</th><th>Qté</th><th>Prix</th><th>Montant</th></tr></thead>
     <tbody>${lignes}</tbody></table>
     <div class="summary"><table class="totals" aria-label="Totaux fusionnés"><tbody>

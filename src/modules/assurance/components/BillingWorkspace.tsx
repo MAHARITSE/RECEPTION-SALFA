@@ -234,12 +234,12 @@ export function BillingWorkspace({ state, setState, reliquatsAHuiter = 0, onOuvr
                     const nbAjouts = p ? ajoutsDe(p) : 0;
                     const solde = Math.max(0, d.payable - d.paid - d.rejected);
                     return (
-                      <tr key={d.id} className="border-t border-line hover:bg-surface-hover">
+                      <tr key={d.id} className={`border-t border-line hover:bg-surface-hover${p ? ' cursor-pointer' : ''}`}
+                          title={p ? 'Double-clic : ouvrir la prescription' : undefined}
+                          onDoubleClick={() => { if (!p) return; if (estCaisse(p) && onFusionPrescription) { setFusionSource(p); } else { setPrescription(p); } }}>
                         <td className="p-2.5 whitespace-nowrap">{formatDate(d.date)}</td>
                         <td className="p-2.5 font-mono font-semibold">{d.number}</td>
-                        <td className={`p-2.5 ${p ? 'cursor-pointer font-semibold text-indigo-700 dark:text-indigo-300 underline decoration-dotted underline-offset-2' : ''}`}
-                            title={p ? 'Double-clic : ouvrir la prescription' : undefined}
-                            onDoubleClick={() => { if (!p) return; if (estCaisse(p) && onFusionPrescription) { setFusionSource(p); } else { setPrescription(p); } }}>
+                        <td className={`p-2.5 ${p ? 'font-semibold text-indigo-700 dark:text-indigo-300 underline decoration-dotted underline-offset-2' : ''}`}>
                           {d.client}{d.dossier && <span className="block text-ink-muted font-normal">{d.dossier}</span>}
                           {nbAjouts > 0 && <span className="ml-1.5 inline-block px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300 text-[10px] font-bold" title="Lignes ajoutées par le facturier">+{nbAjouts}</span>}
                         </td>

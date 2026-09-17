@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import type { AppState } from '../src/store';
 import type { Invoice, Vente } from '../src/types';
-import { billingTotals, collectBillingDocuments, createMonthlyInvoice, localBillingDate, monthlyGroups, preserveMonthlyInvoices } from '../src/modules/assurance/monthlyBilling';
+import { billingTotals, collectBillingDocuments, createMonthlyInvoice, localBillingDate, migrateMonthlyInvoiceNumbers, monthlyGroups, preserveMonthlyInvoices } from '../src/modules/assurance/monthlyBilling';
 import { billingPrintHtml, individualBillingPrintHtml, billingAmountInWords } from '../src/modules/assurance/printBilling';
 import { groupBillingItemsByFamily, billingFamilyResolver, auditArticleFamilies } from '../src/modules/assurance/billingFamilies';
 import { planMonthlyFamilyRepair, applyMonthlyFamilyRepair, reorganizeFamilyMetadata } from '../src/modules/assurance/billingFamilyRepair';
@@ -52,6 +52,17 @@ test('numéro séquentiel par mois, snapshot figé, fusion non destructive et im
   const external = createMonthlyInvoice(state, { ...scope, category: 'externe' }, [invoice]);
   expect(external.number).toBe('FM-2026-09-0002');
   expect(createMonthlyInvoice(state, { month: '2026-08', category: 'comptoir' }, [invoice, external]).number).toBe('FM-2026-08-0001');
+  // Société : la facture GLOBALE mensuelle porte le numéro officiel
+  // FA-MM/CODE/YY-NNN (code diminutif « SAO » de SOCIETE A, aucun code enregistré).
+  const societeInvoice = createMonthlyInvoice(state, { month: '2026-09', category: 'societe', companyId: 'soc-A' }, [invoice, external]);
+  expect(societeInvoice.number).toBe('FA-09/SAO/26-001');
+  // Migration idempotente : un ancien numéro FM- société devient FA-MM/CODE/YY-NNN,
+  // puis reste inchangé aux passages suivants.
+  const migratedState = { ...state, monthlyInvoices: [{ ...societeInvoice, number: 'FM-2026-09-0003' }] } as AppState;
+  expect(migrateMonthlyInvoiceNumbers(migratedState)).toBe(1);
+  expect(migratedState.monthlyInvoices![0].number).toBe('FA-09/SAO/26-001');
+  expect(migrateMonthlyInvoiceNumbers(migratedState)).toBe(0);
+  expect(migratedState.monthlyInvoices![0].number).toBe('FA-09/SAO/26-001');
   state.invoices = [];
   state.ticketSettings.facilityName = 'Changed';
   expect(createMonthlyInvoice(state, scope, [invoice])).toBe(invoice);
@@ -273,7 +284,9 @@ test('modèle société : matricule, sous-entité, regroupement des actes et tot
   await page.setContent(billingPrintHtml(invoice));
   await expect(page.getByRole('heading', { name: 'Doit : SOCIETE A' })).toBeVisible();
   await expect(page.locator('body')).toContainText('Mois de prise en charge : Septembre 2026');
-  await expect(page.locator('body')).toContainText('Facture N° : FM-2026-09-0001');
+  // La facture GLOBALE mensuelle société porte le numéro officiel FA-MM/CODE/YY-NNN
+  // (code diminutif « SAO » de SOCIETE A, aucun code enregistré dans le fixture).
+  await expect(page.locator('body')).toContainText('Facture N° : FA-09/SAO/26-001');
   for (const label of ['N°', 'Date', 'Mlle', 'Nom et Prénom', 'Acte médicale/Prix', 'Montant', 'Participat°', 'Net à Payer']) await expect(page.getByRole('columnheader', { name: label, exact: true })).toBeVisible();
   await expect(page.locator('[data-source-id="soc-A"]')).toContainText('MAT-108350');
   await expect(page.locator('[data-source-id="soc-A"]')).toContainText('PROJET & SOINS <test>');

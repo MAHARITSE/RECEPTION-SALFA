@@ -5,6 +5,7 @@ import { localBillingDate } from '../../monthlyBilling';
 import type { Paiement, Prestation, Societe } from '../../types';
 import { creerPaiementGlobal, numeroBordereauPropose, repartitionReglementGlobal } from '../../utils/reglementGlobal';
 import { formatDate, formatMoney, generateId, getCurrentTimestamp } from '../../utils/formatters';
+import MoneyInput from '../../../../components/MoneyInput';
 
 const MODES_PAIEMENT: Paiement['modePaiement'][] = ['Virement bancaire', 'Chèque', 'Espèces', 'Mobile Money', 'Autre'];
 
@@ -83,8 +84,10 @@ export function PaiementGlobalModal({ societe, month, numeroFactureMensuelle, de
 
           <div className="grid grid-cols-2 gap-3">
             <label className="text-xs font-semibold text-ink block">Montant réglé
-              <input type="number" min={0} step="0.01" value={montant} onChange={e => { setMontant(e.target.value); setErreur(''); }}
-                aria-label="Montant réglé" className="mt-1 w-full rounded-lg border border-line bg-field p-2.5 font-mono text-sm" autoFocus />
+              <MoneyInput value={Number(montant) || 0} decimals={2}
+                onChange={n => { setMontant(n === 0 ? '' : String(n)); setErreur(''); }}
+                ariaLabel="Montant réglé" title="Montant réglé — séparateur de milliers automatique (ex : 49 450)"
+                className="mt-1 w-full rounded-lg border border-line bg-field p-2.5 font-mono text-sm" autoFocus />
             </label>
             <label className="text-xs font-semibold text-ink block">Date du paiement
               <input type="date" value={datePaiement} onChange={e => setDatePaiement(e.target.value)}

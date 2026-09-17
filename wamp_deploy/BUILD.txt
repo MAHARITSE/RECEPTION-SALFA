@@ -1,10 +1,96 @@
 RECEPTION SALFA - Application compilée pour WAMP (index.html)
 ================================================================
-Build du       : 2026-09-15
-Commit source  : suite de c1906d2 (branche arena/01a0a3c7-reception-salfa)
+Build du       : 2026-09-17
+Commit source  : efdabd5 (branche arena/01a0adcf-reception-salfa) + corrections
 Commande       : npm run build:wamp   (VITE_WAMP_MODE=1 via .env.wamp)
 Mode vérifié   : WAMP / MySQL (ternaire replié dans le bundle)
-Taille         : 3,70 Mo (monofichier, gzip ~999 Ko)
+Taille         : 3,71 Mo (monofichier, gzip ~1 007 Ko)
+
+Nouvelle version 2026-09-17 — contenu :
+  1) En-tête : bouton « Dossiers » retiré de l'administration (conservé pour
+     les médecins) et bouton « Sauvegarder » retiré de la barre supérieure de
+     TOUS les rôles (la sauvegarde .sql automatique à la déconnexion et le
+     rappel quotidien restent en fond ; l'export reste disponible dans
+     Administration -> Raccourcis « Sauvegarde SQL »).
+  2) Caisse : la saisie du médecin prescripteur est OBLIGATOIRE avant
+     d'encaisser une vente externe, SAUF si la vente ne contient que des
+     articles de la famille Consultation.
+  3) Médecin : le champ de saisie « Rem% » est à CÔTÉ de la recherche
+     d'analyse et de la recherche d'échographie (une par section, 0-100) ;
+     chaque examen ajouté garde la remise en vigueur au moment de son ajout
+     (badge « Rem X% » sur la ligne, le prix facturé, le total et les bons
+     suivent la remise ; remise conservée et restaurée à la modification).
+  4) Champs de saisie de montants : séparateur de milliers automatique
+     (49450 -> « 49 450 ») dans toutes les saisies de prix/montants
+     (caisse hospit./bloc, espèces reçues, magasinier, laboratoire,
+     demande d'achat, facturation assurance : P.U., montant brut, ticket
+     modérateur, montants à exclure, montants réglés).
+  5) Impression facture individuelle : A4 PAYSAGE même pour UNE seule
+     facture — la facture occupe la moitié GAUCHE de la feuille (pointillé
+     de découpe au centre), la moitié droite reste libre ; colonne Qté
+     affinée (larges libellés) sur les factures individuelles et fusionnées.
+  6) Médecin : les résultats d'analyses ne sont PLUS affichés directement
+     dans le bloc « Résultats & Analyses Laboratoire » sauf si l'analyse est
+     de moins d'une semaine (7 jours, date de complétion sinon de demande) ;
+     les anciens résultats restent imprimables/comptables, ils ne sont que
+     masqués de l'affichage automatique.
+  7) Ticket de paiement (caisse) : quand le montant encaissé diffère du
+     total brut, la différence est affichée AVEC SA NATURE —
+     « Participation (ticket mod.) » quand la quote-part est due par
+     l'assuré (ticket d'espèces : Total brut / Crédit société /
+     Participation / Total payé ; ticket crédit société : Participation
+     assuré (espèces) avant le Total crédit), et « Remise » quand il
+     s'agit d'une vraie réduction accordée (ligne Remise entre
+     « Total articles » et le total payé).
+  8) Recherches : insensibles aux ACCENTS dans tous les modules (patient,
+     analyses, échographies, médicaments, articles, fournisseurs, utilisateurs,
+     audit, établissements, prescripteur caisse) — « glycémie » retrouve
+     « Glycémie ».
+  9) Zones de suggestion : navigation clavier ↑ / ↓ + Entrée + Échap partout
+     (recherche patient médecin, patient labo, patient hospit/bloc caisse,
+     liste article...) — mêmes touches que la recherche de patient.
+  10) Blocages de validation non bloquants : au lieu d'une alerte qui gèle
+     l'écran, une info ~2 s en haut de l'écran puis reprise automatique de la
+     saisie dans le champ concerné (Diagnostic * chez le médecin, Médecin
+     prescripteur caisse, espèces du ticket modérateur, nom/prénom/dossier
+     nouveau patient hospit-bloc, motif de blocage pharmacie).
+  11) Médecin — Demandes d'analyses / échographies : relation SOCIÉTÉ
+     affichée sous le total du brouillon, même calcul que la caisse —
+     « Ticket modérateur X Ar : à payer par le patient à la caisse » si la
+     nature de la société est TICKET MODÉRATEUR ; « Remise : la quote-part
+     n'est pas à payer par le patient » si elle est REMISE ; avertissement si
+     la société n'est pas reconnue dans la base assurance.
+  12) Caisse — ticket modérateur / remise des labo & écho du médecin VISIBLE
+     : tableau pièce par pièce (Analyses / Échographies / Médicaments : brut
+     + quote-part ou remise) dans la fenêtre de paiement ; le ticket de
+     caisse crédit société affiche désormais la ligne « Remise (non
+     encaissée) » quand la nature de la société est remise (montant conservé
+     sur la facture `remiseNonEncaise` pour les réimpressions).
+  13) Impression facture individuelle : bordure gauche de la zone des totaux
+     alignée sur la FIN de la colonne Qté (le montant du total part exactement
+     là où finit la Qté) ; la ligne « Ticket modérateur » / « Remise » du
+     récapitulatif est masquée quand elle vaut 0,00 Ar.
+  14) Numérotation des factures : le format FA-MM/CODE/YY-NNN (ex:
+     FA-09/JIR/26-001) est réservé à la FACTURE GLOBALE MENSUELLE société
+     (établie une fois par mois dans le module Facturation) ; TOUTES les autres
+     factures individuelles validées en caisse (service, médicaments,
+     participation, hospit./bloc, labo/écho en attente) reçoivent le format
+     journalier AAFAMMJJ + ordre du jour (ex: 26FA0917001) SANS distinction du
+     type de client (société, comptoir ou externe).
+  15) Tableaux : le double-clic sur une LIGNE entière est actif (avant, deux
+     tableaux réagissaient seulement sur une seule cellule) — facturation
+     (tableau des prescriptions du destinataire) et comptoir/externe.
+  16) Facture GLOBALE mensuelle société : elle porte désormais le numéro
+     officiel FA-MM/CODE/YY-NNN au lieu de FM-YYYY-MM-NNNN (ex: une facture
+     FM-2026-09-0001 d'AIR MADAGASCAR devient FA-09/<CODE>/26-001, CODE =
+     diminutif enregistré de la société dans Facturation, sinon généré du nom)
+     — numéros FA- de la vue « par facture » et de la facture globale
+     partageant la même séquence mensuelle. Les factures mensuelles
+     comptoir / externes conservent le format FM-YYYY-MM-NNNN. Les factures
+     mensuelles sociétés déjà émises en FM- sont renumérotées automatiquement
+     (une seule fois, au chargement) ; les réimpressions affichent le nouveau
+     numéro.
+  — Version précédente 2026-09-15 (c1906d2) — contenu :
 Contenu        : 1) correctifs « audit WAMP 100 passages/jour » (sonde action=poll,
                    envoi différentiel, contrôle de révision if_rev/409, déconnexion
                    révocante, persistance monthlyInvoices / prescripteursExternes) ;

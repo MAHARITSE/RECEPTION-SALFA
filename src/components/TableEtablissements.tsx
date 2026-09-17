@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import type { Etablissement, EtablissementType } from '../types';
+import { normaliserRecherche } from '../utils/recherche';
 import type { AppState } from '../store';
 import {
   ETABLISSEMENT_TYPES,
@@ -59,10 +60,10 @@ export default function TableEtablissements({ state, setState, showToast }: Prop
   const etablissements = state.etablissements || [];
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = normaliserRecherche(search);
     return etablissements.filter((e) => {
       const matchesSearch = !q || [e.code, e.name, e.tradeName, e.nif, e.stat, e.city, e.phone, e.email]
-        .some((v) => (v || '').toLowerCase().includes(q));
+        .some((v) => normaliserRecherche(v ?? '').includes(q));
       const matchesType = typeFilter === 'all' || e.type === typeFilter;
       return matchesSearch && matchesType;
     });

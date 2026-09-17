@@ -7,6 +7,8 @@ import type { MovementType } from '../types';
 import { printDeliveryTicket } from '../utils/printTicket';
 import DemandeAchatForm, { type ReqLine } from './DemandeAchatForm';
 import ModuleCaisse from './ModuleCaisse';
+import { normaliserRecherche } from '../utils/recherche';
+import { useFlashInfo, FlashInfoBanner } from './FlashInfo';
 import {
   Pill, Package, CheckCircle, Clock, Search, Send,
   Plus, Trash2, Filter, Printer, Edit3, CreditCard,
@@ -31,6 +33,8 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
   const [stockSub, setStockSub] = useState<'articles' | 'demandes' | 'historique'>('articles');
   const [blockModal, setBlockModal] = useState<{ articleId: string; name: string; currentlyBlocked: boolean } | null>(null);
   const [blockReason, setBlockReason] = useState('');
+  // Blocage de validation non bloquant : info ~2 s puis reprise de saisie.
+  const { message: flashMsg, flash } = useFlashInfo();
 
   // Nouveaux états pour affichage gauche/droite
   const [selConsultId, setSelConsultId] = useState<string | null>(null);
@@ -179,7 +183,7 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
   // pharmacie lié à la consultation n'est pas effectif (même en urgence).
   const allPending = paidConsultations;
 
-  const filtered = state.articles.filter((a) => a.name.toLowerCase().includes(searchStock.toLowerCase()));
+  const filtered = state.articles.filter((a) => { const q = normaliserRecherche(searchStock); return q === '' || normaliserRecherche(a.name).includes(q); });
 
   // Demandes pharmacie uniquement
   const myRequests = state.stockTransfers.filter(
@@ -197,7 +201,8 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
     if (!blockModal) return;
     const reason = blockReason.trim();
     if (!blockModal.currentlyBlocked && !reason) {
-      alert('Indiquez le motif du blocage (réservé, en attente de régularisation, etc.).');
+      // Info brève (~2 s) puis reprise de saisie dans le champ « Motif ».
+      flash('Indiquez le motif du blocage (réservé, en attente de régularisation, etc.).', document.getElementById('pharma-bloc-motif') as HTMLElement | null);
       return;
     }
     setState((prev) => {
@@ -428,6 +433,7 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
 
   return (
     <div className="space-y-6 flex flex-col">
+      <FlashInfoBanner message={flashMsg} />
       {/* Banner & Sélecteur : Caisse de garde EN PREMIER */}
       <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-purple-800 rounded-xl p-4 text-white shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
@@ -1184,6 +1190,7 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                   <div>
                     <label className="block text-xs font-bold text-ink mb-1">Motif du blocage *</label>
                     <input
+                      id="pharma-bloc-motif"
                       type="text"
                       value={blockReason}
                       onChange={(e) => setBlockReason(e.target.value)}
