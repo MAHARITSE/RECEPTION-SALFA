@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { UserRole, TicketSettings, User } from '../types';
-import { formatAr, addAuditLog, familyManagesStock } from '../store';
+import { formatAr, addAuditLog, familyManagesStock, createInitialState, prepareLoadedState } from '../store';
 import { normaliserRecherche } from '../utils/recherche';
 import { IS_WAMP_BUILD, setWampPassword } from '../wamp';
 import { credentialAutofillOptOut, passwordInputOptOut } from '../utils/credentialAutofill';
@@ -8,6 +8,8 @@ import { exporterSauvegardeSql } from '../utils/sauvegarde';
 import { telechargerFichier } from '../utils/exportFichier';
 import { hashPassword } from '../utils/motDePasse';
 import type { AppState } from '../store';
+import { saveStateToBrowser } from '../browserDb';
+import localSeedData from '../data/localData.json';
 import ModuleReception from './ModuleReception';
 import ModuleMedecin from './ModuleMedecin';
 import ModuleCaisse from './ModuleCaisse';
@@ -25,7 +27,7 @@ import {
   CreditCard, Search, RefreshCw, Copy, Activity,
   Key, Edit2, Hospital, Stethoscope, Pill, Package, FlaskConical,
   Menu, LayoutDashboard, AlertTriangle, ArrowRight, HardDrive, FileSpreadsheet, Lock, Unlock, CheckCircle2,
-  Landmark
+  Landmark, Download, FileJson, Table, ChevronLeft, ChevronRight, FolderOpen
 } from 'lucide-react';
 import { Select } from './Select';
 
@@ -56,7 +58,7 @@ const TABS: { key: Tab; label: string; icon: any; desc: string }[] = [
   { key: 'invoiceHeader', label: 'En-tête Facture', icon: FileText, desc: 'En-tête des factures A4/A5 (texte & images) — hors tickets POS' },
   { key: 'users', label: 'Personnel & Accès', icon: Users, desc: 'Comptes utilisateurs, rôles & sécurisation' },
   { key: 'audit', label: 'Journal d\'audit', icon: Shield, desc: 'Traçabilité complète des événements' },
-  { key: 'system', label: 'Diagnostics Système', icon: HardDrive, desc: 'État du stockage & statistiques tables' },
+  { key: 'system', label: 'Diagnostics Système', icon: HardDrive, desc: 'Santé du stockage et volume de la base de données' },
 ];
 
 const APP_MODULES: { key: AppModuleKey; label: string; icon: any; desc: string }[] = [
@@ -138,6 +140,52 @@ export default function ModuleAdministration({ state, setState }: Props) {
     newPassword: '',
     showPassword: true,
   });
+
+  // Local Data Explorer State
+  const [selectedTable, setSelectedTable] = useState<string>('patients');
+  const [tableSearch, setTableSearch] = useState<string>('');
+  const [tablePage, setTablePage] = useState<number>(0);
+  const [inspectedRecord, setInspectedRecord] = useState<{ table: string; data: any } | null>(null);
+  const [recordCopied, setRecordCopied] = useState<boolean>(false);
+
+  const handleResetToLocalData = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Recharger localData.json ?',
+      message: 'Voulez-vous réinitialiser l\'application avec les données du fichier localData.json ? Les modifications non enregistrées seront remplacées.',
+      variant: 'warning',
+      onConfirm: () => {
+        try {
+          const loaded = prepareLoadedState(localSeedData as any);
+          setState(loaded);
+          saveStateToBrowser(loaded);
+          showToast('Données réinitialisées avec succès depuis localData.json');
+        } catch (e: any) {
+          showToast('Erreur lors du chargement : ' + (e?.message || 'Inconnue'));
+        }
+      },
+    });
+  };
+
+  const handleDownloadLocalData = () => {
+    try {
+      const blob = new Blob([JSON.stringify(localSeedData, null, 2)], { type: 'application/json' });
+      telechargerFichier(blob, `localData_${new Date().toISOString().split('T')[0]}.json`);
+      showToast('Fichier localData.json téléchargé');
+    } catch {
+      showToast('Erreur lors du téléchargement');
+    }
+  };
+
+  const handleDownloadCurrentState = () => {
+    try {
+      const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+      telechargerFichier(blob, `salfa_etat_actuel_${new Date().toISOString().split('T')[0]}.json`);
+      showToast('État actuel exporté en JSON');
+    } catch {
+      showToast('Erreur lors de l\'exportation');
+    }
+  };
 
   // ============ TICKETS & SOCIETE CONFIG ============
   const updateTicket = (patch: Partial<TicketSettings>) => {
@@ -633,6 +681,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
                 </label>
                 <input
                   type="text"
+                  name="user-secret-val"
                   {...passwordInputOptOut}
                   value={userModal.user.password || ''}
                   onChange={(e) => setUserModal({ ...userModal, user: { ...userModal.user, password: e.target.value } })}
@@ -685,6 +734,7 @@ export default function ModuleAdministration({ state, setState }: Props) {
                 <div className="relative">
                   <input
                     id="admin-reset-password"
+                    name="token-reset-field"
                     {...passwordInputOptOut}
                     type={resetPasswordModal.showPassword ? 'text' : 'password'}
                     value={resetPasswordModal.newPassword}
@@ -1330,72 +1380,366 @@ export default function ModuleAdministration({ state, setState }: Props) {
                     </div>
                   )}
 
-                  {/* ===== TAB 7: SYSTEM DIAGNOSTICS ===== */}
-                  {tab === 'system' && (
-                    <div className="space-y-6 max-w-3xl">
-                      <div>
-                        <h3 className="font-bold text-ink-strong text-xl flex items-center gap-2.5">
-                          <HardDrive className="w-6 h-6 text-ink" /> Diagnostics & Santé du Stockage
-                        </h3>
-                        <p className="text-xs text-ink-muted mt-0.5">Statistiques d'utilisation des tables et volume de stockage du navigateur.</p>
-                      </div>
+                  {/* ===== TAB 7: SYSTEM DIAGNOSTICS & LOCALDATA.JSON EXPLORER ===== */}
+                  {tab === 'system' && (() => {
+                    const SYSTEM_TABLES: { key: string; label: string; count: number; desc: string }[] = [
+                      { key: 'patients', label: 'Patients', count: state.patients?.length || 0, desc: 'Dossiers patients' },
+                      { key: 'consultations', label: 'Consultations', count: state.consultations?.length || 0, desc: 'Consultations médicales' },
+                      { key: 'ventes', label: 'Ventes Caisse', count: state.ventes?.length || 0, desc: 'Factures de caisse' },
+                      { key: 'venteLines', label: 'Lignes de Vente', count: state.venteLines?.length || 0, desc: 'Actes et articles vendus' },
+                      { key: 'ventePayments', label: 'Règlements', count: state.ventePayments?.length || 0, desc: 'Paiements caisse' },
+                      { key: 'invoices', label: 'Factures Globales', count: state.invoices?.length || 0, desc: 'Factures prestations' },
+                      { key: 'articles', label: 'Articles & Stocks', count: state.articles?.length || 0, desc: 'Médicaments & catalogue' },
+                      { key: 'cashClosings', label: 'Clôtures Caisse', count: state.cashClosings?.length || 0, desc: 'Arrêtés journaliers' },
+                      { key: 'labCatalog', label: 'Analyses Labo', count: state.labCatalog?.length || 0, desc: 'Catalogue examens' },
+                      { key: 'labRequests', label: 'Demandes Labo', count: state.labRequests?.length || 0, desc: 'Prescriptions labo' },
+                      { key: 'users', label: 'Utilisateurs', count: state.users?.length || 0, desc: 'Comptes d\'accès' },
+                      { key: 'companies', label: 'Sociétés & Assurances', count: state.companies?.length || 0, desc: 'Conventions' },
+                      { key: 'familles', label: 'Familles Articles', count: state.familles?.length || 0, desc: 'Catégories' },
+                      { key: 'auditLogs', label: 'Journal d\'Audit', count: state.auditLogs?.length || 0, desc: 'Traçabilité' },
+                    ];
 
-                      <div className="p-5 border border-line rounded-2xl bg-surface space-y-4 shadow-xs">
-                        <h4 className="font-bold text-sm text-ink-strong border-b pb-2 flex items-center justify-between">
-                          <span>Volume & Métriques des Entités</span>
-                          <span className="text-xs font-mono text-emerald-600 dark:text-emerald-400 font-bold">Système SALFA v2.0</span>
-                        </h4>
+                    const currentTableRows: any[] = (() => {
+                      switch (selectedTable) {
+                        case 'patients': return state.patients || [];
+                        case 'consultations': return state.consultations || [];
+                        case 'ventes': return state.ventes || [];
+                        case 'venteLines': return state.venteLines || [];
+                        case 'ventePayments': return state.ventePayments || [];
+                        case 'invoices': return state.invoices || [];
+                        case 'articles': return state.articles || [];
+                        case 'cashClosings': return state.cashClosings || [];
+                        case 'labCatalog': return state.labCatalog || [];
+                        case 'labRequests': return state.labRequests || [];
+                        case 'users': return state.users || [];
+                        case 'companies': return state.companies || [];
+                        case 'familles': return state.familles || [];
+                        case 'auditLogs': return state.auditLogs || [];
+                        default: return [];
+                      }
+                    })();
 
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
-                          <div className="p-3 bg-surface-muted border rounded-xl space-y-1">
-                            <span className="text-ink-muted block">Dossiers Patients</span>
-                            <strong className="text-base text-ink-strong font-mono">{state.patients.length}</strong>
+                    const searchFilter = normaliserRecherche(tableSearch.trim());
+                    const filteredTableRows = searchFilter
+                      ? currentTableRows.filter((r) => normaliserRecherche(JSON.stringify(r)).includes(searchFilter))
+                      : currentTableRows;
+
+                    const PAGE_LIMIT = 12;
+                    const maxPages = Math.ceil(filteredTableRows.length / PAGE_LIMIT) || 1;
+                    const currentPage = Math.min(tablePage, maxPages - 1);
+                    const pagedRows = filteredTableRows.slice(currentPage * PAGE_LIMIT, (currentPage + 1) * PAGE_LIMIT);
+
+                    return (
+                      <div className="space-y-6">
+                        {/* En-tête et actions sur src/data/localData.json */}
+                        <div className="p-5 border border-line rounded-2xl bg-surface space-y-4 shadow-xs">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-line pb-4">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <Database className="w-5 h-5 text-blue-600 dark:text-cyan-400" />
+                                <h3 className="font-bold text-ink-strong text-lg">
+                                  Base de Référence : <code className="text-blue-700 dark:text-cyan-300 font-mono text-base">src/data/localData.json</code>
+                                </h3>
+                              </div>
+                              <p className="text-xs text-ink-muted mt-1">
+                                Fichier source embarqué contenant les données de test initiales (~4.78 Mo, 23 collections relationnelles).
+                              </p>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={handleResetToLocalData}
+                                className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow cursor-pointer transition"
+                                title="Réinitialiser l'état de l'application à partir du fichier localData.json"
+                              >
+                                <RefreshCw className="w-3.5 h-3.5" /> Recharger localData.json
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleDownloadLocalData}
+                                className="px-3 py-2 bg-surface border border-line hover:border-blue-500 text-ink rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer transition"
+                                title="Télécharger le fichier localData.json original"
+                              >
+                                <Download className="w-3.5 h-3.5" /> Télécharger localData.json
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleDownloadCurrentState}
+                                className="px-3 py-2 bg-surface border border-line hover:border-emerald-500 text-ink rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer transition"
+                                title="Télécharger l'état complet actuel en JSON"
+                              >
+                                <FileJson className="w-3.5 h-3.5" /> Exporter état actuel
+                              </button>
+                            </div>
                           </div>
-                          <div className="p-3 bg-surface-muted border rounded-xl space-y-1">
-                            <span className="text-ink-muted block">Consultations</span>
-                            <strong className="text-base text-ink-strong font-mono">{state.consultations.length}</strong>
+
+                          {/* Métriques globales */}
+                          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5 text-xs">
+                            <div className="p-2.5 bg-surface-muted border border-line rounded-xl">
+                              <span className="text-ink-muted block text-[11px]">Patients</span>
+                              <strong className="text-sm font-mono text-ink-strong">{state.patients.length}</strong>
+                            </div>
+                            <div className="p-2.5 bg-surface-muted border border-line rounded-xl">
+                              <span className="text-ink-muted block text-[11px]">Consultations</span>
+                              <strong className="text-sm font-mono text-ink-strong">{state.consultations.length}</strong>
+                            </div>
+                            <div className="p-2.5 bg-surface-muted border border-line rounded-xl">
+                              <span className="text-ink-muted block text-[11px]">Factures</span>
+                              <strong className="text-sm font-mono text-ink-strong">{state.invoices.length}</strong>
+                            </div>
+                            <div className="p-2.5 bg-surface-muted border border-line rounded-xl">
+                              <span className="text-ink-muted block text-[11px]">Ventes Caisse</span>
+                              <strong className="text-sm font-mono text-ink-strong">{state.ventes?.length || 0}</strong>
+                            </div>
+                            <div className="p-2.5 bg-surface-muted border border-line rounded-xl">
+                              <span className="text-ink-muted block text-[11px]">Lignes Ventes</span>
+                              <strong className="text-sm font-mono text-ink-strong">{state.venteLines?.length || 0}</strong>
+                            </div>
+                            <div className="p-2.5 bg-surface-muted border border-line rounded-xl">
+                              <span className="text-ink-muted block text-[11px]">Articles / Stocks</span>
+                              <strong className="text-sm font-mono text-ink-strong">{state.articles.length}</strong>
+                            </div>
+                            <div className="p-2.5 bg-surface-muted border border-line rounded-xl">
+                              <span className="text-ink-muted block text-[11px]">Utilisateurs</span>
+                              <strong className="text-sm font-mono text-ink-strong">{state.users.length}</strong>
+                            </div>
                           </div>
-                          <div className="p-3 bg-surface-muted border rounded-xl space-y-1">
-                            <span className="text-ink-muted block">Factures Émises</span>
-                            <strong className="text-base text-ink-strong font-mono">{state.invoices.length}</strong>
-                          </div>
-                          <div className="p-3 bg-surface-muted border rounded-xl space-y-1">
-                            <span className="text-ink-muted block">Articles Catalogue</span>
-                            <strong className="text-base text-ink-strong font-mono">{state.articles.length}</strong>
-                          </div>
-                          <div className="p-3 bg-surface-muted border rounded-xl space-y-1">
-                            <span className="text-ink-muted block">Ventes Caisse</span>
-                            <strong className="text-base text-ink-strong font-mono">{state.ventes?.length || 0}</strong>
-                          </div>
-                          <div className="p-3 bg-surface-muted border rounded-xl space-y-1">
-                            <span className="text-ink-muted block">Lignes d'Audit</span>
-                            <strong className="text-base text-ink-strong font-mono">{state.auditLogs.length}</strong>
-                          </div>
-                          <div className="p-3 bg-surface-muted border rounded-xl space-y-1">
-                            <span className="text-ink-muted block">Sociétés / Hôpitaux</span>
-                            <strong className="text-base text-ink-strong font-mono">{state.etablissements?.length || 0}</strong>
+
+                          <div className="flex items-center justify-between text-xs text-ink-secondary pt-1">
+                            <span>Moteur de persistence actif : <strong className="text-emerald-700 dark:text-emerald-400">IndexedDB & localStorage</strong></span>
+                            <span>Taille estimée en mémoire : <strong className="font-mono text-ink-strong">{Math.round(JSON.stringify(state).length / 1024)} Ko</strong></span>
                           </div>
                         </div>
 
-                        <div className="pt-2 border-t text-xs text-ink-secondary space-y-2">
-                          <div className="flex justify-between py-1">
-                            <span>Taille estimée en mémoire LocalStorage :</span>
-                            <strong className="font-mono text-ink-strong">{Math.round(JSON.stringify(state).length / 1024)} Ko</strong>
+                        {/* Explorateur de tables */}
+                        <div className="p-5 border border-line rounded-2xl bg-surface space-y-4 shadow-xs">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div>
+                              <h4 className="font-bold text-ink-strong text-base flex items-center gap-2">
+                                <Table className="w-4 h-4 text-accent" /> Explorateur des Collections de Données
+                              </h4>
+                              <p className="text-xs text-ink-muted mt-0.5">
+                                Inspectez les enregistrements ligne par ligne et visualisez le JSON brut correspondant.
+                              </p>
+                            </div>
+
+                            <div className="relative w-full sm:w-64">
+                              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint" />
+                              <input
+                                type="text"
+                                value={tableSearch}
+                                onChange={(e) => { setTableSearch(e.target.value); setTablePage(0); }}
+                                placeholder="Rechercher dans cette table…"
+                                className="w-full pl-8 pr-7 py-1.5 bg-surface-muted border border-line rounded-lg text-xs text-ink focus:outline-none focus:border-accent"
+                              />
+                              {tableSearch && (
+                                <button
+                                  type="button"
+                                  onClick={() => { setTableSearch(''); setTablePage(0); }}
+                                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink cursor-pointer"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
                           </div>
-                          <div className="flex justify-between py-1">
-                            <span>Moteur de persistence actif :</span>
-                            <strong className="text-emerald-700 dark:text-emerald-400">HTML5 Web Storage (LocalStorage)</strong>
+
+                          {/* Sélecteur de collection sous forme d'onglets défilants */}
+                          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+                            {SYSTEM_TABLES.map((t) => {
+                              const active = selectedTable === t.key;
+                              return (
+                                <button
+                                  key={t.key}
+                                  type="button"
+                                  onClick={() => { setSelectedTable(t.key); setTablePage(0); setTableSearch(''); }}
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
+                                    active
+                                      ? 'bg-accent text-white shadow-xs'
+                                      : 'bg-surface-muted hover:bg-surface-hover text-ink border border-line'
+                                  }`}
+                                >
+                                  <span>{t.label}</span>
+                                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${active ? 'bg-white/20 text-white' : 'bg-line text-ink-muted'}`}>
+                                    {t.count}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          {/* Tableau des enregistrements */}
+                          <div className="border border-line rounded-xl overflow-x-auto bg-surface">
+                            <table className="w-full text-left text-xs border-collapse">
+                              <thead>
+                                <tr className="bg-surface-muted border-b border-line text-ink-muted font-semibold">
+                                  <th className="p-2.5 w-14">#</th>
+                                  <th className="p-2.5 w-28">Identifiant</th>
+                                  <th className="p-2.5">Aperçu des Données</th>
+                                  <th className="p-2.5 w-28 text-right">JSON</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-line">
+                                {pagedRows.length === 0 ? (
+                                  <tr>
+                                    <td colSpan={4} className="p-6 text-center text-ink-muted">
+                                      Aucun enregistrement trouvé {tableSearch ? 'pour cette recherche' : ''}.
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  pagedRows.map((row, idx) => {
+                                    const rowId = row.id || row.code || row.matricule || `item-${currentPage * PAGE_LIMIT + idx + 1}`;
+                                    // Aperçu texte synthétique selon le type d'objet
+                                    const preview = (() => {
+                                      if (selectedTable === 'patients') {
+                                        return `${row.nom || ''} ${row.prenom || ''} • Sexe : ${row.sexe || 'N/A'} • Âge : ${row.age || 'N/A'} ans • Tél : ${row.telephone || 'N/A'} • Type : ${row.typeClient || 'Standard'} ${row.societe ? `(${row.societe})` : ''}`;
+                                      }
+                                      if (selectedTable === 'consultations') {
+                                        return `Date : ${row.date || 'N/A'} • Médecin : ${row.medecinNom || 'N/A'} • Patient : ${row.patientId || 'N/A'} • Motif : ${row.motif || 'N/A'}`;
+                                      }
+                                      if (selectedTable === 'ventes') {
+                                        return `Date : ${row.date || 'N/A'} • Client : ${row.clientNom || 'Anonyme'} • Type : ${row.typeClient || 'comptant'} • Net : ${formatAr(row.totalNet || row.montantNet || 0)} • Statut : ${row.statut || 'N/A'}`;
+                                      }
+                                      if (selectedTable === 'venteLines') {
+                                        return `Article : ${row.designation || row.articleNom || row.codeArticle || 'N/A'} • Qté : ${row.quantite || 1} • Prix Unit : ${formatAr(row.prixUnitaire || 0)} • Total : ${formatAr(row.total || 0)}`;
+                                      }
+                                      if (selectedTable === 'ventePayments') {
+                                        return `Date : ${row.date || 'N/A'} • Mode : ${row.mode || row.methode || 'N/A'} • Montant : ${formatAr(row.montant || 0)} • Reçu : ${row.reference || 'N/A'}`;
+                                      }
+                                      if (selectedTable === 'invoices') {
+                                        return `Facture n° ${row.numero || row.id || 'N/A'} • Patient : ${row.patientNom || 'N/A'} • Total : ${formatAr(row.montantTotal || row.total || 0)} • Reste : ${formatAr(row.resteAPayer || 0)}`;
+                                      }
+                                      if (selectedTable === 'articles') {
+                                        return `${row.nom || row.designation || 'N/A'} • Famille : ${row.famille || 'N/A'} • Stock Pharma : ${row.stock || row.stockPharma || 0} • Prix : ${formatAr(row.prixVente || row.prix || 0)}`;
+                                      }
+                                      if (selectedTable === 'users') {
+                                        return `Nom : ${row.name || 'N/A'} • Rôle : ${roleLabels[row.role] || row.role} • Statut : ${row.active !== false ? 'Actif' : 'Inactif'}`;
+                                      }
+                                      if (selectedTable === 'auditLogs') {
+                                        return `[${row.timestamp || 'N/A'}] ${row.operator || 'Système'} (${row.role || 'admin'}) : ${row.action} — ${row.details || ''}`;
+                                      }
+                                      // Fallback : aperçu JSON court
+                                      const keys = Object.keys(row).slice(0, 4);
+                                      return keys.map((k) => `${k}: ${String(row[k])}`).join(' • ');
+                                    })();
+
+                                    return (
+                                      <tr key={rowId + idx} className="hover:bg-surface-hover transition">
+                                        <td className="p-2.5 font-mono text-ink-faint text-[11px]">
+                                          {currentPage * PAGE_LIMIT + idx + 1}
+                                        </td>
+                                        <td className="p-2.5 font-mono font-bold text-ink-strong">
+                                          {rowId}
+                                        </td>
+                                        <td className="p-2.5 text-ink-secondary truncate max-w-md">
+                                          {preview}
+                                        </td>
+                                        <td className="p-2.5 text-right">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setInspectedRecord({ table: selectedTable, data: row });
+                                              setRecordCopied(false);
+                                            }}
+                                            className="px-2.5 py-1 bg-surface-muted hover:bg-surface-hover border border-line rounded-lg text-xs font-mono font-semibold text-blue-700 dark:text-cyan-300 inline-flex items-center gap-1 cursor-pointer transition"
+                                          >
+                                            <FileJson className="w-3.5 h-3.5" /> JSON
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          {/* Pagination */}
+                          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-ink-muted pt-1">
+                            <span>
+                              {filteredTableRows.length} élément{filteredTableRows.length > 1 ? 's' : ''} au total • Page {currentPage + 1} sur {maxPages}
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                disabled={currentPage === 0}
+                                onClick={() => setTablePage((p) => Math.max(0, p - 1))}
+                                className="px-3 py-1 bg-surface border border-line rounded-lg hover:bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 cursor-pointer"
+                              >
+                                <ChevronLeft className="w-3.5 h-3.5" /> Précédent
+                              </button>
+                              <span className="px-2.5 py-1 font-mono font-bold text-ink">
+                                {currentPage + 1} / {maxPages}
+                              </span>
+                              <button
+                                type="button"
+                                disabled={currentPage >= maxPages - 1}
+                                onClick={() => setTablePage((p) => Math.min(maxPages - 1, p + 1))}
+                                className="px-3 py-1 bg-surface border border-line rounded-lg hover:bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 cursor-pointer"
+                              >
+                                Suivant <ChevronRight className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
 
 
                 </>
               )}
             </div>
           </section>
+        {/* Modal d'inspection JSON */}
+        {inspectedRecord && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setInspectedRecord(null); }}>
+            <div className="w-full max-w-2xl bg-surface border border-line rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+              <div className="p-4 border-b border-line flex items-center justify-between bg-surface-muted">
+                <div className="flex items-center gap-2">
+                  <FileJson className="w-5 h-5 text-blue-600" />
+                  <h4 className="font-bold text-sm text-ink-strong">
+                    Enregistrement <span className="font-mono text-blue-600">[{inspectedRecord.table}]</span>
+                  </h4>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(JSON.stringify(inspectedRecord.data, null, 2));
+                      setRecordCopied(true);
+                      setTimeout(() => setRecordCopied(false), 2000);
+                    }}
+                    className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-surface border border-line hover:bg-surface-hover flex items-center gap-1 cursor-pointer"
+                  >
+                    {recordCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                    {recordCopied ? 'Copié !' : 'Copier'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInspectedRecord(null)}
+                    className="p-1 rounded-lg text-ink-muted hover:bg-surface hover:text-ink cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              <div className="p-4 overflow-auto flex-1 bg-slate-950 text-slate-100 font-mono text-xs">
+                <pre>{JSON.stringify(inspectedRecord.data, null, 2)}</pre>
+              </div>
+              <div className="p-3 border-t border-line bg-surface flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setInspectedRecord(null)}
+                  className="px-4 py-1.5 bg-surface-muted hover:bg-surface-hover border border-line rounded-xl text-xs font-semibold text-ink cursor-pointer"
+                >
+                  Fermer
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

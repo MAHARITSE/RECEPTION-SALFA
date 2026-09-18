@@ -918,7 +918,7 @@ function createEmptyInitialState(): AppState {
  *    donnée JSON n'est intégrée ni sauvegardée dans la base.
  */
 export function createInitialState(): AppState {
-  if (import.meta.env.VITE_WAMP_MODE === '1') {
+  if (import.meta.env.MODE === 'wamp') {
     return ensureEtablissements(createEmptyInitialState());
   }
   return ensureAssuranceCollections(ensureEtablissements(normalizeFamilyBases(JSON.parse(JSON.stringify(localSeedData)) as AppState)));

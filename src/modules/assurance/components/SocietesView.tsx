@@ -31,8 +31,8 @@ export const SocietesView: React.FC<SocietesViewProps> = ({
   onMergeSubSocietes,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  // Filtre sur la grande famille d'organisme : payeur global ou paiement partiel.
-  const [filtreMode, setFiltreMode] = useState<'all' | 'global' | 'partiel' | 'bloquees'>('all');
+  // Filtre sur la grande famille d'organisme : payeur global, paiement partiel, ticket modérateur, remise commerciale, ou bloquées.
+  const [filtreMode, setFiltreMode] = useState<'all' | 'ticket_mod' | 'remise' | 'global' | 'partiel' | 'bloquees'>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSociete, setEditingSociete] = useState<Societe | null>(null);
   const [societeToDelete, setSocieteToDelete] = useState<Societe | null>(null);
@@ -72,6 +72,8 @@ export const SocietesView: React.FC<SocietesViewProps> = ({
 
   const filtered = societes.filter(s => {
     if (filtreMode === 'bloquees') { if (!companyIsBlocked(s)) return false; }
+    else if (filtreMode === 'ticket_mod') { if (societeNatureRemise(s) !== 'ticket_moderateur') return false; }
+    else if (filtreMode === 'remise') { if (societeNatureRemise(s) !== 'remise') return false; }
     else if (filtreMode !== 'all' && societeModePaiement(s) !== filtreMode) return false;
     return s.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
       s.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -315,6 +317,8 @@ export const SocietesView: React.FC<SocietesViewProps> = ({
           <div className="flex items-center p-0.5 bg-surface-muted rounded-xl border border-line">
             {([
               { id: 'all', label: 'Toutes' },
+              { id: 'ticket_mod', label: 'Ticket modérateur' },
+              { id: 'remise', label: 'Remise commerciale' },
               { id: 'global', label: 'Payeur global' },
               { id: 'partiel', label: 'Paiement partiel' },
               { id: 'bloquees', label: '🚫 Liste noire' },
@@ -322,7 +326,7 @@ export const SocietesView: React.FC<SocietesViewProps> = ({
               <button
                 key={option.id}
                 type="button"
-                onClick={() => setFiltreMode(option.id)}
+                onClick={() => setFiltreMode(option.id as any)}
                 className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
                   filtreMode === option.id
                     ? 'bg-surface text-indigo-700 shadow-xs'
@@ -847,49 +851,65 @@ export const SocietesView: React.FC<SocietesViewProps> = ({
                 </div>
               </div>
 
-              {/* Nature de la réduction : ticket modérateur (défaut) ou vraie remise */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-ink font-semibold">Réduction facturée (Total brut − Net)</label>
-                  <span className="text-[10px] text-ink-faint">Par défaut : ticket modérateur</span>
+              {/* Nature de la réduction : Checkbox Ticket Modérateur vs Remise Commerciale */}
+              <div className="rounded-xl border border-line p-3.5 bg-surface-muted/60 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-ink text-xs">Régime de prise en charge &amp; réduction</span>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold border ${
+                    natureRemiseOuDefaut(formData.natureRemise) === 'ticket_moderateur'
+                      ? 'bg-amber-100 text-amber-900 border-amber-300'
+                      : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                  }`}>
+                    {natureRemiseOuDefaut(formData.natureRemise) === 'ticket_moderateur' ? 'Ticket modérateur (Part Patient)' : 'Remise commerciale (0 Ar Patient)'}
+                  </span>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {NATURES_REMISE.map(nature => {
-                    const actif = natureRemiseOuDefaut(formData.natureRemise) === nature.value;
-                    return (
-                      <button
-                        key={nature.value}
-                        type="button"
-                        onClick={() => setFormData(p => ({ ...p, natureRemise: nature.value }))}
-                        className={`text-left p-2.5 rounded-xl border transition cursor-pointer ${
-                          actif
-                            ? nature.value === 'remise'
-                              ? 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-200'
-                              : 'border-amber-500 bg-amber-50 ring-2 ring-amber-200'
-                            : 'border-line bg-surface hover:border-line-strong'
-                        }`}
-                      >
-                        <div className="flex items-center space-x-1.5">
-                          <span className={`w-3 h-3 rounded-full border-2 ${
-                            actif
-                              ? nature.value === 'remise' ? 'border-emerald-600 bg-emerald-600' : 'border-amber-600 bg-amber-600'
-                              : 'border-line-strong'}`} />
-                          <span className={`font-bold flex items-center gap-1 ${actif ? (nature.value === 'remise' ? 'text-emerald-800' : 'text-amber-800') : 'text-ink'}`}>
-                            {nature.value === 'remise' && <Percent className="w-3 h-3" />}
-                            {nature.label}
-                            {nature.value === 'ticket_moderateur' && <span className="text-[9px] font-semibold text-ink-faint">(défaut)</span>}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-[10px] text-ink-muted leading-snug">{nature.description}</p>
-                      </button>
-                    );
-                  })}
+
+                <label className="flex items-start gap-3 cursor-pointer select-none bg-surface p-3 rounded-lg border border-line hover:border-indigo-300 transition">
+                  <input
+                    type="checkbox"
+                    id="checkbox-ticket-moderateur"
+                    checked={natureRemiseOuDefaut(formData.natureRemise) === 'ticket_moderateur'}
+                    onChange={(e) => {
+                      const isChecked = e.target.checked;
+                      setFormData(p => ({
+                        ...p,
+                        natureRemise: isChecked ? 'ticket_moderateur' : 'remise',
+                      }));
+                    }}
+                    className="mt-0.5 h-4 w-4 rounded border-line text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
+                  />
+                  <div className="flex-1 space-y-1">
+                    <span className="font-bold text-xs text-ink-strong block">
+                      Société assujettie au Ticket Modérateur (quote-part restant à la charge de l'assuré)
+                    </span>
+                    <p className="text-[11px] text-ink-muted leading-relaxed">
+                      {natureRemiseOuDefaut(formData.natureRemise) === 'ticket_moderateur' ? (
+                        <span>
+                          <strong className="text-amber-800 dark:text-amber-300">✓ Assujetti :</strong> La quote-part non prise en charge ({Math.max(0, 100 - (Number(formData.tauxCouvertureDefaut) || 80))}%) se transforme en <strong>ticket modérateur</strong> et devient la <strong>part à payer par le patient</strong> (encaissée au comptoir/caisse). La société n'est facturée que de {formData.tauxCouvertureDefaut || 80}%.
+                        </span>
+                      ) : (
+                        <span>
+                          <strong className="text-emerald-800 dark:text-emerald-300">✗ Non assujetti :</strong> La réduction ({Math.max(0, 100 - (Number(formData.tauxCouvertureDefaut) || 80))}%) est une <strong>remise commerciale</strong> consentie par l'hôpital. Le patient ne paie rien (<strong>0 Ar</strong>), et la société est facturée du montant net ({formData.tauxCouvertureDefaut || 80}%).
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </label>
+
+                <div className="grid grid-cols-2 gap-2 text-[11px] bg-surface p-2.5 rounded-lg border border-line-soft">
+                  <div className="flex justify-between items-center">
+                    <span className="text-ink-muted">Part Société :</span>
+                    <span className="font-bold text-emerald-700">{formData.tauxCouvertureDefaut || 80}%</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-ink-muted">
+                      {natureRemiseOuDefaut(formData.natureRemise) === 'ticket_moderateur' ? 'Part Patient (Ticket) :' : 'Remise accordée :'}
+                    </span>
+                    <span className={`font-bold ${natureRemiseOuDefaut(formData.natureRemise) === 'ticket_moderateur' ? 'text-amber-700' : 'text-emerald-700'}`}>
+                      {Math.max(0, 100 - (Number(formData.tauxCouvertureDefaut) || 80))}%
+                    </span>
+                  </div>
                 </div>
-                <p className="mt-1 text-[10px] text-ink-faint leading-snug">
-                  Ce choix ne modifie aucun montant : il donne son nom à la différence entre le total brut et le net
-                  (libellé des factures, relevés et écrans). Un assuré peut y déroger dans sa propre fiche
-                  (onglet <strong>Assurés</strong>).
-                </p>
               </div>
 
               <div>

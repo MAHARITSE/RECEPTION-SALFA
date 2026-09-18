@@ -356,9 +356,14 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
    * Sert à la file d'attente, à l'aperçu de la modale et au paiement lui-même —
    * le ticket modérateur affiché est donc toujours celui qui sera encaissé.
    */
-  const medicationItemsOf = (consults: Consultation[]): InvoiceItem[] =>
+  const medicationItemsOf = (consults: Consultation[], clientType?: ClientType): InvoiceItem[] =>
     (consults || []).flatMap(c => c.prescriptions.map(p => {
-      const unitaire = p.discount > 0 ? roundTo2(p.unitPrice * (1 - p.discount / 100)) : p.unitPrice;
+      // Pour client comptoir : la remise est une réduction commerciale qui diminue le prix unitaire.
+      // Pour client société : le prix unitaire est le prix brut conventionné ; la quote-part patient
+      // (remise centre ou ticket modérateur) vs crédit société est calculée au niveau de repartirItemsCaisse.
+      // Pour client externe : jamais de remise.
+      const isComptoir = clientType === 'comptoir';
+      const unitaire = (isComptoir && p.discount > 0) ? roundTo2(p.unitPrice * (1 - p.discount / 100)) : p.unitPrice;
       return {
         description: p.articleName, quantity: p.quantity, unitPrice: unitaire,
         amount: roundTo2(unitaire * p.quantity), category: 'pharmacy' as const,
@@ -376,7 +381,12 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   // Helper: get all pending items for a patient (pharmacy + lab + echo)
   const getPendingAmount = (p: any) => {
     const cons = state.consultations.filter(c => c.patientId === p.id && !consultationPharmacyPaid(c));
-    let amt = cons.reduce((s, c) => s + c.prescriptions.reduce((ss, pr) => ss + roundTo2((pr.unitPrice || 0) * (pr.quantity || 0) * (1 - (pr.discount || 0) / 100)), 0), 0);
+    let amt = cons.reduce((s, c) => s + c.prescriptions.reduce((ss, pr) => {
+      const u = (p.clientType === 'comptoir' && (pr.discount || 0) > 0)
+        ? roundTo2((pr.unitPrice || 0) * (1 - (pr.discount || 0) / 100))
+        : (pr.unitPrice || 0);
+      return ss + roundTo2(u * (pr.quantity || 0));
+    }, 0), 0);
     const svcInvs = pendingServiceInvoices.filter(i => i.patientId === p.id);
     amt += svcInvs.reduce((s, i) => s + i.totalAmount, 0);
     return amt;
@@ -395,7 +405,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const getCopayAmount = (p: any): number => {
     if (!p || p.clientType !== 'societe') return 0;
     const items: InvoiceItem[] = [
-      ...medicationItemsOf(getConsults(p.id)),
+      ...medicationItemsOf(getConsults(p.id), p.clientType),
       ...pendingServiceInvoices.filter(i => i.patientId === p.id).flatMap(i => i.items),
     ];
     if (!items.length) return 0;
@@ -418,7 +428,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const copayPreview = useMemo<RepartitionCopay | null>(() => {
     if (!selPatient || selPatient.clientType !== 'societe') return null;
     const items: InvoiceItem[] = [
-      ...medicationItemsOf(getConsults(selPatient.id)),
+      ...medicationItemsOf(getConsults(selPatient.id), selPatient.clientType),
       ...pendingServiceInvoices.filter(i => i.patientId === selPatient.id).flatMap(i => i.items),
     ];
     if (!items.length) return null;
@@ -445,7 +455,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const copayLotPreview = useMemo(() => {
     if (!selPatient || selPatient.clientType !== 'societe') return null;
     const svc = pendingServiceInvoices.filter(i => i.patientId === selPatient.id);
-    const meds = medicationItemsOf(getConsults(selPatient.id));
+    const meds = medicationItemsOf(getConsults(selPatient.id), selPatient.clientType);
     const pieces = [
       ...svc.map(s => ({
         id: s.id,
@@ -560,7 +570,8 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       setPayEditNewCompany('');
       setShowPayClientTypeEdit(false);
     }
-    setCopayCash('');
+    const initialCopay = p ? getCopayAmount(p) : 0;
+    setCopayCash(initialCopay > 0 ? String(initialCopay) : '');
     setSelPatientId(pid);
     setSelConsultId(getConsults(pid)[0]?.id || null);
     setPaymentModalOpen(true);
@@ -582,7 +593,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     const unpaidConsults = getConsults(selPatient.id);
     // Quantité et prix unitaire dans leurs CHAMPS (imprimés dans les colonnes
     // Qté / Prix de la facture) ; le libellé reste le nom de l'article seul.
-    const medicationItems: InvoiceItem[] = medicationItemsOf(unpaidConsults);
+    const medicationItems: InvoiceItem[] = medicationItemsOf(unpaidConsults, selPatient.clientType);
     const serviceInvoices = pendingServiceInvoices.filter(i => i.patientId === selPatient.id);
     const serviceItems = serviceInvoices.flatMap(i => i.items);
     // Numérotation officielle des factures journalières réglées : AAFAMMJJ +
@@ -955,7 +966,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const extFiltered = extSearch.length >= 1
     ? state.articles.filter(a => { const q = normaliserRecherche(extSearch); return q === '' || normaliserRecherche(a.name).includes(q); })
     : [];
-  const extLineAmt = (l: HbLine) => roundTo2(l.unitPrice * l.quantity * (1 - l.discount / 100));
+  const extLineAmt = (l: HbLine) => roundTo2(l.unitPrice * l.quantity);
   const extArticlesTotal = extLines.reduce((s, l) => s + extLineAmt(l), 0);
   const extTotal = roundTo2(extArticlesTotal);
 
@@ -1143,7 +1154,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         requestedBy: state.currentUser?.id || 'CASHIER',
         requestedAt: now,
         invoiceId: invId,
-        price: roundTo2(l.unitPrice * (1 - l.discount / 100)),
+        price: roundTo2(l.unitPrice),
       }));
     });
 
@@ -1158,7 +1169,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         requestedBy: state.currentUser?.id || 'CASHIER',
         requestedAt: now,
         invoiceId: invId,
-        price: roundTo2(l.unitPrice * (1 - l.discount / 100)),
+        price: roundTo2(l.unitPrice),
       }));
     });
 
@@ -1177,7 +1188,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         duration: '',
         instructions: '',
         unitPrice: l.unitPrice,
-        discount: l.discount,
+        discount: 0,
         delivered: false,
       }));
       const extConsult: Consultation = {
@@ -2861,9 +2872,20 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                   </div>
                   <div className="flex flex-wrap items-end gap-2">
                     <div className="flex-1 min-w-[160px]">
-                      <label htmlFor="copayCash" className="block text-[11px] font-bold text-amber-900 dark:text-amber-300 mb-0.5">
-                        Espèces reçues du patient
-                      </label>
+                      <div className="flex items-center justify-between mb-0.5">
+                        <label htmlFor="copayCash" className="block text-[11px] font-bold text-amber-900 dark:text-amber-300">
+                          Espèces reçues du patient
+                        </label>
+                        {copayDu > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setCopayCash(String(copayDu))}
+                            className="text-[10px] font-semibold text-amber-700 hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-200 underline cursor-pointer"
+                          >
+                            Montant exact ({formatAr(copayDu)})
+                          </button>
+                        )}
+                      </div>
                       <MoneyInput
                         id="copayCash"
                         value={Number(copayCash) || 0}

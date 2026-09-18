@@ -25,8 +25,8 @@ import type { SequenceRequest } from './browserDb';
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-/** Vrai uniquement dans le build WAMP compilé avec VITE_WAMP_MODE=1 */
-export const IS_WAMP_BUILD: boolean = import.meta.env.VITE_WAMP_MODE === '1';
+/** Vrai uniquement dans le build WAMP compilé avec --mode wamp */
+export const IS_WAMP_BUILD: boolean = import.meta.env.MODE === 'wamp';
 
 /** URL relative de l'API d'état MySQL (identique pour http://localhost/reception-salfa/) */
 const API_URL = 'api/index.php';

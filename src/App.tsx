@@ -86,6 +86,8 @@ function BackupReminderBanner({ state, onBackup }: { state: AppState; onBackup?:
   const [dismissed, setDismissed] = useState(false);
   const [info, setInfo] = useState<RetourSauvegardeUi | null>(null);
   if (dismissed) return null;
+  // Rappel réservé exclusivement à l'administrateur
+  if (state.currentUser?.role !== 'admin') return null;
   const jours = daysSinceBackup(state.lastBackupAt);
   const hasData = state.patients.length > 0 || state.invoices.length > 0 || state.ventes.length > 0;
   if (!hasData) return null;
@@ -246,18 +248,19 @@ function AppInner() {
     (async () => {
       const stored = await loadStateFromBrowser();
       if (cancelled) return;
-      if (stored) {
+      if (stored && stored.patients && stored.patients.length >= 100) {
         const loaded = prepareLoadedState(stored);
         // Point de départ de la fusion entre onglets : ce que la base contient déjà.
         browserBaseline.current = loaded;
         browserMeta.current = await readBrowserMeta();
         setState(loaded);
       } else {
-        // Première ouverture : initialise la base locale avec le jeu de départ.
-        const seed = prepareLoadedState(seedRef.current);
+        // Initialise la base locale avec le jeu complet de référence (src/data/localData.json).
+        const seed = prepareLoadedState(createInitialState());
         browserBaseline.current = seed;
-        await saveStateToBrowser(seed);
+        await saveStateToBrowser(seed, null);
         browserMeta.current = await readBrowserMeta();
+        setState(seed);
       }
       if (!cancelled) setBrowserDbLoading(false);
     })();
@@ -512,6 +515,17 @@ function AppInner() {
   };
 
   /**
+   * RECHARGEMENT DES DONNÉES LOCALES — réinitialise et recharge depuis src/data/localData.json
+   */
+  const handleResetToLocalData = async () => {
+    const seed = prepareLoadedState(createInitialState());
+    browserBaseline.current = seed;
+    await saveStateToBrowser(seed, null);
+    browserMeta.current = await readBrowserMeta();
+    setState(seed);
+  };
+
+  /**
    * SAUVEGARDE SQL — produit le fichier `.sql` du poste (format du schéma MySQL,
    * donc réimportable dans `reception_salfa`). Déclenchée par le bouton de la
    * barre supérieure, par le rappel de sauvegarde et par la déconnexion.
@@ -640,7 +654,12 @@ function AppInner() {
   if (view === 'login') {
     return (
       <>
-        <EcranConnexion users={state.users} onLogin={handleLogin} onBack={() => setView('reception')} onPasswordUpgraded={handlePasswordUpgraded} />
+        <EcranConnexion
+          users={state.users}
+          onLogin={handleLogin}
+          onBack={() => setView('reception')}
+          onPasswordUpgraded={handlePasswordUpgraded}
+        />
         <WampSyncBadge wamp={wamp} />
       </>
     );
@@ -649,7 +668,12 @@ function AppInner() {
   if (!state.currentUser) {
     return (
       <>
-        <EcranConnexion users={state.users} onLogin={handleLogin} onBack={() => setView('reception')} onPasswordUpgraded={handlePasswordUpgraded} />
+        <EcranConnexion
+          users={state.users}
+          onLogin={handleLogin}
+          onBack={() => setView('reception')}
+          onPasswordUpgraded={handlePasswordUpgraded}
+        />
         <WampSyncBadge wamp={wamp} />
       </>
     );

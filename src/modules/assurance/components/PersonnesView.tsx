@@ -303,24 +303,42 @@ export const PersonnesView: React.FC<PersonnesViewProps> = ({
               </div>
 
               {/* Dérogation individuelle : ticket modérateur ou vraie remise */}
-              <div>
-                <label className="block text-ink font-semibold mb-1">Réduction facturée (brut − net)</label>
-                <select
-                  value={formData.natureRemise || ''}
-                  onChange={(e) => setFormData(p => ({ ...p, natureRemise: (e.target.value || undefined) as any }))}
-                  className="w-full p-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                >
-                  <option value="">
-                    Comme la société — {societeNatureRemise(getSociete(formData.societeId)) === 'remise' ? 'Remise' : 'Ticket modérateur'}
-                  </option>
-                  {NATURES_REMISE.map(nature => (
-                    <option key={nature.value} value={nature.value}>{nature.label}</option>
-                  ))}
-                </select>
-                <p className="mt-1 text-[10px] text-ink-faint leading-snug">
-                  {NATURES_REMISE.find(n => n.value === (formData.natureRemise || societeNatureRemise(getSociete(formData.societeId))))?.description}
-                  {' '}Aucun montant n'est modifié : seul le libellé de la différence brut − net change.
-                </p>
+              <div className="rounded-xl border border-line p-3 bg-surface-muted/40 space-y-2">
+                <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={formData.natureRemise ? formData.natureRemise === 'ticket_moderateur' : societeNatureRemise(getSociete(formData.societeId)) === 'ticket_moderateur'}
+                    onChange={(e) => {
+                      const isChecked = e.target.checked;
+                      setFormData(p => ({
+                        ...p,
+                        natureRemise: isChecked ? 'ticket_moderateur' : 'remise',
+                      }));
+                    }}
+                    className="mt-0.5 h-4 w-4 rounded border-line text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
+                  />
+                  <div>
+                    <span className="font-semibold text-xs text-ink-strong block">
+                      Assujetti au ticket modérateur (part patient due)
+                    </span>
+                    <p className="text-[11px] text-ink-muted leading-tight mt-0.5">
+                      {formData.natureRemise
+                        ? (formData.natureRemise === 'ticket_moderateur'
+                            ? 'Dérogation active : Ticket modérateur à la charge de l’assuré.'
+                            : 'Dérogation active : Remise commerciale accordée (0 Ar patient).')
+                        : `Suit la règle de la société (${societeNatureRemise(getSociete(formData.societeId)) === 'ticket_moderateur' ? 'Ticket modérateur' : 'Remise commerciale'}).`}
+                    </p>
+                  </div>
+                </label>
+                {formData.natureRemise !== undefined && (
+                  <button
+                    type="button"
+                    onClick={() => setFormData(p => ({ ...p, natureRemise: undefined }))}
+                    className="text-[10px] text-accent hover:underline font-medium block"
+                  >
+                    ↺ Réinitialiser (suivre le réglage de la société)
+                  </button>
+                )}
               </div>
 
               <div>

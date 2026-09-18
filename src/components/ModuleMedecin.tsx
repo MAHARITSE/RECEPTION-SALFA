@@ -24,7 +24,7 @@ import { PhoneInput } from './PhoneInput';
 import {
   Stethoscope, History, Trash2, AlertTriangle, Heart, FileText, Clock, CheckCircle,
   Send, Search, Edit2, RotateCcw, Save, FlaskConical, Scan, Plus, X, Droplets,
-  Users, Printer, Eye, CheckCircle2, RefreshCw,
+  Users, Printer, Eye, CheckCircle2, RefreshCw, Building2, ShieldCheck,
 } from 'lucide-react';
 import { Select } from './Select';
 
@@ -77,7 +77,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
 
   // ---- Demandes d'analyses (Laboratoire) saisies par le médecin ----
   // Chaque saisie garde la remise % en vigueur au moment de son ajout
-  // (champ « Rem% » posé à côté de la recherche d'analyse).
+  // (champ « Rem% » posé avant la recherche d'analyse).
   const [labSearch, setLabSearch] = useState('');
   const [labDraft, setLabDraft] = useState<{ examId: string; urgent: boolean; discount?: number }[]>([]);
   const [labRemise, setLabRemise] = useState(0);
@@ -86,12 +86,16 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
 
   // ---- Demandes d'échographie ----
   // Chaque saisie garde la remise % en vigueur au moment de son ajout
-  // (champ « Rem% » posé à côté de la recherche d'échographie).
+  // (champ « Rem% » posé avant la recherche d'échographie).
   const [echoSearch, setEchoSearch] = useState('');
   const [echoDraft, setEchoDraft] = useState<{ examId: string; urgent: boolean; notes?: string; discount?: number }[]>([]);
   const [echoRemise, setEchoRemise] = useState(0);
   const [echoSearchIdx, setEchoSearchIdx] = useState(0);
   const echoSearchRef = useRef<HTMLInputElement>(null);
+
+  // ---- Prescriptions / Médicaments ----
+  // Remise % mémorisée pour ne pas s'effacer à chaque saisie d'article
+  const [medRemise, setMedRemise] = useState(0);
 
   // ---- Compléter / Modifier le dossier médical du patient par le médecin ----
   const [showPatientEditModal, setShowPatientEditModal] = useState(false);
@@ -217,12 +221,42 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     setState(prev => ({ ...prev, companies: [...prev.companies, { id: `comp-${Date.now()}`, name, paymentMode: 'Crédit', settlementMode: 'monthly_global', createdAt: new Date().toISOString() }]}));
     return name;
   };
+
+  /**
+   * Taux de remise / ticket modérateur par défaut selon le taux de couverture de la société :
+   * - Si taux de couverture = 80%, la part non couverte (ticket modérateur) = 20%
+   * - Si taux de couverture = 100%, la remise par défaut = 0%
+   * - Si taux de couverture = 70%, la part non couverte = 30%
+   */
+  const getPatientDefaultRemise = (patient: Patient | undefined | null) => {
+    if (!patient || (patient.clientType !== 'societe' && (patient.clientType as string) !== 'externe')) return 0;
+    const { societe, personne } = societeEtPersonneParmi(patient, baseCommune.societes, baseCommune.personnes);
+    const companyObj = state.companies.find((c) => c.name === patient.company || c.id === patient.company);
+    const taux = personne?.tauxCouverture ?? societe?.tauxCouvertureDefaut ?? companyObj?.tauxCouverture ?? 100;
+    const numTaux = Number(taux);
+    if (Number.isFinite(numTaux) && numTaux > 0 && numTaux <= 100) {
+      return Math.max(0, Math.min(100, 100 - numTaux));
+    }
+    return 0;
+  };
+
   const saveMedSociete = () => {
     if (!selectedPatientId || !selectedPatient) return;
+    const updatedPatient: Patient = {
+      ...selectedPatient,
+      clientType: medEditClientType === 'externe' ? 'comptoir' : medEditClientType as 'comptoir'|'societe',
+      company: medEditClientType === 'societe' ? medEditCompany : undefined,
+      subCompany: medEditClientType === 'societe' ? medEditSubCompany : undefined,
+    };
     setState(prev => ({
       ...prev,
-      patients: prev.patients.map(p => p.id === selectedPatientId ? { ...p, clientType: medEditClientType === 'externe' ? 'comptoir' : medEditClientType as 'comptoir'|'societe', company: medEditClientType === 'societe' ? medEditCompany : undefined, subCompany: medEditClientType === 'societe' ? medEditSubCompany : undefined } : p)
+      patients: prev.patients.map(p => p.id === selectedPatientId ? updatedPatient : p)
     }));
+    const newDefRemise = getPatientDefaultRemise(updatedPatient);
+    setLabRemise(newDefRemise);
+    setEchoRemise(newDefRemise);
+    setMedRemise(newDefRemise);
+    setLineForm(prev => ({ ...prev, discount: newDefRemise }));
     setToastFeedback(`Société mise à jour : ${medEditClientType === 'societe' ? medEditCompany || 'Société' : 'Comptoir'}`);
     setShowMedClientTypeEdit(false);
     setTimeout(()=>setToastFeedback(null),3000);
@@ -382,6 +416,29 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     [selectedPatient, clientType, lines, baseCommune, state.articles],
   );
 
+  const allDraftItems = useMemo(() => {
+    const items: { amount: number; category: 'lab' | 'echo' | 'pharmacy' }[] = [];
+    lines.forEach((l) => {
+      const amt = lineAmount(l);
+      if (amt > 0) items.push({ amount: amt, category: 'pharmacy' });
+    });
+    labDraft.forEach((d) => {
+      const amt = labPriceAfterDiscount(d);
+      if (amt > 0) items.push({ amount: amt, category: 'lab' });
+    });
+    echoDraft.forEach((d) => {
+      const amt = echoPriceAfterDiscount(d);
+      if (amt > 0) items.push({ amount: amt, category: 'echo' });
+    });
+    return items;
+  }, [lines, labDraft, echoDraft, clientType, currentLabCatalog, currentEchoCatalog]);
+
+  const globalCopayInfo = useMemo(
+    () => copayDraftInfo(allDraftItems),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedPatient, clientType, allDraftItems, baseCommune, state.articles],
+  );
+
   /**
    * Ligne « prise en charge société » commune aux trois brouillons (médicaments,
    * analyses, échographies). Elle affiche TOUJOURS la part à payer par le patient :
@@ -424,14 +481,15 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
       return;
     }
     const p = state.patients.find((x) => x.id === pid);
+    const defRemise = getPatientDefaultRemise(p);
     submittingRef.current = false;
     editSnapshotRef.current = null;
     setSelectedPatientId(pid); setLines([]); setSelectedLineId(null); setIsNewLine(false); setView('consultation');
     setLabDraft([]); setLabSearch(''); setEchoDraft([]); setEchoSearch('');
-    setLabRemise(0); setEchoRemise(0);
+    setLabRemise(defRemise); setEchoRemise(defRemise); setMedRemise(defRemise);
     setLabDraftIdx(-1); setEchoDraftIdx(-1);
     setArticleSearch('');
-    setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
+    setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: defRemise, delivered: false });
     setConsultForm({ visitReason: '', diagnosis: '', notes: '', isEmergency: false, hospitalizeRequested: false, surgeryRequested: false });
     if (p?.vitalSigns) setVitals({ ...p.vitalSigns }); else setVitals({ temperature: '', bloodPressureSystolic: '', bloodPressureDiastolic: '', heartRate: '', oxygenSaturation: '', weight: '', height: '' });
     setState((prev) => {
@@ -492,7 +550,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     setLines([]); setSearchQuery(''); setSelectedLineId(null); setIsNewLine(false);
     setArticleSearch(''); setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
     setLabDraft([]); setLabSearch(''); setEchoDraft([]); setEchoSearch('');
-    setLabRemise(0); setEchoRemise(0);
+    setLabRemise(0); setEchoRemise(0); setMedRemise(0);
     setLabDraftIdx(-1); setEchoDraftIdx(-1);
     setView('queue');
     submittingRef.current = false;
@@ -622,7 +680,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
       // On reste en mode édition (pas de nouvelle ligne)
       return;
     }
-    const nl: Prescription = { id: uuidv4(), articleId: a.id, articleName: a.name, quantity: 1, posology: '', duration: '', instructions: '', unitPrice: getPrice(a, clientType), discount: 0, delivered: false };
+    const nl: Prescription = { id: uuidv4(), articleId: a.id, articleName: a.name, quantity: 1, posology: '', duration: '', instructions: '', unitPrice: getPrice(a, clientType), discount: medRemise, delivered: false };
     setLineForm({ ...nl }); setSelectedLineId(nl.id); setIsNewLine(true); setArticleSearch(''); setArtSearchIdx(0);
   };
 
@@ -656,7 +714,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     setIsNewLine(false);
     setArticleSearch('');
     setArtSearchIdx(0);
-    setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
+    setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: medRemise, delivered: false });
   };
 
   const handleSaveLine = () => {
@@ -688,7 +746,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     if (!selectedLineId) return;
     setLines(prev => prev.filter(l => l.id !== selectedLineId));
     setSelectedLineId(null);
-    setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
+    setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: medRemise, delivered: false });
   };
 
   const consultationInvoiceIds = (s: AppState, consultationId: string) => new Set(
@@ -818,25 +876,30 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
       ventePayments: (state.ventePayments || []).filter((vp) => venteIds.has(vp.venteId)),
       previousStatus: patient?.status || 'consulted_awaiting_payment',
     };
+    const defRemise = getPatientDefaultRemise(patient);
+    const restoredMedRemise = c.prescriptions[0]?.discount ?? defRemise;
+    setMedRemise(restoredMedRemise);
     setSelectedPatientId(c.patientId); setConsultForm({ visitReason: c.visitReason, diagnosis: c.diagnosis, notes: c.notes, isEmergency: c.isEmergency, hospitalizeRequested: c.hospitalizeRequested, surgeryRequested: c.surgeryRequested });
     setVitals({ ...c.vitalSigns }); setLines([...c.prescriptions]); setView('consultation');
     // Réinitialiser le formulaire de ligne pour éviter doublon (bug montant qui se dédouble)
     setSelectedLineId(null);
     setIsNewLine(false);
     setArticleSearch('');
-    setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
+    setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: restoredMedRemise, delivered: false });
     // Restaurer les demandes d'analyses labo dans le brouillon (remise comprise)
     const restoredLabDraft = (c.labRequests || []).map((lr) => {
       const catalogMatch = state.labCatalog.find((e) => e.name === lr.examType && e.code === lr.code);
       return catalogMatch ? { examId: catalogMatch.id, urgent: lr.urgent, discount: lr.discount || 0 } : null;
     }).filter((d): d is { examId: string; urgent: boolean; discount: number } => d !== null);
     setLabDraft(restoredLabDraft); setLabSearch(''); setLabSearchIdx(0);
+    setLabRemise(c.labRequests?.[0]?.discount ?? defRemise);
     // Restaurer les demandes d'échographie dans le brouillon (remise comprise)
     const restoredEchoDraft = (c.echoRequests || []).map((er) => {
       const catalogMatch = ECHO_CATALOG.find((e) => e.name === er.examType);
       return catalogMatch ? { examId: catalogMatch.id, urgent: er.urgent, notes: er.notes || '', discount: er.discount || 0 } : null;
     }).filter((d): d is { examId: string; urgent: boolean; notes: string; discount: number } => d !== null);
     setEchoDraft(restoredEchoDraft); setEchoSearch(''); setEchoSearchIdx(0);
+    setEchoRemise(c.echoRequests?.[0]?.discount ?? defRemise);
     setState((prev) => {
       const invoiceIds = consultationInvoiceIds(prev, cid);
       const venteIds = consultationVenteIds(prev, cid, invoiceIds);
@@ -1020,7 +1083,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     setLines([]); setSearchQuery(''); setSelectedLineId(null); setIsNewLine(false);
     setArticleSearch(''); setLineForm({ id: '', articleId: '', articleName: '', quantity: 1, posology: '', duration: '', instructions: '', unitPrice: 0, discount: 0, delivered: false });
     setLabDraft([]); setLabSearch(''); setEchoDraft([]); setEchoSearch('');
-    setLabRemise(0); setEchoRemise(0);
+    setLabRemise(0); setEchoRemise(0); setMedRemise(0);
     setLabDraftIdx(-1); setEchoDraftIdx(-1);
     setView('queue');
     submittingRef.current = false;
@@ -1433,7 +1496,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                 </div>
                 <div className="w-14"><label className="block text-[9px] text-ink-muted">Qté</label><input type="number" min={1} value={lineForm.quantity} onChange={(e)=>updateLineForm('quantity',parseFloat(e.target.value)||1)} onKeyDown={(e)=>{ if(e.key==='Enter'){e.preventDefault();handleSaveLine();}}} className="w-full bg-surface border border-line-strong rounded px-1 py-0.5 text-xs text-right font-mono outline-none focus:border-accent" /></div>
                 <div className="w-28"><label className="block text-[9px] text-ink-muted">Posologie</label><input type="text" value={lineForm.posology} onChange={(e)=>updateLineForm('posology',e.target.value)} onKeyDown={(e)=>{ if(e.key==='Enter'){e.preventDefault();handleSaveLine();}}} className="w-full bg-surface border border-line-strong rounded px-1 py-0.5 text-xs outline-none focus:border-accent" placeholder="1cp 3x/j" /></div>
-                <div className="w-14"><label className="block text-[9px] text-ink-muted">Remise%</label><input type="number" min={0} max={100} value={lineForm.discount} onChange={(e)=>updateLineForm('discount',parseFloat(e.target.value)||0)} onKeyDown={(e)=>{ if(e.key==='Enter'){e.preventDefault();handleSaveLine();}}} className="w-full bg-surface border border-line-strong rounded px-1 py-0.5 text-xs text-right font-mono outline-none focus:border-accent" /></div>
+                <div className="w-14"><label className="block text-[9px] text-ink-muted">Remise%</label><input type="number" min={0} max={100} value={lineForm.discount} onChange={(e)=>{ const val = Math.max(0, Math.min(100, parseFloat(e.target.value)||0)); updateLineForm('discount', val); setMedRemise(val); }} onKeyDown={(e)=>{ if(e.key==='Enter'){e.preventDefault();handleSaveLine();}}} className="w-full bg-surface border border-line-strong rounded px-1 py-0.5 text-xs text-right font-mono outline-none focus:border-accent" /></div>
                 <div className="w-20"><label className="block text-[9px] text-ink-muted">P.U.</label><input type="text" readOnly value={formatAr(lineForm.unitPrice)} className="w-full bg-surface-active border border-line-strong rounded px-1 py-0.5 text-xs text-right font-mono" /></div>
                 <div className="w-24"><label className="block text-[9px] text-ink-muted">Montant</label><input type="text" readOnly value={formatAr(lineAmount(lineForm))} className="w-full bg-surface-active border border-line-strong rounded px-1 py-0.5 text-xs text-right font-mono font-bold text-ink" /></div>
               </div>
@@ -1467,10 +1530,6 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                 </tfoot>}
               </table>
             </div>
-            {/* Prise en charge société des médicaments + part à payer par le patient */}
-            {lines.length > 0 && medsCopayInfo && (
-              <div className="mx-2 mb-2">{copaySocieteLine(medsCopayInfo, true)}</div>
-            )}
           </div>
 
           {/* SAISIE DES EXAMENS LABORATOIRE ET ÉCHOGRAPHIE CÔTE À CÔTE */}
@@ -1483,6 +1542,12 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                   <span className="text-[10px] text-ink-faint hidden sm:block">A facturer en caisse</span>
                 </div>
                 <div className="flex items-end gap-2 mb-2">
+                  <div className="w-24 shrink-0" title="Remise % appliquée aux analyses ajoutées à partir de maintenant — chaque saisie garde la remise en vigueur au moment de son ajout">
+                    <label className="block text-[9px] font-bold text-ink-muted text-center mb-0.5">Rem%</label>
+                    <input type="number" min={0} max={100} value={labRemise}
+                      onChange={(e) => setLabRemise(Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)))}
+                      className="w-full px-1.5 py-2 border border-line-strong rounded-lg text-right font-mono text-sm outline-none focus:ring-2 focus:ring-cyan-500 bg-surface" />
+                  </div>
                   <div className="relative flex-1 min-w-0">
                   <Search className="absolute left-3 top-2.5 w-4 h-4 text-ink-faint" />
                   <input ref={labSearchRef} type="text" value={labSearch} onChange={(e) => { setLabSearch(e.target.value); setLabSearchIdx(0); }} onKeyDown={handleLabSearchKeyDown} className="w-full pl-9 pr-3 py-2 border border-line-strong rounded-lg outline-none focus:ring-2 focus:ring-cyan-500 text-sm" placeholder="Rechercher analyse (NFS, Glycémie...) ↑↓ ↵" />
@@ -1499,12 +1564,6 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                       })}
                     </div>
                   )}
-                  </div>
-                  <div className="w-24 shrink-0" title="Remise % appliquée aux analyses ajoutées à partir de maintenant — chaque saisie garde la remise en vigueur au moment de son ajout">
-                    <label className="block text-[9px] font-bold text-ink-muted text-center mb-0.5">Rem%</label>
-                    <input type="number" min={0} max={100} value={labRemise}
-                      onChange={(e) => setLabRemise(Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)))}
-                      className="w-full px-1.5 py-2 border border-line-strong rounded-lg text-right font-mono text-sm outline-none focus:ring-2 focus:ring-cyan-500 bg-surface" />
                   </div>
                 </div>
               </div>
@@ -1523,7 +1582,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
                             <label className="flex items-center gap-1 text-[10px] cursor-pointer"><input type="checkbox" checked={d.urgent} onChange={() => toggleLabUrgent(d.examId)} className="w-3.5 h-3.5" /> <span className="text-red-600 dark:text-red-400 font-semibold">Urgent</span></label>
-                            {d.discount ? <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-cyan-100 dark:bg-cyan-500/15 text-cyan-700 dark:text-cyan-400" title="Remise appliquée à cette analyse — champ « Rem% » à côté de la recherche">Rem {d.discount}%</span> : null}
+                            {d.discount ? <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-cyan-100 dark:bg-cyan-500/15 text-cyan-700 dark:text-cyan-400" title="Remise appliquée à cette analyse — champ « Rem% » avant la recherche">Rem {d.discount}%</span> : null}
                             <span className="font-mono font-bold text-ink w-20 text-right" title={d.discount ? `Prix catalogue ${formatAr(priceForExam(d.examId, clientType, d.urgent))} − remise ${d.discount} %` : 'Prix catalogue'}>
                               {formatAr(labPriceAfterDiscount(d))}{d.discount ? <span className="text-[9px] text-ink-faint line-through mr-1">{formatAr(priceForExam(d.examId, clientType, d.urgent))}</span> : null}
                             </span>
@@ -1536,7 +1595,6 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                       <span>Total analyses</span>
                       <span className="font-mono text-sm">{formatAr(labTotal)}</span>
                     </div>
-                    {laboCopayInfo && copaySocieteLine(laboCopayInfo)}
                   </div>
                 ) : (
                   <p className="text-xs text-ink-faint text-center py-4 border border-dashed border-line rounded-lg bg-surface-muted/50">Aucune analyse sélectionnée — recherchez ci-dessus.</p>
@@ -1552,6 +1610,12 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                   <span className="text-[10px] text-ink-faint hidden sm:block">A facturer en caisse</span>
                 </div>
                 <div className="flex items-end gap-2 mb-2">
+                  <div className="w-24 shrink-0" title="Remise % appliquée aux échographies ajoutées à partir de maintenant — chaque saisie garde la remise en vigueur au moment de son ajout">
+                    <label className="block text-[9px] font-bold text-ink-muted text-center mb-0.5">Rem%</label>
+                    <input type="number" min={0} max={100} value={echoRemise}
+                      onChange={(e) => setEchoRemise(Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)))}
+                      className="w-full px-1.5 py-2 border border-line-strong rounded-lg text-right font-mono text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-surface" />
+                  </div>
                   <div className="relative flex-1 min-w-0">
                   <Search className="absolute left-3 top-2.5 w-4 h-4 text-ink-faint" />
                   <input ref={echoSearchRef} type="text" value={echoSearch} onChange={(e) => { setEchoSearch(e.target.value); setEchoSearchIdx(0); }} onKeyDown={handleEchoSearchKeyDown} className="w-full pl-9 pr-3 py-2 border border-line-strong rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-sm" placeholder="Rechercher échographie (Abdominale, Pelvienne...) ↑↓ ↵" />
@@ -1568,12 +1632,6 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                       })}
                     </div>
                   )}
-                  </div>
-                  <div className="w-24 shrink-0" title="Remise % appliquée aux échographies ajoutées à partir de maintenant — chaque saisie garde la remise en vigueur au moment de son ajout">
-                    <label className="block text-[9px] font-bold text-ink-muted text-center mb-0.5">Rem%</label>
-                    <input type="number" min={0} max={100} value={echoRemise}
-                      onChange={(e) => setEchoRemise(Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)))}
-                      className="w-full px-1.5 py-2 border border-line-strong rounded-lg text-right font-mono text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-surface" />
                   </div>
                 </div>
               </div>
@@ -1598,7 +1656,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
                             <label className="flex items-center gap-1 text-[10px] cursor-pointer"><input type="checkbox" checked={d.urgent} onChange={() => toggleEchoUrgent(d.examId)} className="w-3.5 h-3.5" /> <span className="text-red-600 dark:text-red-400 font-semibold">Urgent</span></label>
-                            {d.discount ? <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400" title="Remise appliquée à cette échographie — champ « Rem% » à côté de la recherche">Rem {d.discount}%</span> : null}
+                            {d.discount ? <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400" title="Remise appliquée à cette échographie — champ « Rem% » avant la recherche">Rem {d.discount}%</span> : null}
                             <span className="font-mono font-bold text-ink w-20 text-right" title={d.discount ? `Prix catalogue ${formatAr(echoPriceForExam(d.examId, clientType, d.urgent))} − remise ${d.discount} %` : 'Prix catalogue'}>
                               {formatAr(echoPriceAfterDiscount(d))}{d.discount ? <span className="text-[9px] text-ink-faint line-through mr-1">{formatAr(echoPriceForExam(d.examId, clientType, d.urgent))}</span> : null}
                             </span>
@@ -1611,7 +1669,6 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                       <span>Total échographies</span>
                       <span className="font-mono text-sm">{formatAr(echoTotal)}</span>
                     </div>
-                    {echoCopayInfo && copaySocieteLine(echoCopayInfo)}
                   </div>
                 ) : (
                   <p className="text-xs text-ink-faint text-center py-4 border border-dashed border-line rounded-lg bg-surface-muted/50">Aucune échographie sélectionnée — recherchez ci-dessus.</p>
@@ -1619,6 +1676,61 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
               </div>
             </div>
           </div>
+
+          {/* REGROUPEMENT DES INFORMATIONS DE PRISE EN CHARGE ET TICKET MODÉRATEUR */}
+          {selectedPatient && clientType === 'societe' && globalCopayInfo && (lines.length > 0 || labDraft.length > 0 || echoDraft.length > 0) && (
+            <div className={`rounded-xl border p-3.5 shadow-sm space-y-2.5 ${
+              globalCopayInfo.kind === 'ticket_moderateur'
+                ? 'border-amber-300 dark:border-amber-500/30 bg-amber-50/90 dark:bg-amber-950/20 text-amber-950 dark:text-amber-200'
+                : globalCopayInfo.kind === 'remise'
+                ? 'border-emerald-300 dark:border-emerald-500/30 bg-emerald-50/90 dark:bg-emerald-950/20 text-emerald-950 dark:text-emerald-200'
+                : 'border-blue-300 dark:border-blue-500/30 bg-blue-50/90 dark:bg-blue-950/20 text-blue-950 dark:text-blue-200'
+            }`}>
+              <div className="flex items-center justify-between pb-2 border-b border-amber-200/70 dark:border-amber-500/20">
+                <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wide">
+                  <Building2 className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                  Prise en charge conventionnée & Synthèse globale
+                </div>
+                <span className="text-xs font-mono font-bold text-ink">
+                  Total consultation : {formatAr(totalPres + labTotal + echoTotal)}
+                </span>
+              </div>
+
+              {globalCopayInfo.kind === 'ticket_moderateur' && (
+                <div className="space-y-2 text-xs leading-relaxed">
+                  <div className="p-2.5 bg-surface/80 rounded-lg border border-amber-200 dark:border-amber-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      🏢 <strong>{globalCopayInfo.nom}</strong> (taux {globalCopayInfo.taux} %) prend en charge <strong className="font-mono text-emerald-700 dark:text-emerald-400">{formatAr(globalCopayInfo.partSociete)}</strong>.
+                    </div>
+                    <div className="text-sm font-bold text-amber-900 dark:text-amber-300 bg-amber-100 dark:bg-amber-500/20 px-2.5 py-1 rounded-md border border-amber-300 dark:border-amber-500/30 shrink-0">
+                      👤 Part patient (ticket modérateur) : <span className="font-mono">{formatAr(globalCopayInfo.copay)}</span>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-ink-muted italic">
+                    💡 La part patient ({formatAr(globalCopayInfo.copay)}) est à régler en espèces à la caisse lors de son passage{globalCopayInfo.montantExclu > 0 ? ` (dont exclusions ${formatAr(globalCopayInfo.montantExclu)})` : ''}.
+                  </p>
+                </div>
+              )}
+
+              {globalCopayInfo.kind === 'remise' && (
+                <div className="text-xs leading-relaxed">
+                  🏢 <strong>{globalCopayInfo.nom}</strong> — <strong>REMISE</strong>{globalCopayInfo.taux && globalCopayInfo.taux < 100 ? ` : la quote-part de ${formatAr(globalCopayInfo.remise)} (taux ${globalCopayInfo.taux} %) n'est due ni par la société ni par le patient` : ''} — le total part en crédit société. 👤 <strong>Part à payer par le patient : {formatAr(0)}</strong>.
+                </div>
+              )}
+
+              {globalCopayInfo.kind === 'integrality' && (
+                <div className="text-xs leading-relaxed">
+                  🏢 <strong>{globalCopayInfo.nom}</strong> — prise en charge intégrale ({formatAr(globalCopayInfo.brut)}) : le total part en crédit société. 👤 <strong>Part à payer par le patient : {formatAr(0)}</strong>.
+                </div>
+              )}
+
+              {globalCopayInfo.kind === 'unknown' && (
+                <div className="text-xs leading-relaxed text-orange-800 dark:text-orange-300">
+                  ⚠ Société « {globalCopayInfo.company} » non reconnue dans la base assurance — validation en crédit société intégral (aucune quote-part calculée ; rien à payer par le patient).
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex gap-2">
             <button onClick={() => submitConsultation()} className="w-full py-3 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 flex items-center justify-center gap-2 cursor-pointer shadow-lg">

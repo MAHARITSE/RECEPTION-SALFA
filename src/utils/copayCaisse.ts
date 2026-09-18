@@ -69,10 +69,54 @@ export function baseCommuneCaisse(state: AppState): { societes: Societe[]; perso
   return { societes: sharedSocietes(state), personnes: sharedPersonnes(state) };
 }
 
+const normalise = (s?: string) =>
+  (s || '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Z0-9]/g, '');
+
+/** Recherche robuste d'une société dans le référentiel : ID, nom, code ou variante normalisée. */
+export function trouverSociete(
+  companyNameOrId?: string,
+  societes: Societe[] = [],
+): Societe | undefined {
+  if (!companyNameOrId) return undefined;
+  const raw = companyNameOrId.trim();
+  if (!raw) return undefined;
+
+  // 1. Identifiant direct
+  const byId = societes.find(s => s.id === raw);
+  if (byId) return byId;
+
+  // 2. Nom exact (insensible à la casse)
+  const upper = raw.toUpperCase();
+  const byName = societes.find(s => (s.nom || '').trim().toUpperCase() === upper);
+  if (byName) return byName;
+
+  // 3. Code direct
+  const byCode = societes.find(s => (s.code || '').trim().toUpperCase() === upper);
+  if (byCode) return byCode;
+
+  // 4. Normalisation sans accents ni ponctuation
+  const norm = normalise(raw);
+  const byNorm = societes.find(s => normalise(s.nom) === norm || (s.code && normalise(s.code) === norm));
+  if (byNorm) return byNorm;
+
+  // 5. Recherche par inclusion
+  return societes.find(s => {
+    const sNorm = normalise(s.nom);
+    return sNorm && norm && (sNorm.includes(norm) || norm.includes(sNorm));
+  });
+}
+
 /**
  * Société et assuré correspondant à un patient Réception, à partir de listes
  * déjà calculées (la dérivation de la base commune est coûteuse : elle est
  * mémorisée une fois par rendu côté caisse).
+ * Toujours vérifier la société afin de déterminer s'il s'agit d'une remise accordée
+ * par le centre ou d'un ticket modérateur à la charge du patient.
  */
 export function societeEtPersonneParmi(
   patient?: Pick<Patient, 'id' | 'company' | 'clientType'> | null,
@@ -80,9 +124,8 @@ export function societeEtPersonneParmi(
   personnes: Personne[] = [],
 ): { societe?: Societe; personne?: Personne } {
   if (!patient || patient.clientType !== 'societe') return {};
-  const nom = (patient.company || '').trim().toUpperCase();
   return {
-    societe: societes.find(s => (s.nom || '').trim().toUpperCase() === nom),
+    societe: trouverSociete(patient.company, societes),
     personne: personnes.find(p => p.id === patient.id),
   };
 }

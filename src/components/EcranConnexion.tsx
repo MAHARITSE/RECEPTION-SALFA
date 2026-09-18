@@ -7,6 +7,7 @@ import {
   Stethoscope, CreditCard, Pill,
   FlaskConical, Building2, Hospital, ArrowLeft,
   Lock, User as UserIcon, AlertCircle, ClipboardList,
+  Eye, EyeOff,
 } from 'lucide-react';
 
 interface EcranConnexionProps {
@@ -43,6 +44,7 @@ const roleLabels: Record<string, string> = {
 export default function EcranConnexion({ users, onLogin, onBack, onPasswordUpgraded }: EcranConnexionProps) {
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   // WAMP : liste publique des comptes (identifiants + rôles, JAMAIS de mot de passe).
@@ -176,18 +178,30 @@ export default function EcranConnexion({ users, onLogin, onBack, onPasswordUpgra
               <Lock className="w-4 h-4 inline mr-2 text-accent" />
               Mot de passe
             </label>
-            <input
-              id="staff-password"
-              type="password"
-              {...passwordInputOptOut}
-              value={password}
-              disabled={busy}
-              onChange={(e) => { setPassword(e.target.value); setError(''); }}
-              aria-invalid={!!error}
-              aria-describedby={error ? 'login-error' : undefined}
-              className="w-full px-4 py-3 bg-field border border-line rounded-lg text-ink focus:ring-2 focus:ring-accent/25 focus:border-accent outline-none disabled:opacity-60"
-              placeholder="••••••••"
-            />
+            <div className="relative">
+              <input
+                id="staff-password"
+                name="staff-auth-code"
+                type={showPassword ? 'text' : 'password'}
+                {...passwordInputOptOut}
+                value={password}
+                disabled={busy}
+                onChange={(e) => { setPassword(e.target.value); setError(''); }}
+                aria-invalid={!!error}
+                aria-describedby={error ? 'login-error' : undefined}
+                className="w-full pl-4 pr-11 py-3 bg-field border border-line rounded-lg text-ink focus:ring-2 focus:ring-accent/25 focus:border-accent outline-none disabled:opacity-60"
+                placeholder="••••••••"
+              />
+              <button
+                type="button"
+                tabIndex={-1}
+                aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                onClick={() => setShowPassword((prev) => !prev)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-ink-faint hover:text-ink cursor-pointer transition-colors"
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
           {error && (
@@ -205,7 +219,6 @@ export default function EcranConnexion({ users, onLogin, onBack, onPasswordUpgra
             {(selectedUser && roleIcons[selectedUser.role]) || null}
             {busy ? 'Connexion…' : 'Se connecter'}
           </button>
-
         </form>
 
         <p className="text-center text-ink-faint text-xs mt-6">
