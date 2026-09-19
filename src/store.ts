@@ -1390,57 +1390,6 @@ function normalizeInvoiceItemCategories(state: AppState): AppState {
 }
 
 /**
- * CONSOLIDATION DES FACTURES COMPTOIR VALIDÉES PAR LOT.
- * Avant le correctif « facture unifiée », la validation caisse d'un client
- * comptoir soldait séparément la facture médicaments (créée à la validation)
- * et les factures services en attente (consultations / analyses / écho) :
- * la facturation ne montrait alors que la facture médicaments (« la facture
- * validée de la caisse n'arrive pas en totalité »). Toute la validation est
- * pourtant UN même encaissement : mêmes patient, paidAt et caissier.
- *
- * Réparation : les factures d'un même lot de validation comptoir sont
- * fusionnées dans la facture médicaments (ou, à défaut, la première du lot) —
- * une seule facture, le montant TOTAL validé à la caisse. Les factures
- * absorbées disparaissent ; leurs numéros éventuels rejoignent le registre
- * des numéros attribués (jamais réattribués). Idempotent et sans effet sur
- * les factures société (crédit société) ni sur les ventes externes.
- */
-function consoliderFacturesComptoirValidees(state: AppState): AppState {
-  const arrondi2 = (n: number) => Math.round((n || 0) * 100) / 100;
-  const payees = state.invoices.filter(i =>
-    i.status === 'paid' && i.paidAt && i.patientId && !i.isExternal && !i.creditSociete && i.clientType !== 'societe'
-    // L'encaissement d'un ticket modérateur reste une pièce distincte : il ne doit
-    // jamais être absorbé par la facture comptoir du même lot (montant + détail de
-    // la quote-part conservés tels quels pour la clôture et le ticket du patient).
-    && !i.copayTicketModerateur);
-  const lots = new Map<string, Invoice[]>();
-  for (const inv of payees) {
-    const clef = `${inv.patientId}|${inv.paidAt}|${inv.paidBy || ''}`;
-    const lot = lots.get(clef) || [];
-    lot.push(inv);
-    lots.set(clef, lot);
-  }
-  let modifie = false;
-  let invoices = state.invoices;
-  const numerosAbsorbes: string[] = [];
-  for (const lot of lots.values()) {
-    if (lot.length < 2) continue;
-    const cible = lot.find(i => (i.items || []).some(it => it.category === 'pharmacy'))
-      || lot.find(i => i.numeroFacture) || lot[0];
-    const absorbees = lot.filter(i => i.id !== cible.id);
-    const items = [...(cible.items || []), ...absorbees.flatMap(i => i.items || [])];
-    const totalAmount = arrondi2(items.reduce((s, it) => s + (it.amount || 0), 0));
-    invoices = invoices
-      .filter(i => !absorbees.some(a => a.id === i.id))
-      .map(i => (i.id === cible.id ? { ...i, items, totalAmount, patientCharge: totalAmount } : i));
-    for (const a of absorbees) if (a.numeroFacture) numerosAbsorbes.push(a.numeroFacture);
-    modifie = true;
-  }
-  if (!modifie) return state;
-  return { ...state, invoices, issuedFactureNumbers: [...(state.issuedFactureNumbers || []), ...numerosAbsorbes] };
-}
-
-/**
  * RENSEIGNE QUANTITÉ / PRIX UNITAIRE DES LIGNES DE FACTURE.
  * Les anciennes lignes ne portaient que « description + montant » (parfois
  * « Article × 20 » dans le libellé) : la facture imprimée montrait alors « — »
@@ -1478,9 +1427,9 @@ function renseignerQuantitesFactures(state: AppState): AppState {
  */
 export function prepareLoadedState(state: AppState): AppState {
   state = ensureAssuranceCollections(state);
-  // Les validations caisse comptoir d'avant la facture unifiée (médicaments
-  // d'un côté, services de l'autre) sont regroupées en une seule facture.
-  state = consoliderFacturesComptoirValidees(state);
+  // AUCUNE CONSOLIDATION des factures comptoir : la caisse ne fusionne JAMAIS
+  // les prescriptions en attente — chaque pièce encaissée garde sa facture, son
+  // numéro et ses montants, y compris pour un patient revenu (répétition).
   // Colonnes Qté / Prix des factures imprimées : les anciennes lignes sans
   // quantité (« Article × 20 » dans le libellé) sont renseignées.
   state = renseignerQuantitesFactures(state);

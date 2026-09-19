@@ -1,9 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Consultation, VitalSigns, Prescription, LabRequest, ClientType, Invoice, EchoRequest, PatientStatus, Patient, Article } from '../types';
-import type { AppState, FactureNumberAllocation, FactureNumberSpec } from '../store';
-import type { Societe } from '../modules/assurance/types';
-import { allocateFactureNumber, allocateFactureNumbersAsync, applySocieteUpsert, collectExistingFactureNumbers } from '../store';
+import type { AppState } from '../store';
 import { SearchableSelect, optionsFromValues } from './SearchableSelect';
 import { SuggestionInput, classerSuggestions } from './SuggestionInput';
 import {
@@ -344,11 +342,23 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [state.companies, state.patients, state.assuranceSocietes, state.assurancePersonnes],
   );
-  const copayDraftInfo = (items: { amount: number; category: 'lab' | 'echo' | 'pharmacy' }[]) => {
+  /**
+   * Aperçu du partage société / patient d'un brouillon (ordonnance, analyses,
+   * échographies). LE CALCUL SE FAIT SUR LE PRIX BRUT (tarif conventionné AVANT
+   * la remise saisie, qui est le ticket modérateur) : passer le montant déjà
+   * remisé déduirait le ticket une seconde fois (la société n'était alors
+   * créditée que du net du net).
+   */
+  const copayDraftInfo = (items: { amount: number; category: 'lab' | 'echo' | 'pharmacy'; brut?: number; discount?: number }[]) => {
     if (!selectedPatient || clientType !== 'societe' || items.length === 0) return null;
     const { societe, personne } = societeEtPersonneParmi(selectedPatient, baseCommune.societes, baseCommune.personnes);
     if (!societe) return { kind: 'unknown' as const, company: selectedPatient.company || 'inconnue' };
-    const invItems = items.map(it => ({ description: '', quantity: 1, unitPrice: it.amount, amount: it.amount, category: it.category }));
+    const invItems = items.map(it => ({
+      description: '', quantity: 1,
+      // Brut = prix « avant ticket » ; à défaut le montant remisé tel quel.
+      unitPrice: it.brut ?? it.amount, amount: it.brut ?? it.amount,
+      category: it.category, discount: it.discount || 0,
+    }));
     const rep = repartirItemsCaisse({ societe, personne, items: invItems });
     if (rep.nature === 'remise') {
       return { kind: 'remise' as const, nom: societe.nom, brut: rep.brut, remise: quotePartSiTicketModerateur({ societe, personne, items: invItems }), taux: Number(societe.tauxCouvertureDefaut) || 0 };
@@ -359,12 +369,18 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     return { kind: 'integrality' as const, nom: societe.nom, brut: rep.brut, partSociete: rep.partSociete };
   };
   const laboCopayInfo = useMemo(
-    () => copayDraftInfo(labDraft.map(d => ({ amount: labPriceAfterDiscount(d), category: 'lab' as const }))),
+    () => copayDraftInfo(labDraft.map(d => ({
+      amount: labPriceAfterDiscount(d), brut: priceForExam(d.examId, clientType, d.urgent),
+      discount: d.discount || 0, category: 'lab' as const,
+    }))),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [selectedPatient, clientType, labDraft, labRemise, baseCommune, state.articles],
   );
   const echoCopayInfo = useMemo(
-    () => copayDraftInfo(echoDraft.map(d => ({ amount: echoPriceAfterDiscount(d), category: 'echo' as const }))),
+    () => copayDraftInfo(echoDraft.map(d => ({
+      amount: echoPriceAfterDiscount(d), brut: echoPriceForExam(d.examId, clientType, d.urgent),
+      discount: d.discount || 0, category: 'echo' as const,
+    }))),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [selectedPatient, clientType, echoDraft, echoRemise, baseCommune, state.articles],
   );
@@ -409,24 +425,28 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
   const lineAmount = (l: Prescription) => roundTo2(l.unitPrice * l.quantity * (1 - l.discount / 100));
   const totalPres = lines.reduce((s, l) => s + lineAmount(l), 0);
   const medsCopayInfo = useMemo(
-    () => copayDraftInfo(lines.map(l => ({ amount: lineAmount(l), category: 'pharmacy' as const }))),
+    () => copayDraftInfo(lines.map(l => ({
+      amount: lineAmount(l), brut: roundTo2(l.unitPrice * l.quantity),
+      discount: l.discount || 0, category: 'pharmacy' as const,
+    }))),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [selectedPatient, clientType, lines, baseCommune, state.articles],
   );
 
+  /** Lignes facturables des brouillons : montant remisé + brut (prix avant ticket). */
   const allDraftItems = useMemo(() => {
-    const items: { amount: number; category: 'lab' | 'echo' | 'pharmacy' }[] = [];
+    const items: { amount: number; brut: number; discount: number; category: 'lab' | 'echo' | 'pharmacy' }[] = [];
     lines.forEach((l) => {
       const amt = lineAmount(l);
-      if (amt > 0) items.push({ amount: amt, category: 'pharmacy' });
+      if (amt > 0) items.push({ amount: amt, brut: roundTo2(l.unitPrice * l.quantity), discount: l.discount || 0, category: 'pharmacy' });
     });
     labDraft.forEach((d) => {
       const amt = labPriceAfterDiscount(d);
-      if (amt > 0) items.push({ amount: amt, category: 'lab' });
+      if (amt > 0) items.push({ amount: amt, brut: priceForExam(d.examId, clientType, d.urgent), discount: d.discount || 0, category: 'lab' });
     });
     echoDraft.forEach((d) => {
       const amt = echoPriceAfterDiscount(d);
-      if (amt > 0) items.push({ amount: amt, category: 'echo' });
+      if (amt > 0) items.push({ amount: amt, brut: echoPriceForExam(d.examId, clientType, d.urgent), discount: d.discount || 0, category: 'echo' });
     });
     return items;
   }, [lines, labDraft, echoDraft, clientType, currentLabCatalog, currentEchoCatalog]);
@@ -1048,29 +1068,12 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     // Ordonnance NON obligatoire : diagnostic seul, analyses et/ou échographies suffisent
     const ct = clientType;
     const consultId = uuidv4();
-    // Numérotation officielle des factures labo / écho créées en attente :
-    // AAFAMMJJ + ordre du jour (26FA0917001), SANS DISTINCTION société /
-    // comptoir / externe (FA-MM/CODE = facture GLOBALE mensuelle, module Facturation).
-    // UN SEUL lot atomique pour les factures labo + écho de cette consultation.
-    // Échec → on alerte et on ne valide RIEN (garde anti double-soumission levée).
-    const numeroSpecs: FactureNumberSpec[] = [
-      ...(labDraft.length > 0 ? [{ clientType: ct, company: selectedPatient?.company, invoiceDate: new Date().toISOString() }] : []),
-      ...(echoDraft.length > 0 ? [{ clientType: ct, company: selectedPatient?.company, invoiceDate: new Date().toISOString() }] : []),
-    ];
-    let numerosAlloues: FactureNumberAllocation[];
-    try {
-      numerosAlloues = await allocateFactureNumbersAsync(state, numeroSpecs);
-    } catch (e) {
-      alert(e instanceof Error ? e.message : 'Numérotation impossible : consultation non validée.');
-      submittingRef.current = false;
-      return;
-    }
-    const factureUpserts: Societe[] = numerosAlloues
-      .map((a) => a.societeUpsert)
-      .filter((u): u is Societe => !!u);
-    let idxNumero = 0;
-    const labNumeroFacture = labDraft.length > 0 ? numerosAlloues[idxNumero++].numeroFacture : undefined;
-    const echoNumeroFacture = echoDraft.length > 0 ? numerosAlloues[idxNumero++].numeroFacture : undefined;
+    // NUMÉROTATION : AUCUN numéro n'est attribué ici. Les factures labo / écho
+    // restent EN ATTENTE, sans numéro, jusqu'au PAIEMENT à la caisse : c'est la
+    // caisse qui réserve le numéro officiel (AAFAMMJJ + ordre du jour, une
+    // attribution atomique au moment de l'encaissement) — une prescription qui
+    // n'est jamais payée ne consomme donc aucun numéro, et deux personnes ne
+    // peuvent pas se voir attribuer le même.
     // ---- Analyses labo -> facture en attente (bon imprimé à la CAISSE après paiement) ----
     const labInvoiceId = labDraft.length > 0 ? uuidv4() : null;
     const newLabRequests: LabRequest[] = labDraft.map((d) => {
@@ -1122,12 +1125,10 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     const grandTotal = totalPres + labTotal + echoTotal;
 
     setState((prev) => {
-      // Codes société générés pour la numérotation → enregistrés dans les sociétés.
-      const withCodes = factureUpserts.reduce((s, u) => applySocieteUpsert(s, u), prev);
       let next: AppState = {
-        ...withCodes,
-        consultations: [...withCodes.consultations, consultation],
-        patients: withCodes.patients.map((p) => p.id === selectedPatientId
+        ...prev,
+        consultations: [...prev.consultations, consultation],
+        patients: prev.patients.map((p) => p.id === selectedPatientId
           ? { ...p, status: nextStatus, lastVisitAt: new Date().toISOString() }
           : p),
       };
@@ -1149,7 +1150,9 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
         const labTotalAmt = labItems.reduce((s, i) => s + i.amount, 0);
         const labInv: Invoice = {
           id: labInvoiceId, patientId: selectedPatientId, consultationId: consultation.id, clientType: ct,
-          items: labItems, totalAmount: labTotalAmt, patientCharge: labTotalAmt, numeroFacture: labNumeroFacture,
+          items: labItems, totalAmount: labTotalAmt, patientCharge: labTotalAmt,
+          // Numéro attribué AU PAIEMENT (caisse) — jamais à la prescription.
+          numeroFacture: undefined,
           status: 'pending' as const, createdAt: new Date().toISOString(), isExternal: ct === 'externe',
         };
         next = { ...next, labRequests: [...next.labRequests, ...newLabRequests], invoices: [...next.invoices, labInv] };
@@ -1174,7 +1177,9 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
         const echoTotalAmt = echoItems.reduce((s, i) => s + i.amount, 0);
         const echoInv: Invoice = {
           id: echoInvoiceId, patientId: selectedPatientId, consultationId: consultation.id, clientType: ct,
-          items: echoItems, totalAmount: echoTotalAmt, patientCharge: echoTotalAmt, numeroFacture: echoNumeroFacture,
+          items: echoItems, totalAmount: echoTotalAmt, patientCharge: echoTotalAmt,
+          // Numéro attribué AU PAIEMENT (caisse) — jamais à la prescription.
+          numeroFacture: undefined,
           status: 'pending' as const, createdAt: new Date().toISOString(), isExternal: ct === 'externe',
         };
         next = { ...next, invoices: [...next.invoices, echoInv] };

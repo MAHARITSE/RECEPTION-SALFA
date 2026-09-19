@@ -93,14 +93,14 @@ function ticketCopies(settings: TicketSettings): number {
 /* ============================================================
  * 1) REÇU DE PAIEMENT
  * ============================================================ */
-export function printPaymentTicket(
+export function paymentTicketHtml(
   settings: TicketSettings,
   invoice: Invoice,
   patient?: Patient,
   cashier?: User,
   company?: Company,
   opts?: { creditSociete?: boolean; prescriberName?: string; copay?: CopayTicketModerateur | null; remise?: number },
-) {
+): string {
   const date = new Date(invoice.paidAt || invoice.createdAt);
   // Facture validée en CRÉDIT SOCIÉTÉ : aucun encaissement en espèces.
   const credit = opts?.creditSociete || invoice.creditSociete || false;
@@ -121,14 +121,23 @@ export function printPaymentTicket(
   const copayEspeces = !credit && copayMontant > 0;
   const copaySurCredit = credit && copayMontant > 0;
   /**
-   * Écart « total brut − montant encaissé ». Sa NATURE dépend de la métadonnée
-   * copay (ticket modérateur) qui n'existe QUE quand la réduction est une
-   * quote-part due par l'assuré : une vraie remise, elle, ne laisse rien à
-   * encaisser (ni chez l'assuré, ni chez la société) et n'est pas tracée.
+   * Écart « total brut − montant encaissé » d'une vente COMPTOIR (espèces). Sa
+   * NATURE dépend de la métadonnée copay (ticket modérateur) qui n'existe QUE
+   * quand la réduction est une quote-part due par l'assuré : une vraie remise,
+   * elle, ne laisse rien à encaisser (ni chez l'assuré, ni chez la société) et
+   * n'est pas tracée.
    *  - copay présent  → l'écart est une PARTICIPATION (ticket modérateur) ;
    *  - copay absent   → l'écart est une REMISE accordée à la caisse.
+   * Un CRÉDIT SOCIÉTÉ n'est JAMAIS une remise : le montant porté au crédit est
+   * le net de la pièce, et à défaut son brut (pièces enregistrées avec
+   * patientCharge = 0 : rien n'est dû par le patient, la société prend tout).
    */
   const remiseSansCopay = Math.round(((Number(invoice.totalAmount) || 0) - (Number(invoice.patientCharge) || 0)) * 100) / 100;
+  const creditNet = Math.max(0, Number(invoice.patientCharge) || 0);
+  /** Montant PORTÉ AU CRÉDIT DE LA SOCIÉTÉ (jamais 0 sur une pièce non nulle). */
+  const creditMontant = credit ? (creditNet > 0 ? creditNet : (Number(invoice.totalAmount) || 0)) : creditNet;
+  /** Écart brut − crédit : c'est la PARTICIPATION de l'assuré, jamais une remise. */
+  const participationCredit = Math.max(0, Math.round(((Number(invoice.totalAmount) || 0) - creditMontant) * 100) / 100);
   /**
    * REMISE SOCIÉTÉ (nature « remise » de la société / de l'assuré) : la
    * quote-part du taux contractuel convertie en remise — personne ne la
@@ -176,13 +185,15 @@ export function printPaymentTicket(
       ? `
       <tr><td>Total prestations (brut)</td><td class="amount">${money(copay?.brut ?? invoice.totalAmount)}</td></tr>
       <tr><td>Participation assuré (espèces)</td><td class="amount">${money(copayMontant)}</td></tr>
-      ${remiseLine(copayMontant - (Number(invoice.patientCharge) || 0))}
-      <tr class="total"><td>TOTAL CRÉDIT SOCIÉTÉ</td><td class="amount">${money(invoice.patientCharge)}</td></tr>`
+      ${remiseSociete > 0 ? `<tr><td>Remise (non encaissée)</td><td class="amount">- ${money(remiseSociete)}</td></tr>` : ''}
+      <tr class="total"><td>TOTAL CRÉDIT SOCIÉTÉ</td><td class="amount">${money(creditMontant)}</td></tr>`
       : `
       <tr><td>Total articles</td><td class="amount">${money(invoice.totalAmount)}</td></tr>
-      ${remiseLine(remiseSansCopay)}
+      ${credit
+        ? (participationCredit > 0 ? `<tr><td>Participation (ticket mod.)</td><td class="amount">- ${money(participationCredit)}</td></tr>` : '')
+        : remiseLine(remiseSansCopay)}
       ${remiseSociete > 0 ? `<tr><td>Remise (non encaissée)</td><td class="amount">- ${money(remiseSociete)}</td></tr>` : ''}
-      <tr class="total"><td>${credit ? 'TOTAL CRÉDIT SOCIÉTÉ' : 'TOTAL PAYÉ'}</td><td class="amount">${money(invoice.patientCharge)}</td></tr>`;
+      <tr class="total"><td>${credit ? 'TOTAL CRÉDIT SOCIÉTÉ' : 'TOTAL PAYÉ'}</td><td class="amount">${money(creditMontant)}</td></tr>`;
   const bodyHtml = `
     <div class="bold">${escapeHtml(customer)}</div>
     ${detailRows}
@@ -192,9 +203,11 @@ export function printPaymentTicket(
     <table>${totalRows}
     </table>
   `;
+  // Le ticket de la FACTURE du dossier : c'est le document de référence remis au
+  // patient (client société : mention de la prise en charge en crédit société).
   const titre = copayEspeces
     ? 'REÇU — TICKET MODÉRATEUR'
-    : credit ? 'PRISE EN CHARGE — CRÉDIT SOCIÉTÉ' : (settings.receiptTitle || 'REÇU DE PAIEMENT');
+    : credit ? 'FACTURE — PRISE EN CHARGE (CRÉDIT SOCIÉTÉ)' : (settings.receiptTitle || 'REÇU DE PAIEMENT');
   const piedDePage = copayEspeces
     ? "Quote-part de l'assuré réglée en espèces — le solde est porté au crédit de la société."
     : credit
@@ -202,7 +215,7 @@ export function printPaymentTicket(
         ? 'Ticket modérateur encaissé en espèces à la caisse — le net est porté au crédit de la société.'
         : 'Montant porté au crédit de la société — règlement ultérieur par la société.')
       : settings.footerMessage;
-  const html = buildTicketHtml({
+  return buildTicketHtml({
     settings,
     title: titre,
     // Numéro de facture officiel (ex: 26FA0427102 ou FA-07/BSA/26-014) sinon référence technique.
@@ -211,7 +224,22 @@ export function printPaymentTicket(
     bodyHtml,
     footerNote: piedDePage,
   });
-  printDocument(html, copayEspeces ? 'Reçu ticket modérateur' : (credit ? 'Prise en charge crédit société' : 'Reçu de paiement'), ticketCopies(settings));
+}
+
+/** Imprime le reçu / la facture (ticket thermique) via la file d'impression. */
+export function printPaymentTicket(
+  settings: TicketSettings,
+  invoice: Invoice,
+  patient?: Patient,
+  cashier?: User,
+  company?: Company,
+  opts?: { creditSociete?: boolean; prescriberName?: string; copay?: CopayTicketModerateur | null; remise?: number },
+) {
+  const credit = opts?.creditSociete || invoice.creditSociete || false;
+  const copayMontant = Math.max(0, Number((opts?.copay || invoice.copayTicketModerateur)?.montant) || 0);
+  const copayEspeces = !credit && copayMontant > 0;
+  printDocument(paymentTicketHtml(settings, invoice, patient, cashier, company, opts),
+    copayEspeces ? 'Reçu ticket modérateur' : (credit ? 'Prise en charge crédit société' : 'Reçu de paiement'), ticketCopies(settings));
 }
 
 /* ============================================================
