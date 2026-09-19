@@ -364,6 +364,55 @@ export function printLabRequestTicket(
 
 
 /* ============================================================
+ * 4a-bis) BON D'EXAMENS — UNE PRESCRIPTION = UN BON, UN SEUL BLOC
+ * ============================================================ */
+/**
+ * UNE PRESCRIPTION = UN BON : les analyses ET les échographies d'une même
+ * prescription figurent sur UN SEUL document, dans un bloc unique, référence
+ * du numéro de facture de la prescription — jamais découpées par famille.
+ */
+export function printExamRequestTicket(
+  settings: TicketSettings,
+  patient: Patient,
+  doctor: User | undefined,
+  date: Date,
+  requests: readonly ExamTicketLine[],
+  numeroFacture?: string,
+) {
+  const lines = requests
+    .flatMap((r) => [
+      `<tr><td colspan="2" class="bold" style="padding-top:1.5mm">▸ ${escapeHtml(r.examType)}${r.quantity && r.quantity !== 1 ? ` × ${escapeHtml(r.quantity)}` : ''}${r.urgent ? ' <span style="color:#b00">[URGENT]</span>' : ''}</td></tr>`,
+      r.notes ? `<tr><td colspan="2" class="small">  ${escapeHtml(r.notes)}</td></tr>` : '',
+      r.price != null ? `<tr><td colspan="2" class="small">  Tarif : ${money(r.price)}</td></tr>` : '',
+    ])
+    .filter(Boolean)
+    .join('');
+  const bodyHtml = `
+    <div><span class="bold">Patient :</span> ${escapeHtml(patient.lastName)} ${escapeHtml(patient.firstName)}</div>
+    <div><span class="bold">Dossier :</span> ${escapeHtml(patient.dossier)}</div>
+    <div><span class="bold">Âge / Sexe :</span> ${escapeHtml(patient.age ?? '—')} / ${patient.gender === 'M' ? 'M' : patient.gender === 'F' ? 'F' : '—'}</div>
+    <div><span class="bold">Prescripteur :</span> ${escapeHtml(doctor?.name || 'Non renseigné')}</div>
+    <div class="rule"></div>
+    <div class="bold heading">EXAMENS DEMANDÉS</div>
+    <table>${lines || '<tr><td><i>Aucun examen</i></td></tr>'}</table>
+    <div class="signature">
+      <span>Patient</span>
+      <span>${escapeHtml(doctor?.name || 'Médecin')}</span>
+    </div>
+  `;
+  const html = buildTicketHtml({
+    settings,
+    title: "BON D'EXAMENS",
+    // Même numéro que la facture de la prescription : un seul bloc, un seul numéro.
+    reference: numeroFacture || `EXAM-${Date.now().toString().slice(-6)}`,
+    date,
+    bodyHtml,
+    footerNote: "Présentez ce bon au laboratoire / service d'imagerie avec votre pièce d'identité.",
+  });
+  printDocument(html, "Bon d'examens", ticketCopies(settings));
+}
+
+/* ============================================================
  * 4b) BON D'ÉCHOGRAPHIE
  * ============================================================ */
 export function printEchoRequestTicket(
