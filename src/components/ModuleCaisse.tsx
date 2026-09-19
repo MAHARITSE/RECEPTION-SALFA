@@ -122,8 +122,17 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     receiptTitle: printerSettings.receiptTitle,
     footerMessage: printerSettings.footerMessage,
   };
-  // Facturation : le détail de la facture s'ouvre en fenêtre modale (clic sur la file d'attente)
+  // Facturation : le détail de la facture s'ouvre dans le PANNEAU de droite —
+  // non modal (aucun voile, la file d'attente reste visible et cliquable).
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const paymentPanelRef = useRef<HTMLDivElement | null>(null);
+  // Sur un écran étroit, le panneau passe SOUS la file d'attente : on l'amène
+  // dans la vue à l'ouverture (sur grand écran il est déjà à côté, rien ne bouge).
+  useEffect(() => {
+    if (!paymentModalOpen) return;
+    if (typeof window === 'undefined' || !window.matchMedia('(max-width: 1023px)').matches) return;
+    paymentPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [paymentModalOpen, selPatientId]);
   /**
    * PIÈCES COCHÉES dans la fenêtre de facturation : seules celles-ci sont
    * encaissées. Chaque prescription reste une facture indépendante — on peut
@@ -1935,7 +1944,21 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       return { ...next, hbRecords: [...(next.hbRecords || []), ...additions] };
     });
   };
-  const switchTab = (t: Tab) => { setTab(t); if (t === 'hospit' || t === 'bloc') void autoAddRequests(); };
+  const switchTab = (t: Tab) => {
+    setTab(t);
+    // Le panneau de facturation (non modal) n'a de sens que dans l'onglet
+    // Facturation : on le referme proprement en changeant d'onglet, sans
+    // toucher au dossier ni aux pièces cochées du patient.
+    if (t !== 'payment' && paymentModalOpen) {
+      setPaymentModalOpen(false);
+      setSelPatientId(null);
+      setSelConsultId(null);
+      setSelPieceKeys([]);
+      setCustomTicketModerateur(null);
+      setCopayCash('');
+    }
+    if (t === 'hospit' || t === 'bloc') void autoAddRequests();
+  };
 
   // Stats — FILTRÉES PAR LE CAISSIER CONNECTÉ
   // Les paiements se font individuellement et au nom de la personne qui a reçu l'argent.
@@ -2163,11 +2186,13 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
         <div className="p-4">
 
-          {/* FACTURATION — file d'attente de paiement (popup) + Vente directe client externe */}
+          {/* FACTURATION — file d'attente de paiement + détail de facturation NON MODAL
+              (colonne de droite) + Vente directe client externe */}
           {tab === 'payment' && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
 
-              {/* FILE D'ATTENTE DE PAIEMENT — le clic ouvre la facture en popup modale */}
+              {/* FILE D'ATTENTE DE PAIEMENT — le clic ouvre la facture dans le panneau
+                  de droite (non modal) : la file reste visible et cliquable */}
               <div className="border rounded-lg overflow-hidden bg-surface">
                 <div className="bg-amber-50 dark:bg-amber-500/8 border-b border-amber-200 dark:border-amber-500/25 px-3 py-2 flex items-center justify-between gap-2">
                   <span className="font-bold text-xs text-amber-800 dark:text-amber-300 flex items-center gap-1.5"><CreditCard className="w-4 h-4" /> File d'attente de paiement</span>
@@ -2205,7 +2230,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                           onClick={() => openPaymentModal(p.id, piece?.key)}
                           title={piece
                             ? `Encaisser cette facture : ${piece.label}${piece.detail ? ` — ${piece.detail}` : ''} (les autres restent en attente)`
-                            : 'Ouvrir la facture en fenêtre modale'}
+                            : 'Ouvrir la facture dans le panneau de facturation (non modal)'}
                         >
                           <div className="flex justify-between items-start gap-2">
                             <div className="min-w-0">
@@ -2255,7 +2280,579 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                 {fileAttente.length > 0 && <div className="px-3 py-1.5 bg-surface-muted border-t text-[10px] text-ink-muted text-center">👆 Une ligne par facture, de la plus récente à la plus ancienne — cliquez pour encaisser celle-ci seulement</div>}
               </div>
 
-              {/* VENTE DIRECTE — CLIENT EXTERNE (affichée à la place du détail de facturation) */}
+              {/* PANNEAU DE FACTURATION — NON MODAL : le patient cliqué dans la file
+                  d'attente s'ouvre ICI (colonnes 2-3), à la place de la vente directe.
+                  La file reste visible et cliquable : on peut encaisser, changer de
+                  patient ou continuer la vente directe sans fermer quoi que ce soit. */}
+              {paymentModalOpen && selPatient && (
+              <div className="lg:col-span-2 scroll-mt-4" ref={paymentPanelRef}>
+                <div className="bg-surface rounded-xl shadow-sm border border-line-strong overflow-hidden flex flex-col max-h-[calc(100vh-210px)]">
+                    <div className="bg-amber-600 px-4 py-3 flex justify-between items-center text-white shrink-0">
+                      <span className="font-bold text-sm flex items-center gap-2 min-w-0">
+                        <CreditCard className="w-4 h-4 shrink-0" />
+                        <span className="truncate">Facturation — {selPatient.lastName} {selPatient.firstName}</span>
+                        <span className="hidden sm:inline px-1.5 py-0.5 rounded bg-white/20 text-[10px] font-bold shrink-0" title="Ce panneau ne bloque pas la page : la file d'attente reste utilisable">NON MODAL</span>
+                      </span>
+                      <button onClick={closePaymentModal} className="hover:bg-white/20 rounded px-2 py-1 cursor-pointer text-xs font-semibold shrink-0 ml-2" title="Fermer le panneau de facturation">✕ Fermer</button>
+                    </div>
+                    <div className="p-4 overflow-y-auto">
+                      <div className="p-4 bg-amber-50 dark:bg-amber-500/8 border border-amber-200 dark:border-amber-500/25 rounded-xl mb-3 space-y-3">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h3 className="font-bold text-base text-ink-strong flex items-center gap-1.5 flex-wrap">
+                              <span>{selPatient.lastName} {selPatient.firstName}</span>
+                              <span className="font-mono">({selPatient.dossier})</span>
+                              {selPatient.clientType === 'societe'
+                                ? <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 dark:bg-cyan-500/15 text-blue-700 dark:text-cyan-400">🏢 {selPatient.company || 'Société'}{selPatient.subCompany ? ` / ${selPatient.subCompany}` : ''}</span>
+                                : <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-surface-hover text-ink-secondary">🏪 Comptoir</span>}
+                              <button
+                                type="button"
+                                onClick={() => setShowPayClientTypeEdit(v => !v)}
+                                className="ml-0.5 p-1 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-500/15 rounded transition cursor-pointer"
+                                title="Modifier le type de client / société"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                            </h3>
+                            <p className="text-xs text-ink-secondary mt-0.5">{selConsult ? `Consultation du ${new Date(selConsult.date).toLocaleDateString('fr-FR')} | Diagnostic: ${selConsult.diagnosis}` : 'Analyses / Services en attente'}</p>
+                          </div>
+                        </div>
+
+                        {/* AFFICHAGE NOM DU MÉDECIN PRESCRIPTEUR & BOUTON MESSAGE RECTIFICATION */}
+                        <div className="pt-2.5 border-t border-amber-200/80 dark:border-amber-500/20 flex flex-wrap items-center justify-between gap-3 bg-surface/80 p-3 rounded-lg border border-amber-100 dark:border-amber-500/25">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400 flex items-center justify-center font-bold text-xs">🩺</div>
+                            <div>
+                              <div className="text-[10px] text-ink-muted uppercase tracking-wider font-semibold">Médecin Prescripteur</div>
+                              <div className="text-sm font-bold text-indigo-900 dark:text-indigo-300">{selConsult?.doctorName || getConsults(selPatient.id)[0]?.doctorName || 'Médecin non spécifié'}</div>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              const refConsult = selConsult || getConsults(selPatient.id)[0];
+                              const docId = refConsult?.doctorId || 'DOC001';
+                              const docName = refConsult?.doctorName || 'Dr. Jean Martin';
+                              setRectificationModal({
+                                open: true,
+                                doctorId: docId,
+                                doctorName: docName,
+                                patientName: `${selPatient.lastName} ${selPatient.firstName}`,
+                                dossier: selPatient.dossier,
+                              });
+                              setRectificationText(`Bonjour ${docName}, une rectification ou précision est nécessaire concernant la prescription déjà faite pour le patient ${selPatient.lastName} ${selPatient.firstName} (${selPatient.dossier}). `);
+                            }}
+                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                            title="Envoyer un message de rectification au médecin prescripteur"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" /> Message pour rectification
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* 🏢 Société / Type client — panneau repliable, ouvert via l'icône stylo du titre */}
+                      {showPayClientTypeEdit && (
+                      <div className="rounded-lg border border-indigo-200 dark:border-indigo-500/25 bg-indigo-50 dark:bg-indigo-500/8 p-3 space-y-2">
+                        <div className="text-xs font-bold text-indigo-900 dark:text-indigo-300 flex items-center gap-1.5">🏢 Société / Type client
+                          <button type="button" onClick={() => setShowPayClientTypeEdit(false)} className="ml-auto text-indigo-500 hover:text-indigo-800 dark:hover:text-indigo-300 cursor-pointer" title="Fermer">✕</button>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                          <div>
+                            <label className="block font-bold text-ink mb-0.5">Type</label>
+                            <select value={payEditClientType} onChange={e => setPayEditClientType(e.target.value as ClientType)} className="w-full px-2 py-1.5 border rounded bg-surface cursor-pointer">
+                              <option value="comptoir">Client Comptoir</option>
+                              <option value="societe">Client Société</option>
+                            </select>
+                          </div>
+                          {payEditClientType === 'societe' && (
+                            <div>
+                              <label className="block font-bold text-ink mb-0.5">Société</label>
+                              <SearchableSelect value={payEditCompany} onChange={setPayEditCompany} options={companyOptions(state.companies)} placeholder="— Taper pour filtrer puis choisir —" ariaLabel="Société" inputClassName="w-full px-2 py-1.5 border rounded outline-none bg-surface" />
+                            </div>
+                          )}
+                        </div>
+                        {payEditClientType === 'societe' && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                            <div className="flex gap-1">
+                              <input type="text" value={payEditNewCompany} onChange={e => setPayEditNewCompany(e.target.value.toUpperCase())} className="flex-1 px-2 py-1.5 border rounded uppercase bg-surface" placeholder="Nouvelle société…" />
+                              <button type="button" onClick={() => { const name = addPartnerCompany(payEditNewCompany); if (name) { setPayEditCompany(name); setPayEditNewCompany(''); }}} className="px-2 py-1.5 bg-indigo-600 text-white rounded font-bold">+</button>
+                            </div>
+                            <div>
+                              <label className="block font-bold text-ink mb-0.5">Sous-société</label>
+                              <SuggestionInput mode="contient" value={payEditSubCompany} onChange={setPayEditSubCompany} suggestions={classerSuggestions(sousSocietesConnues(state, payEditCompany))} placeholder={"Sous-société" + (payEditCompany ? " de " + payEditCompany : "") + " — saisie libre"} ariaLabel="Sous-société" className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" />
+                            </div>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2">
+                          <button type="button" onClick={paySaveClientType} className="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-800 text-white rounded text-xs font-bold cursor-pointer">Enregistrer type / société</button>
+                          <button type="button" onClick={() => setShowPayClientTypeEdit(false)} className="px-3 py-1.5 bg-surface border border-line-strong hover:bg-surface-hover text-ink rounded text-xs font-bold cursor-pointer">Annuler</button>
+                        </div>
+                      </div>
+                      )}
+
+                      {/* === LISTE DES PRESCRIPTIONS === */}
+                      <div className="border rounded-lg overflow-hidden mb-3">
+                        <div className="bg-surface-hover px-3 py-2 border-b font-bold text-sm text-ink flex items-center gap-2">📋 Liste des prescriptions</div>
+                        <div className="overflow-x-auto max-h-[260px] overflow-y-auto">
+                          <table className="w-full text-xs">
+                            <thead className="bg-surface-muted border-b text-ink-secondary sticky top-0">
+                              <tr>
+                                <th className="p-2 text-left min-w-[120px]">Article</th>
+                                <th className="p-2 text-center w-8">Qté</th>
+                                <th className="p-2 text-center w-8">Rem%</th>
+                                <th className="p-2 text-right w-16">P.U.</th>
+                                <th className="p-2 text-right w-20">Montant</th>
+                                <th className="p-2 text-center w-16">Catégorie</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                              {(() => {
+                                const unpaidConsults = getConsults(selPatient.id);
+                                const pieces = pendingPiecesOf(selPatient, unpaidConsults);
+                                // UNE LIGNE DE TITRE PAR PRESCRIPTION, puis ses articles :
+                                // chaque pièce se COCHE pour être encaissée séparément (les
+                                // prescriptions ne sont jamais fusionnées, même au nom de la
+                                // même personne).
+                                const societeClient = selPatient.clientType === 'societe';
+                                if (pieces.length === 0) {
+                                  return <tr><td colSpan={6} className="p-4 text-center text-ink-faint">Aucune prescription</td></tr>;
+                                }
+                                const lignesDePiece = (piece: typeof pieces[number]) => piece.items.map(it => {
+                                  const qty = it.quantity || 1;
+                                  // Brut = prix conventionné AVANT la remise du médecin
+                                  // (= avant le ticket modérateur) pour un client société ;
+                                  // net réellement dû par le patient pour le comptoir.
+                                  const brut = brutLigneDepuisItem(it);
+                                  const categorie = it.category === 'pharmacy' ? 'Médicament'
+                                    : it.category === 'lab' ? 'Analyse'
+                                      : it.category === 'echo' ? 'Échographie'
+                                        : it.category === 'consultation' ? 'Consultation' : 'Service';
+                                  const categorieCouleur = it.category === 'pharmacy' ? 'bg-cyan-100 dark:bg-cyan-500/15 text-cyan-700 dark:text-cyan-400'
+                                    : it.category === 'lab' ? 'bg-teal-100 dark:bg-teal-500/15 text-teal-700 dark:text-teal-400'
+                                      : it.category === 'echo' ? 'bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400'
+                                        : 'bg-surface-hover text-ink';
+                                  return {
+                                    description: it.description, quantity: qty, discount: it.discount || 0,
+                                    unitPrice: societeClient ? (qty > 0 ? roundTo2(brut / qty) : brut) : (it.unitPrice || it.amount),
+                                    amount: societeClient ? brut : it.amount,
+                                    categorie, categorieCouleur,
+                                  };
+                                });
+                                return pieces.flatMap((piece, index) => {
+                                  const cochee = selPieceKeys.includes(piece.key);
+                                  const brutPiece = roundTo2(piece.items.reduce((ss, it) => ss + brutLigneDepuisItem(it), 0));
+                                  return [
+                                    <tr key={`titre-${piece.key}`} className={`border-y border-line ${cochee ? 'bg-amber-50/60 dark:bg-amber-500/8' : 'bg-surface-muted/70'}`}>
+                                      <td colSpan={6} className="px-2 py-1">
+                                        <label className="flex items-center gap-2 cursor-pointer text-[10px] font-bold text-ink-secondary uppercase tracking-wide">
+                                          <input type="checkbox" checked={cochee} onChange={() => basculerPiece(piece.key)}
+                                            className="w-3.5 h-3.5 accent-amber-600 cursor-pointer"
+                                            title={cochee ? 'Décocher : cette facture ne sera pas encaissée' : 'Cocher : encaisser cette facture'} />
+                                          <span className="flex-1 flex items-center justify-between gap-2 normal-case">
+                                            <span>
+                                              <span className="text-ink-faint mr-1">{index + 1}.</span>{piece.label}{piece.detail ? ` — ${piece.detail}` : ''}
+                                              {piece.numero
+                                                ? <span className="font-mono text-ink-faint"> · n° {piece.numero}</span>
+                                                : <span className="text-ink-faint"> · en attente (sans numéro)</span>}
+                                            </span>
+                                            <span className={`font-mono shrink-0 ${cochee ? 'text-amber-700 dark:text-amber-400' : 'text-ink-faint'}`}>{formatAr(brutPiece)}</span>
+                                          </span>
+                                        </label>
+                                      </td>
+                                    </tr>,
+                                    ...lignesDePiece(piece).map((item, idx) => (
+                                      <tr key={`${piece.key}-${idx}`} className={`hover:bg-surface-muted ${cochee ? '' : 'opacity-45'}`}>
+                                        <td className="p-2 font-sans">{item.description}</td>
+                                        <td className="p-2 text-center font-mono">{item.quantity || '—'}</td>
+                                        <td className="p-2 text-center font-mono text-amber-700 dark:text-amber-400 font-semibold">{item.discount ? `${item.discount}%` : '—'}</td>
+                                        <td className="p-2 text-right font-mono">{item.unitPrice ? formatNum(Number(item.unitPrice)) : '—'}</td>
+                                        <td className="p-2 text-right font-mono font-bold">{formatNum(item.amount)}</td>
+                                        <td className="p-2 text-center"><span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${item.categorieCouleur}`}>{item.categorie}</span></td>
+                                      </tr>
+                                    )),
+                                  ];
+                                });
+                              })()}
+                            </tbody>
+                            <tfoot className="bg-amber-50 dark:bg-amber-500/8 border-t-2 border-amber-300 dark:border-amber-500/40">
+                              <tr>
+                                <td colSpan={6} className="p-2">
+                                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                                    <span className="text-[10px] text-ink-muted">
+                                      {piecesPayees.length || 0} / {piecesEnAttente.length} facture(s) cochée(s) — les autres restent en attente (jamais fusionnées)
+                                    </span>
+                                    <span className="flex items-center gap-1.5">
+                                      <button type="button" onClick={() => { setSelPieceKeys(piecesEnAttente.map(piece => piece.key)); setCustomTicketModerateur(null); }}
+                                        className="px-2 py-0.5 text-[10px] font-bold bg-surface hover:bg-surface-hover border border-amber-300 dark:border-amber-500/30 rounded text-ink cursor-pointer">
+                                        Tout cocher
+                                      </button>
+                                      <button type="button" onClick={() => { setSelPieceKeys([]); setCustomTicketModerateur(null); }}
+                                        className="px-2 py-0.5 text-[10px] font-bold bg-surface hover:bg-surface-hover border border-line-strong rounded text-ink cursor-pointer">
+                                        Tout décocher
+                                      </button>
+                                    </span>
+                                  </div>
+                                </td>
+                              </tr>
+                              <tr>
+                                <td colSpan={4} className="p-2 text-right font-bold font-sans">
+                                  TOTAL {piecesPayees.length ? `(${piecesPayees.length} facture${piecesPayees.length > 1 ? 's' : ''} cochée${piecesPayees.length > 1 ? 's' : ''})` : ''} :
+                                </td>
+                                <td colSpan={2} className="p-2 text-right font-mono font-bold text-amber-700 dark:text-amber-400 text-sm">
+                                  {formatAr(selPatient.clientType === 'societe'
+                                    ? (copayPreview?.brut ?? 0)
+                                    : roundTo2(piecesPayees.flatMap(piece => piece.items).reduce((ss, it) => ss + (Number(it.amount) || 0), 0)))}
+                                </td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      </div>
+
+                       {/* === CLIENT SOCIÉTÉ : crédit société + TICKET MODÉRATEUR ajustable === */}
+                      {/* RÉPARTITION PIÈCE PAR PIÈCE : le ticket modérateur / la remise des
+                          analyses et échographies du médecin arrive à la caisse visible. */}
+                      {selPatient.clientType === 'societe' && copayLotPreview && (
+                        <div className="mb-3 border border-line rounded-lg overflow-hidden">
+                          <table className="w-full text-[11px]">
+                            <thead>
+                              <tr className="bg-surface-muted text-ink-muted">
+                                <th className="text-left p-1.5 font-semibold">Pièce</th>
+                                <th className="text-right p-1.5 font-semibold">Brut</th>
+                                <th className="text-right p-1.5 font-semibold">{copayLotPreview.nature === 'remise' ? 'Remise (non payée)' : 'Ticket mod. (à payer)'}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {copayLotPreview.pieces.map(pc => (
+                                <tr key={pc.key} className="border-t border-line-soft">
+                                  <td className="p-1.5">{pc.label}
+                                    {pc.detail ? <span className="text-ink-faint"> — {pc.detail}</span> : null}
+                                    {pc.numero ? <span className="text-ink-faint"> — {pc.numero}</span> : null}</td>
+                                  <td className="p-1.5 text-right font-mono">{formatAr(pc.brut)}</td>
+                                  <td className={`p-1.5 text-right font-mono font-bold ${copayLotPreview.nature === 'remise' ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                                    {formatAr(copayLotPreview.nature === 'remise' ? pc.remise : pc.quote)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot>
+                              <tr className="border-t-2 border-line bg-surface-muted/60">
+                                <td className="p-1.5 font-bold">{copayLotPreview.nature === 'remise' ? 'TOTAL — remise (non payée)' : 'TOTAL — part à payer par le patient'}</td>
+                                <td className="p-1.5 text-right font-mono font-bold">{formatAr(copayLotPreview.pieces.reduce((s, pc) => s + pc.brut, 0))}</td>
+                                <td className={`p-1.5 text-right font-mono font-bold ${copayLotPreview.nature === 'remise' ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                                  {formatAr(copayLotPreview.pieces.reduce((s, pc) => s + (copayLotPreview.nature === 'remise' ? pc.remise : pc.quote), 0))}
+                                </td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                          {!copayLotPreview.societe && (
+                            <div className="p-1.5 text-[10px] bg-orange-50 dark:bg-orange-500/10 text-orange-800 dark:text-orange-300">
+                              ⚠ Société « {selPatient.company || 'inconnue'} » non reconnue dans la base assurance — quote-part calculée par défaut ou ajustable manuellement.
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {selPatient.clientType === 'societe' && copayPreview && (
+                        <div className="p-3 bg-amber-50/80 dark:bg-amber-500/10 border border-amber-300 dark:border-amber-500/30 rounded-xl mb-3 space-y-2.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <CreditCard className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
+                              <div>
+                                <div className="text-xs font-bold text-amber-900 dark:text-amber-200">
+                                  Client Société{selPatient.company ? ` — ${selPatient.company}` : ''}
+                                </div>
+                                <div className="text-[11px] text-amber-800/90 dark:text-amber-300 flex items-center gap-1.5 flex-wrap mt-0.5">
+                                  <span>Couverture Sté : <strong>{formatAr(partSocieteEffective)}</strong> ({copayPreview.brut > 0 ? Math.round((partSocieteEffective / copayPreview.brut) * 100) : copayPreview.taux}%)</span>
+                                  <span>•</span>
+                                  <span>Ticket modérateur : <strong className="text-amber-900 dark:text-amber-200">{formatAr(copayDu)}</strong> ({copayPreview.brut > 0 ? Math.round((copayDu / copayPreview.brut) * 100) : 0}%)</span>
+                                  {isCustomCopay && (
+                                    <span className="text-[10px] font-semibold text-amber-800 dark:text-amber-300 bg-amber-200/80 dark:bg-amber-500/25 px-1.5 py-0.2 rounded">
+                                      Ajusté
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            {isCustomCopay && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCustomTicketModerateur(null);
+                                  setCopayCash(defaultCopayDu > 0 ? String(defaultCopayDu) : '');
+                                }}
+                                className="text-[10px] font-bold text-blue-700 dark:text-cyan-400 bg-blue-50 dark:bg-cyan-500/15 hover:bg-blue-100 px-2 py-1 rounded-md border border-blue-200 dark:border-cyan-500/30 cursor-pointer shrink-0"
+                              >
+                                ↺ Rétablir standard ({formatAr(defaultCopayDu)})
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Encaissement des espèces si ticket modérateur > 0 */}
+                          {copayDu > 0 ? (
+                            <div className="pt-2 border-t border-amber-200 dark:border-amber-500/20 space-y-2">
+                              <div className="flex flex-wrap items-end gap-2">
+                                <div className="flex-1 min-w-[160px]">
+                                  <div className="flex items-center justify-between mb-0.5">
+                                    <label htmlFor="copayCash" className="block text-[11px] font-bold text-amber-900 dark:text-amber-300">
+                                      Espèces reçues du patient :
+                                    </label>
+                                    <button
+                                      type="button"
+                                      onClick={() => setCopayCash(String(copayDu))}
+                                      className="text-[10px] font-semibold text-amber-700 hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-200 underline cursor-pointer"
+                                    >
+                                      Montant exact ({formatAr(copayDu)})
+                                    </button>
+                                  </div>
+                                  <MoneyInput
+                                    id="copayCash"
+                                    value={Number(copayCash) || 0}
+                                    onChange={n => setCopayCash(n === 0 ? '' : String(n))}
+                                    decimals={2}
+                                    ariaLabel="Espèces reçues pour le ticket modérateur"
+                                    title="Espèces reçues — séparateur de milliers automatique (ex : 49 450,00)"
+                                    className={`w-full px-3 py-2 border rounded-lg bg-surface font-mono text-sm font-bold focus:outline-none focus:ring-2 ${copayManquant > 0 ? 'border-rose-400 focus:ring-rose-400' : 'border-amber-300 focus:ring-amber-500'}`}
+                                  />
+                                </div>
+                                <div className="text-xs font-mono pb-2">
+                                  {copayManquant > 0 ? (
+                                    <span className="font-bold text-rose-600 dark:text-rose-400">Reste à encaisser : {formatAr(copayManquant)}</span>
+                                  ) : (
+                                    <span className="font-bold text-emerald-700 dark:text-emerald-400">Monnaie à rendre : {formatAr(copayMonnaie)}</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="p-2.5 bg-blue-50/80 dark:bg-cyan-500/10 border border-blue-200 dark:border-cyan-500/20 rounded-lg text-xs text-blue-900 dark:text-cyan-200 flex items-center gap-2">
+                              <Building2 className="w-4 h-4 text-blue-600 dark:text-cyan-400 shrink-0" />
+                              <span>Prise en charge intégrale à 100 % : <strong>0 Ar</strong> à la charge du patient, totalité portée en <strong>Crédit Société ({formatAr(copayPreview.brut)})</strong>.</span>
+                            </div>
+                          )}
+
+                          {/* Raccourcis ajustement en bas de espèces reçues du patient */}
+                          <div className="pt-2 border-t border-amber-200 dark:border-amber-500/20">
+                            <div className="flex flex-wrap items-center justify-between gap-1.5 text-[11px]">
+                              <div className="flex flex-wrap items-center gap-1">
+                                <span className="text-amber-900/80 dark:text-amber-300 font-semibold text-[10px] mr-1">Raccourcis ajustement :</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCustomTicketModerateur(0);
+                                    setCopayCash('');
+                                  }}
+                                  className={`px-2 py-0.5 rounded font-semibold cursor-pointer transition ${copayDu === 0 ? 'bg-blue-600 text-white' : 'bg-surface hover:bg-surface-hover text-ink border border-amber-300 dark:border-amber-500/30'}`}
+                                >
+                                  0% (100% Sté)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const next = roundTo2(copayPreview.brut * 0.1);
+                                    setCustomTicketModerateur(next);
+                                    setCopayCash(next > 0 ? String(next) : '');
+                                  }}
+                                  className={`px-2 py-0.5 rounded font-semibold cursor-pointer transition ${Math.round((copayDu / (copayPreview.brut || 1)) * 100) === 10 ? 'bg-amber-600 text-white' : 'bg-surface hover:bg-surface-hover text-ink border border-amber-300 dark:border-amber-500/30'}`}
+                                >
+                                  10%
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const next = roundTo2(copayPreview.brut * 0.2);
+                                    setCustomTicketModerateur(next);
+                                    setCopayCash(next > 0 ? String(next) : '');
+                                  }}
+                                  className={`px-2 py-0.5 rounded font-semibold cursor-pointer transition ${Math.round((copayDu / (copayPreview.brut || 1)) * 100) === 20 ? 'bg-amber-600 text-white' : 'bg-surface hover:bg-surface-hover text-ink border border-amber-300 dark:border-amber-500/30'}`}
+                                >
+                                  20% (Standard)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const next = roundTo2(copayPreview.brut * 0.3);
+                                    setCustomTicketModerateur(next);
+                                    setCopayCash(next > 0 ? String(next) : '');
+                                  }}
+                                  className={`px-2 py-0.5 rounded font-semibold cursor-pointer transition ${Math.round((copayDu / (copayPreview.brut || 1)) * 100) === 30 ? 'bg-amber-600 text-white' : 'bg-surface hover:bg-surface-hover text-ink border border-amber-300 dark:border-amber-500/30'}`}
+                                >
+                                  30%
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const next = roundTo2(copayPreview.brut * 0.5);
+                                    setCustomTicketModerateur(next);
+                                    setCopayCash(next > 0 ? String(next) : '');
+                                  }}
+                                  className={`px-2 py-0.5 rounded font-semibold cursor-pointer transition ${Math.round((copayDu / (copayPreview.brut || 1)) * 100) === 50 ? 'bg-amber-600 text-white' : 'bg-surface hover:bg-surface-hover text-ink border border-amber-300 dark:border-amber-500/30'}`}
+                                >
+                                  50%
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const next = copayPreview.brut;
+                                    setCustomTicketModerateur(next);
+                                    setCopayCash(next > 0 ? String(next) : '');
+                                  }}
+                                  className={`px-2 py-0.5 rounded font-semibold cursor-pointer transition ${copayDu === copayPreview.brut ? 'bg-amber-600 text-white' : 'bg-surface hover:bg-surface-hover text-ink border border-amber-300 dark:border-amber-500/30'}`}
+                                >
+                                  100% (Tout patient)
+                                </button>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  title="Diminuer de 5 000 Ar"
+                                  onClick={() => {
+                                    const next = Math.max(0, copayDu - 5000);
+                                    setCustomTicketModerateur(next);
+                                    setCopayCash(next > 0 ? String(next) : '');
+                                  }}
+                                  className="px-1.5 py-0.5 text-[10px] font-bold bg-surface hover:bg-surface-hover border border-amber-300 dark:border-amber-500/30 rounded text-ink cursor-pointer"
+                                >
+                                  -5k
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Diminuer de 1 000 Ar"
+                                  onClick={() => {
+                                    const next = Math.max(0, copayDu - 1000);
+                                    setCustomTicketModerateur(next);
+                                    setCopayCash(next > 0 ? String(next) : '');
+                                  }}
+                                  className="px-1.5 py-0.5 text-[10px] font-bold bg-surface hover:bg-surface-hover border border-amber-300 dark:border-amber-500/30 rounded text-ink cursor-pointer"
+                                >
+                                  -1k
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Augmenter de 1 000 Ar"
+                                  onClick={() => {
+                                    const next = Math.min(copayPreview.brut, copayDu + 1000);
+                                    setCustomTicketModerateur(next);
+                                    setCopayCash(next > 0 ? String(next) : '');
+                                  }}
+                                  className="px-1.5 py-0.5 text-[10px] font-bold bg-surface hover:bg-surface-hover border border-amber-300 dark:border-amber-500/30 rounded text-ink cursor-pointer"
+                                >
+                                  +1k
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Augmenter de 5 000 Ar"
+                                  onClick={() => {
+                                    const next = Math.min(copayPreview.brut, copayDu + 5000);
+                                    setCustomTicketModerateur(next);
+                                    setCopayCash(next > 0 ? String(next) : '');
+                                  }}
+                                  className="px-1.5 py-0.5 text-[10px] font-bold bg-surface hover:bg-surface-hover border border-amber-300 dark:border-amber-500/30 rounded text-ink cursor-pointer"
+                                >
+                                  +5k
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      {selPatient.clientType === 'societe' && !copayPreview && (
+                        <div className="p-3 bg-blue-50 dark:bg-cyan-500/8 border border-blue-200 dark:border-cyan-500/25 rounded-xl mb-3 flex items-start gap-2.5">
+                          <Building2 className="w-5 h-5 text-blue-600 dark:text-cyan-400 shrink-0 mt-0.5" />
+                          <div className="text-xs text-blue-900 dark:text-cyan-300 leading-relaxed">
+                            <strong>Client société{selPatient.company ? ` — ${selPatient.company}` : ''}.</strong>{' '}
+                            Pas de règlement en espèces : la caisse valide le paiement en <strong>CRÉDIT SOCIÉTÉ</strong> — le montant est porté au compte de la société et sera réglé ultérieurement via le module « Facturation ».
+                          </div>
+                        </div>
+                      )}
+                      {selPatient.clientType === 'societe' && copayPreview && (
+                        <div className="flex justify-between text-sm font-semibold border-t-2 pt-2 text-ink-secondary">
+                          <span>Total prestations</span>
+                          <span className="font-mono">{formatAr(copayPreview.brut)}</span>
+                        </div>
+                      )}
+                      <div className={`flex justify-between text-xl font-bold ${selPatient.clientType === 'societe' ? 'text-blue-800 dark:text-cyan-300' : ''} ${copayDu > 0 ? 'pt-1' : 'border-t-2 pt-2'} mb-2`}>
+                        <span>{selPatient.clientType === 'societe' ? 'MONTANT EN CRÉDIT SOCIÉTÉ' : 'À PAYER'}</span>
+                        <span className={`font-mono ${selPatient.clientType === 'societe' ? 'text-blue-600 dark:text-cyan-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                          {formatAr(selPatient.clientType === 'societe' && copayPreview ? partSocieteEffective : getPendingAmount(selPatient))}
+                        </span>
+                      </div>
+                      {selPatient.clientType === 'societe' && copayPreview && (
+                        <div className={`flex justify-between items-center rounded-lg px-2.5 py-1.5 mb-4 border ${copayDu > 0 ? 'bg-amber-50 dark:bg-amber-500/10 border-amber-300 dark:border-amber-500/25' : 'bg-surface-muted border-line'}`}>
+                          <span className={`font-bold text-sm ${copayDu > 0 ? 'text-amber-800 dark:text-amber-300' : 'text-ink-secondary'}`}>
+                            PART À PAYER PAR LE PATIENT{copayDu > 0 ? ' (TICKET MODÉRATEUR)' : ' (0 Ar — PRIS EN CHARGE)'}
+                          </span>
+                          <span className={`font-mono font-bold text-base ${copayDu > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-ink'}`}>
+                            {formatAr(copayDu)}
+                          </span>
+                        </div>
+                      )}
+                      {/* DOCUMENTS IMPRIMÉS À L'ENCAISSEMENT — une facture ticket PAR
+                          PRESCRIPTION, listée sur sa PROPRE LIGNE (jamais fusionnée,
+                          même au nom de la même personne), puis le ticket modérateur,
+                          puis les bons d'examen. */}
+                      {(() => {
+                        const pieces = piecesPayees;
+                        const libelle = (p: { label: string; detail?: string }) =>
+                          `${p.label}${p.detail ? ` — ${p.detail}` : ''}`;
+                        const montant = (items: typeof pieces[number]['items']) => formatAr(selPatient.clientType === 'societe'
+                          ? items.reduce((s, it) => s + brutLigneDepuisItem(it), 0)
+                          : items.reduce((s, it) => s + (Number(it.amount) || 0), 0));
+                        const hasLab = pieces.some(p => p.items.some(it => it.category === 'lab'));
+                        const hasEcho = pieces.some(p => p.items.some(it => it.category === 'echo'));
+                        return (
+                          <div className="p-2.5 mb-3 bg-surface border border-line rounded-lg text-[11px] text-ink-secondary leading-relaxed">
+                            <div className="flex items-start gap-2">
+                              <Printer className="w-4 h-4 text-ink-muted shrink-0 mt-0.5" />
+                              <span>
+                                À l&apos;encaissement : <strong>{pieces.length || 1} FACTURE{pieces.length > 1 ? 'S' : ''} — une par prescription cochée</strong>, sur des lignes séparées (jamais fusionnées, même au nom de la même personne ; un numéro chacune — les pièces non cochées restent en attente){copayDu > 0 ? ', 1 ticket modérateur' : ''}
+                                {hasLab ? ', bon d’analyse' : ''}{hasEcho ? ', bon d’échographie' : ''}.
+                              </span>
+                            </div>
+                            {pieces.length > 0 && (
+                              <ol className="mt-1.5 ml-6 space-y-0.5">
+                                {pieces.map((piece, index) => (
+                                  <li key={piece.key} className="flex items-center justify-between gap-2">
+                                    <span className="truncate">
+                                      <span className="text-ink-faint mr-1">{index + 1}.</span>{libelle(piece)}
+                                    </span>
+                                    <span className="font-mono text-ink shrink-0">{montant(piece.items)}</span>
+                                  </li>
+                                ))}
+                              </ol>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      {piecesEnAttente.length > 0 && piecesPayees.length === 0 && (
+                        <div className="p-2.5 mb-2 bg-rose-50 dark:bg-rose-500/10 border border-rose-300 dark:border-rose-500/30 rounded-lg text-[11px] text-rose-800 dark:text-rose-300 font-semibold">
+                          Aucune facture cochée : cochez au moins une ligne du tableau ci-dessus pour l&apos;encaisser (les autres resteront en attente).
+                        </div>
+                      )}
+                      {selPatient.clientType === 'societe' ? (
+                        copayDu > 0 ? (
+                          <div className="space-y-2">
+                            <button onClick={handlePayment} className="w-full py-3 bg-amber-600 text-white rounded-xl font-semibold hover:bg-amber-700 cursor-pointer shadow-lg flex items-center justify-center gap-2">
+                              <CreditCard className="w-5 h-5" /> Encaisser {formatAr(copayDu)} + Crédit société {formatAr(partSocieteEffective)}
+                            </button>
+                          </div>
+                        ) : (
+                          <button onClick={handlePayment} className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 cursor-pointer shadow-lg flex items-center justify-center gap-2">
+                            <Building2 className="w-5 h-5" /> Valider en Crédit Société {formatAr(partSocieteEffective)}
+                          </button>
+                        )
+                      ) : (
+                        <button onClick={handlePayment} className="w-full py-3 bg-amber-600 text-white rounded-xl font-semibold hover:bg-amber-700 cursor-pointer shadow-lg flex items-center justify-center gap-2">
+                          <CreditCard className="w-5 h-5" /> {getPendingAmount(selPatient) > 0 ? `Encaisser ${formatAr(getPendingAmount(selPatient))}` : 'Valider le passage (0 Ar)'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* VENTE DIRECTE — CLIENT EXTERNE : même emplacement que le panneau de
+                  facturation — affichée quand aucun patient n'est en cours d'encaissement. */}
+              {!(paymentModalOpen && selPatient) && (<>
               <div className="lg:col-span-2 space-y-3">
                 <div className="p-3 bg-purple-50 dark:bg-purple-500/8 border border-purple-200 dark:border-purple-500/25 rounded-lg"><h3 className="font-bold text-purple-800 dark:text-purple-300"><ShoppingCart className="w-5 h-5 inline" /> Vente Directe — Client Externe</h3></div>
                 <div className="flex items-end gap-2 -mt-1">
@@ -2319,6 +2916,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                 <button onClick={extPay} disabled={extLines.length === 0} className="w-full py-3 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 disabled:opacity-40 cursor-pointer flex items-center justify-center gap-2"><CreditCard className="w-5 h-5" /> Encaisser {formatAr(extTotal)}</button>
 
               </div>
+              </>)}
             </div>
           )}
 
@@ -2983,570 +3581,6 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         );
       })()}
 
-      {/* MODALE — Facture du patient sélectionné dans la file d'attente de paiement */}
-      {paymentModalOpen && selPatient && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={closePaymentModal}>
-          <div className="w-full max-w-3xl bg-surface rounded-xl shadow-2xl border border-line-strong overflow-hidden flex flex-col max-h-[92vh]" onClick={e => e.stopPropagation()}>
-            <div className="bg-amber-600 px-4 py-3 flex justify-between items-center text-white shrink-0">
-              <span className="font-bold text-sm flex items-center gap-2">
-                <CreditCard className="w-4 h-4" /> Facturation — {selPatient.lastName} {selPatient.firstName}
-              </span>
-              <button onClick={closePaymentModal} className="hover:bg-white/20 rounded p-1 cursor-pointer text-sm" title="Fermer">✕</button>
-            </div>
-            <div className="p-4 overflow-y-auto">
-              <div className="p-4 bg-amber-50 dark:bg-amber-500/8 border border-amber-200 dark:border-amber-500/25 rounded-xl mb-3 space-y-3">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="font-bold text-base text-ink-strong flex items-center gap-1.5 flex-wrap">
-                      <span>{selPatient.lastName} {selPatient.firstName}</span>
-                      <span className="font-mono">({selPatient.dossier})</span>
-                      {selPatient.clientType === 'societe'
-                        ? <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 dark:bg-cyan-500/15 text-blue-700 dark:text-cyan-400">🏢 {selPatient.company || 'Société'}{selPatient.subCompany ? ` / ${selPatient.subCompany}` : ''}</span>
-                        : <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-surface-hover text-ink-secondary">🏪 Comptoir</span>}
-                      <button
-                        type="button"
-                        onClick={() => setShowPayClientTypeEdit(v => !v)}
-                        className="ml-0.5 p-1 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-500/15 rounded transition cursor-pointer"
-                        title="Modifier le type de client / société"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                    </h3>
-                    <p className="text-xs text-ink-secondary mt-0.5">{selConsult ? `Consultation du ${new Date(selConsult.date).toLocaleDateString('fr-FR')} | Diagnostic: ${selConsult.diagnosis}` : 'Analyses / Services en attente'}</p>
-                  </div>
-                </div>
-
-                {/* AFFICHAGE NOM DU MÉDECIN PRESCRIPTEUR & BOUTON MESSAGE RECTIFICATION */}
-                <div className="pt-2.5 border-t border-amber-200/80 dark:border-amber-500/20 flex flex-wrap items-center justify-between gap-3 bg-surface/80 p-3 rounded-lg border border-amber-100 dark:border-amber-500/25">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400 flex items-center justify-center font-bold text-xs">🩺</div>
-                    <div>
-                      <div className="text-[10px] text-ink-muted uppercase tracking-wider font-semibold">Médecin Prescripteur</div>
-                      <div className="text-sm font-bold text-indigo-900 dark:text-indigo-300">{selConsult?.doctorName || getConsults(selPatient.id)[0]?.doctorName || 'Médecin non spécifié'}</div>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => {
-                      const refConsult = selConsult || getConsults(selPatient.id)[0];
-                      const docId = refConsult?.doctorId || 'DOC001';
-                      const docName = refConsult?.doctorName || 'Dr. Jean Martin';
-                      setRectificationModal({
-                        open: true,
-                        doctorId: docId,
-                        doctorName: docName,
-                        patientName: `${selPatient.lastName} ${selPatient.firstName}`,
-                        dossier: selPatient.dossier,
-                      });
-                      setRectificationText(`Bonjour ${docName}, une rectification ou précision est nécessaire concernant la prescription déjà faite pour le patient ${selPatient.lastName} ${selPatient.firstName} (${selPatient.dossier}). `);
-                    }}
-                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
-                    title="Envoyer un message de rectification au médecin prescripteur"
-                  >
-                    <MessageCircle className="w-3.5 h-3.5" /> Message pour rectification
-                  </button>
-                </div>
-              </div>
-
-              {/* 🏢 Société / Type client — panneau repliable, ouvert via l'icône stylo du titre */}
-              {showPayClientTypeEdit && (
-              <div className="rounded-lg border border-indigo-200 dark:border-indigo-500/25 bg-indigo-50 dark:bg-indigo-500/8 p-3 space-y-2">
-                <div className="text-xs font-bold text-indigo-900 dark:text-indigo-300 flex items-center gap-1.5">🏢 Société / Type client
-                  <button type="button" onClick={() => setShowPayClientTypeEdit(false)} className="ml-auto text-indigo-500 hover:text-indigo-800 dark:hover:text-indigo-300 cursor-pointer" title="Fermer">✕</button>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <label className="block font-bold text-ink mb-0.5">Type</label>
-                    <select value={payEditClientType} onChange={e => setPayEditClientType(e.target.value as ClientType)} className="w-full px-2 py-1.5 border rounded bg-surface cursor-pointer">
-                      <option value="comptoir">Client Comptoir</option>
-                      <option value="societe">Client Société</option>
-                    </select>
-                  </div>
-                  {payEditClientType === 'societe' && (
-                    <div>
-                      <label className="block font-bold text-ink mb-0.5">Société</label>
-                      <SearchableSelect value={payEditCompany} onChange={setPayEditCompany} options={companyOptions(state.companies)} placeholder="— Taper pour filtrer puis choisir —" ariaLabel="Société" inputClassName="w-full px-2 py-1.5 border rounded outline-none bg-surface" />
-                    </div>
-                  )}
-                </div>
-                {payEditClientType === 'societe' && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                    <div className="flex gap-1">
-                      <input type="text" value={payEditNewCompany} onChange={e => setPayEditNewCompany(e.target.value.toUpperCase())} className="flex-1 px-2 py-1.5 border rounded uppercase bg-surface" placeholder="Nouvelle société…" />
-                      <button type="button" onClick={() => { const name = addPartnerCompany(payEditNewCompany); if (name) { setPayEditCompany(name); setPayEditNewCompany(''); }}} className="px-2 py-1.5 bg-indigo-600 text-white rounded font-bold">+</button>
-                    </div>
-                    <div>
-                      <label className="block font-bold text-ink mb-0.5">Sous-société</label>
-                      <SuggestionInput mode="contient" value={payEditSubCompany} onChange={setPayEditSubCompany} suggestions={classerSuggestions(sousSocietesConnues(state, payEditCompany))} placeholder={"Sous-société" + (payEditCompany ? " de " + payEditCompany : "") + " — saisie libre"} ariaLabel="Sous-société" className="w-full px-2 py-1.5 border rounded outline-none uppercase bg-surface" />
-                    </div>
-                  </div>
-                )}
-                <div className="flex items-center gap-2">
-                  <button type="button" onClick={paySaveClientType} className="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-800 text-white rounded text-xs font-bold cursor-pointer">Enregistrer type / société</button>
-                  <button type="button" onClick={() => setShowPayClientTypeEdit(false)} className="px-3 py-1.5 bg-surface border border-line-strong hover:bg-surface-hover text-ink rounded text-xs font-bold cursor-pointer">Annuler</button>
-                </div>
-              </div>
-              )}
-
-              {/* === LISTE DES PRESCRIPTIONS === */}
-              <div className="border rounded-lg overflow-hidden mb-3">
-                <div className="bg-surface-hover px-3 py-2 border-b font-bold text-sm text-ink flex items-center gap-2">📋 Liste des prescriptions</div>
-                <div className="overflow-x-auto max-h-[260px] overflow-y-auto">
-                  <table className="w-full text-xs">
-                    <thead className="bg-surface-muted border-b text-ink-secondary sticky top-0">
-                      <tr>
-                        <th className="p-2 text-left min-w-[120px]">Article</th>
-                        <th className="p-2 text-center w-8">Qté</th>
-                        <th className="p-2 text-center w-8">Rem%</th>
-                        <th className="p-2 text-right w-16">P.U.</th>
-                        <th className="p-2 text-right w-20">Montant</th>
-                        <th className="p-2 text-center w-16">Catégorie</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {(() => {
-                        const unpaidConsults = getConsults(selPatient.id);
-                        const pieces = pendingPiecesOf(selPatient, unpaidConsults);
-                        // UNE LIGNE DE TITRE PAR PRESCRIPTION, puis ses articles :
-                        // chaque pièce se COCHE pour être encaissée séparément (les
-                        // prescriptions ne sont jamais fusionnées, même au nom de la
-                        // même personne).
-                        const societeClient = selPatient.clientType === 'societe';
-                        if (pieces.length === 0) {
-                          return <tr><td colSpan={6} className="p-4 text-center text-ink-faint">Aucune prescription</td></tr>;
-                        }
-                        const lignesDePiece = (piece: typeof pieces[number]) => piece.items.map(it => {
-                          const qty = it.quantity || 1;
-                          // Brut = prix conventionné AVANT la remise du médecin
-                          // (= avant le ticket modérateur) pour un client société ;
-                          // net réellement dû par le patient pour le comptoir.
-                          const brut = brutLigneDepuisItem(it);
-                          const categorie = it.category === 'pharmacy' ? 'Médicament'
-                            : it.category === 'lab' ? 'Analyse'
-                              : it.category === 'echo' ? 'Échographie'
-                                : it.category === 'consultation' ? 'Consultation' : 'Service';
-                          const categorieCouleur = it.category === 'pharmacy' ? 'bg-cyan-100 dark:bg-cyan-500/15 text-cyan-700 dark:text-cyan-400'
-                            : it.category === 'lab' ? 'bg-teal-100 dark:bg-teal-500/15 text-teal-700 dark:text-teal-400'
-                              : it.category === 'echo' ? 'bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400'
-                                : 'bg-surface-hover text-ink';
-                          return {
-                            description: it.description, quantity: qty, discount: it.discount || 0,
-                            unitPrice: societeClient ? (qty > 0 ? roundTo2(brut / qty) : brut) : (it.unitPrice || it.amount),
-                            amount: societeClient ? brut : it.amount,
-                            categorie, categorieCouleur,
-                          };
-                        });
-                        return pieces.flatMap((piece, index) => {
-                          const cochee = selPieceKeys.includes(piece.key);
-                          const brutPiece = roundTo2(piece.items.reduce((ss, it) => ss + brutLigneDepuisItem(it), 0));
-                          return [
-                            <tr key={`titre-${piece.key}`} className={`border-y border-line ${cochee ? 'bg-amber-50/60 dark:bg-amber-500/8' : 'bg-surface-muted/70'}`}>
-                              <td colSpan={6} className="px-2 py-1">
-                                <label className="flex items-center gap-2 cursor-pointer text-[10px] font-bold text-ink-secondary uppercase tracking-wide">
-                                  <input type="checkbox" checked={cochee} onChange={() => basculerPiece(piece.key)}
-                                    className="w-3.5 h-3.5 accent-amber-600 cursor-pointer"
-                                    title={cochee ? 'Décocher : cette facture ne sera pas encaissée' : 'Cocher : encaisser cette facture'} />
-                                  <span className="flex-1 flex items-center justify-between gap-2 normal-case">
-                                    <span>
-                                      <span className="text-ink-faint mr-1">{index + 1}.</span>{piece.label}{piece.detail ? ` — ${piece.detail}` : ''}
-                                      {piece.numero
-                                        ? <span className="font-mono text-ink-faint"> · n° {piece.numero}</span>
-                                        : <span className="text-ink-faint"> · en attente (sans numéro)</span>}
-                                    </span>
-                                    <span className={`font-mono shrink-0 ${cochee ? 'text-amber-700 dark:text-amber-400' : 'text-ink-faint'}`}>{formatAr(brutPiece)}</span>
-                                  </span>
-                                </label>
-                              </td>
-                            </tr>,
-                            ...lignesDePiece(piece).map((item, idx) => (
-                              <tr key={`${piece.key}-${idx}`} className={`hover:bg-surface-muted ${cochee ? '' : 'opacity-45'}`}>
-                                <td className="p-2 font-sans">{item.description}</td>
-                                <td className="p-2 text-center font-mono">{item.quantity || '—'}</td>
-                                <td className="p-2 text-center font-mono text-amber-700 dark:text-amber-400 font-semibold">{item.discount ? `${item.discount}%` : '—'}</td>
-                                <td className="p-2 text-right font-mono">{item.unitPrice ? formatNum(Number(item.unitPrice)) : '—'}</td>
-                                <td className="p-2 text-right font-mono font-bold">{formatNum(item.amount)}</td>
-                                <td className="p-2 text-center"><span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${item.categorieCouleur}`}>{item.categorie}</span></td>
-                              </tr>
-                            )),
-                          ];
-                        });
-                      })()}
-                    </tbody>
-                    <tfoot className="bg-amber-50 dark:bg-amber-500/8 border-t-2 border-amber-300 dark:border-amber-500/40">
-                      <tr>
-                        <td colSpan={6} className="p-2">
-                          <div className="flex items-center justify-between gap-2 flex-wrap">
-                            <span className="text-[10px] text-ink-muted">
-                              {piecesPayees.length || 0} / {piecesEnAttente.length} facture(s) cochée(s) — les autres restent en attente (jamais fusionnées)
-                            </span>
-                            <span className="flex items-center gap-1.5">
-                              <button type="button" onClick={() => { setSelPieceKeys(piecesEnAttente.map(piece => piece.key)); setCustomTicketModerateur(null); }}
-                                className="px-2 py-0.5 text-[10px] font-bold bg-surface hover:bg-surface-hover border border-amber-300 dark:border-amber-500/30 rounded text-ink cursor-pointer">
-                                Tout cocher
-                              </button>
-                              <button type="button" onClick={() => { setSelPieceKeys([]); setCustomTicketModerateur(null); }}
-                                className="px-2 py-0.5 text-[10px] font-bold bg-surface hover:bg-surface-hover border border-line-strong rounded text-ink cursor-pointer">
-                                Tout décocher
-                              </button>
-                            </span>
-                          </div>
-                        </td>
-                      </tr>
-                      <tr>
-                        <td colSpan={4} className="p-2 text-right font-bold font-sans">
-                          TOTAL {piecesPayees.length ? `(${piecesPayees.length} facture${piecesPayees.length > 1 ? 's' : ''} cochée${piecesPayees.length > 1 ? 's' : ''})` : ''} :
-                        </td>
-                        <td colSpan={2} className="p-2 text-right font-mono font-bold text-amber-700 dark:text-amber-400 text-sm">
-                          {formatAr(selPatient.clientType === 'societe'
-                            ? (copayPreview?.brut ?? 0)
-                            : roundTo2(piecesPayees.flatMap(piece => piece.items).reduce((ss, it) => ss + (Number(it.amount) || 0), 0)))}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              </div>
-
-               {/* === CLIENT SOCIÉTÉ : crédit société + TICKET MODÉRATEUR ajustable === */}
-              {/* RÉPARTITION PIÈCE PAR PIÈCE : le ticket modérateur / la remise des
-                  analyses et échographies du médecin arrive à la caisse visible. */}
-              {selPatient.clientType === 'societe' && copayLotPreview && (
-                <div className="mb-3 border border-line rounded-lg overflow-hidden">
-                  <table className="w-full text-[11px]">
-                    <thead>
-                      <tr className="bg-surface-muted text-ink-muted">
-                        <th className="text-left p-1.5 font-semibold">Pièce</th>
-                        <th className="text-right p-1.5 font-semibold">Brut</th>
-                        <th className="text-right p-1.5 font-semibold">{copayLotPreview.nature === 'remise' ? 'Remise (non payée)' : 'Ticket mod. (à payer)'}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {copayLotPreview.pieces.map(pc => (
-                        <tr key={pc.key} className="border-t border-line-soft">
-                          <td className="p-1.5">{pc.label}
-                            {pc.detail ? <span className="text-ink-faint"> — {pc.detail}</span> : null}
-                            {pc.numero ? <span className="text-ink-faint"> — {pc.numero}</span> : null}</td>
-                          <td className="p-1.5 text-right font-mono">{formatAr(pc.brut)}</td>
-                          <td className={`p-1.5 text-right font-mono font-bold ${copayLotPreview.nature === 'remise' ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                            {formatAr(copayLotPreview.nature === 'remise' ? pc.remise : pc.quote)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="border-t-2 border-line bg-surface-muted/60">
-                        <td className="p-1.5 font-bold">{copayLotPreview.nature === 'remise' ? 'TOTAL — remise (non payée)' : 'TOTAL — part à payer par le patient'}</td>
-                        <td className="p-1.5 text-right font-mono font-bold">{formatAr(copayLotPreview.pieces.reduce((s, pc) => s + pc.brut, 0))}</td>
-                        <td className={`p-1.5 text-right font-mono font-bold ${copayLotPreview.nature === 'remise' ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                          {formatAr(copayLotPreview.pieces.reduce((s, pc) => s + (copayLotPreview.nature === 'remise' ? pc.remise : pc.quote), 0))}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                  {!copayLotPreview.societe && (
-                    <div className="p-1.5 text-[10px] bg-orange-50 dark:bg-orange-500/10 text-orange-800 dark:text-orange-300">
-                      ⚠ Société « {selPatient.company || 'inconnue'} » non reconnue dans la base assurance — quote-part calculée par défaut ou ajustable manuellement.
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {selPatient.clientType === 'societe' && copayPreview && (
-                <div className="p-3 bg-amber-50/80 dark:bg-amber-500/10 border border-amber-300 dark:border-amber-500/30 rounded-xl mb-3 space-y-2.5">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <CreditCard className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
-                      <div>
-                        <div className="text-xs font-bold text-amber-900 dark:text-amber-200">
-                          Client Société{selPatient.company ? ` — ${selPatient.company}` : ''}
-                        </div>
-                        <div className="text-[11px] text-amber-800/90 dark:text-amber-300 flex items-center gap-1.5 flex-wrap mt-0.5">
-                          <span>Couverture Sté : <strong>{formatAr(partSocieteEffective)}</strong> ({copayPreview.brut > 0 ? Math.round((partSocieteEffective / copayPreview.brut) * 100) : copayPreview.taux}%)</span>
-                          <span>•</span>
-                          <span>Ticket modérateur : <strong className="text-amber-900 dark:text-amber-200">{formatAr(copayDu)}</strong> ({copayPreview.brut > 0 ? Math.round((copayDu / copayPreview.brut) * 100) : 0}%)</span>
-                          {isCustomCopay && (
-                            <span className="text-[10px] font-semibold text-amber-800 dark:text-amber-300 bg-amber-200/80 dark:bg-amber-500/25 px-1.5 py-0.2 rounded">
-                              Ajusté
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    {isCustomCopay && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCustomTicketModerateur(null);
-                          setCopayCash(defaultCopayDu > 0 ? String(defaultCopayDu) : '');
-                        }}
-                        className="text-[10px] font-bold text-blue-700 dark:text-cyan-400 bg-blue-50 dark:bg-cyan-500/15 hover:bg-blue-100 px-2 py-1 rounded-md border border-blue-200 dark:border-cyan-500/30 cursor-pointer shrink-0"
-                      >
-                        ↺ Rétablir standard ({formatAr(defaultCopayDu)})
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Encaissement des espèces si ticket modérateur > 0 */}
-                  {copayDu > 0 ? (
-                    <div className="pt-2 border-t border-amber-200 dark:border-amber-500/20 space-y-2">
-                      <div className="flex flex-wrap items-end gap-2">
-                        <div className="flex-1 min-w-[160px]">
-                          <div className="flex items-center justify-between mb-0.5">
-                            <label htmlFor="copayCash" className="block text-[11px] font-bold text-amber-900 dark:text-amber-300">
-                              Espèces reçues du patient :
-                            </label>
-                            <button
-                              type="button"
-                              onClick={() => setCopayCash(String(copayDu))}
-                              className="text-[10px] font-semibold text-amber-700 hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-200 underline cursor-pointer"
-                            >
-                              Montant exact ({formatAr(copayDu)})
-                            </button>
-                          </div>
-                          <MoneyInput
-                            id="copayCash"
-                            value={Number(copayCash) || 0}
-                            onChange={n => setCopayCash(n === 0 ? '' : String(n))}
-                            decimals={2}
-                            ariaLabel="Espèces reçues pour le ticket modérateur"
-                            title="Espèces reçues — séparateur de milliers automatique (ex : 49 450,00)"
-                            className={`w-full px-3 py-2 border rounded-lg bg-surface font-mono text-sm font-bold focus:outline-none focus:ring-2 ${copayManquant > 0 ? 'border-rose-400 focus:ring-rose-400' : 'border-amber-300 focus:ring-amber-500'}`}
-                          />
-                        </div>
-                        <div className="text-xs font-mono pb-2">
-                          {copayManquant > 0 ? (
-                            <span className="font-bold text-rose-600 dark:text-rose-400">Reste à encaisser : {formatAr(copayManquant)}</span>
-                          ) : (
-                            <span className="font-bold text-emerald-700 dark:text-emerald-400">Monnaie à rendre : {formatAr(copayMonnaie)}</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="p-2.5 bg-blue-50/80 dark:bg-cyan-500/10 border border-blue-200 dark:border-cyan-500/20 rounded-lg text-xs text-blue-900 dark:text-cyan-200 flex items-center gap-2">
-                      <Building2 className="w-4 h-4 text-blue-600 dark:text-cyan-400 shrink-0" />
-                      <span>Prise en charge intégrale à 100 % : <strong>0 Ar</strong> à la charge du patient, totalité portée en <strong>Crédit Société ({formatAr(copayPreview.brut)})</strong>.</span>
-                    </div>
-                  )}
-
-                  {/* Raccourcis ajustement en bas de espèces reçues du patient */}
-                  <div className="pt-2 border-t border-amber-200 dark:border-amber-500/20">
-                    <div className="flex flex-wrap items-center justify-between gap-1.5 text-[11px]">
-                      <div className="flex flex-wrap items-center gap-1">
-                        <span className="text-amber-900/80 dark:text-amber-300 font-semibold text-[10px] mr-1">Raccourcis ajustement :</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCustomTicketModerateur(0);
-                            setCopayCash('');
-                          }}
-                          className={`px-2 py-0.5 rounded font-semibold cursor-pointer transition ${copayDu === 0 ? 'bg-blue-600 text-white' : 'bg-surface hover:bg-surface-hover text-ink border border-amber-300 dark:border-amber-500/30'}`}
-                        >
-                          0% (100% Sté)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const next = roundTo2(copayPreview.brut * 0.1);
-                            setCustomTicketModerateur(next);
-                            setCopayCash(next > 0 ? String(next) : '');
-                          }}
-                          className={`px-2 py-0.5 rounded font-semibold cursor-pointer transition ${Math.round((copayDu / (copayPreview.brut || 1)) * 100) === 10 ? 'bg-amber-600 text-white' : 'bg-surface hover:bg-surface-hover text-ink border border-amber-300 dark:border-amber-500/30'}`}
-                        >
-                          10%
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const next = roundTo2(copayPreview.brut * 0.2);
-                            setCustomTicketModerateur(next);
-                            setCopayCash(next > 0 ? String(next) : '');
-                          }}
-                          className={`px-2 py-0.5 rounded font-semibold cursor-pointer transition ${Math.round((copayDu / (copayPreview.brut || 1)) * 100) === 20 ? 'bg-amber-600 text-white' : 'bg-surface hover:bg-surface-hover text-ink border border-amber-300 dark:border-amber-500/30'}`}
-                        >
-                          20% (Standard)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const next = roundTo2(copayPreview.brut * 0.3);
-                            setCustomTicketModerateur(next);
-                            setCopayCash(next > 0 ? String(next) : '');
-                          }}
-                          className={`px-2 py-0.5 rounded font-semibold cursor-pointer transition ${Math.round((copayDu / (copayPreview.brut || 1)) * 100) === 30 ? 'bg-amber-600 text-white' : 'bg-surface hover:bg-surface-hover text-ink border border-amber-300 dark:border-amber-500/30'}`}
-                        >
-                          30%
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const next = roundTo2(copayPreview.brut * 0.5);
-                            setCustomTicketModerateur(next);
-                            setCopayCash(next > 0 ? String(next) : '');
-                          }}
-                          className={`px-2 py-0.5 rounded font-semibold cursor-pointer transition ${Math.round((copayDu / (copayPreview.brut || 1)) * 100) === 50 ? 'bg-amber-600 text-white' : 'bg-surface hover:bg-surface-hover text-ink border border-amber-300 dark:border-amber-500/30'}`}
-                        >
-                          50%
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const next = copayPreview.brut;
-                            setCustomTicketModerateur(next);
-                            setCopayCash(next > 0 ? String(next) : '');
-                          }}
-                          className={`px-2 py-0.5 rounded font-semibold cursor-pointer transition ${copayDu === copayPreview.brut ? 'bg-amber-600 text-white' : 'bg-surface hover:bg-surface-hover text-ink border border-amber-300 dark:border-amber-500/30'}`}
-                        >
-                          100% (Tout patient)
-                        </button>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          title="Diminuer de 5 000 Ar"
-                          onClick={() => {
-                            const next = Math.max(0, copayDu - 5000);
-                            setCustomTicketModerateur(next);
-                            setCopayCash(next > 0 ? String(next) : '');
-                          }}
-                          className="px-1.5 py-0.5 text-[10px] font-bold bg-surface hover:bg-surface-hover border border-amber-300 dark:border-amber-500/30 rounded text-ink cursor-pointer"
-                        >
-                          -5k
-                        </button>
-                        <button
-                          type="button"
-                          title="Diminuer de 1 000 Ar"
-                          onClick={() => {
-                            const next = Math.max(0, copayDu - 1000);
-                            setCustomTicketModerateur(next);
-                            setCopayCash(next > 0 ? String(next) : '');
-                          }}
-                          className="px-1.5 py-0.5 text-[10px] font-bold bg-surface hover:bg-surface-hover border border-amber-300 dark:border-amber-500/30 rounded text-ink cursor-pointer"
-                        >
-                          -1k
-                        </button>
-                        <button
-                          type="button"
-                          title="Augmenter de 1 000 Ar"
-                          onClick={() => {
-                            const next = Math.min(copayPreview.brut, copayDu + 1000);
-                            setCustomTicketModerateur(next);
-                            setCopayCash(next > 0 ? String(next) : '');
-                          }}
-                          className="px-1.5 py-0.5 text-[10px] font-bold bg-surface hover:bg-surface-hover border border-amber-300 dark:border-amber-500/30 rounded text-ink cursor-pointer"
-                        >
-                          +1k
-                        </button>
-                        <button
-                          type="button"
-                          title="Augmenter de 5 000 Ar"
-                          onClick={() => {
-                            const next = Math.min(copayPreview.brut, copayDu + 5000);
-                            setCustomTicketModerateur(next);
-                            setCopayCash(next > 0 ? String(next) : '');
-                          }}
-                          className="px-1.5 py-0.5 text-[10px] font-bold bg-surface hover:bg-surface-hover border border-amber-300 dark:border-amber-500/30 rounded text-ink cursor-pointer"
-                        >
-                          +5k
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-              {selPatient.clientType === 'societe' && !copayPreview && (
-                <div className="p-3 bg-blue-50 dark:bg-cyan-500/8 border border-blue-200 dark:border-cyan-500/25 rounded-xl mb-3 flex items-start gap-2.5">
-                  <Building2 className="w-5 h-5 text-blue-600 dark:text-cyan-400 shrink-0 mt-0.5" />
-                  <div className="text-xs text-blue-900 dark:text-cyan-300 leading-relaxed">
-                    <strong>Client société{selPatient.company ? ` — ${selPatient.company}` : ''}.</strong>{' '}
-                    Pas de règlement en espèces : la caisse valide le paiement en <strong>CRÉDIT SOCIÉTÉ</strong> — le montant est porté au compte de la société et sera réglé ultérieurement via le module « Facturation ».
-                  </div>
-                </div>
-              )}
-              {selPatient.clientType === 'societe' && copayPreview && (
-                <div className="flex justify-between text-sm font-semibold border-t-2 pt-2 text-ink-secondary">
-                  <span>Total prestations</span>
-                  <span className="font-mono">{formatAr(copayPreview.brut)}</span>
-                </div>
-              )}
-              <div className={`flex justify-between text-xl font-bold ${selPatient.clientType === 'societe' ? 'text-blue-800 dark:text-cyan-300' : ''} ${copayDu > 0 ? 'pt-1' : 'border-t-2 pt-2'} mb-2`}>
-                <span>{selPatient.clientType === 'societe' ? 'MONTANT EN CRÉDIT SOCIÉTÉ' : 'À PAYER'}</span>
-                <span className={`font-mono ${selPatient.clientType === 'societe' ? 'text-blue-600 dark:text-cyan-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                  {formatAr(selPatient.clientType === 'societe' && copayPreview ? partSocieteEffective : getPendingAmount(selPatient))}
-                </span>
-              </div>
-              {selPatient.clientType === 'societe' && copayPreview && (
-                <div className={`flex justify-between items-center rounded-lg px-2.5 py-1.5 mb-4 border ${copayDu > 0 ? 'bg-amber-50 dark:bg-amber-500/10 border-amber-300 dark:border-amber-500/25' : 'bg-surface-muted border-line'}`}>
-                  <span className={`font-bold text-sm ${copayDu > 0 ? 'text-amber-800 dark:text-amber-300' : 'text-ink-secondary'}`}>
-                    PART À PAYER PAR LE PATIENT{copayDu > 0 ? ' (TICKET MODÉRATEUR)' : ' (0 Ar — PRIS EN CHARGE)'}
-                  </span>
-                  <span className={`font-mono font-bold text-base ${copayDu > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-ink'}`}>
-                    {formatAr(copayDu)}
-                  </span>
-                </div>
-              )}
-              {/* DOCUMENTS IMPRIMÉS À L'ENCAISSEMENT — une facture ticket PAR
-                  PRESCRIPTION, listée sur sa PROPRE LIGNE (jamais fusionnée,
-                  même au nom de la même personne), puis le ticket modérateur,
-                  puis les bons d'examen. */}
-              {(() => {
-                const pieces = piecesPayees;
-                const libelle = (p: { label: string; detail?: string }) =>
-                  `${p.label}${p.detail ? ` — ${p.detail}` : ''}`;
-                const montant = (items: typeof pieces[number]['items']) => formatAr(selPatient.clientType === 'societe'
-                  ? items.reduce((s, it) => s + brutLigneDepuisItem(it), 0)
-                  : items.reduce((s, it) => s + (Number(it.amount) || 0), 0));
-                const hasLab = pieces.some(p => p.items.some(it => it.category === 'lab'));
-                const hasEcho = pieces.some(p => p.items.some(it => it.category === 'echo'));
-                return (
-                  <div className="p-2.5 mb-3 bg-surface border border-line rounded-lg text-[11px] text-ink-secondary leading-relaxed">
-                    <div className="flex items-start gap-2">
-                      <Printer className="w-4 h-4 text-ink-muted shrink-0 mt-0.5" />
-                      <span>
-                        À l&apos;encaissement : <strong>{pieces.length || 1} FACTURE{pieces.length > 1 ? 'S' : ''} — une par prescription cochée</strong>, sur des lignes séparées (jamais fusionnées, même au nom de la même personne ; un numéro chacune — les pièces non cochées restent en attente){copayDu > 0 ? ', 1 ticket modérateur' : ''}
-                        {hasLab ? ', bon d’analyse' : ''}{hasEcho ? ', bon d’échographie' : ''}.
-                      </span>
-                    </div>
-                    {pieces.length > 0 && (
-                      <ol className="mt-1.5 ml-6 space-y-0.5">
-                        {pieces.map((piece, index) => (
-                          <li key={piece.key} className="flex items-center justify-between gap-2">
-                            <span className="truncate">
-                              <span className="text-ink-faint mr-1">{index + 1}.</span>{libelle(piece)}
-                            </span>
-                            <span className="font-mono text-ink shrink-0">{montant(piece.items)}</span>
-                          </li>
-                        ))}
-                      </ol>
-                    )}
-                  </div>
-                );
-              })()}
-              {piecesEnAttente.length > 0 && piecesPayees.length === 0 && (
-                <div className="p-2.5 mb-2 bg-rose-50 dark:bg-rose-500/10 border border-rose-300 dark:border-rose-500/30 rounded-lg text-[11px] text-rose-800 dark:text-rose-300 font-semibold">
-                  Aucune facture cochée : cochez au moins une ligne du tableau ci-dessus pour l&apos;encaisser (les autres resteront en attente).
-                </div>
-              )}
-              {selPatient.clientType === 'societe' ? (
-                copayDu > 0 ? (
-                  <div className="space-y-2">
-                    <button onClick={handlePayment} className="w-full py-3 bg-amber-600 text-white rounded-xl font-semibold hover:bg-amber-700 cursor-pointer shadow-lg flex items-center justify-center gap-2">
-                      <CreditCard className="w-5 h-5" /> Encaisser {formatAr(copayDu)} + Crédit société {formatAr(partSocieteEffective)}
-                    </button>
-                  </div>
-                ) : (
-                  <button onClick={handlePayment} className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 cursor-pointer shadow-lg flex items-center justify-center gap-2">
-                    <Building2 className="w-5 h-5" /> Valider en Crédit Société {formatAr(partSocieteEffective)}
-                  </button>
-                )
-              ) : (
-                <button onClick={handlePayment} className="w-full py-3 bg-amber-600 text-white rounded-xl font-semibold hover:bg-amber-700 cursor-pointer shadow-lg flex items-center justify-center gap-2">
-                  <CreditCard className="w-5 h-5" /> {getPendingAmount(selPatient) > 0 ? `Encaisser ${formatAr(getPendingAmount(selPatient))}` : 'Valider le passage (0 Ar)'}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       <ConfirmModal
         isOpen={confirmModalState.isOpen}

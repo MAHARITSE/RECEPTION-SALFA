@@ -15,6 +15,7 @@ import { normaliserRecherche } from '../utils/recherche';
 import { suggestionNavKeyDown } from '../utils/suggestionNav';
 import { useFlashInfo, FlashInfoBanner } from './FlashInfo';
 import { baseCommuneCaisse, societeEtPersonneParmi, repartirItemsCaisse, quotePartSiTicketModerateur, natureRemiseEffective } from '../utils/copayCaisse';
+import { hbLineAmt, hbTotalFacture, hbTotalPaye, hbReste } from '../utils/hbDossier';
 import AlerteArticleIndisponible from './AlerteArticleIndisponible';
 import type { ArticleAlertInfo } from './AlerteArticleIndisponible';
 import { printLabResultTicket } from '../utils/printTicket';
@@ -36,10 +37,15 @@ interface Props {
   /** Relecture immédiate des saisies des autres postes (réception, caisse…). */
   onRefreshQueue?: () => void;
 }
-type ViewMode = 'queue' | 'consultation' | 'my_consults';
+type ViewMode = 'queue' | 'consultation' | 'my_consults' | 'hospit_bloc';
 
 export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, onRefreshQueue }: Props) {
   const [view, setView] = useState<ViewMode>('queue');
+  // Vue « Bloc & Hospitalisation » (lecture seule pour le médecin) :
+  // le médecin peut CONSULTER les dossiers d'hospitalisation et de bloc,
+  // sans jamais les modifier (saisie/paiement réservés à la caisse / pharmacie).
+  const [hbFiltre, setHbFiltre] = useState<'tous' | 'hospit' | 'bloc'>('tous');
+  const [hbAfficherSortis, setHbAfficherSortis] = useState(false);
   const [toastFeedback, setToastFeedback] = useState<string | null>(null);
   // Notification rouge centrée : article bloqué en vente par la pharmacie ou en rupture de stock
   const [articleAlert, setArticleAlert] = useState<ArticleAlertInfo | null>(null);
@@ -1208,6 +1214,14 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     submittingRef.current = false;
   };
 
+  // === Vue « Bloc & Hospitalisation » (LECTURE SEULE pour le médecin) ===
+  // Le médecin consulte les dossiers d'hospitalisation et de bloc (patients présents,
+  // lignes, montants, paiements, sortie) mais ne peut rien modifier — la saisie, le
+  // paiement et la sortie restent réservés à la caisse / pharmacie de garde.
+  const hbTous = state.hbRecords || [];
+  const hbActifsCount = hbTous.filter((r) => !r.dischargedAt).length;
+  const hbFiltres = hbTous.filter((r) => (hbAfficherSortis || !r.dischargedAt) && (hbFiltre === 'tous' || r.type === hbFiltre));
+
   return (
     <div className="space-y-3">
       <FlashInfoBanner message={flashMsg} />
@@ -1228,9 +1242,10 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
       )}
       {/* Notification rouge centrée : article bloqué en vente par la pharmacie ou en rupture de stock */}
       <AlerteArticleIndisponible alert={articleAlert} onClose={() => { setArticleAlert(null); setTimeout(() => searchRef.current?.focus(), 50); }} />
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <div className="bg-surface rounded-xl p-4 shadow-sm border cursor-pointer hover:border-amber-400" onClick={() => setView('queue')}><div className="flex items-center gap-3"><div className="p-2 bg-amber-100 dark:bg-amber-500/15 rounded-lg"><Clock className="w-5 h-5 text-amber-600 dark:text-amber-400" /></div><div><div className="text-2xl font-bold">{myWaiting.length}</div><div className="text-sm text-ink-muted">En attente</div></div></div></div>
         <div className="bg-surface rounded-xl p-4 shadow-sm border cursor-pointer hover:border-emerald-400" onClick={() => setView('my_consults')}><div className="flex items-center gap-3"><div className="p-2 bg-green-100 dark:bg-green-500/15 rounded-lg"><CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" /></div><div><div className="text-2xl font-bold">{myTodayConsults.length}</div><div className="text-sm text-ink-muted">Mes consultations (auj.)</div></div></div></div>
+        <div className="bg-surface rounded-xl p-4 shadow-sm border cursor-pointer hover:border-rose-400" onClick={() => setView('hospit_bloc')}><div className="flex items-center gap-3"><div className="p-2 bg-rose-100 dark:bg-rose-500/15 rounded-lg"><Building2 className="w-5 h-5 text-rose-600 dark:text-rose-400" /></div><div><div className="text-2xl font-bold">{hbActifsCount}</div><div className="text-sm text-ink-muted">Bloc & Hospit.</div></div></div></div>
       </div>
 
       {/* MY CONSULTS */}
@@ -1242,6 +1257,68 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
               : myTodayConsults.map((c) => { const pat = state.patients.find((p) => p.id === c.patientId); const st = getConsultStatus(c); const prescriptionIsPaid = isPrescriptionPaid(state, c.id); const prescTotal = c.prescriptions.reduce((s, p) => s + roundTo2(p.unitPrice * p.quantity * (1 - p.discount / 100)), 0); const labTotal = (c.labRequests || []).reduce((s, lr) => s + (lr.price || 0), 0); const echoTotal = (c.echoRequests || []).reduce((s, er) => s + (er.price || 0), 0); const total = prescTotal + labTotal + echoTotal;
                 return (<tr key={c.id} className="border-b hover:bg-surface-muted"><td className="p-2 font-mono">{new Date(c.date).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</td><td className="p-2 font-medium">{pat?.lastName} {pat?.firstName} <span className="text-xs text-ink-faint">({pat?.dossier})</span></td><td className="p-2 text-right font-mono font-bold">{formatAr(total)}{(prescTotal > 0 && !prescriptionIsPaid) ? <span className="block text-[10px] font-normal text-amber-600 dark:text-amber-400">Prescription masquée — paiement requis</span> : (prescriptionIsPaid && prescTotal > 0) || labTotal > 0 || echoTotal > 0 ? <span className="block text-[10px] font-normal text-ink-faint">{prescriptionIsPaid && prescTotal > 0 ? `💊${formatAr(prescTotal)} ` : ''}{labTotal > 0 ? `🧪${formatAr(labTotal)} ` : ''}{echoTotal > 0 ? `📡${formatAr(echoTotal)}` : ''}</span> : ''}</td><td className="p-2 text-center"><span className={`px-2 py-1 rounded-full text-xs font-bold ${st.color}`}>{st.label}</span></td><td className="p-2 text-center flex gap-1 justify-center flex-wrap">{st.canEdit && <button onClick={() => reEditConsultation(c.id)} title={st.editTitle} className={`px-2 py-1 text-white rounded text-xs cursor-pointer ${st.editCancelsPayment ? 'bg-rose-600 hover:bg-rose-700' : 'bg-blue-500 hover:bg-blue-600'}`}><Edit2 className="w-3 h-3 inline" /> {st.editCancelsPayment ? 'Mod. (annule)' : 'Mod.'}</button>}{st.canReturn && <button onClick={() => returnToCashier(c.id)} title="Annuler le paiement et renvoyer en caisse" className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs cursor-pointer"><RotateCcw className="w-3 h-3 inline" /> Caisse</button>}{!st.canEdit && !st.canReturn && <span className="text-[10px] text-ink-faint" title={st.editTitle}>—</span>}</td></tr>); })}</tbody>
           </table></div>
+        </div>
+      )}
+
+      {/* BLOC & HOSPITALISATION — consultation (LECTURE SEULE) pour le médecin */}
+      {view === 'hospit_bloc' && (
+        <div className="space-y-3">
+          <div className="bg-surface rounded-xl shadow-sm border p-3 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="font-semibold flex items-center gap-2 text-ink-strong">
+              <Building2 className="w-5 h-5 text-rose-600 dark:text-rose-400" /> Bloc & Hospitalisation
+              <span className="text-xs text-ink-muted font-normal">— consultation (lecture seule)</span>
+            </h3>
+            <button onClick={() => setView('queue')} className="px-3 py-1 bg-surface-active hover:bg-line-strong rounded text-sm cursor-pointer">← File</button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {([['tous', 'Tous'], ['hospit', '🏨 Hospitalisation'], ['bloc', '🏥 Bloc']] as const).map(([f, lbl]) => (
+              <button key={f} onClick={() => setHbFiltre(f)} className={`px-3 py-1.5 rounded-lg text-sm border cursor-pointer ${hbFiltre === f ? 'bg-rose-600 text-white border-rose-600' : 'bg-surface border-line-strong text-ink-secondary hover:bg-surface-hover'}`}>{lbl}</button>
+            ))}
+            <button onClick={() => setHbAfficherSortis(v => !v)} className="ml-auto px-3 py-1.5 rounded-lg text-sm border cursor-pointer bg-surface border-line-strong text-ink-secondary hover:bg-surface-hover">
+              {hbAfficherSortis ? '🙈 Masquer les sortis' : `👁 Sortis (${hbTous.filter(h => h.dischargedAt).length})`}
+            </button>
+          </div>
+
+          {hbFiltres.length === 0 ? (
+            <div className="text-center py-10 text-ink-faint bg-surface rounded-xl border">Aucun dossier</div>
+          ) : hbFiltres.map(record => {
+            const totalFact = hbTotalFacture(record);
+            const totalPaid = hbTotalPaye(record);
+            const reste = hbReste(record);
+            const estSorti = !!record.dischargedAt;
+            return (
+              <div key={record.id} className="border rounded-lg overflow-hidden border-line bg-surface shadow-sm">
+                <div className="p-3 flex justify-between items-start gap-2 bg-surface-muted">
+                  <div>
+                    <div className="font-bold text-sm flex items-center gap-2 flex-wrap">
+                      {record.patientName}
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${record.type === 'bloc' ? 'bg-blue-100 dark:bg-cyan-500/15 text-blue-700 dark:text-cyan-400' : 'bg-rose-100 dark:bg-rose-500/15 text-rose-700 dark:text-rose-400'}`}>{record.type === 'bloc' ? '🏥 Bloc' : '🏨 Hospit.'}</span>
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${record.clientType === 'societe' ? 'bg-blue-100 dark:bg-cyan-500/15 text-blue-700 dark:text-cyan-400' : 'bg-surface-hover text-ink-secondary'}`}>{record.clientType === 'societe' ? `🏢 ${record.company || 'Société'}${record.subCompany ? ` / ${record.subCompany}` : ''}` : '🏪 Comptoir'}</span>
+                      {estSorti && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-surface-hover text-ink-secondary">🚪 Sorti le {new Date(record.dischargedAt!).toLocaleDateString('fr-FR')}</span>}
+                    </div>
+                    <div className="text-xs text-ink-muted mt-0.5">Facture: <strong>{formatAr(totalFact)}</strong> | Payé: <span className="text-green-600 dark:text-green-400">{formatAr(totalPaid)}</span> | Reste: <span className={reste > 0 ? 'text-red-600 dark:text-red-400 font-bold' : 'text-ink-secondary'}>{formatAr(reste)}</span></div>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[11px]">
+                    <thead className="bg-surface-hover text-ink-secondary"><tr className="divide-x divide-line"><th className="p-1.5 text-left">Article</th><th className="p-1.5 text-center w-10">Qté</th><th className="p-1.5 text-center w-12">Rem%</th><th className="p-1.5 text-right w-24">P.U.</th><th className="p-1.5 text-right w-24">Montant</th></tr></thead>
+                    <tbody className="divide-y font-mono">
+                      {record.lines.length === 0 ? <tr><td colSpan={5} className="p-2 text-center text-ink-faint font-sans">Aucune ligne</td></tr> :
+                        record.lines.map(l => (
+                          <tr key={l.id} className="divide-x divide-line"><td className="p-1.5 font-sans">{l.articleName}</td><td className="p-1.5 text-center">{l.quantity}</td><td className="p-1.5 text-center text-amber-700 dark:text-amber-400 font-semibold">{l.discount ? `${l.discount}%` : '—'}</td><td className="p-1.5 text-right">{formatNum(l.unitPrice)}</td><td className="p-1.5 text-right font-bold">{formatNum(hbLineAmt(l))}</td></tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+                {record.payments.length > 0 && (
+                  <div className="px-3 py-2 border-t border-line text-[11px] text-ink-muted">
+                    <span className="font-semibold">Paiements :</span> {record.payments.map(p => `${formatAr(p.amount)} (${new Date(p.date).toLocaleDateString('fr-FR')})`).join(' · ')}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
