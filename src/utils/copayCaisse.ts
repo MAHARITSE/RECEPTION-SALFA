@@ -140,22 +140,66 @@ export function societeEtPersonneDuPatient(
   return societeEtPersonneParmi(patient, societes, personnes);
 }
 
+const proche = (a: number, b: number) => Math.abs(a - b) <= 0.5;
+
+/**
+ * La pièce d'ESPÈCES du ticket modérateur : quote-part de l'assuré encaissée à
+ * la caisse (jamais créditée à la société). Elle a son propre ticket
+ * (« REÇU — TICKET MODÉRATEUR ») et ses lignes n'appartiennent pas aux factures
+ * des prescriptions.
+ */
+export const estPieceTicketModerateur = (piece: { creditSociete?: boolean; copayTicketModerateur?: unknown }): boolean =>
+  !piece.creditSociete && !!piece.copayTicketModerateur;
+
+/**
+ * PRIX BRUT D'UNE LIGNE — BASE UNIQUE DU PARTAGE SOCIÉTÉ / PATIENT.
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Pour un client société, la remise saisie par le médecin (champ « Rem% ») est
+ * le TICKET MODÉRATEUR : la quote-part de l'assuré. Le brut de référence est
+ * donc le tarif AVANT cette remise. Prendre le montant déjà remisé comme brut
+ * appliquerait le ticket DEUX FOIS (une fois dans le prix, une fois dans la
+ * part laissée au patient) : la société n'était alors créditée que du net du
+ * net.
+ *
+ * Deux formes cohabitent dans la base :
+ *  - montant = BRUT (lignes pharmacie construites par la caisse ; factures
+ *    historiques sans remise) → la remise est un pourcentage de ce montant ;
+ *  - montant = NET de la remise, prix « avec ticket » (actes du médecin :
+ *    analyses, échographies) → le prix unitaire porte le brut.
+ * On retient le brut qui, une fois la remise déduite, redonne EXACTEMENT le
+ * montant enregistré ; à défaut le prix unitaire, et jamais moins que le
+ * montant facturé. Le ticket n'est ainsi compté qu'une seule fois.
+ */
+export function brutLigneDepuisItem(it: InvoiceItem): number {
+  const qty = Number(it.quantity) || 1;
+  const montant = arrondi2(Number(it.amount) || 0);
+  const unitP = Number(it.unitPrice) || 0;
+  const parUnite = arrondi2(unitP * qty);
+  const remise = Math.max(0, Math.min(100, Number(it.discount) || 0));
+  // Pas de remise (ou prix unitaire inconnu) : le montant est le brut.
+  if (remise <= 0 || unitP <= 0) return Math.max(parUnite, montant);
+  // 1. La ligne porte le NET de la remise : le prix unitaire est le brut.
+  if (proche(arrondi2(parUnite * (1 - remise / 100)), montant)) return Math.max(parUnite, montant);
+  const avantTicket = arrondi2(montant / (1 - remise / 100));
+  // 2. Le montant est le prix unitaire × Qté : soit ce montant EST le brut
+  //    (ligne pharmacie, remise appliquée par la caisse), soit le prix unitaire a
+  //    été enregistré déjà remisé (actes d'anciennes factures) → on restitue le
+  //    brut pour que le ticket ne soit pas déduit deux fois.
+  if (proche(parUnite, montant)) return it.category === 'pharmacy' ? montant : avantTicket;
+  // 3. Cas inattendu : on ne descend jamais sous le montant facturé.
+  return Math.max(parUnite, montant);
+}
+
 /** Lignes de répartition (code acte + libellé + montant) à partir de lignes de facture caisse. */
 export function lignesDepuisItems(items: InvoiceItem[] = []) {
   return (items || [])
     .filter(it => (Number(it.amount) || 0) > 0)
-    .map(it => {
-      const qty = Number(it.quantity) || 1;
-      const net = Number(it.amount) || 0;
-      const unitP = Number(it.unitPrice) || 0;
-      const brut = (unitP > 0 && unitP * qty > net) ? unitP * qty : net;
-      return {
-        code: it.code || CODE_PAR_CATEGORIE[it.category] || 'CONS',
-        libelle: it.description || '',
-        totalPrestation: brut,
-        discount: it.discount,
-      };
-    });
+    .map(it => ({
+      code: it.code || CODE_PAR_CATEGORIE[it.category] || 'CONS',
+      libelle: it.description || '',
+      totalPrestation: brutLigneDepuisItem(it),
+      discount: it.discount,
+    }));
 }
 
 /**
@@ -170,13 +214,18 @@ export function repartirItemsCaisse(params: {
   items: InvoiceItem[];
 }): RepartitionCopay {
   const items = params.items || [];
-  const brut = arrondi2(items.reduce((s, it) => s + (Number(it.amount) || 0), 0));
+  // Le BRUT est le tarif conventionné AVANT la remise du médecin : c'est la
+  // même base que celle du partage. Utiliser ici les montants déjà remisés
+  // ferait apparaître un brut égal au net société et un ticket calculé sur un
+  // prix qui l'avait déjà déduit (ticket compté deux fois).
+  const lignes = lignesDepuisItems(items);
+  const brut = arrondi2(lignes.reduce((s, l) => s + l.totalPrestation, 0));
   const nature = natureRemiseEffective(params.societe, params.personne);
   // REMISE : réduction accordée, due ni par l'assuré ni par la société.
   if (nature === 'remise' || !params.societe) {
     return sansCopay({ societe: params.societe, personne: params.personne, brut, nature });
   }
-  const repartition = repartirPrestation(params.societe, lignesDepuisItems(items), params.personne);
+  const repartition = repartirPrestation(params.societe, lignes, params.personne);
   const partSociete = arrondi2(repartition.montantARembourser);
   // Quote-part = brut − part de la société (tout ce qui n'est pas pris en charge
   // reste dû par le patient, exclusions comprises).

@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { LabRequest, Patient, ClientType, LabExamCatalog, LabCategory, Article } from '../types';
-import type { AppState, FactureNumberAllocation } from '../store';
+import type { AppState } from '../store';
 import type { Societe } from '../modules/assurance/types';
-import { allocateFactureNumber, allocateFactureNumberAsync, applySocieteUpsert, collectExistingFactureNumbers } from '../store';
+
 import { SearchableSelect, optionsFromValues } from './SearchableSelect';
 import { SuggestionInput, classerSuggestions, motsIdentite } from './SuggestionInput';
 import MoneyInput from './MoneyInput';
@@ -399,23 +399,12 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
     const total = items.reduce((s, i) => s + i.amount, 0);
     const reqIds: string[] = [];
 
-    // Numérotation officielle de la facture d'analyses en attente :
-    // AAFAMMJJ + ordre du jour (26FA0917001), sans distinction société /
-    // comptoir / externe (FA-MM/CODE = facture GLOBALE mensuelle, module Facturation).
-    // Numéro réservé atomiquement : échec → on alerte et on ne crée RIEN.
-    let allocated: FactureNumberAllocation;
-    try {
-      allocated = await allocateFactureNumberAsync(state, {
-        clientType: ct, company: patient.company, invoiceDate: new Date().toISOString(),
-      });
-    } catch (e) {
-      alert(e instanceof Error ? e.message : 'Numérotation impossible : demande non créée.');
-      return;
-    }
-    const factureUpsert = allocated.societeUpsert;
+    // NUMÉROTATION : la facture d'analyses reste EN ATTENTE, sans numéro, jusqu'au
+    // PAIEMENT à la caisse (numéro officiel AAFAMMJJ + ordre du jour réservé
+    // atomiquement à l'encaissement) — une demande jamais payée ne consomme
+    // aucun numéro.
 
     setState((prev) => {
-      const base = factureUpsert ? applySocieteUpsert(prev, factureUpsert) : prev;
       const newRequests: LabRequest[] = chosen.map((e) => {
         const id = uuidv4();
         reqIds.push(id);
@@ -428,10 +417,12 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
       });
       const inv = {
         id: invoiceId, patientId: patient.id, clientType: ct, items, totalAmount: total,
-        patientCharge: total, numeroFacture: allocated.numeroFacture,
+        patientCharge: total,
+        // Numéro attribué AU PAIEMENT (caisse) — jamais à la demande.
+        numeroFacture: undefined,
         status: 'pending' as const, createdAt: new Date().toISOString(), isExternal: ct === 'externe',
       };
-      const next = { ...base, labRequests: [...base.labRequests, ...newRequests], invoices: [...base.invoices, inv] };
+      const next = { ...prev, labRequests: [...prev.labRequests, ...newRequests], invoices: [...prev.invoices, inv] };
       addAuditLog(next, 'DEMANDE_ANALYSE', `${chosen.map((c) => c.name).join(', ')} — ${formatAr(total)} (${patient.dossier})`, patient.id);
       addJourneyEvent(next, { patientId: patient.id, department: 'laboratoire', action: 'Demande d\'analyse', status: 'analyses_pending', details: `${chosen.map((c) => c.name).join(', ')} — à facturer`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name });
       return next;

@@ -82,7 +82,16 @@ export function collectBillingDocuments(state: AppState): BillingDocument[] {
     subCompany: p.sousSociete,
     consultationDate: localBillingDate(state.consultations.find(c => c.id === state.invoices.find(i => i.id === p.sourceInvoiceId)?.consultationId)?.date || p.date),
     individualGross: p.totalPrestation,
-    individualNet: state.invoices.find(i => i.id === p.sourceInvoiceId)?.patientCharge ?? p.montantARembourser ?? p.totalPrestation - p.participation,
+    // Net de la pièce : le montant crédité à la société, enregistré sur la
+    // facture au paiement. Un `patientCharge` à 0 sur une pièce société
+    // (anciennes pièces enregistrées avant le partage par pièce) ne signifie pas
+    // « rien à facturer » : on retombe alors sur la répartition de la prestation.
+    individualNet: (() => {
+      const enregistre = state.invoices.find(i => i.id === p.sourceInvoiceId)?.patientCharge;
+      return enregistre !== undefined && enregistre > 0
+        ? enregistre
+        : (p.montantARembourser ?? p.totalPrestation - p.participation);
+    })(),
     natureRemise: natureDe(p.societeId, p.personneId),
     total: p.totalPrestation, copay: p.participation, payable: p.montantARembourser ?? p.totalPrestation - p.participation,
     paid: p.totalPaye || 0, rejected: p.montantExclu || 0,
