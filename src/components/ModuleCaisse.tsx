@@ -488,7 +488,6 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         key: s.id,
         invoiceId: s.id,
         consultationId: s.consultationId,
-        label: s.items.some(it => it.category === 'lab') ? 'Analyses' : s.items.some(it => it.category === 'echo') ? 'Échographies' : 'Consultation',
         numero: s.numeroFacture || undefined,
         date: s.createdAt,
         items: s.items,
@@ -497,7 +496,6 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         key: medsPieceKey(c.id),
         invoiceId: undefined,
         consultationId: c.id,
-        label: 'Médicaments',
         numero: undefined,
         date: c.date,
         items: medicationItemsOf([c], patient.clientType),
@@ -506,46 +504,54 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         key: f.id,
         invoiceId: f.id,
         consultationId: f.consultationId,
-        label: 'Médicaments',
         numero: f.numeroFacture || undefined,
         date: f.createdAt,
         items: f.items,
       })),
     ];
-    // ORDRE CHRONOLOGIQUE : les factures d'un dossier se suivent par DATE de
-    // prescription (la plus ancienne d'abord), jamais regroupées par type — une
-    // analyse du 01/09 précède une ordonnance du 08/09, même si l'une est un
-    // « service » et l'autre des « médicaments ».
+    // ORDRE CHRONOLOGIQUE : les prescriptions d'un dossier se suivent par DATE
+    // (la plus ancienne d'abord). AUCUNE classification par famille : chaque
+    // pièce est présentée comme UNE prescription, identifiée par sa date et son
+    // numéro (ou « en attente (sans numéro) »), jamais par « Analyses »,
+    // « Échographies » ou « Médicaments ».
     const chronologique = [...pieces].sort((a, b) => {
       const da = a.date ? new Date(a.date).getTime() : 0;
       const db = b.date ? new Date(b.date).getTime() : 0;
       return (da || 0) - (db || 0);
     });
-    // La date reste affichée dès qu'un même libellé revient (patient revenu) :
-    // elle distingue sans ambiguïté deux pièces du même type.
-    const compte = new Map<string, number>();
-    chronologique.forEach(p => compte.set(p.label, (compte.get(p.label) || 0) + 1));
     return chronologique.map(p => ({
       ...p,
-      detail: (compte.get(p.label) || 0) > 1 && p.date ? new Date(p.date).toLocaleDateString('fr-FR') : undefined,
+      label: p.date
+        ? `Prescription du ${new Date(p.date).toLocaleDateString('fr-FR')}`
+        : 'Prescription',
     }));
   };
 
   /**
-   * FILE D'ATTENTE — UNE LIGNE PAR FACTURE, SUITE CHRONOLOGIQUE.
-   * Chaque pièce en attente occupe sa propre entrée, classée par DATE (le plus
-   * récent en haut, règle de la caisse) : deux pièces du même patient ne sont
-   * JAMAIS regroupées, le même nom ne se succède donc pas plusieurs fois — il
-   * revient à sa place chronologique, entre les autres dossiers.
+   * FILE D'ATTENTE — UN DOSSIER (PATIENT) PAR LIGNE.
+   * Toutes les prescriptions en attente d'un même patient sont regroupées sur
+   * UNE SEULE ligne de la file : le guichet n'a donc qu'un seul bouton « Facturer »
+   * par dossier, qui affiche la somme des prescriptions en attente. Le détail —
+   * une prescription par bloc, avec son numéro — apparaît dans la fenêtre modale.
+   * Aucune fusion pour autant : chaque pièce reste une facture INDÉPENDANTE,
+   * avec son propre numéro.
+   * Classement par date la plus RÉCENTE du dossier (le dernier arrivé en haut).
    */
   const fileAttente = useMemo(() => {
-    type Entree = { patient: Patient; piece: ReturnType<typeof pendingPiecesOf>[number] | null; date?: string | number };
-    const entrees: Entree[] = pendingPatients.flatMap((p): Entree[] => {
-      const pieces = pendingPiecesOf(p, getConsults(p.id));
-      if (!pieces.length) return [{ patient: p, piece: null, date: p.lastVisitAt || p.registeredAt }];
-      return pieces.map((piece): Entree => ({ patient: p, piece, date: piece.date }));
-    });
-    return entrees.sort((a, b) => (Date.parse(String(b.date || '')) || 0) - (Date.parse(String(a.date || '')) || 0));
+    type Entree = { patient: Patient; pieces: ReturnType<typeof pendingPiecesOf>; date?: string | number };
+    return pendingPatients
+      .map((p): Entree => {
+        const pieces = pendingPiecesOf(p, getConsults(p.id));
+        const dates = pieces.map(pc => Date.parse(String(pc.date || '')) || 0).filter(d => d > 0);
+        return {
+          patient: p,
+          pieces,
+          date: dates.length
+            ? Math.max(...dates)
+            : (Date.parse(String(p.lastVisitAt || p.registeredAt || '')) || 0),
+        };
+      })
+      .sort((a, b) => (Number(b.date) || 0) - (Number(a.date) || 0));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingPatients, state.consultations, state.invoices]);
 
@@ -2157,35 +2163,29 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                       title="Rechercher les nouvelles consultations validées par les médecins"
                       className="p-1 rounded-lg text-amber-700 dark:text-amber-400 hover:bg-amber-200/70 dark:hover:bg-amber-500/18 cursor-pointer transition"
                     ><RefreshCw className="w-3.5 h-3.5" /></button>
-                    <span className="px-2 py-0.5 rounded-full bg-amber-600 text-white text-[10px] font-bold" title={`${fileAttente.length} facture(s) en attente — une ligne par facture, dans l'ordre chronologique`}>{fileAttente.length}</span>
+                    <span className="px-2 py-0.5 rounded-full bg-amber-600 text-white text-[10px] font-bold" title={`${fileAttente.length} dossier(s) en attente — un dossier (patient) par ligne, toutes ses prescriptions regroupées`}>{fileAttente.length}</span>
                   </span>
                 </div>
                 <div className="divide-y max-h-[500px] overflow-y-auto">
                   {fileAttente.length === 0 ? <div className="p-6 text-center text-ink-faint text-sm">Aucune facture</div>
-                    : fileAttente.map(({ patient: p, piece, date }, index) => {
+                    : fileAttente.map(({ patient: p, pieces, date }) => {
                       const estSociete = p.clientType === 'societe';
                       const copayFile = getCopayAmount(p);
                       const dateLigne = date ? new Date(date).toLocaleDateString('fr-FR') : undefined;
-                      const montant = piece
-                        ? (estSociete ? brutPiece(piece.items) : roundTo2(piece.items.reduce((ss, it) => ss + (Number(it.amount) || 0), 0)))
+                      // DOSSIER REGROUPÉ : le montant affiché est la somme des pièces
+                      // en attente de TOUTES les prescriptions du patient (les
+                      // médicaments en attente, eux, se lisent dans `getPendingAmount`).
+                      const totalDossier = pieces.length
+                        ? roundTo2(pieces.reduce((s, pc) => s + (estSociete
+                          ? brutPiece(pc.items)
+                          : roundTo2(pc.items.reduce((ss, it) => ss + (Number(it.amount) || 0), 0))), 0))
                         : getPendingAmount(p);
-                      // Retrait de la file = action sur tout le dossier : bouton sur
-                      // la PREMIÈRE ligne du patient seulement.
-                      const premierDuPatient = fileAttente.findIndex(e => e.patient.id === p.id) === index;
-                      const categorie = piece
-                        ? (piece.items.some(it => it.category === 'lab') ? { texte: 'Analyses', classe: 'bg-teal-100 dark:bg-teal-500/15 text-teal-700 dark:text-teal-400' }
-                          : piece.items.some(it => it.category === 'echo') ? { texte: 'Écho', classe: 'bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400' }
-                            : piece.items.some(it => it.category === 'pharmacy') ? { texte: 'Médicaments', classe: 'bg-cyan-100 dark:bg-cyan-500/15 text-cyan-700 dark:text-cyan-400' }
-                              : { texte: 'Consultation', classe: 'bg-sky-100 dark:bg-sky-500/15 text-sky-700 dark:text-sky-400' })
-                        : { texte: 'Passage (0 Ar)', classe: 'bg-surface-hover text-ink-secondary' };
                       return (
                         <div
-                          key={piece ? `${p.id}-${piece.key}` : `${p.id}-passage`}
+                          key={p.id}
                           className={`p-3 cursor-pointer hover:bg-amber-50/60 dark:hover:bg-amber-500/5 transition ${selPatientId === p.id && paymentModalOpen ? 'bg-amber-50 dark:bg-amber-500/8 border-l-4 border-amber-500' : ''}`}
                           onClick={() => openPaymentModal(p.id)}
-                          title={piece
-                            ? `Ouvrir la facturation du dossier : ${piece.label}${piece.detail ? ` — ${piece.detail}` : ''} — toutes les factures en attente y sont listées avec leur total`
-                            : 'Ouvrir la facture en fenêtre modale'}
+                          title={`Ouvrir la facturation du dossier : ${pieces.length} facture(s) en attente, chacune avec son propre numéro — encaissées ensemble`}
                         >
                           <div className="flex justify-between items-start gap-2">
                             <div className="min-w-0">
@@ -2194,28 +2194,26 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                                 {dateLigne ? <span className="text-xs text-ink-muted font-normal"> {dateLigne}</span> : null}
                               </div>
                               <div className="text-xs text-ink-muted truncate">
-                                {piece
-                                  ? <>{piece.label}{piece.numero ? <span className="font-mono"> · n° {piece.numero}</span> : <span> · en attente (sans numéro)</span>}</>
+                                {pieces.length
+                                  ? <>{pieces.length} prescription{pieces.length > 1 ? 's' : ''} en attente</>
                                   : <>{(getConsults(p.id)[0]?.doctorName) || 'Passage sans facturation'}</>}
                                 {p.company ? ` — ${p.company}` : ''}
                               </div>
                             </div>
                             <div className="flex items-start gap-1 shrink-0">
-                              <div className={`font-mono font-bold text-sm ${estSociete ? 'text-blue-700 dark:text-cyan-400' : 'text-amber-700 dark:text-amber-400'}`}>{formatAr(montant)}</div>
-                              {piece && (
+                              <div className={`font-mono font-bold text-sm ${estSociete ? 'text-blue-700 dark:text-cyan-400' : 'text-amber-700 dark:text-amber-400'}`}>{formatAr(totalDossier)}</div>
+                              {pieces.length > 0 && (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); openPaymentModal(p.id); }}
                                   className="px-1.5 py-0.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold cursor-pointer shrink-0"
-                                  title={`Ouvrir la facturation du dossier (${piece.label}${piece.detail ? ` — ${piece.detail}` : ''}) — toutes les factures en attente du patient y sont listées et encaissées ensemble`}
+                                  title={`Ouvrir la facturation du dossier — ${pieces.length} facture(s) en attente listées et encaissées ensemble`}
                                 >Facturer</button>
                               )}
-                              {premierDuPatient && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); removePendingPatient(p.id); }}
-                                  className="p-1 rounded-lg text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-500/15 hover:text-rose-700 dark:hover:text-rose-400 cursor-pointer transition"
-                                  title="Retirer de la file caisse — dossier patient conservé"
-                                ><Trash2 className="w-4 h-4" /></button>
-                              )}
+                              <button
+                                onClick={(e) => { e.stopPropagation(); removePendingPatient(p.id); }}
+                                className="p-1 rounded-lg text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-500/15 hover:text-rose-700 dark:hover:text-rose-400 cursor-pointer transition"
+                                title="Retirer de la file caisse — dossier patient conservé"
+                              ><Trash2 className="w-4 h-4" /></button>
                             </div>
                           </div>
                           <div className="flex gap-1 mt-1 flex-wrap">
@@ -2226,13 +2224,12 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                                 💰 Ticket mod. {formatAr(copayFile)}
                               </span>
                             )}
-                            <span className={`px-1 py-0.5 text-[10px] rounded ${categorie.classe}`}>{categorie.texte}</span>
                           </div>
                         </div>
                       );
                     })}
                 </div>
-                {fileAttente.length > 0 && <div className="px-3 py-1.5 bg-surface-muted border-t text-[10px] text-ink-muted text-center">👆 Une ligne par facture, de la plus récente à la plus ancienne — cliquez pour ouvrir la facturation du dossier (toutes ses factures en attente, chacune avec son total)</div>}
+                {fileAttente.length > 0 && <div className="px-3 py-1.5 bg-surface-muted border-t text-[10px] text-ink-muted text-center">👆 Un dossier par ligne (prescriptions regroupées), du plus récent au plus ancien — cliquez pour facturer : toutes les factures en attente y sont listées, chacune avec son propre numéro</div>}
               </div>
 
               {/* VENTE DIRECTE — CLIENT EXTERNE (affichée à la place du détail de facturation) */}
@@ -3079,20 +3076,19 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                         <th className="p-2 text-center w-8">Rem%</th>
                         <th className="p-2 text-right w-16">P.U.</th>
                         <th className="p-2 text-right w-20">Montant</th>
-                        <th className="p-2 text-center w-16">Catégorie</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
                       {(() => {
                         const unpaidConsults = getConsults(selPatient.id);
                         const pieces = pendingPiecesOf(selPatient, unpaidConsults);
-                        // UNE LIGNE DE TITRE PAR PRESCRIPTION, puis ses articles :
-                        // chaque pièce se COCHE pour être encaissée séparément (les
-                        // prescriptions ne sont jamais fusionnées, même au nom de la
-                        // même personne).
+                        // UNE PRESCRIPTION = UN BLOC : titre (date + numéro, jamais la
+                        // famille), les articles qu'elle contient, et son total. Les
+                        // prescriptions ne sont JAMAIS fusionnées, même au nom de la
+                        // même personne ; toutes sont encaissées ensemble.
                         const societeClient = selPatient.clientType === 'societe';
                         if (pieces.length === 0) {
-                          return <tr><td colSpan={6} className="p-4 text-center text-ink-faint">Aucune prescription</td></tr>;
+                          return <tr><td colSpan={5} className="p-4 text-center text-ink-faint">Aucune prescription</td></tr>;
                         }
                         const lignesDePiece = (piece: typeof pieces[number]) => piece.items.map(it => {
                           const qty = it.quantity || 1;
@@ -3100,29 +3096,20 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                           // (= avant le ticket modérateur) pour un client société ;
                           // net réellement dû par le patient pour le comptoir.
                           const brut = brutLigneDepuisItem(it);
-                          const categorie = it.category === 'pharmacy' ? 'Médicament'
-                            : it.category === 'lab' ? 'Analyse'
-                              : it.category === 'echo' ? 'Échographie'
-                                : it.category === 'consultation' ? 'Consultation' : 'Service';
-                          const categorieCouleur = it.category === 'pharmacy' ? 'bg-cyan-100 dark:bg-cyan-500/15 text-cyan-700 dark:text-cyan-400'
-                            : it.category === 'lab' ? 'bg-teal-100 dark:bg-teal-500/15 text-teal-700 dark:text-teal-400'
-                              : it.category === 'echo' ? 'bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400'
-                                : 'bg-surface-hover text-ink';
                           return {
                             description: it.description, quantity: qty, discount: it.discount || 0,
                             unitPrice: societeClient ? (qty > 0 ? roundTo2(brut / qty) : brut) : (it.unitPrice || it.amount),
                             amount: societeClient ? brut : it.amount,
-                            categorie, categorieCouleur,
                           };
                         });
                         return pieces.flatMap((piece, index) => {
                           const brutPiece = roundTo2(piece.items.reduce((ss, it) => ss + brutLigneDepuisItem(it), 0));
                           return [
                             <tr key={`titre-${piece.key}`} className="border-y border-line bg-amber-50/60 dark:bg-amber-500/8">
-                              <td colSpan={6} className="px-2 py-1">
+                              <td colSpan={5} className="px-2 py-1">
                                 <div className="flex items-center justify-between gap-2 text-[10px] font-bold text-ink-secondary uppercase tracking-wide">
                                   <span className="normal-case">
-                                    <span className="text-ink-faint mr-1">{index + 1}.</span>{piece.label}{piece.detail ? ` — ${piece.detail}` : ''}
+                                    <span className="text-ink-faint mr-1">{index + 1}.</span>{piece.label}
                                     {piece.numero
                                       ? <span className="font-mono text-ink-faint"> · n° {piece.numero}</span>
                                       : <span className="text-ink-faint"> · en attente (sans numéro)</span>}
@@ -3138,7 +3125,6 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                                 <td className="p-2 text-center font-mono text-amber-700 dark:text-amber-400 font-semibold">{item.discount ? `${item.discount}%` : '—'}</td>
                                 <td className="p-2 text-right font-mono">{item.unitPrice ? formatNum(Number(item.unitPrice)) : '—'}</td>
                                 <td className="p-2 text-right font-mono font-bold">{formatNum(item.amount)}</td>
-                                <td className="p-2 text-center"><span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${item.categorieCouleur}`}>{item.categorie}</span></td>
                               </tr>
                             )),
                           ];
@@ -3147,19 +3133,19 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                     </tbody>
                     <tfoot className="bg-amber-50 dark:bg-amber-500/8 border-t-2 border-amber-300 dark:border-amber-500/40">
                       <tr>
-                        <td colSpan={6} className="p-2">
+                        <td colSpan={5} className="p-2">
                           <div className="flex items-center justify-between gap-2 flex-wrap">
                             <span className="text-[10px] text-ink-muted">
-                              {piecesEnAttente.length} facture{piecesEnAttente.length > 1 ? 's' : ''} — toutes encaissées ensemble (jamais fusionnées : une par prescription, avec son propre numéro)
+                              {piecesEnAttente.length} prescription{piecesEnAttente.length > 1 ? 's' : ''} — encaissées ensemble (jamais fusionnées : un numéro de facture chacune)
                             </span>
                           </div>
                         </td>
                       </tr>
                       <tr>
                         <td colSpan={4} className="p-2 text-right font-bold font-sans">
-                          TOTAL {piecesPayees.length ? `(${piecesPayees.length} facture${piecesPayees.length > 1 ? 's' : ''})` : ''} :
+                          TOTAL {piecesPayees.length ? `(${piecesPayees.length} prescription${piecesPayees.length > 1 ? 's' : ''})` : ''} :
                         </td>
-                        <td colSpan={2} className="p-2 text-right font-mono font-bold text-amber-700 dark:text-amber-400 text-sm">
+                        <td className="p-2 text-right font-mono font-bold text-amber-700 dark:text-amber-400 text-sm">
                           {formatAr(selPatient.clientType === 'societe'
                             ? (copayPreview?.brut ?? 0)
                             : roundTo2(piecesPayees.flatMap(piece => piece.items).reduce((ss, it) => ss + (Number(it.amount) || 0), 0)))}
@@ -3187,8 +3173,9 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                       {copayLotPreview.pieces.map(pc => (
                         <tr key={pc.key} className="border-t border-line-soft">
                           <td className="p-1.5">{pc.label}
-                            {pc.detail ? <span className="text-ink-faint"> — {pc.detail}</span> : null}
-                            {pc.numero ? <span className="text-ink-faint"> — {pc.numero}</span> : null}</td>
+                            {pc.numero
+                              ? <span className="text-ink-faint font-mono"> — n° {pc.numero}</span>
+                              : <span className="text-ink-faint"> — en attente (sans numéro)</span>}</td>
                           <td className="p-1.5 text-right font-mono">{formatAr(pc.brut)}</td>
                           <td className={`p-1.5 text-right font-mono font-bold ${copayLotPreview.nature === 'remise' ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
                             {formatAr(copayLotPreview.nature === 'remise' ? pc.remise : pc.quote)}
@@ -3454,8 +3441,8 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                   puis les bons d'examen. */}
               {(() => {
                 const pieces = piecesPayees;
-                const libelle = (p: { label: string; detail?: string }) =>
-                  `${p.label}${p.detail ? ` — ${p.detail}` : ''}`;
+                const libelle = (p: { label: string; numero?: string }) =>
+                  `${p.label}${p.numero ? ` — n° ${p.numero}` : ' — en attente (sans numéro)'}`;
                 const montant = (items: typeof pieces[number]['items']) => formatAr(selPatient.clientType === 'societe'
                   ? items.reduce((s, it) => s + brutLigneDepuisItem(it), 0)
                   : items.reduce((s, it) => s + (Number(it.amount) || 0), 0));
