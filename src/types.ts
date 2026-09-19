@@ -198,6 +198,7 @@ export interface InvoiceItem {
   unitPrice?: number;
   amount: number;
   category: 'consultation' | 'lab' | 'pharmacy' | 'surgery' | 'hospitalization' | 'echo';
+  discount?: number;
 }
 
 /** Demande d'échographie saisie par le médecin */

@@ -16,7 +16,7 @@ import { blockIfUnsavedDraftLine } from '../utils/validation';
 import { normaliserRecherche } from '../utils/recherche';
 import { suggestionNavKeyDown } from '../utils/suggestionNav';
 import { useFlashInfo, FlashInfoBanner } from './FlashInfo';
-import { baseCommuneCaisse, societeEtPersonneParmi, repartirItemsCaisse, quotePartSiTicketModerateur } from '../utils/copayCaisse';
+import { baseCommuneCaisse, societeEtPersonneParmi, repartirItemsCaisse, quotePartSiTicketModerateur, natureRemiseEffective } from '../utils/copayCaisse';
 import AlerteArticleIndisponible from './AlerteArticleIndisponible';
 import type { ArticleAlertInfo } from './AlerteArticleIndisponible';
 import { printLabResultTicket } from '../utils/printTicket';
@@ -223,19 +223,17 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
   };
 
   /**
-   * Taux de remise / ticket modérateur par défaut selon le taux de couverture de la société :
-   * - Si taux de couverture = 80%, la part non couverte (ticket modérateur) = 20%
-   * - Si taux de couverture = 100%, la remise par défaut = 0%
-   * - Si taux de couverture = 70%, la part non couverte = 30%
+   * Taux de remise ou quote-part par défaut selon la société ou l'assuré :
+   * Charge le taux de remise / couverture dès l'ouverture du dossier du patient.
    */
   const getPatientDefaultRemise = (patient: Patient | undefined | null) => {
     if (!patient || (patient.clientType !== 'societe' && (patient.clientType as string) !== 'externe')) return 0;
     const { societe, personne } = societeEtPersonneParmi(patient, baseCommune.societes, baseCommune.personnes);
     const companyObj = state.companies.find((c) => c.name === patient.company || c.id === patient.company);
-    const taux = personne?.tauxCouverture ?? societe?.tauxCouvertureDefaut ?? companyObj?.tauxCouverture ?? 100;
+    const taux = personne?.tauxCouverture ?? societe?.tauxCouvertureDefaut ?? companyObj?.tauxCouverture;
     const numTaux = Number(taux);
     if (Number.isFinite(numTaux) && numTaux > 0 && numTaux <= 100) {
-      return Math.max(0, Math.min(100, 100 - numTaux));
+      return numTaux < 100 ? 100 - numTaux : 0;
     }
     return 0;
   };
@@ -433,11 +431,101 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     return items;
   }, [lines, labDraft, echoDraft, clientType, currentLabCatalog, currentEchoCatalog]);
 
-  const globalCopayInfo = useMemo(
-    () => copayDraftInfo(allDraftItems),
+  const globalCopayInfo = useMemo(() => {
+    if (!selectedPatient || clientType !== 'societe' || (lines.length === 0 && labDraft.length === 0 && echoDraft.length === 0)) return null;
+    const { societe, personne } = societeEtPersonneParmi(selectedPatient, baseCommune.societes, baseCommune.personnes);
+    if (!societe) return { kind: 'unknown' as const, company: selectedPatient.company || 'inconnue' };
+
+    const tauxSociete = Number(societe.tauxCouvertureDefaut) || 80;
+
+    let brutTotal = 0;
+    let partSocieteTotal = 0;
+    let copayTotal = 0;
+
+    lines.forEach((l) => {
+      const b = roundTo2(l.unitPrice * l.quantity);
+      if (b <= 0) return;
+      brutTotal += b;
+      const d = Math.max(0, Math.min(100, l.discount || 0));
+      if (d > 0) {
+        const copay = roundTo2(b * (d / 100));
+        copayTotal += copay;
+        partSocieteTotal += roundTo2(b - copay);
+      } else {
+        const soc = roundTo2(b * (tauxSociete / 100));
+        partSocieteTotal += soc;
+        copayTotal += roundTo2(b - soc);
+      }
+    });
+
+    labDraft.forEach((d) => {
+      const b = roundTo2(priceForExam(d.examId, clientType, d.urgent));
+      if (b <= 0) return;
+      brutTotal += b;
+      const disc = Math.max(0, Math.min(100, d.discount || 0));
+      if (disc > 0) {
+        const copay = roundTo2(b * (disc / 100));
+        copayTotal += copay;
+        partSocieteTotal += roundTo2(b - copay);
+      } else {
+        const soc = roundTo2(b * (tauxSociete / 100));
+        partSocieteTotal += soc;
+        copayTotal += roundTo2(b - soc);
+      }
+    });
+
+    echoDraft.forEach((d) => {
+      const b = roundTo2(echoPriceForExam(d.examId, clientType, d.urgent));
+      if (b <= 0) return;
+      brutTotal += b;
+      const disc = Math.max(0, Math.min(100, d.discount || 0));
+      if (disc > 0) {
+        const copay = roundTo2(b * (disc / 100));
+        copayTotal += copay;
+        partSocieteTotal += roundTo2(b - copay);
+      } else {
+        const soc = roundTo2(b * (tauxSociete / 100));
+        partSocieteTotal += soc;
+        copayTotal += roundTo2(b - soc);
+      }
+    });
+
+    brutTotal = roundTo2(brutTotal);
+    partSocieteTotal = roundTo2(partSocieteTotal);
+    copayTotal = roundTo2(copayTotal);
+
+    const nature = natureRemiseEffective(societe, personne);
+
+    if (nature === 'remise') {
+      return {
+        kind: 'remise' as const,
+        nom: societe.nom,
+        brut: brutTotal,
+        remise: copayTotal,
+        taux: tauxSociete,
+      };
+    }
+
+    if (copayTotal > 0) {
+      return {
+        kind: 'ticket_moderateur' as const,
+        nom: societe.nom,
+        brut: brutTotal,
+        partSociete: partSocieteTotal,
+        copay: copayTotal,
+        taux: tauxSociete,
+        montantExclu: 0,
+      };
+    }
+
+    return {
+      kind: 'integrality' as const,
+      nom: societe.nom,
+      brut: brutTotal,
+      partSociete: brutTotal,
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectedPatient, clientType, allDraftItems, baseCommune, state.articles],
-  );
+  }, [selectedPatient, clientType, lines, labDraft, echoDraft, baseCommune, currentLabCatalog, currentEchoCatalog]);
 
   /**
    * Ligne « prise en charge société » commune aux trois brouillons (médicaments,
@@ -1044,7 +1132,20 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
           : p),
       };
       if (newLabRequests.length > 0 && labInvoiceId) {
-        const labItems = newLabRequests.map((lr) => ({ description: `${lr.examType}${lr.urgent ? ' (Urgent)' : ''}`, quantity: 1, unitPrice: lr.price || 0, amount: lr.price || 0, category: 'lab' as const }));
+        const labItems = newLabRequests.map((lr) => {
+          const discount = lr.discount || 0;
+          const price = lr.price || 0;
+          const unitPrice = discount > 0 ? roundTo2(price / (1 - discount / 100)) : price;
+          return {
+            code: lr.code,
+            description: `${lr.examType}${lr.urgent ? ' (Urgent)' : ''}`,
+            quantity: 1,
+            unitPrice,
+            amount: price,
+            category: 'lab' as const,
+            discount,
+          };
+        });
         const labTotalAmt = labItems.reduce((s, i) => s + i.amount, 0);
         const labInv: Invoice = {
           id: labInvoiceId, patientId: selectedPatientId, consultationId: consultation.id, clientType: ct,
@@ -1056,7 +1157,20 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
         addJourneyEvent(next, { patientId: selectedPatientId, department: 'consultation', action: "Demande d'analyse", status: 'analyses_pending', details: `${newLabRequests.map((r) => r.examType).join(', ')} — à facturer (caisse)`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId: consultation.id });
       }
       if (newEchoRequests.length > 0 && echoInvoiceId) {
-        const echoItems = newEchoRequests.map((er) => ({ description: `${er.examType}${er.urgent ? ' (Urgent)' : ''}`, quantity: 1, unitPrice: er.price || 0, amount: er.price || 0, category: 'echo' as const }));
+        const echoItems = newEchoRequests.map((er) => {
+          const discount = er.discount || 0;
+          const price = er.price || 0;
+          const unitPrice = discount > 0 ? roundTo2(price / (1 - discount / 100)) : price;
+          return {
+            code: 'ECHO',
+            description: `${er.examType}${er.urgent ? ' (Urgent)' : ''}`,
+            quantity: 1,
+            unitPrice,
+            amount: price,
+            category: 'echo' as const,
+            discount,
+          };
+        });
         const echoTotalAmt = echoItems.reduce((s, i) => s + i.amount, 0);
         const echoInv: Invoice = {
           id: echoInvoiceId, patientId: selectedPatientId, consultationId: consultation.id, clientType: ct,
@@ -1692,7 +1806,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                   Prise en charge conventionnée & Synthèse globale
                 </div>
                 <span className="text-xs font-mono font-bold text-ink">
-                  Total consultation : {formatAr(totalPres + labTotal + echoTotal)}
+                  Total consultation : {formatAr(('brut' in globalCopayInfo && globalCopayInfo.brut) ? globalCopayInfo.brut : (totalPres + labTotal + echoTotal))}
                 </span>
               </div>
 

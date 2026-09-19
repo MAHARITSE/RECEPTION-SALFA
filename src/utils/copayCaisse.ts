@@ -3,6 +3,7 @@ import type { CopayTicketModerateur, InvoiceItem, NatureRemise, Patient } from '
 import type { Personne, Societe } from '../modules/assurance/types';
 import { sharedPersonnes, sharedSocietes } from '../modules/assurance/sharedData';
 import { natureRemiseEffective } from '../modules/assurance/utils/natureRemise';
+export { natureRemiseEffective };
 import { repartirPrestation } from '../modules/assurance/utils/societeExclusions';
 
 /**
@@ -143,11 +144,18 @@ export function societeEtPersonneDuPatient(
 export function lignesDepuisItems(items: InvoiceItem[] = []) {
   return (items || [])
     .filter(it => (Number(it.amount) || 0) > 0)
-    .map(it => ({
-      code: it.code || CODE_PAR_CATEGORIE[it.category] || 'CONS',
-      libelle: it.description || '',
-      totalPrestation: Math.max(0, Number(it.amount) || 0),
-    }));
+    .map(it => {
+      const qty = Number(it.quantity) || 1;
+      const net = Number(it.amount) || 0;
+      const unitP = Number(it.unitPrice) || 0;
+      const brut = (unitP > 0 && unitP * qty > net) ? unitP * qty : net;
+      return {
+        code: it.code || CODE_PAR_CATEGORIE[it.category] || 'CONS',
+        libelle: it.description || '',
+        totalPrestation: brut,
+        discount: it.discount,
+      };
+    });
 }
 
 /**

@@ -365,8 +365,10 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       const isComptoir = clientType === 'comptoir';
       const unitaire = (isComptoir && p.discount > 0) ? roundTo2(p.unitPrice * (1 - p.discount / 100)) : p.unitPrice;
       return {
+        code: p.articleId || 'MEDIC',
         description: p.articleName, quantity: p.quantity, unitPrice: unitaire,
         amount: roundTo2(unitaire * p.quantity), category: 'pharmacy' as const,
+        discount: p.discount || 0,
       };
     }));
 
@@ -436,8 +438,24 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     return repartirItemsCaisse({ societe, personne, items });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selPatientId, state.consultations, state.invoices, baseCommune]);
-  /** Montant du ticket modérateur à encaisser (0 = crédit société intégral). */
-  const copayDu = copayPreview?.aEncaisser ? roundTo2(copayPreview.ticketModerateur) : 0;
+
+  // État de surchage manuelle du ticket modérateur par l'opérateur de caisse
+  const [customTicketModerateur, setCustomTicketModerateur] = useState<number | null>(null);
+
+  /** Montant du ticket modérateur indicatif calculé par défaut (taux standard ou contrat) */
+  const defaultCopayDu = copayPreview?.aEncaisser ? roundTo2(copayPreview.ticketModerateur) : 0;
+
+  /** Montant effectif du ticket modérateur (autorisé à être augmenté ou diminué librement par l'opérateur) */
+  const isCustomCopay = customTicketModerateur !== null;
+  const copayDu = isCustomCopay
+    ? roundTo2(Math.max(0, Math.min(copayPreview?.brut || 0, customTicketModerateur)))
+    : defaultCopayDu;
+
+  /** Part prise en charge par la société (Crédit société) calculée dynamiquement */
+  const partSocieteEffective = copayPreview
+    ? roundTo2(Math.max(0, (copayPreview.brut || 0) - copayDu))
+    : (selPatient ? getPendingAmount(selPatient) : 0);
+
   // Espèces reçues pour le ticket modérateur : pré-remplies au montant dû.
   const [copayCash, setCopayCash] = useState('');
   useEffect(() => {
@@ -570,6 +588,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       setPayEditNewCompany('');
       setShowPayClientTypeEdit(false);
     }
+    setCustomTicketModerateur(null);
     const initialCopay = p ? getCopayAmount(p) : 0;
     setCopayCash(initialCopay > 0 ? String(initialCopay) : '');
     setSelPatientId(pid);
@@ -580,6 +599,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     setPaymentModalOpen(false);
     setSelPatientId(null);
     setSelConsultId(null);
+    setCustomTicketModerateur(null);
     setCopayCash('');
   };
 
@@ -608,23 +628,14 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       .filter(svc => !svc.numeroFacture);
     const allocatedNumbers = new Map<string, string>();
     const societeUpserts: Societe[] = [];
-    // Déduplication des items service par description + montant (sécurité anti-doublon)
-    const seen = new Set<string>();
-    const dedupedServiceItems = serviceItems.filter(item => {
-      const key = `${item.description}|${item.amount}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-    const unifiedItems = [...medicationItems, ...dedupedServiceItems];
+    const unifiedItems = [...medicationItems, ...serviceItems];
     const total = unifiedItems.reduce((sum, item) => sum + item.amount, 0);
     const paidAt = new Date().toISOString();
 
     // === TICKET MODÉRATEUR (quote-part de l'assuré) ===
-    // Client société : la part NON prise en charge (taux contractuel + exclusions
-    // d'assuré / de famille d'actes) est encaissée EN ESPÈCES à la caisse et donne
-    // lieu à son propre ticket ; la société n'est créditée que du net. Une vraie
-    // REMISE — ou une prise en charge à 100 % — laisse le crédit société intégral.
+    // Client société : le montant effectif du ticket modérateur (copayDu) peut
+    // être ajusté librement par l'opérateur (augmenté ou diminué) même si le taux
+    // standard est configuré à 80 %. La société est créditée de la différence (partSocieteEffective).
     const { societe: societeCopay, personne: personneCopay } = isSocieteCredit
       ? societeEtPersonneParmi(selPatient, baseCommune.societes, baseCommune.personnes)
       : {};
@@ -637,8 +648,23 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
           ],
         })
       : null;
-    const copay = lotCopay && lotCopay.total.aEncaisser ? lotCopay.total : null;
-    const copayMontant = copay ? roundTo2(copay.ticketModerateur) : 0;
+    const copayMontant = isSocieteCredit ? copayDu : 0;
+    const partSocieteTotale = isSocieteCredit ? partSocieteEffective : total;
+    const effectiveTaux = total > 0 ? roundTo2((partSocieteTotale / total) * 100) : 100;
+    const copay: RepartitionCopay | null = isSocieteCredit && copayMontant > 0
+      ? {
+          societe: societeCopay || undefined,
+          personne: personneCopay || undefined,
+          brut: total,
+          partSociete: partSocieteTotale,
+          ticketModerateur: copayMontant,
+          taux: effectiveTaux,
+          nature: 'ticket_moderateur',
+          aEncaisser: true,
+          montantExclu: copayPreview?.montantExclu || 0,
+          nbActesExclus: copayPreview?.nbActesExclus || 0,
+        }
+      : null;
     /**
      * NATURE « REMISE » (société ou dérogation de l'assuré) : la quote-part du
      * taux contractuel est une vraie remise — personne ne la paye (ni le
@@ -662,15 +688,52 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     }
     /** Répartition facture par facture (net crédité à la société + quote-part). */
     const copayParFacture = new Map<string, RepartitionCopay>();
-    if (copay && lotCopay) {
-      [...serviceInvoices.map(svc => svc.id), ...(medicationItems.length ? [COPAY_MEDS_KEY] : [])]
-        .forEach((clef, index) => { const rep = lotCopay.parFacture[index]; if (rep) copayParFacture.set(clef, rep); });
-      // Anciennes factures pharmacie en attente absorbées par la validation :
-      // même répartition (leurs lignes font partie du lot facturé).
-      for (const facture of state.invoices) {
-        if (facture.patientId === selPatient.id && facture.status === 'pending' && !copayParFacture.has(facture.id)
-          && facture.items.every(it => it.category === 'pharmacy')) {
-          copayParFacture.set(facture.id, repartirItemsCaisse({ societe: societeCopay, personne: personneCopay, items: facture.items }));
+    if (copay && isSocieteCredit && total > 0) {
+      if (isCustomCopay) {
+        // Répartition proportionnelle si le ticket modérateur a été ajusté par l'opérateur
+        const ratioSociete = partSocieteTotale / total;
+        for (const svc of serviceInvoices) {
+          const svcBrut = svc.items.reduce((s, it) => s + it.amount, 0);
+          const svcPartSoc = roundTo2(svcBrut * ratioSociete);
+          const svcCopay = roundTo2(svcBrut - svcPartSoc);
+          copayParFacture.set(svc.id, {
+            societe: societeCopay || undefined,
+            personne: personneCopay || undefined,
+            brut: svcBrut,
+            partSociete: svcPartSoc,
+            ticketModerateur: svcCopay,
+            taux: effectiveTaux,
+            nature: 'ticket_moderateur',
+            aEncaisser: svcCopay > 0,
+            montantExclu: 0,
+            nbActesExclus: 0,
+          });
+        }
+        if (medicationItems.length > 0) {
+          const medsBrut = medicationItems.reduce((sum, it) => sum + it.amount, 0);
+          const medsPartSoc = roundTo2(medsBrut * ratioSociete);
+          const medsCopay = roundTo2(medsBrut - medsPartSoc);
+          copayParFacture.set(COPAY_MEDS_KEY, {
+            societe: societeCopay || undefined,
+            personne: personneCopay || undefined,
+            brut: medsBrut,
+            partSociete: medsPartSoc,
+            ticketModerateur: medsCopay,
+            taux: effectiveTaux,
+            nature: 'ticket_moderateur',
+            aEncaisser: medsCopay > 0,
+            montantExclu: 0,
+            nbActesExclus: 0,
+          });
+        }
+      } else if (lotCopay) {
+        [...serviceInvoices.map(svc => svc.id), ...(medicationItems.length ? [COPAY_MEDS_KEY] : [])]
+          .forEach((clef, index) => { const rep = lotCopay.parFacture[index]; if (rep) copayParFacture.set(clef, rep); });
+        for (const facture of state.invoices) {
+          if (facture.patientId === selPatient.id && facture.status === 'pending' && !copayParFacture.has(facture.id)
+            && facture.items.every(it => it.category === 'pharmacy')) {
+            copayParFacture.set(facture.id, repartirItemsCaisse({ societe: societeCopay, personne: personneCopay, items: facture.items }));
+          }
         }
       }
     }
@@ -826,9 +889,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     const printNumero = inv
       ? inv.numeroFacture
       : (serviceInvoices[0] && (serviceInvoices[0].numeroFacture || allocatedNumbers.get(serviceInvoices[0].id)));
-    // Part créditée à la société sur le ticket de prise en charge : le brut moins
-    // la quote-part encaissée en espèces (inchangée sans ticket modérateur).
-    const partSocieteTotale = copay ? roundTo2(total - copayMontant) : total;
+    // Part créditée à la société sur le ticket de prise en charge :
     const printCopay = copay ? copayMetadata(copay, { numeroFactureSociete: printNumero }) : undefined;
     const printInvoice: Invoice = inv
       ? {
@@ -2084,7 +2145,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                             <button onClick={() => deleteHbRecord(record.id)} className="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs cursor-pointer transition font-medium flex items-center gap-1" title="Supprimer ce dossier (Facture 0 Ar)"><Trash2 className="w-3.5 h-3.5" /> Supprimer</button>
                           )}
                           {reste > 0 && <>
-                            <MoneyInput value={hbPayAmounts[record.id] || 0} onChange={n => setHbPayAmounts(prev => ({ ...prev, [record.id]: Math.max(0, Math.min(n, reste)) }))} className="w-24 px-2 py-1 border rounded text-xs text-right outline-none" placeholder="Montant" ariaLabel="Montant à payer" title="Montant à payer — séparateur de milliers automatique (ex : 49 450)" />
+                            <MoneyInput value={hbPayAmounts[record.id] || 0} onChange={n => setHbPayAmounts(prev => ({ ...prev, [record.id]: Math.max(0, Math.min(n, reste)) }))} decimals={2} className="w-24 px-2 py-1 border rounded text-xs text-right outline-none" placeholder="Montant" ariaLabel="Montant à payer" title="Montant à payer — séparateur de milliers automatique (ex : 49 450,00)" />
                             <button onClick={() => addPartialPay(record.id)} disabled={!hbPayAmounts[record.id] || hbPayAmounts[record.id] > reste} className="px-2 py-1 bg-amber-600 text-white rounded text-xs cursor-pointer disabled:opacity-40">💰 Payer</button>
                           </>}
                           {!record.dischargedAt ? (
@@ -2820,9 +2881,9 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                         const svcInvs = pendingServiceInvoices.filter(i => i.patientId === selPatient.id);
                         const serviceItems = svcInvs.flatMap(i => i.items.map(it => ({
                           description: it.description,
-                          quantity: '',
-                          discount: '',
-                          unitPrice: '',
+                          quantity: it.quantity || 1,
+                          discount: it.discount || 0,
+                          unitPrice: it.unitPrice || it.amount,
                           amount: it.amount,
                           category: it.category === 'lab' ? 'Analyse' : it.category === 'echo' ? 'Échographie' : it.category === 'consultation' ? 'Consultation' : 'Service',
                           categoryColor: it.category === 'lab' ? 'bg-teal-100 dark:bg-teal-500/15 text-teal-700 dark:text-teal-400' : it.category === 'echo' ? 'bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400' : 'bg-surface-hover text-ink',
@@ -2834,7 +2895,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                           <tr key={idx} className="hover:bg-surface-muted">
                             <td className="p-2 font-sans">{item.description}</td>
                             <td className="p-2 text-center font-mono">{item.quantity || '—'}</td>
-                            <td className="p-2 text-center font-mono">{item.discount ? `${item.discount}%` : '—'}</td>
+                            <td className="p-2 text-center font-mono text-amber-700 dark:text-amber-400 font-semibold">{item.discount ? `${item.discount}%` : '—'}</td>
                             <td className="p-2 text-right font-mono">{item.unitPrice ? formatNum(Number(item.unitPrice)) : '—'}</td>
                             <td className="p-2 text-right font-mono font-bold">{formatNum(item.amount)}</td>
                             <td className="p-2 text-center"><span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${item.categoryColor}`}>{item.category}</span></td>
@@ -2852,76 +2913,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                 </div>
               </div>
 
-              {/* === CLIENT SOCIÉTÉ : crédit société + TICKET MODÉRATEUR éventuel === */}
-              {selPatient.clientType === 'societe' && copayDu > 0 && copayPreview && (
-                <div className="p-3 bg-amber-50 dark:bg-amber-500/8 border border-amber-300 dark:border-amber-500/30 rounded-xl mb-3 space-y-2.5">
-                  <div className="flex items-start gap-2.5">
-                    <CreditCard className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                    <div className="text-xs text-amber-900 dark:text-amber-300 leading-relaxed">
-                      <strong>TICKET MODÉRATEUR — {formatAr(copayDu)} à encaisser en espèces.</strong>{' '}
-                      {selPatient.company ? `${selPatient.company} ` : 'La société '}prend en charge{' '}
-                      <strong>{formatAr(copayPreview.partSociete)}</strong>
-                      {copayPreview.taux < 100 ? ` (taux ${formatNum(copayPreview.taux)} %)` : ''} : la quote-part de
-                      l'assuré se règle maintenant à la caisse et un <strong>ticket</strong> lui est remis.
-                      {copayPreview.montantExclu > 0 && (
-                        <span className="block mt-0.5 font-semibold">
-                          Dont acte(s) exclu(s) de la prise en charge : {formatAr(copayPreview.montantExclu)}.
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-end gap-2">
-                    <div className="flex-1 min-w-[160px]">
-                      <div className="flex items-center justify-between mb-0.5">
-                        <label htmlFor="copayCash" className="block text-[11px] font-bold text-amber-900 dark:text-amber-300">
-                          Espèces reçues du patient
-                        </label>
-                        {copayDu > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => setCopayCash(String(copayDu))}
-                            className="text-[10px] font-semibold text-amber-700 hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-200 underline cursor-pointer"
-                          >
-                            Montant exact ({formatAr(copayDu)})
-                          </button>
-                        )}
-                      </div>
-                      <MoneyInput
-                        id="copayCash"
-                        value={Number(copayCash) || 0}
-                        onChange={n => setCopayCash(n === 0 ? '' : String(n))}
-                        ariaLabel="Espèces reçues pour le ticket modérateur"
-                        title="Espèces reçues — séparateur de milliers automatique (ex : 49 450)"
-                        className={`w-full px-3 py-2 border rounded-lg bg-surface font-mono text-sm font-bold focus:outline-none focus:ring-2 ${copayManquant > 0 ? 'border-rose-400 focus:ring-rose-400' : 'border-amber-300 focus:ring-amber-500'}`}
-                      />
-                    </div>
-                    <div className="text-xs font-mono">
-                      {copayManquant > 0 ? (
-                        <span className="font-bold text-rose-600 dark:text-rose-400">Reste à encaisser : {formatAr(copayManquant)}</span>
-                      ) : (
-                        <span className="font-bold text-emerald-700 dark:text-emerald-400">Monnaie à rendre : {formatAr(copayMonnaie)}</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-              {selPatient.clientType === 'societe' && copayDu <= 0 && (
-                <div className="p-3 bg-blue-50 dark:bg-cyan-500/8 border border-blue-200 dark:border-cyan-500/25 rounded-xl mb-3 flex items-start gap-2.5">
-                  <Building2 className="w-5 h-5 text-blue-600 dark:text-cyan-400 shrink-0 mt-0.5" />
-                  <div className="text-xs text-blue-900 dark:text-cyan-300 leading-relaxed">
-                    <strong>Client société{selPatient.company ? ` — ${selPatient.company}` : ''}.</strong>{' '}
-                    {copayPreview?.nature === 'remise'
-                      ? <>Réduction accordée en <strong>REMISE</strong> : rien à encaisser auprès du patient, la caisse valide le paiement en <strong>CRÉDIT SOCIÉTÉ</strong>.</>
-                      : <>Pas de règlement en espèces : la caisse valide le paiement en <strong>CRÉDIT SOCIÉTÉ</strong> — le montant est porté au compte de la société et sera réglé ultérieurement via le module « Facturation ».</>}
-                  </div>
-                </div>
-              )}
-              {selPatient.clientType === 'societe' && copayDu > 0 && copayPreview && (
-                <div className="flex justify-between text-sm font-semibold border-t-2 pt-2 text-ink-secondary">
-                  <span>Total prestations</span>
-                  <span className="font-mono">{formatAr(copayPreview.brut)}</span>
-                </div>
-              )}
+               {/* === CLIENT SOCIÉTÉ : crédit société + TICKET MODÉRATEUR ajustable === */}
               {/* RÉPARTITION PIÈCE PAR PIÈCE : le ticket modérateur / la remise des
                   analyses et échographies du médecin arrive à la caisse visible. */}
               {selPatient.clientType === 'societe' && copayLotPreview && (
@@ -2957,21 +2949,240 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                   </table>
                   {!copayLotPreview.societe && (
                     <div className="p-1.5 text-[10px] bg-orange-50 dark:bg-orange-500/10 text-orange-800 dark:text-orange-300">
-                      ⚠ Société « {selPatient.company || 'inconnue'} » non reconnue dans la base assurance — aucune quote-part calculée (crédit société intégral).
+                      ⚠ Société « {selPatient.company || 'inconnue'} » non reconnue dans la base assurance — quote-part calculée par défaut ou ajustable manuellement.
                     </div>
                   )}
                 </div>
               )}
+
+              {selPatient.clientType === 'societe' && copayPreview && (
+                <div className="p-3 bg-amber-50/80 dark:bg-amber-500/10 border border-amber-300 dark:border-amber-500/30 rounded-xl mb-3 space-y-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
+                      <div>
+                        <div className="text-xs font-bold text-amber-900 dark:text-amber-200">
+                          Client Société{selPatient.company ? ` — ${selPatient.company}` : ''}
+                        </div>
+                        <div className="text-[11px] text-amber-800/90 dark:text-amber-300 flex items-center gap-1.5 flex-wrap mt-0.5">
+                          <span>Couverture Sté : <strong>{formatAr(partSocieteEffective)}</strong> ({copayPreview.brut > 0 ? Math.round((partSocieteEffective / copayPreview.brut) * 100) : copayPreview.taux}%)</span>
+                          <span>•</span>
+                          <span>Ticket modérateur : <strong className="text-amber-900 dark:text-amber-200">{formatAr(copayDu)}</strong> ({copayPreview.brut > 0 ? Math.round((copayDu / copayPreview.brut) * 100) : 0}%)</span>
+                          {isCustomCopay && (
+                            <span className="text-[10px] font-semibold text-amber-800 dark:text-amber-300 bg-amber-200/80 dark:bg-amber-500/25 px-1.5 py-0.2 rounded">
+                              Ajusté
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    {isCustomCopay && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCustomTicketModerateur(null);
+                          setCopayCash(defaultCopayDu > 0 ? String(defaultCopayDu) : '');
+                        }}
+                        className="text-[10px] font-bold text-blue-700 dark:text-cyan-400 bg-blue-50 dark:bg-cyan-500/15 hover:bg-blue-100 px-2 py-1 rounded-md border border-blue-200 dark:border-cyan-500/30 cursor-pointer shrink-0"
+                      >
+                        ↺ Rétablir standard ({formatAr(defaultCopayDu)})
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Encaissement des espèces si ticket modérateur > 0 */}
+                  {copayDu > 0 ? (
+                    <div className="pt-2 border-t border-amber-200 dark:border-amber-500/20 space-y-2">
+                      <div className="flex flex-wrap items-end gap-2">
+                        <div className="flex-1 min-w-[160px]">
+                          <div className="flex items-center justify-between mb-0.5">
+                            <label htmlFor="copayCash" className="block text-[11px] font-bold text-amber-900 dark:text-amber-300">
+                              Espèces reçues du patient :
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => setCopayCash(String(copayDu))}
+                              className="text-[10px] font-semibold text-amber-700 hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-200 underline cursor-pointer"
+                            >
+                              Montant exact ({formatAr(copayDu)})
+                            </button>
+                          </div>
+                          <MoneyInput
+                            id="copayCash"
+                            value={Number(copayCash) || 0}
+                            onChange={n => setCopayCash(n === 0 ? '' : String(n))}
+                            decimals={2}
+                            ariaLabel="Espèces reçues pour le ticket modérateur"
+                            title="Espèces reçues — séparateur de milliers automatique (ex : 49 450,00)"
+                            className={`w-full px-3 py-2 border rounded-lg bg-surface font-mono text-sm font-bold focus:outline-none focus:ring-2 ${copayManquant > 0 ? 'border-rose-400 focus:ring-rose-400' : 'border-amber-300 focus:ring-amber-500'}`}
+                          />
+                        </div>
+                        <div className="text-xs font-mono pb-2">
+                          {copayManquant > 0 ? (
+                            <span className="font-bold text-rose-600 dark:text-rose-400">Reste à encaisser : {formatAr(copayManquant)}</span>
+                          ) : (
+                            <span className="font-bold text-emerald-700 dark:text-emerald-400">Monnaie à rendre : {formatAr(copayMonnaie)}</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-2.5 bg-blue-50/80 dark:bg-cyan-500/10 border border-blue-200 dark:border-cyan-500/20 rounded-lg text-xs text-blue-900 dark:text-cyan-200 flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-blue-600 dark:text-cyan-400 shrink-0" />
+                      <span>Prise en charge intégrale à 100 % : <strong>0 Ar</strong> à la charge du patient, totalité portée en <strong>Crédit Société ({formatAr(copayPreview.brut)})</strong>.</span>
+                    </div>
+                  )}
+
+                  {/* Raccourcis ajustement en bas de espèces reçues du patient */}
+                  <div className="pt-2 border-t border-amber-200 dark:border-amber-500/20">
+                    <div className="flex flex-wrap items-center justify-between gap-1.5 text-[11px]">
+                      <div className="flex flex-wrap items-center gap-1">
+                        <span className="text-amber-900/80 dark:text-amber-300 font-semibold text-[10px] mr-1">Raccourcis ajustement :</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCustomTicketModerateur(0);
+                            setCopayCash('');
+                          }}
+                          className={`px-2 py-0.5 rounded font-semibold cursor-pointer transition ${copayDu === 0 ? 'bg-blue-600 text-white' : 'bg-surface hover:bg-surface-hover text-ink border border-amber-300 dark:border-amber-500/30'}`}
+                        >
+                          0% (100% Sté)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = roundTo2(copayPreview.brut * 0.1);
+                            setCustomTicketModerateur(next);
+                            setCopayCash(next > 0 ? String(next) : '');
+                          }}
+                          className={`px-2 py-0.5 rounded font-semibold cursor-pointer transition ${Math.round((copayDu / (copayPreview.brut || 1)) * 100) === 10 ? 'bg-amber-600 text-white' : 'bg-surface hover:bg-surface-hover text-ink border border-amber-300 dark:border-amber-500/30'}`}
+                        >
+                          10%
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = roundTo2(copayPreview.brut * 0.2);
+                            setCustomTicketModerateur(next);
+                            setCopayCash(next > 0 ? String(next) : '');
+                          }}
+                          className={`px-2 py-0.5 rounded font-semibold cursor-pointer transition ${Math.round((copayDu / (copayPreview.brut || 1)) * 100) === 20 ? 'bg-amber-600 text-white' : 'bg-surface hover:bg-surface-hover text-ink border border-amber-300 dark:border-amber-500/30'}`}
+                        >
+                          20% (Standard)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = roundTo2(copayPreview.brut * 0.3);
+                            setCustomTicketModerateur(next);
+                            setCopayCash(next > 0 ? String(next) : '');
+                          }}
+                          className={`px-2 py-0.5 rounded font-semibold cursor-pointer transition ${Math.round((copayDu / (copayPreview.brut || 1)) * 100) === 30 ? 'bg-amber-600 text-white' : 'bg-surface hover:bg-surface-hover text-ink border border-amber-300 dark:border-amber-500/30'}`}
+                        >
+                          30%
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = roundTo2(copayPreview.brut * 0.5);
+                            setCustomTicketModerateur(next);
+                            setCopayCash(next > 0 ? String(next) : '');
+                          }}
+                          className={`px-2 py-0.5 rounded font-semibold cursor-pointer transition ${Math.round((copayDu / (copayPreview.brut || 1)) * 100) === 50 ? 'bg-amber-600 text-white' : 'bg-surface hover:bg-surface-hover text-ink border border-amber-300 dark:border-amber-500/30'}`}
+                        >
+                          50%
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = copayPreview.brut;
+                            setCustomTicketModerateur(next);
+                            setCopayCash(next > 0 ? String(next) : '');
+                          }}
+                          className={`px-2 py-0.5 rounded font-semibold cursor-pointer transition ${copayDu === copayPreview.brut ? 'bg-amber-600 text-white' : 'bg-surface hover:bg-surface-hover text-ink border border-amber-300 dark:border-amber-500/30'}`}
+                        >
+                          100% (Tout patient)
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          title="Diminuer de 5 000 Ar"
+                          onClick={() => {
+                            const next = Math.max(0, copayDu - 5000);
+                            setCustomTicketModerateur(next);
+                            setCopayCash(next > 0 ? String(next) : '');
+                          }}
+                          className="px-1.5 py-0.5 text-[10px] font-bold bg-surface hover:bg-surface-hover border border-amber-300 dark:border-amber-500/30 rounded text-ink cursor-pointer"
+                        >
+                          -5k
+                        </button>
+                        <button
+                          type="button"
+                          title="Diminuer de 1 000 Ar"
+                          onClick={() => {
+                            const next = Math.max(0, copayDu - 1000);
+                            setCustomTicketModerateur(next);
+                            setCopayCash(next > 0 ? String(next) : '');
+                          }}
+                          className="px-1.5 py-0.5 text-[10px] font-bold bg-surface hover:bg-surface-hover border border-amber-300 dark:border-amber-500/30 rounded text-ink cursor-pointer"
+                        >
+                          -1k
+                        </button>
+                        <button
+                          type="button"
+                          title="Augmenter de 1 000 Ar"
+                          onClick={() => {
+                            const next = Math.min(copayPreview.brut, copayDu + 1000);
+                            setCustomTicketModerateur(next);
+                            setCopayCash(next > 0 ? String(next) : '');
+                          }}
+                          className="px-1.5 py-0.5 text-[10px] font-bold bg-surface hover:bg-surface-hover border border-amber-300 dark:border-amber-500/30 rounded text-ink cursor-pointer"
+                        >
+                          +1k
+                        </button>
+                        <button
+                          type="button"
+                          title="Augmenter de 5 000 Ar"
+                          onClick={() => {
+                            const next = Math.min(copayPreview.brut, copayDu + 5000);
+                            setCustomTicketModerateur(next);
+                            setCopayCash(next > 0 ? String(next) : '');
+                          }}
+                          className="px-1.5 py-0.5 text-[10px] font-bold bg-surface hover:bg-surface-hover border border-amber-300 dark:border-amber-500/30 rounded text-ink cursor-pointer"
+                        >
+                          +5k
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {selPatient.clientType === 'societe' && !copayPreview && (
+                <div className="p-3 bg-blue-50 dark:bg-cyan-500/8 border border-blue-200 dark:border-cyan-500/25 rounded-xl mb-3 flex items-start gap-2.5">
+                  <Building2 className="w-5 h-5 text-blue-600 dark:text-cyan-400 shrink-0 mt-0.5" />
+                  <div className="text-xs text-blue-900 dark:text-cyan-300 leading-relaxed">
+                    <strong>Client société{selPatient.company ? ` — ${selPatient.company}` : ''}.</strong>{' '}
+                    Pas de règlement en espèces : la caisse valide le paiement en <strong>CRÉDIT SOCIÉTÉ</strong> — le montant est porté au compte de la société et sera réglé ultérieurement via le module « Facturation ».
+                  </div>
+                </div>
+              )}
+              {selPatient.clientType === 'societe' && copayPreview && (
+                <div className="flex justify-between text-sm font-semibold border-t-2 pt-2 text-ink-secondary">
+                  <span>Total prestations</span>
+                  <span className="font-mono">{formatAr(copayPreview.brut)}</span>
+                </div>
+              )}
               <div className={`flex justify-between text-xl font-bold ${selPatient.clientType === 'societe' ? 'text-blue-800 dark:text-cyan-300' : ''} ${copayDu > 0 ? 'pt-1' : 'border-t-2 pt-2'} mb-2`}>
-                <span>{selPatient.clientType === 'societe' ? 'MONTANT À PORTER EN CRÉDIT SOCIÉTÉ' : 'À PAYER'}</span>
+                <span>{selPatient.clientType === 'societe' ? 'MONTANT EN CRÉDIT SOCIÉTÉ' : 'À PAYER'}</span>
                 <span className={`font-mono ${selPatient.clientType === 'societe' ? 'text-blue-600 dark:text-cyan-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                  {formatAr(selPatient.clientType === 'societe' && copayPreview ? copayPreview.partSociete : getPendingAmount(selPatient))}
+                  {formatAr(selPatient.clientType === 'societe' && copayPreview ? partSocieteEffective : getPendingAmount(selPatient))}
                 </span>
               </div>
               {selPatient.clientType === 'societe' && copayPreview && (
                 <div className={`flex justify-between items-center rounded-lg px-2.5 py-1.5 mb-4 border ${copayDu > 0 ? 'bg-amber-50 dark:bg-amber-500/10 border-amber-300 dark:border-amber-500/25' : 'bg-surface-muted border-line'}`}>
                   <span className={`font-bold text-sm ${copayDu > 0 ? 'text-amber-800 dark:text-amber-300' : 'text-ink-secondary'}`}>
-                    PART À PAYER PAR LE PATIENT{copayPreview.nature === 'remise' ? ' (remise — non due)' : copayDu > 0 ? ' (ticket modérateur)' : ''}
+                    PART À PAYER PAR LE PATIENT{copayDu > 0 ? ' (TICKET MODÉRATEUR)' : ' (0 Ar — PRIS EN CHARGE)'}
                   </span>
                   <span className={`font-mono font-bold text-base ${copayDu > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-ink'}`}>
                     {formatAr(copayDu)}
@@ -2981,18 +3192,14 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
               {selPatient.clientType === 'societe' ? (
                 copayDu > 0 ? (
                   <div className="space-y-2">
-                    <div className="flex justify-between text-xl font-bold text-amber-700 dark:text-amber-400">
-                      <span>À ENCAISSER (TICKET MODÉRATEUR)</span>
-                      <span className="font-mono">{formatAr(copayDu)}</span>
-                    </div>
                     <button onClick={handlePayment} className="w-full py-3 bg-amber-600 text-white rounded-xl font-semibold hover:bg-amber-700 cursor-pointer shadow-lg flex items-center justify-center gap-2">
-                      <CreditCard className="w-5 h-5" /> Encaisser {formatAr(copayDu)} + crédit société {formatAr(copayPreview?.partSociete || 0)}
+                      <CreditCard className="w-5 h-5" /> Encaisser {formatAr(copayDu)} + Crédit société {formatAr(partSocieteEffective)}
                     </button>
                   </div>
                 ) : (
-                <button onClick={handlePayment} className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 cursor-pointer shadow-lg flex items-center justify-center gap-2">
-                  <Building2 className="w-5 h-5" /> Valider en Crédit Société {formatAr(getPendingAmount(selPatient))}
-                </button>
+                  <button onClick={handlePayment} className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 cursor-pointer shadow-lg flex items-center justify-center gap-2">
+                    <Building2 className="w-5 h-5" /> Valider en Crédit Société {formatAr(partSocieteEffective)}
+                  </button>
                 )
               ) : (
                 <button onClick={handlePayment} className="w-full py-3 bg-amber-600 text-white rounded-xl font-semibold hover:bg-amber-700 cursor-pointer shadow-lg flex items-center justify-center gap-2">

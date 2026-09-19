@@ -115,7 +115,7 @@ const clampTaux = (taux: number) => Math.max(0, Math.min(100, Number.isFinite(ta
  */
 export function repartirActe(
   societe: Societe | undefined | null,
-  ligne: Pick<LignePrestation, 'totalPrestation' | 'code' | 'libelle'>,
+  ligne: Pick<LignePrestation, 'totalPrestation' | 'code' | 'libelle'> & { discount?: number },
   personne?: Partial<Personne> | null,
 ): RepartitionActe {
   const total = Math.max(0, Number(ligne.totalPrestation) || 0);
@@ -124,7 +124,16 @@ export function repartirActe(
   const exclusionAssure = exclusionPersonne(societe, personne);
   const exclusion = exclusionAssure || exclusionActe(societe, ligne);
   const tauxExclusion = exclusion ? clampTaux(exclusion.tauxPriseEnCharge ?? 0) : null;
-  const taux = tauxExclusion == null ? tauxContrat : Math.min(tauxContrat, tauxExclusion);
+  
+  let taux: number;
+  if (tauxExclusion != null) {
+    taux = Math.min(tauxContrat, tauxExclusion);
+  } else if (ligne.discount !== undefined && ligne.discount !== null && Number(ligne.discount) > 0) {
+    // Si un % de réduction / ticket modérateur a été saisi par le médecin, on le conserve (ex: 30% -> couverture société 70%)
+    taux = clampTaux(100 - Number(ligne.discount));
+  } else {
+    taux = tauxContrat;
+  }
 
   const montantARembourser = Math.round(total * (taux / 100));
   const ticketModerateur = Math.max(0, total - montantARembourser);
