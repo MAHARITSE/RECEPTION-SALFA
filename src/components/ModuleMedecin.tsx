@@ -1,20 +1,23 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { Consultation, VitalSigns, Prescription, LabRequest, ClientType, Invoice, EchoRequest, PatientStatus, Patient, Article } from '../types';
+import type { Consultation, VitalSigns, Prescription, LabRequest, ClientType, Invoice, EchoRequest, PatientStatus, Patient, Article, HbLine, HbRecord } from '../types';
 import type { AppState } from '../store';
 import { SearchableSelect, optionsFromValues } from './SearchableSelect';
 import { SuggestionInput, classerSuggestions } from './SuggestionInput';
 import {
   addAuditLog, addNotification, formatAr, formatNum, roundTo2, getPrice, addJourneyEvent,
   labCategoryLabel, purgePatientFromQueue, isPrescriptionPaid, isMedicationEntryFamily,
-  getEchoCatalog, getLabCatalog, DEFAULT_ECHO_CATALOG, familyManagesStock, companyIsBlocked, companyOptions, sousSocietesConnues
+  getEchoCatalog, getLabCatalog, DEFAULT_ECHO_CATALOG, familyManagesStock, companyIsBlocked, companyOptions, sousSocietesConnues,
+  allocateFactureNumbersAsync, applySocieteUpsert,
 } from '../store';
+import MoneyInput from './MoneyInput';
 import type { EchoExamCatalog } from '../store';
 import { blockIfUnsavedDraftLine } from '../utils/validation';
 import { normaliserRecherche } from '../utils/recherche';
 import { suggestionNavKeyDown } from '../utils/suggestionNav';
 import { useFlashInfo, FlashInfoBanner } from './FlashInfo';
 import { baseCommuneCaisse, societeEtPersonneParmi, repartirItemsCaisse, quotePartSiTicketModerateur, natureRemiseEffective } from '../utils/copayCaisse';
+import { hbLineAmt, hbTotalFacture, hbTotalPaye, hbReste } from '../utils/hbDossier';
 import AlerteArticleIndisponible from './AlerteArticleIndisponible';
 import type { ArticleAlertInfo } from './AlerteArticleIndisponible';
 import { printLabResultTicket } from '../utils/printTicket';
@@ -22,7 +25,7 @@ import { PhoneInput } from './PhoneInput';
 import {
   Stethoscope, History, Trash2, AlertTriangle, Heart, FileText, Clock, CheckCircle,
   Send, Search, Edit2, RotateCcw, Save, FlaskConical, Scan, Plus, X, Droplets,
-  Users, Printer, Eye, CheckCircle2, RefreshCw, Building2, ShieldCheck,
+  Users, Printer, Eye, CheckCircle2, RefreshCw, Building2, ShieldCheck, UserPlus,
 } from 'lucide-react';
 import { Select } from './Select';
 
@@ -36,10 +39,31 @@ interface Props {
   /** Relecture immédiate des saisies des autres postes (réception, caisse…). */
   onRefreshQueue?: () => void;
 }
-type ViewMode = 'queue' | 'consultation' | 'my_consults';
+type ViewMode = 'queue' | 'consultation' | 'my_consults' | 'hospit_bloc';
 
 export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, onRefreshQueue }: Props) {
   const [view, setView] = useState<ViewMode>('queue');
+  // Vue « Bloc & Hospitalisation » (lecture seule pour le médecin) :
+  // le médecin peut CONSULTER les dossiers d'hospitalisation et de bloc,
+  // sans jamais les modifier (saisie/paiement réservés à la caisse / pharmacie).
+  const [hbFiltre, setHbFiltre] = useState<'tous' | 'hospit' | 'bloc'>('tous');
+  const [hbAfficherSortis, setHbAfficherSortis] = useState(false);
+  // Prescriptions du médecin DANS un dossier de bloc / d'hospitalisation :
+  // la liste est partagée (caisse, pharmacie de garde, bloc) — c'est le
+  // PAIEMENT qui fait foi, quelle que soit la personne qui a saisi.
+  const [hbPrescritRecordId, setHbPrescritRecordId] = useState<string | null>(null);
+  const hbArtRef = useRef<HTMLInputElement>(null);
+  const [hbArtSearch, setHbArtSearch] = useState('');
+  const [hbArtIdx, setHbArtIdx] = useState(0);
+  const [hbArtIsNew, setHbArtIsNew] = useState(true);
+  const [hbArtSelLineId, setHbArtSelLineId] = useState<string | null>(null);
+  const [hbArtForm, setHbArtForm] = useState<HbLine>({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: new Date().toISOString().split('T')[0] });
+  // Ouverture d'un dossier (admission) par le médecin, quand le patient n'y est pas encore.
+  const [hbNewDossierOpen, setHbNewDossierOpen] = useState(false);
+  const [hbNewDossierType, setHbNewDossierType] = useState<'hospit' | 'bloc'>('hospit');
+  const [hbNewDossierSearch, setHbNewDossierSearch] = useState('');
+  const [hbNewDossierIdx, setHbNewDossierIdx] = useState(0);
+  const [hbNewDossierBusy, setHbNewDossierBusy] = useState(false);
   const [toastFeedback, setToastFeedback] = useState<string | null>(null);
   // Notification rouge centrée : article bloqué en vente par la pharmacie ou en rupture de stock
   const [articleAlert, setArticleAlert] = useState<ArticleAlertInfo | null>(null);
@@ -1208,6 +1232,173 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     submittingRef.current = false;
   };
 
+  // === Vue « Bloc & Hospitalisation » ===
+  // Le médecin PRESCRIT des actes / articles sur un dossier d'hospitalisation ou
+  // de bloc (liste partagée avec la caisse et la pharmacie de garde : c'est le
+  // PAIEMENT qui fait foi). Le règlement, la sortie et la clôture restent en
+  // revanche réservés à la caisse / pharmacie — le médecin n'y touche pas.
+  const hbTous = state.hbRecords || [];
+  const hbActifsCount = hbTous.filter((r) => !r.dischargedAt).length;
+  const hbFiltres = hbTous.filter((r) => (hbAfficherSortis || !r.dischargedAt) && (hbFiltre === 'tous' || r.type === hbFiltre));
+
+  /** Écrit une mise à jour des dossiers Bloc/Hospitalisation (liste partagée). */
+  const majHbRecords = (updater: (prev: HbRecord[]) => HbRecord[]) =>
+    setState(prev => ({ ...prev, hbRecords: updater(prev.hbRecords || []) }));
+
+  /**
+   * Articles proposés au médecin pour une prescription de bloc / hospit :
+   * TOUTES les familles sont ouvertes (soins, médicaments, actes…) sauf les
+   * articles bloqués à la vente par la pharmacie, qui ne peuvent pas être facturés.
+   */
+  const hbArtFiltered = hbArtSearch.length >= 1
+    ? state.articles.filter((a) => {
+        if (a.saleBlocked) return false;
+        const q = normaliserRecherche(hbArtSearch);
+        return q === '' || normaliserRecherche(a.name).includes(q);
+      })
+    : [];
+
+  const hbArtNew = () => {
+    // La date d'acte / de sortie n'est jamais effacée : plusieurs sorties le même jour.
+    setHbArtForm(prev => ({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: prev.dateSort || new Date().toISOString().split('T')[0] }));
+    setHbArtSelLineId(null);
+    setHbArtIsNew(true);
+    setHbArtSearch('');
+    setTimeout(() => hbArtRef.current?.focus(), 50);
+  };
+
+  const hbArtSelectArticle = (articleId: string) => {
+    const a = state.articles.find(x => x.id === articleId);
+    if (!a) return;
+    const av = articleAvailability(a);
+    // Contrôles stock : un article en rupture ne peut pas être prescrit/facturé.
+    if (av.outOfStock) {
+      setArticleAlert({
+        kind: 'out_of_stock',
+        title: '🚨 Rupture de stock pharmacie',
+        message: `« ${a.name} » — stock pharmacie = ${a.stockPharmacie}`,
+        hint: "Cet article ne pourra pas être délivré ni facturé. Prescrivez une alternative ou demandez un réapprovisionnement à la pharmacie.",
+      });
+      setHbArtSearch('');
+      return;
+    }
+    const rec = hbTous.find(r => r.id === hbPrescritRecordId);
+    setHbArtForm(prev => ({ id: uuidv4(), articleName: a.name, quantity: 1, unitPrice: getPrice(a, rec?.clientType || 'comptoir'), discount: 0, dateSort: prev.dateSort || new Date().toISOString().split('T')[0] }));
+    setHbArtIsNew(true);
+    setHbArtSelLineId(null);
+    setHbArtSearch('');
+    setTimeout(() => { const el = document.getElementById('hb-med-qty'); el?.focus(); (el as HTMLInputElement)?.select(); }, 50);
+  };
+
+  const hbArtSave = () => {
+    const rec = hbTous.find(r => r.id === hbPrescritRecordId);
+    if (!rec || !hbArtForm.articleName) return;
+    const art = state.articles.find(a => a.name === hbArtForm.articleName);
+    if (art && articleAvailability(art).outOfStock) {
+      setArticleAlert({
+        kind: 'out_of_stock',
+        title: '🚨 Rupture de stock pharmacie',
+        message: `« ${art.name} » — stock pharmacie = ${art.stockPharmacie}`,
+        hint: 'Cet article ne pourra pas être délivré ni facturé.',
+      });
+      return;
+    }
+    const ligne: HbLine = { ...hbArtForm, dateSort: hbArtForm.dateSort || new Date().toISOString().split('T')[0] };
+    majHbRecords(prev => prev.map(r => r.id === rec.id ? {
+      ...r,
+      lines: hbArtIsNew || !r.lines.some(l => l.id === hbArtForm.id)
+        ? [...r.lines, { ...ligne, id: ligne.id || uuidv4() }]
+        : r.lines.map(l => l.id === hbArtForm.id ? ligne : l),
+    } : r));
+    setState(prev => {
+      const next = { ...prev };
+      addAuditLog(next, 'PRESCRIPTION_BLOC_HOSPIT', `${rec.patientName} — ${ligne.articleName} × ${ligne.quantity} (${formatAr(hbLineAmt(ligne))}) ${rec.type === 'hospit' ? 'hospitalisation' : 'bloc'} par Dr. ${prev.currentUser?.name || ''}`, rec.patientId);
+      return next;
+    });
+    setToastFeedback(`Prescription ajoutée au dossier ${rec.type === 'hospit' ? "d'hospitalisation" : 'de bloc'} de ${rec.patientName}.`);
+    setTimeout(() => setToastFeedback(null), 3000);
+    hbArtNew();
+  };
+
+  const hbArtDelete = (lineId: string) => {
+    const rec = hbTous.find(r => r.id === hbPrescritRecordId);
+    if (!rec) return;
+    const ligne = rec.lines.find(l => l.id === lineId);
+    majHbRecords(prev => prev.map(r => r.id === rec.id ? { ...r, lines: r.lines.filter(l => l.id !== lineId) } : r));
+    setState(prev => {
+      const next = { ...prev };
+      addAuditLog(next, 'SUPPRESSION_PRESCRIPTION_BLOC_HOSPIT', `${rec.patientName} — ${ligne?.articleName || 'ligne'} retirée du dossier ${rec.type === 'hospit' ? 'hospitalisation' : 'bloc'} par Dr. ${prev.currentUser?.name || ''}`, rec.patientId);
+      return next;
+    });
+    if (hbArtSelLineId === lineId) hbArtNew();
+  };
+
+  const hbArtKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setHbArtIdx(i => Math.min(i + 1, hbArtFiltered.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setHbArtIdx(i => Math.max(i - 1, 0)); }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (hbArtFiltered.length > 0 && hbArtSearch) hbArtSelectArticle(hbArtFiltered[hbArtIdx].id);
+      else if (hbArtForm.articleName) hbArtSave();
+    }
+    else if (e.key === 'Escape') setHbArtSearch('');
+  };
+
+  /** Ouvre (admet) un dossier de bloc / hospitalisation pour un patient. */
+  const hbPatientsFiltered = hbNewDossierSearch.length >= 1
+    ? state.patients.filter(p => {
+        const q = normaliserRecherche(hbNewDossierSearch);
+        return q === '' || normaliserRecherche(`${p.lastName} ${p.firstName}`).includes(q) || normaliserRecherche(p.dossier).includes(q);
+      })
+    : [];
+
+  const hbOuvrirDossier = async (patientId: string) => {
+    const p = state.patients.find(x => x.id === patientId);
+    if (!p || hbNewDossierBusy) return;
+    // Anti-doublon : un patient n'a qu'un dossier ouvert par type.
+    if (hbTous.some(r => r.patientId === p.id && r.type === hbNewDossierType && !r.dischargedAt)) {
+      setToastFeedback(`${p.lastName} ${p.firstName} a déjà un dossier ${hbNewDossierType === 'hospit' ? "d'hospitalisation" : 'de bloc'} ouvert.`);
+      setTimeout(() => setToastFeedback(null), 4000);
+      return;
+    }
+    setHbNewDossierBusy(true);
+    const now = new Date().toISOString();
+    let numeroFacture: string;
+    try {
+      const allocated = await allocateFactureNumbersAsync(state, [{
+        clientType: p.clientType, company: p.company, invoiceDate: now, prescriptionDate: now,
+      }]);
+      numeroFacture = allocated[0].numeroFacture;
+      if (allocated[0].societeUpsert) {
+        const upsert = allocated[0].societeUpsert;
+        setState(prev => applySocieteUpsert(prev, upsert));
+      }
+    } catch (e) {
+      setHbNewDossierBusy(false);
+      setToastFeedback(e instanceof Error ? e.message : 'Numérotation impossible : dossier non créé.');
+      setTimeout(() => setToastFeedback(null), 6000);
+      return;
+    }
+    majHbRecords(prev => [...prev, {
+      id: uuidv4(), patientId: p.id, patientName: `${p.lastName} ${p.firstName}`,
+      clientType: p.clientType, company: p.company, subCompany: p.subCompany,
+      numeroFacture, type: hbNewDossierType, lines: [], payments: [],
+      openedAt: now, openedBy: state.currentUser?.name, openedByUserId: state.currentUser?.id,
+    }]);
+    setState(prev => {
+      const next = { ...prev };
+      addAuditLog(next, 'OUVERTURE_DOSSIER_BLOC_HOSPIT', `${p.lastName} ${p.firstName} (${p.dossier}) — dossier ${hbNewDossierType === 'hospit' ? "d'hospitalisation" : 'de bloc'} ouvert par Dr. ${prev.currentUser?.name || ''} (${numeroFacture})`, p.id);
+      addJourneyEvent(next, { patientId: p.id, department: 'consultation', action: hbNewDossierType === 'hospit' ? "Admission en hospitalisation" : 'Admission au bloc', status: p.status, details: `Dossier ${numeroFacture} ouvert par Dr. ${prev.currentUser?.name || ''}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name });
+      return next;
+    });
+    setHbNewDossierBusy(false);
+    setHbNewDossierOpen(false);
+    setHbNewDossierSearch('');
+    setHbNewDossierIdx(0);
+    setToastFeedback(`Dossier ${hbNewDossierType === 'hospit' ? "d'hospitalisation" : 'de bloc'} ouvert pour ${p.lastName} ${p.firstName} — le médecin peut prescrire.`);
+    setTimeout(() => setToastFeedback(null), 5000);
+  };
+
   return (
     <div className="space-y-3">
       <FlashInfoBanner message={flashMsg} />
@@ -1228,9 +1419,10 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
       )}
       {/* Notification rouge centrée : article bloqué en vente par la pharmacie ou en rupture de stock */}
       <AlerteArticleIndisponible alert={articleAlert} onClose={() => { setArticleAlert(null); setTimeout(() => searchRef.current?.focus(), 50); }} />
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <div className="bg-surface rounded-xl p-4 shadow-sm border cursor-pointer hover:border-amber-400" onClick={() => setView('queue')}><div className="flex items-center gap-3"><div className="p-2 bg-amber-100 dark:bg-amber-500/15 rounded-lg"><Clock className="w-5 h-5 text-amber-600 dark:text-amber-400" /></div><div><div className="text-2xl font-bold">{myWaiting.length}</div><div className="text-sm text-ink-muted">En attente</div></div></div></div>
         <div className="bg-surface rounded-xl p-4 shadow-sm border cursor-pointer hover:border-emerald-400" onClick={() => setView('my_consults')}><div className="flex items-center gap-3"><div className="p-2 bg-green-100 dark:bg-green-500/15 rounded-lg"><CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" /></div><div><div className="text-2xl font-bold">{myTodayConsults.length}</div><div className="text-sm text-ink-muted">Mes consultations (auj.)</div></div></div></div>
+        <div className="bg-surface rounded-xl p-4 shadow-sm border cursor-pointer hover:border-rose-400" onClick={() => setView('hospit_bloc')}><div className="flex items-center gap-3"><div className="p-2 bg-rose-100 dark:bg-rose-500/15 rounded-lg"><Building2 className="w-5 h-5 text-rose-600 dark:text-rose-400" /></div><div><div className="text-2xl font-bold">{hbActifsCount}</div><div className="text-sm text-ink-muted">Bloc & Hospit.</div></div></div></div>
       </div>
 
       {/* MY CONSULTS */}
@@ -1242,6 +1434,249 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
               : myTodayConsults.map((c) => { const pat = state.patients.find((p) => p.id === c.patientId); const st = getConsultStatus(c); const prescriptionIsPaid = isPrescriptionPaid(state, c.id); const prescTotal = c.prescriptions.reduce((s, p) => s + roundTo2(p.unitPrice * p.quantity * (1 - p.discount / 100)), 0); const labTotal = (c.labRequests || []).reduce((s, lr) => s + (lr.price || 0), 0); const echoTotal = (c.echoRequests || []).reduce((s, er) => s + (er.price || 0), 0); const total = prescTotal + labTotal + echoTotal;
                 return (<tr key={c.id} className="border-b hover:bg-surface-muted"><td className="p-2 font-mono">{new Date(c.date).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</td><td className="p-2 font-medium">{pat?.lastName} {pat?.firstName} <span className="text-xs text-ink-faint">({pat?.dossier})</span></td><td className="p-2 text-right font-mono font-bold">{formatAr(total)}{(prescTotal > 0 && !prescriptionIsPaid) ? <span className="block text-[10px] font-normal text-amber-600 dark:text-amber-400">Prescription masquée — paiement requis</span> : (prescriptionIsPaid && prescTotal > 0) || labTotal > 0 || echoTotal > 0 ? <span className="block text-[10px] font-normal text-ink-faint">{prescriptionIsPaid && prescTotal > 0 ? `💊${formatAr(prescTotal)} ` : ''}{labTotal > 0 ? `🧪${formatAr(labTotal)} ` : ''}{echoTotal > 0 ? `📡${formatAr(echoTotal)}` : ''}</span> : ''}</td><td className="p-2 text-center"><span className={`px-2 py-1 rounded-full text-xs font-bold ${st.color}`}>{st.label}</span></td><td className="p-2 text-center flex gap-1 justify-center flex-wrap">{st.canEdit && <button onClick={() => reEditConsultation(c.id)} title={st.editTitle} className={`px-2 py-1 text-white rounded text-xs cursor-pointer ${st.editCancelsPayment ? 'bg-rose-600 hover:bg-rose-700' : 'bg-blue-500 hover:bg-blue-600'}`}><Edit2 className="w-3 h-3 inline" /> {st.editCancelsPayment ? 'Mod. (annule)' : 'Mod.'}</button>}{st.canReturn && <button onClick={() => returnToCashier(c.id)} title="Annuler le paiement et renvoyer en caisse" className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs cursor-pointer"><RotateCcw className="w-3 h-3 inline" /> Caisse</button>}{!st.canEdit && !st.canReturn && <span className="text-[10px] text-ink-faint" title={st.editTitle}>—</span>}</td></tr>); })}</tbody>
           </table></div>
+        </div>
+      )}
+
+      {/* BLOC & HOSPITALISATION — le médecin prescrit les actes et articles */}
+      {view === 'hospit_bloc' && (
+        <div className="space-y-3">
+          <div className="bg-surface rounded-xl shadow-sm border p-3 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="font-semibold flex items-center gap-2 text-ink-strong">
+              <Building2 className="w-5 h-5 text-rose-600 dark:text-rose-400" /> Bloc & Hospitalisation
+              <span className="text-xs text-ink-muted font-normal">— prescriptions du médecin (liste partagée avec la caisse)</span>
+            </h3>
+            <div className="flex items-center gap-2">
+              <button onClick={() => { setHbNewDossierOpen(v => !v); setHbNewDossierSearch(''); }}
+                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-sm font-semibold cursor-pointer flex items-center gap-1.5"
+                title="Admettre un patient en hospitalisation ou au bloc : un dossier (avec son numéro) est ouvert, puis vous pouvez y prescrire">
+                <UserPlus className="w-4 h-4" /> Ouvrir un dossier
+              </button>
+              <button onClick={() => { setView('queue'); setHbPrescritRecordId(null); }} className="px-3 py-1 bg-surface-active hover:bg-line-strong rounded text-sm cursor-pointer">← File</button>
+            </div>
+          </div>
+
+          {/* Ouverture d'un dossier (admission) — le patient peut ensuite être prescrit */}
+          {hbNewDossierOpen && (
+            <div className="bg-surface rounded-xl shadow-sm border border-rose-200 dark:border-rose-500/25 p-3 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold text-ink">Type d&apos;admission :</span>
+                {([['hospit', '🏨 Hospitalisation'], ['bloc', '🏥 Bloc opératoire']] as const).map(([t, lbl]) => (
+                  <button key={t} onClick={() => setHbNewDossierType(t)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold border cursor-pointer ${hbNewDossierType === t ? 'bg-rose-600 text-white border-rose-600' : 'bg-surface border-line-strong text-ink-secondary hover:bg-surface-hover'}`}>
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 w-4 h-4 text-ink-faint" />
+                <input type="text" value={hbNewDossierSearch} onChange={e => { setHbNewDossierSearch(e.target.value); setHbNewDossierIdx(0); }}
+                  className="w-full pl-9 pr-3 py-2 border border-line-strong rounded-lg outline-none text-sm"
+                  placeholder="Rechercher le patient à admettre (nom, prénom ou dossier)…" autoFocus />
+                {hbNewDossierSearch.length >= 1 && hbPatientsFiltered.length > 0 && (
+                  <div className="mt-1 max-h-40 overflow-y-auto border rounded-lg divide-y">
+                    {hbPatientsFiltered.slice(0, 20).map((p, i) => (
+                      <div key={p.id} onClick={() => void hbOuvrirDossier(p.id)}
+                        className={`p-2 cursor-pointer text-sm flex justify-between gap-2 ${i === hbNewDossierIdx ? 'bg-rose-50 dark:bg-rose-500/10' : 'hover:bg-surface-muted'}`}>
+                        <span className="font-medium">{p.lastName} {p.firstName}</span>
+                        <span className="text-ink-faint text-xs">{p.dossier}{p.company ? ` · ${p.company}` : ''}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <p className="text-[10px] text-ink-muted">Un dossier numéroté est ouvert immédiatement (visible par la caisse et la pharmacie de garde) ; vous pouvez ensuite y prescrire les actes et les articles. Le règlement et la sortie restent à la caisse.</p>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2">
+            {([['tous', 'Tous'], ['hospit', '🏨 Hospitalisation'], ['bloc', '🏥 Bloc']] as const).map(([f, lbl]) => (
+              <button key={f} onClick={() => setHbFiltre(f)} className={`px-3 py-1.5 rounded-lg text-sm border cursor-pointer ${hbFiltre === f ? 'bg-rose-600 text-white border-rose-600' : 'bg-surface border-line-strong text-ink-secondary hover:bg-surface-hover'}`}>{lbl}</button>
+            ))}
+            <button onClick={() => setHbAfficherSortis(v => !v)} className="ml-auto px-3 py-1.5 rounded-lg text-sm border cursor-pointer bg-surface border-line-strong text-ink-secondary hover:bg-surface-hover">
+              {hbAfficherSortis ? '🙈 Masquer les sortis' : `👁 Sortis (${hbTous.filter(h => h.dischargedAt).length})`}
+            </button>
+          </div>
+
+          {hbFiltres.length === 0 ? (
+            <div className="text-center py-10 text-ink-faint bg-surface rounded-xl border">Aucun dossier</div>
+          ) : hbFiltres.map(record => {
+            const totalFact = hbTotalFacture(record);
+            const totalPaid = hbTotalPaye(record);
+            const reste = hbReste(record);
+            const estSorti = !!record.dischargedAt;
+            return (
+              <div key={record.id} className="border rounded-lg overflow-hidden border-line bg-surface shadow-sm">
+                <div className="p-3 flex justify-between items-start gap-2 bg-surface-muted">
+                  <div>
+                    <div className="font-bold text-sm flex items-center gap-2 flex-wrap">
+                      {record.patientName}
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${record.type === 'bloc' ? 'bg-blue-100 dark:bg-cyan-500/15 text-blue-700 dark:text-cyan-400' : 'bg-rose-100 dark:bg-rose-500/15 text-rose-700 dark:text-rose-400'}`}>{record.type === 'bloc' ? '🏥 Bloc' : '🏨 Hospit.'}</span>
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${record.clientType === 'societe' ? 'bg-blue-100 dark:bg-cyan-500/15 text-blue-700 dark:text-cyan-400' : 'bg-surface-hover text-ink-secondary'}`}>{record.clientType === 'societe' ? `🏢 ${record.company || 'Société'}${record.subCompany ? ` / ${record.subCompany}` : ''}` : '🏪 Comptoir'}</span>
+                      {estSorti && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-surface-hover text-ink-secondary">🚪 Sorti le {new Date(record.dischargedAt!).toLocaleDateString('fr-FR')}</span>}
+                    </div>
+                    <div className="text-xs text-ink-muted mt-0.5">Facture: <strong>{formatAr(totalFact)}</strong> | Payé: <span className="text-green-600 dark:text-green-400">{formatAr(totalPaid)}</span> | Reste: <span className={reste > 0 ? 'text-red-600 dark:text-red-400 font-bold' : 'text-ink-secondary'}>{formatAr(reste)}</span></div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const ouvert = hbPrescritRecordId === record.id;
+                      setHbPrescritRecordId(ouvert ? null : record.id);
+                      setHbArtSearch(''); setHbArtIdx(0); setHbArtSelLineId(null); setHbArtIsNew(true);
+                      setHbArtForm({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: new Date().toISOString().split('T')[0] });
+                      if (!ouvert) setTimeout(() => hbArtRef.current?.focus(), 80);
+                    }}
+                    disabled={estSorti}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer ${hbPrescritRecordId === record.id ? 'bg-slate-700 hover:bg-slate-800 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`}
+                    title={estSorti
+                      ? "Dossier clos (patient sorti) : la caisse doit d'abord le réadmettre pour y prescrire"
+                      : 'Prescrire des actes / articles sur ce dossier (liste partagée avec la caisse et la pharmacie de garde)'}
+                  >
+                    {hbPrescritRecordId === record.id ? <><X className="w-3.5 h-3.5" /> Fermer la saisie</> : <><Plus className="w-3.5 h-3.5" /> Prescrire</>}
+                  </button>
+                </div>
+
+                {/* SAISIE SAGE — prescription du médecin sur le dossier */}
+                {hbPrescritRecordId === record.id && (
+                  <div className="border-t border-line bg-surface-muted">
+                    <div className="bg-surface-hover border-b border-line-strong p-2 m-2 mb-0 rounded shadow-inner">
+                      <div className="flex flex-wrap items-end gap-1.5">
+                        <div className="flex-1 min-w-[150px] relative">
+                          <label className="block text-[10px] font-bold text-ink-muted mb-0.5">Article / acte (tapez + ↑↓ + Entrée)</label>
+                          <input
+                            ref={hbArtRef}
+                            type="text"
+                            value={hbArtForm.articleName && !hbArtSearch ? hbArtForm.articleName : hbArtSearch}
+                            onChange={(e) => {
+                              setHbArtSearch(e.target.value);
+                              setHbArtIdx(0);
+                              if (hbArtForm.articleName && e.target.value !== hbArtForm.articleName) {
+                                setHbArtForm(prev => ({ ...prev, articleName: '' }));
+                              }
+                            }}
+                            onKeyDown={hbArtKeyDown}
+                            className="w-full bg-surface border border-blue-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-accent focus:ring-1 focus:ring-accent/25 text-ink-strong"
+                            placeholder="🔍 Saisir un article, un médicament ou un acte de soin..."
+                          />
+                          {hbArtSearch.length >= 1 && hbArtFiltered.length > 0 && (
+                            <div className="absolute top-full left-0 right-0 bg-surface border border-line-strong rounded-b shadow-2xl z-40 max-h-44 overflow-y-auto">
+                              {hbArtFiltered.slice(0, 40).map((a, idx) => {
+                                const av = articleAvailability(a);
+                                const isOut = av.outOfStock;
+                                const isLow = av.manages && !isOut && a.stockPharmacie <= a.minStockPharmacie && !a.alertDisabledPharmacie;
+                                return (
+                                  <div key={a.id} onClick={() => hbArtSelectArticle(a.id)}
+                                    title={isOut ? 'Rupture de stock — non délivrable' : undefined}
+                                    className={`px-3 py-1.5 text-xs flex justify-between border-b border-line-soft ${isOut ? 'bg-red-50 dark:bg-red-500/8 text-red-700 dark:text-red-400 cursor-not-allowed' : `cursor-pointer ${idx === hbArtIdx ? 'bg-blue-500 text-white font-medium' : 'hover:bg-surface-muted text-ink-strong'}`}`}>
+                                    <span className={isOut ? 'line-through decoration-red-400/60' : ''}><span className="text-[9px] text-ink-faint mr-1">[{a.family}]</span>{a.name}</span>
+                                    <span className="flex items-center gap-2">
+                                      {isOut
+                                        ? <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-[9px] font-bold">🚨 RUPTURE</span>
+                                        : av.manages
+                                          ? <span className={`font-mono text-[10px] ${idx === hbArtIdx ? 'text-white/90' : isLow ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-ink-faint'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>
+                                          : <span className={`font-mono text-[10px] ${idx === hbArtIdx ? 'text-white/80' : 'text-ink-faint'}`} title="Famille non gérée en stock">stock: —</span>}
+                                      <span className={`font-mono ${isOut ? 'text-red-400' : idx === hbArtIdx ? 'text-white' : 'text-blue-600 dark:text-cyan-400 font-medium'}`}>{formatAr(getPrice(a, record.clientType || 'comptoir'))}</span>
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                        <div className="w-16">
+                          <label className="block text-[10px] font-bold text-ink-muted mb-0.5">Qté</label>
+                          <input id="hb-med-qty" type="number" min={1} value={hbArtForm.quantity}
+                            onChange={e => setHbArtForm(prev => ({ ...prev, quantity: parseFloat(e.target.value) || 1 }))}
+                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
+                            className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-accent text-ink-strong" />
+                        </div>
+                        <div className="w-16">
+                          <label className="block text-[10px] font-bold text-ink-muted mb-0.5">Rem%</label>
+                          <input type="number" min={0} max={100} value={hbArtForm.discount}
+                            onChange={e => setHbArtForm(prev => ({ ...prev, discount: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) }))}
+                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
+                            className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-accent text-ink-strong" />
+                        </div>
+                        <div className="w-24">
+                          <label className="block text-[10px] font-bold text-ink-muted mb-0.5">P.U.</label>
+                          <MoneyInput value={hbArtForm.unitPrice} onChange={n => setHbArtForm(prev => ({ ...prev, unitPrice: n }))} decimals={2}
+                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
+                            ariaLabel="Prix unitaire" title="Prix unitaire — séparateur de milliers automatique"
+                            className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-accent text-ink-strong" />
+                        </div>
+                        <div className="w-28">
+                          <label className="block text-[10px] font-bold text-ink-muted mb-0.5">Montant</label>
+                          <input readOnly value={formatAr(hbLineAmt(hbArtForm))} className="w-full bg-surface-active border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono font-bold text-ink" />
+                        </div>
+                        <div className="w-36">
+                          <label className="block text-[10px] font-bold text-ink-muted mb-0.5" title="Conservée après validation : plusieurs actes le même jour">Date d&apos;acte / de sortie 📌</label>
+                          <input type="date" value={hbArtForm.dateSort || ''}
+                            onChange={e => setHbArtForm(prev => ({ ...prev, dateSort: e.target.value }))}
+                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
+                            className="w-full bg-amber-50 dark:bg-amber-500/8 border border-amber-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-accent text-ink-strong" />
+                        </div>
+                      </div>
+                      <div className="flex justify-end gap-1.5 mt-2">
+                        <button onClick={hbArtNew} className="flex items-center gap-1 px-2.5 py-1 bg-surface hover:bg-surface-muted border border-line-strong rounded shadow-sm text-ink transition cursor-pointer text-xs font-medium">
+                          <Plus className="h-3.5 w-3.5 text-ink-muted" /> Nouveau
+                        </button>
+                        <button type="button"
+                          onClick={() => { if (hbArtSelLineId) hbArtDelete(hbArtSelLineId); }}
+                          disabled={!hbArtSelLineId}
+                          className="flex items-center gap-1 px-2.5 py-1 bg-surface hover:bg-surface-muted border border-line-strong rounded shadow-sm text-ink disabled:opacity-40 transition cursor-pointer text-xs font-medium">
+                          <Trash2 className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" /> Supprimer
+                        </button>
+                        <button onClick={hbArtSave} disabled={!hbArtForm.articleName}
+                          className="flex items-center gap-1 px-2.5 py-1 bg-sky-500 hover:bg-sky-600 text-white border border-sky-600 rounded shadow-sm font-semibold disabled:opacity-40 transition cursor-pointer text-xs">
+                          <Save className="h-3.5 w-3.5" /> Enregistrer
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[11px]">
+                    <thead className="bg-surface-hover text-ink-secondary"><tr className="divide-x divide-line"><th className="p-1.5 text-left">Article</th><th className="p-1.5 text-center w-10">Qté</th><th className="p-1.5 text-center w-12">Rem%</th><th className="p-1.5 text-right w-24">P.U.</th><th className="p-1.5 text-right w-24">Montant</th>{hbPrescritRecordId === record.id && <th className="p-1.5 text-center w-10"></th>}</tr></thead>
+                    <tbody className="divide-y font-mono">
+                      {record.lines.length === 0 ? <tr><td colSpan={hbPrescritRecordId === record.id ? 6 : 5} className="p-2 text-center text-ink-faint font-sans">Aucune ligne — cliquez sur « Prescrire » pour en ajouter</td></tr> :
+                        record.lines.map(l => (
+                          <tr key={l.id}
+                            onClick={() => {
+                              if (hbPrescritRecordId !== record.id) return;
+                              setHbArtSelLineId(l.id); setHbArtForm({ ...l }); setHbArtIsNew(false);
+                            }}
+                            className={`divide-x divide-line ${hbPrescritRecordId === record.id ? 'cursor-pointer' : ''} ${hbArtSelLineId === l.id ? 'bg-blue-500 text-white' : 'hover:bg-surface-muted'}`}>
+                            <td className="p-1.5 font-sans">{l.articleName}</td>
+                            <td className="p-1.5 text-center">{l.quantity}</td>
+                            <td className="p-1.5 text-center text-amber-700 dark:text-amber-400 font-semibold">{l.discount ? `${l.discount}%` : '—'}</td>
+                            <td className="p-1.5 text-right">{formatNum(l.unitPrice)}</td>
+                            <td className="p-1.5 text-right font-bold">{formatNum(hbLineAmt(l))}</td>
+                            {hbPrescritRecordId === record.id && (
+                              <td className="p-1.5 text-center">
+                                <button onClick={(e) => { e.stopPropagation(); hbArtDelete(l.id); }}
+                                  className={`cursor-pointer ${hbArtSelLineId === l.id ? 'text-white hover:text-red-200' : 'text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-300'}`}
+                                  title="Retirer cette ligne du dossier">
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+                    </tbody>
+                    {record.lines.length > 0 && (
+                      <tfoot className="bg-emerald-50 dark:bg-emerald-500/8 border-t-2 border-emerald-300 dark:border-emerald-500/40">
+                        <tr><td colSpan={4} className="p-1.5 text-right font-bold font-sans">TOTAL DOSSIER :</td><td colSpan={hbPrescritRecordId === record.id ? 2 : 1} className="p-1.5 text-right font-mono font-bold text-emerald-800 dark:text-emerald-300">{formatAr(totalFact)}</td></tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
+                {record.payments.length > 0 && (
+                  <div className="px-3 py-2 border-t border-line text-[11px] text-ink-muted">
+                    <span className="font-semibold">Paiements :</span> {record.payments.map(p => `${formatAr(p.amount)} (${new Date(p.date).toLocaleDateString('fr-FR')})`).join(' · ')}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
