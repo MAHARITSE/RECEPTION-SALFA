@@ -7,6 +7,7 @@ import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription, Article, Patient } from '../types';
 import type { AppState, FactureNumberAllocation, FactureNumberSpec } from '../store';
+import type { PieceFileCaisse } from '../utils/caisseFileAttente';
 import type { Societe } from '../modules/assurance/types';
 import {
   addAuditLog, addNotification, formatAr, formatNum, roundTo2, getPrice, calculateAge,
@@ -14,7 +15,7 @@ import {
   familyManagesStock, isLabFamily, isEchoFamily, isConsultFamily, allocateFactureNumber, allocateFactureNumberAsync, allocateFactureNumbersAsync, applySocieteUpsert, collectExistingFactureNumbers, companyIsBlocked, companyOptions, sousSocietesConnues,
   invoiceNatureRemise,
 } from '../store';
-import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText, RefreshCw } from 'lucide-react';
+import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText, RefreshCw, X } from 'lucide-react';
 import { SearchableSelect, optionsFromValues } from './SearchableSelect';
 import { SuggestionInput, classerSuggestions, motsIdentite } from './SuggestionInput';
 import { printPaymentTicket as openThermalTicket, printClosingTicket, printExamRequestTicket, printHbPaymentTicket, printPharmaDeliveryClosingTicket } from '../utils/printTicket';
@@ -23,6 +24,10 @@ import {
   baseCommuneCaisse, brutLigneDepuisItem, copayMetadata, estPieceTicketModerateur, repartirItemsCaisse, repartirLotCaisse, societeEtPersonneParmi, quotePartSiTicketModerateur,
   type RepartitionCopay,
 } from '../utils/copayCaisse';
+import {
+  purgePieceFromQueue, piecesSelectionnees, prochaineSelection, medicamentsDejaSurFacture, clefArticle,
+  separerOrdonnanceDeLaFacture,
+} from '../utils/caisseFileAttente';
 import { normaliserRecherche } from '../utils/recherche';
 import { suggestionNavKeyDown } from '../utils/suggestionNav';
 import { useFlashInfo, FlashInfoBanner } from './FlashInfo';
@@ -322,32 +327,16 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const [showPayClientTypeEdit, setShowPayClientTypeEdit] = useState(false);
 
   // Data
-  // RÈGLE : TOUS les patients validés par un médecin arrivent à la caisse pour
-  // validation du paiement, y compris les clients société. Les clients société
-  // ne paient PAS en espèces : la caisse valide un CRÉDIT SOCIÉTÉ (la somme est
-  // portée au compte de la société, réglée ultérieurement par le responsable
-  // facturation). Les factures crédit société sont exclues des encaissements et
-  // des clôtures de caisse.
-  // Ordre décroissant : le dernier arrivé / dernière saisie en haut de la file (exigence utilisateur).
-  const pendingPatients = state.patients
-    .filter(p =>
-      p.status === 'consulted_awaiting_payment' ||
-      // Toute facture en attente (y compris les médicaments) : un dossier réglé
-      // PARTIELLEMENT (une prescription encaissée, l'autre non) doit rester dans
-      // la file pour la facture restante.
-      state.invoices.some(i => i.patientId === p.id && i.status === 'pending' && i.items.length > 0)
-    )
-    .sort((a, b) => {
-      const da = new Date((a.lastVisitAt || a.registeredAt || 0) as string | number).getTime() || 0;
-      const db = new Date((b.lastVisitAt || b.registeredAt || 0) as string | number).getTime() || 0;
-      return db - da;
-    });
 
   // Factures en attente (consultation, labo, écho) — sociétés incluses.
-  const pendingServiceInvoices = state.invoices.filter((i) => {
+  // `...Sur(etat)` : calculateurs paramétrés par l'état, afin d'interroger la file
+  // sur un état EN COURS de construction (après un retrait de pièce ou un
+  // encaissement PARTIEL du dossier) et pas seulement sur `state`.
+  const pendingServiceInvoicesSur = (s: AppState) => s.invoices.filter((i) => {
     if (i.status !== 'pending') return false;
     return i.items.some((it) => it.category === 'lab' || it.category === 'echo' || it.category === 'consultation');
   });
+  const pendingServiceInvoices = pendingServiceInvoicesSur(state);
 
   /**
    * Les médicaments d'une consultation sont-ils déjà encaissés/réglés ?
@@ -360,21 +349,29 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
    *     consultation. Évite de ré-afficher en Caisse des médicaments déjà
    *     facturés/réglés (cas par ex. des lignes « Médicaments & Soins »).
    */
-  const consultationPharmacyPaid = (c: { id: string; patientId?: string; date?: string }) => {
+  const consultationPharmacyPaidSur = (s: AppState, c: { id: string; patientId?: string; date?: string }) => {
     const pid = c.patientId;
     if (!pid) return false;
-    if (state.invoices.some(inv =>
+    if (s.invoices.some(inv =>
       inv.patientId === pid && inv.status === 'paid' && inv.consultationId === c.id &&
       inv.items.some(it => it.category === 'pharmacy'))) return true;
-    if ((state.ventes || []).some(v =>
+    if ((s.ventes || []).some(v =>
       v.patientId === pid && v.status === 'paid' && v.consultationId === c.id &&
-      (state.venteLines || []).some(l => l.venteId === v.id && l.category === 'pharmacy'))) return true;
+      (s.venteLines || []).some(l => l.venteId === v.id && l.category === 'pharmacy'))) return true;
     const cDay = (c.date || '').slice(0, 10);
-    return state.invoices.some(inv =>
+    return s.invoices.some(inv =>
       inv.patientId === pid && inv.status === 'paid' && !inv.consultationId &&
       inv.items.some(it => it.category === 'pharmacy') &&
       (inv.createdAt || inv.paidAt || '').slice(0, 10) === cDay);
   };
+  /**
+   * Une consultation doit-elle ENCORE être facturée en caisse ? Non quand ses
+   * médicaments sont déjà réglés, ni quand la pièce « médicaments » a été
+   * RETIRÉE INDIVIDUELLEMENT de la file (`facturationRetiree`) : l'ordonnance
+   * reste au dossier médical et à la pharmacie, elle ne remonte plus au guichet.
+   */
+  const consultationFacturableSur = (s: AppState, c: Consultation) =>
+    !c.facturationRetiree && !consultationPharmacyPaidSur(s, c);
 
   /**
    * Lignes « médicaments » d'une liste de consultations : MÊMES arrondis que le
@@ -431,7 +428,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
    */
   const getPendingAmount = (p: any) => {
     const societeClient = p.clientType === 'societe';
-    const cons = state.consultations.filter(c => c.patientId === p.id && !consultationPharmacyPaid(c));
+    const cons = state.consultations.filter(c => c.patientId === p.id && consultationFacturableSur(state, c));
     let amt = cons.reduce((s, c) => s + c.prescriptions.reduce((ss, pr) => {
       const u = (p.clientType === 'comptoir' && (pr.discount || 0) > 0)
         ? roundTo2((pr.unitPrice || 0) * (1 - (pr.discount || 0) / 100))
@@ -446,63 +443,127 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       : i.totalAmount), 0);
     return amt;
   };
-  // Consultations dont les médicaments ne sont pas encore encaissés
-  const getConsults = (pid: string) => state.consultations.filter(c =>
+  // Consultations dont les médicaments ne sont pas encore encaissés (ni retirés
+  // de la file pièce par pièce) — paramétré par l'état pour être évalué sur un
+  // état en cours de construction.
+  const getConsultsSur = (s: AppState, pid: string) => s.consultations.filter(c =>
     c.patientId === pid &&
     c.prescriptions.length > 0 &&
-    !consultationPharmacyPaid(c)
+    consultationFacturableSur(s, c)
   );
+  const getConsults = (pid: string) => getConsultsSur(state, pid);
   /**
-   * Quote-part (TICKET MODÉRATEUR) à encaisser en espèces pour un patient de la
-   * file : 0 Ar pour un client comptoir/externe, pour une société dont la
-   * réduction est une vraie REMISE ou dont la prise en charge est de 100 %.
+   * Quote-part (TICKET MODÉRATEUR) à encaisser en espèces : 0 Ar pour un client
+   * comptoir/externe, pour une société dont la réduction est une vraie REMISE ou
+   * dont la prise en charge est de 100 %. `items` permet de la calculer SUR UNE
+   * SEULE PIÈCE (une ligne de la file) plutôt que sur le dossier entier.
    */
-  const getCopayAmount = (p: any): number => {
+  const getCopayAmount = (p: any, items?: InvoiceItem[]): number => {
     if (!p || p.clientType !== 'societe') return 0;
-    const items: InvoiceItem[] = [
+    const lignes: InvoiceItem[] = items ?? [
       ...medicationItemsOf(getConsults(p.id), p.clientType),
       ...pendingServiceInvoices.filter(i => i.patientId === p.id).flatMap(i => i.items),
     ];
-    if (!items.length) return 0;
+    if (!lignes.length) return 0;
     const { societe, personne } = societeEtPersonneParmi(p, baseCommune.societes, baseCommune.personnes);
-    const repartition = repartirItemsCaisse({ societe, personne, items });
+    const repartition = repartirItemsCaisse({ societe, personne, items: lignes });
     return repartition.aEncaisser ? roundTo2(repartition.ticketModerateur) : 0;
   };
 
   /**
    * PIÈCES DU DOSSIER — une pièce par prescription, JAMAIS FUSIONNÉES :
    *  1. chaque facture service en attente (analyses / échographies / consultation) ;
-   *  2. les médicaments d'UNE consultation : une pièce par prescription ;
+   *  2. les médicaments d'UNE consultation : une pièce par prescription. Une
+   *     facture « globale » qui les mélangeait (consultation + médicaments +
+   *     analyses) en est DÉCOUPÉE : chaque prescription garde sa ligne, facturable
+   *     et retirable SEULE — et un article n'est jamais compté deux fois ;
    *  3. les anciennes factures pharmacie restées en attente (une pièce chacune).
-   * Sert à l'aperçu de la modale ET à la validation du paiement : chaque pièce
-   * peut être encaissée SÉPARÉMENT (le patient qui revient garde ses
-   * prescriptions indépendantes, avec un numéro chacune).
+   * Sert à la file d'attente, à l'aperçu de la modale ET à la validation du
+   * paiement. Chaque pièce est INDÉPENDANTE : on peut en encaisser une seule, en
+   * retirer une seule, et les autres restent au guichet avec leur numéro.
    */
-  const pendingPiecesOf = (patient: Patient, consults: Consultation[]) => {
-    const services = pendingServiceInvoices
+  const pendingPiecesOf = (s: AppState, patient: Patient, consults: Consultation[]) => {
+    const services = pendingServiceInvoicesSur(s)
       .filter(i => i.patientId === patient.id)
       .sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
-    const pharmacieLegacy = [...state.invoices]
+    const pharmacieLegacy = [...s.invoices]
       .filter(i => i.patientId === patient.id && i.status === 'pending'
         && i.items.length > 0 && i.items.every(it => it.category === 'pharmacy'))
       .sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+    /** Toutes les lignes de l'ordonnance d'une consultation (mêmes déjà réglées). */
+    const lignesOrdonnance = (c: Consultation) => medicationItemsOf([c], patient.clientType);
+    /**
+     * DÉCOUPAGE des factures « globales » (legacy : consultation + médicaments +
+     * analyses sur une seule facture). Les lignes qui sont L'ORDONNANCE de la
+     * consultation sont SORTIES de la facture : elles forment leur propre ligne de
+     * la file, encaissable et retirable séparément — c'est la règle « une
+     * prescription = une ligne indépendante », même quand une facture les mélange.
+     */
+    const decoupage = new Map<string, { lignes: InvoiceItem[]; absorbees: Set<string>; scindee: boolean }>();
+    for (const inv of services) {
+      // La consultation est relue dans l'État (et pas seulement dans la liste des
+      // consultations « encore facturables ») : une ordonnance déjà payée à part,
+      // ou retirée de la caisse, ne doit PAS rester cachée dans la facture.
+      const c = inv.consultationId ? s.consultations.find(x => x.id === inv.consultationId) : undefined;
+      const ord = c ? lignesOrdonnance(c) : [];
+      decoupage.set(inv.id, ord.length
+        ? separerOrdonnanceDeLaFacture(inv.items, ord)
+        : { lignes: inv.items, absorbees: new Set<string>(), scindee: false });
+    }
+    /** Médicaments que la pièce « ordonnance » ne doit PAS redemander, parce qu'une
+     *  facture EN ATTENTE du dossier les porte encore (ligne non déplaçable, ou
+     *  ancienne facture pharmacie qui EST cette ordonnance). */
+    const absorbeParFacture = new Map<string, Set<string>>();
+    const absorbe = (consultationId: string | undefined, clefs: Iterable<string>) => {
+      if (!consultationId) return;
+      const set = absorbeParFacture.get(consultationId) || new Set<string>();
+      for (const cle of clefs) if (cle) set.add(cle);
+      absorbeParFacture.set(consultationId, set);
+    };
+    for (const inv of services) {
+      const d = decoupage.get(inv.id);
+      if (d) absorbe(inv.consultationId, d.absorbees);
+    }
+    for (const f of pharmacieLegacy) {
+      const cid = f.consultationId
+        // Facture pharmacie sans lien (données anciennes) : la consultation du même jour.
+        || consults.find(c => (c.date || '').slice(0, 10) === (f.createdAt || '').slice(0, 10))?.id;
+      absorbe(cid, f.items.map(it => clefArticle(it.description)));
+    }
     const pieces = [
-      ...services.map(s => ({
-        key: s.id,
-        invoiceId: s.id,
-        consultationId: s.consultationId,
-        numero: s.numeroFacture || undefined,
-        date: s.createdAt,
-        items: s.items,
-      })),
-      ...consults.map(c => ({
-        key: medsPieceKey(c.id),
-        invoiceId: undefined,
-        consultationId: c.id,
-        numero: undefined,
-        date: c.date,
-        items: medicationItemsOf([c], patient.clientType),
-      })).filter(p => p.items.length > 0),
+      ...services.map(inv => {
+        const d = decoupage.get(inv.id)!;
+        return {
+          key: inv.id,
+          invoiceId: inv.id,
+          consultationId: inv.consultationId,
+          numero: inv.numeroFacture || undefined,
+          date: inv.createdAt,
+          items: d.lignes,
+          // La facture a été allégée des lignes de l'ordonnance : à la validation,
+          // elle est enregistrée TELLE QU'ENCAISSÉE (et non à son total d'origine).
+          scindee: d.scindee,
+        };
+      }),
+      ...consults.map(c => {
+        // Pièce « ordonnance » = les médicaments de la consultation, moins ceux
+        // déjà RÉGLÉS (facture payée de la consultation) et moins ceux qu'une
+        // facture en attente continue de porter (voir `absorbe` ci-dessus).
+        const regles = medicamentsDejaSurFacture(s.invoices.filter(i => i.status === 'paid'), c);
+        const absorbes = absorbeParFacture.get(c.id) || new Set<string>();
+        return {
+          key: medsPieceKey(c.id),
+          invoiceId: undefined,
+          consultationId: c.id,
+          numero: undefined,
+          date: c.date,
+          items: lignesOrdonnance(c).filter(it => {
+            const cle = clefArticle(it.description);
+            return !regles.has(cle) && !absorbes.has(cle);
+          }),
+          scindee: false,
+        };
+      }).filter(p => p.items.length > 0),
       ...pharmacieLegacy.map(f => ({
         key: f.id,
         invoiceId: f.id,
@@ -510,6 +571,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         numero: f.numeroFacture || undefined,
         date: f.createdAt,
         items: f.items,
+        scindee: false,
       })),
     ];
     // ORDRE CHRONOLOGIQUE : les prescriptions d'un dossier se suivent par DATE
@@ -554,10 +616,37 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
    * (sans numéro) »). Aucune séparation par famille.
    * Classement par date (le plus récent en haut).
    */
+  // RÈGLE : TOUS les patients validés par un médecin arrivent à la caisse pour
+  // validation du paiement, y compris les clients société. Les clients société
+  // ne paient PAS en espèces : la caisse valide un CRÉDIT SOCIÉTÉ (la somme est
+  // portée au compte de la société, réglée ultérieurement par le responsable
+  // facturation). Les factures crédit société sont exclues des encaissements et
+  // des clôtures de caisse.
+  // Ordre décroissant : le dernier arrivé / dernière saisie en haut de la file.
+  const pendingPatients = state.patients
+    .filter(p =>
+      p.status === 'consulted_awaiting_payment' ||
+      // Toute facture en attente (y compris les médicaments) : un dossier réglé
+      // PARTIELLEMENT (une prescription encaissée, l'autre non) doit rester dans
+      // la file pour la facture restante.
+      state.invoices.some(i => i.patientId === p.id && i.status === 'pending' && i.items.length > 0) ||
+      // TROISIÈME MOTIF, celui qui garde les lignes INDÉPENDANTES : tant qu'il
+      // reste une ordonnance à facturer, le dossier reste au guichet — encaisser
+      // ou retirer une ligne voisine (même la dernière facture en attente) ne
+      // doit JAMAIS faire disparaître les autres prescriptions de la personne.
+      state.consultations.some(c => c.patientId === p.id && (c.prescriptions?.length || 0) > 0
+        && !c.facturationRetiree && !consultationPharmacyPaidSur(state, c))
+    )
+    .sort((a, b) => {
+      const da = new Date((a.lastVisitAt || a.registeredAt || 0) as string | number).getTime() || 0;
+      const db = new Date((b.lastVisitAt || b.registeredAt || 0) as string | number).getTime() || 0;
+      return db - da;
+    });
+
   const fileAttente = useMemo(() => {
     type Entree = { patient: Patient; piece: ReturnType<typeof pendingPiecesOf>[number] | null; date?: string | number };
     const entrees: Entree[] = pendingPatients.flatMap((p): Entree[] => {
-      const pieces = pendingPiecesOf(p, getConsults(p.id));
+      const pieces = pendingPiecesOf(state, p, getConsults(p.id));
       if (!pieces.length) return [{ patient: p, piece: null, date: p.lastVisitAt || p.registeredAt }];
       return pieces.map((piece): Entree => ({ patient: p, piece, date: piece.date }));
     });
@@ -570,18 +659,38 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
   /** Toutes les pièces (factures) en attente du dossier sélectionné. */
   const piecesEnAttente = useMemo(
-    () => (selPatient ? pendingPiecesOf(selPatient, getConsults(selPatient.id)) : []),
+    () => (selPatient ? pendingPiecesOf(state, selPatient, getConsults(selPatient.id)) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [selPatientId, state.consultations, state.invoices],
   );
 
   /**
-   * PIÈCES ENCAISSÉES — TOUTES les pièces en attente du dossier, listées avec
-   * leur total : plus de case à cocher, la validation du paiement emporte tout
-   * ce qui est affiché. Chaque prescription reste néanmoins une facture
-   * INDÉPENDANTE (jamais fusionnée) et reçoit son propre numéro.
+   * PIÈCES SÉLECTIONNÉES pour la facturation. La caisse facture CHAQUE
+   * prescription INDÉPENDAMMENT :
+   *  - ouverte depuis une ligne « Facturer » de la file → cette seule pièce ;
+   *  - ouverte depuis la ligne du dossier → `null`, c'est-à-dire TOUTES les
+   *    pièces (encaissement groupé, une facture et un numéro PAR prescription) ;
+   *  - les cases de la liste ajoutent ou retirent une pièce du lot.
+   * `[]` (rien) et `null` (tout) sont DISTINCTS : décocher toutes les cases
+   * laisse le lot vide, la validation refuse alors d'encaisser.
    */
-  const piecesPayees = piecesEnAttente;
+  const [selPieceKeys, setSelPieceKeys] = useState<string[] | null>(null);
+  const piecesPayees = useMemo(
+    () => piecesSelectionnees(piecesEnAttente, selPieceKeys),
+    [selPieceKeys, piecesEnAttente],
+  );
+  /** Le dossier compte-t-il plus d'une pièce ? (sinon, pas de cases à cocher) */
+  const lotSelectionnable = piecesEnAttente.length > 1;
+  /** Net à encaisser des pièces SÉLECTIONNÉES (comptoir) — jamais le cumul du dossier. */
+  const montantSelection = roundTo2(
+    piecesPayees.reduce((s, piece) => s + piece.items.reduce((ss, it) => ss + (Number(it.amount) || 0), 0), 0),
+  );
+
+  /** Cocher / décocher UNE pièce du lot de facturation. */
+  const basculerPiece = (clef: string) =>
+    setSelPieceKeys(prochaineSelection(piecesEnAttente.map(p => p.key), selPieceKeys, clef));
+  /** « Tout le dossier » : les pièces restent séparées, une facture chacune. */
+  const cocherToutLeDossier = (tout: boolean) => setSelPieceKeys(tout ? null : []);
 
   /**
    * TICKET MODÉRATEUR du dossier sélectionné (client société).
@@ -614,10 +723,15 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     ? roundTo2(Math.max(0, Math.min(copayPreview?.brut || 0, customTicketModerateur)))
     : defaultCopayDu;
 
-  /** Part prise en charge par la société (Crédit société) calculée dynamiquement */
+  /**
+   * Part prise en charge par la société (Crédit société) calculée dynamiquement.
+   * Sans répartition (rien de sélectionné, dossier sans facture), on retombe sur
+   * le lot SÉLECTIONNÉ — jamais le cumul du dossier : les lignes non cochées ne
+   * sont ni encaissées, ni créditées.
+   */
   const partSocieteEffective = copayPreview
     ? roundTo2(Math.max(0, (copayPreview.brut || 0) - copayDu))
-    : (selPatient ? getPendingAmount(selPatient) : 0);
+    : montantSelection;
 
   // Espèces reçues pour le ticket modérateur : pré-remplies au montant dû.
   const [copayCash, setCopayCash] = useState('');
@@ -706,6 +820,82 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     });
   };
 
+  /** Une ligne de la file = une pièce (une prescription) du dossier. */
+  type PieceFile = ReturnType<typeof pendingPiecesOf>[number];
+  /** Descripteur de pièce compris par `purgePieceFromQueue` (facture émise ou ordonnance). */
+  const descripteurPiece = (piece: PieceFile): PieceFileCaisse | null =>
+    piece.invoiceId
+      ? { kind: 'facture', invoiceId: piece.invoiceId }
+      : (piece.consultationId ? { kind: 'medicaments', consultationId: piece.consultationId } : null);
+  /** Libellé lisible d'une pièce : date + contenu + numéro (jamais la famille). */
+  const libellePiece = (piece: { label: string; resume?: string; numero?: string }) =>
+    `${piece.label}${piece.resume ? ` — ${piece.resume}` : ''}${piece.numero ? ` · n° ${piece.numero}` : ' · en attente (sans numéro)'}`;
+
+  /**
+   * RETRAIT D'UNE SEULE LIGNE de la file : la prescription visée sort du guichet,
+   * les autres lignes du MÊME patient restent facturables et encaissables
+   * chacune de leur côté. Rien n'est détruit :
+   *  - pièce « médicaments » : l'ordonnance reste au dossier médical et à la
+   *    pharmacie, elle n'est simplement plus présentable à la caisse ;
+   *  - pièce « facture » (analyses / échographies / ancienne facture pharmacie
+   *    non encaissée) : la facture en attente est annulée, accompagnée des
+   *    demandes d'examens de CETTE facture qui n'ont jamais été réalisées ;
+   *  - une facture ENCAISSÉE n'est jamais retirée (document comptable) : rectifier
+   *    par le module Facturation ou par une nouvelle pièce, pas par la file.
+   */
+  const removePendingPiece = (patient: Patient, piece: PieceFile) => {
+    const descripteur = descripteurPiece(piece);
+    if (!descripteur) return;
+    const montantPiece = roundTo2(piece.items.reduce((s, it) => s + (Number(it.amount) || 0), 0));
+    const restantes = pendingPiecesOf(state, patient, getConsults(patient.id)).filter(p => p.key !== piece.key);
+    askConfirmation({
+      title: "Retrait d'une ligne de la file Caisse",
+      message: `Retirer « ${libellePiece(piece)} » (${formatAr(montantPiece)}) de la file caisse de ${patient.lastName} ${patient.firstName} (${patient.dossier}) ?`,
+      subText: (restantes.length
+        ? `Les ${restantes.length} autre(s) prescription(s) du dossier restent en attente : elles pourront être facturées séparément. `
+        : 'C\u2019est la dernière prescription en attente de ce dossier. ')
+        + (descripteur.kind === 'medicaments'
+          ? "L'ordonnance reste conservée au dossier médical et à la pharmacie : seule la facturation en caisse est retirée."
+          : 'La facture non encaissée est annulée, ainsi que les examens quelle porte qui n\u2019ont pas encore été réalisés. Le dossier patient reste conservé.'),
+      confirmText: 'Retirer cette ligne',
+      cancelText: 'Annuler',
+      type: 'danger',
+      onConfirm: () => {
+        let libelleRetiree = '';
+        setState(prev => {
+          const patientActuel = prev.patients.find(x => x.id === patient.id);
+          if (!patientActuel) return prev;
+          const next: AppState = { ...prev };
+          const res = purgePieceFromQueue(next, patient.id, descripteur, {
+            id: prev.currentUser?.id, name: prev.currentUser?.name,
+          });
+          if (!res.ok) return prev;
+          libelleRetiree = res.libelle;
+          addAuditLog(next, 'RETRAIT_PIECE_CAISSE',
+            `${res.libelle} (${formatAr(res.montant)}) retiré de la file caisse de ${patientActuel.lastName} ${patientActuel.firstName} (${patientActuel.dossier}) — ${restantes.length} prescription(s) restante(s) — dossier conservé`,
+            patient.id);
+          addJourneyEvent(next, {
+            patientId: patient.id, department: 'caisse', action: 'Prescription retirée de la file caisse',
+            status: 'consulted_awaiting_payment',
+            details: `${res.libelle} — ${formatAr(res.montant)} non facturés, retirés par ${prev.currentUser?.name || 'la caisse'}. ${restantes.length} prescription(s) restante(s)`,
+            actorId: prev.currentUser?.id, actorName: prev.currentUser?.name,
+            consultationId: descripteur.kind === 'medicaments' ? descripteur.consultationId : piece.consultationId,
+          });
+          return next;
+        });
+        // La sélection de la modale ne doit jamais garder une pièce retirée ;
+        // un lot vidé repart sur « toutes les pièces restantes du dossier ».
+        setSelPieceKeys(prevKeys => {
+          if (!prevKeys || !prevKeys.includes(piece.key)) return prevKeys;
+          const encore = prevKeys.filter(k => k !== piece.key);
+          return encore.length ? encore : null;
+        });
+        setConfirmModalState(prev => ({ ...prev, isOpen: false }));
+        flash(libelleRetiree ? `${libelleRetiree} : retiré de la file caisse.` : "Cette ligne a déjà été soldée ou retirée — rien n'a été modifié.");
+      },
+    });
+  };
+
   // Retrait de la file caisse : seules les consultations/factures en attente sont annulées ; le dossier est conservé.
   const removePendingPatient = (pid: string) => {
     const p = state.patients.find((x) => x.id === pid);
@@ -726,6 +916,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
           return next;
         });
         if (selPatientId === pid) { setSelPatientId(null); setSelConsultId(null); setPaymentModalOpen(false); }
+        setSelPieceKeys(null);
         setConfirmModalState((prev) => ({ ...prev, isOpen: false }));
       },
     });
@@ -733,11 +924,14 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
   // Ouverture / fermeture de la facture patient en fenêtre modale
   /**
-   * Ouverture de la fenêtre de facturation : TOUTES les pièces en attente du
-   * dossier y sont listées avec leur total (aucune case à cocher) — le patient
-   * peut ainsi vérifier chaque prescription avant de régler l'ensemble.
+   * Ouverture de la fenêtre de facturation. SANS `pieceKey` : TOUTES les pièces
+   * en attente du dossier sont proposées (encaissement groupé, une facture et un
+   * numéro PAR prescription). AVEC `pieceKey` (clic sur la ligne « Facturer » de
+   * la file) : SEULE cette prescription est sélectionnée — le reste du dossier
+   * reste en attente au guichet. Les cases de la liste permettent d'ajouter ou de
+   * retirer une pièce du lot avant validation.
    */
-  const openPaymentModal = (pid: string) => {
+  const openPaymentModal = (pid: string, pieceKey?: string) => {
     const p = state.patients.find(x => x.id === pid);
     if (p) {
       setPayEditClientType(p.clientType === 'externe' ? 'comptoir' : (p.clientType as ClientType));
@@ -746,17 +940,25 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       setPayEditNewCompany('');
       setShowPayClientTypeEdit(false);
     }
+    const consults = getConsults(pid);
+    const pieceSeule = pieceKey && p
+      ? pendingPiecesOf(state, p, consults).find(x => x.key === pieceKey)
+      : undefined;
+    setSelPieceKeys(pieceSeule ? [pieceSeule.key] : null);
     setCustomTicketModerateur(null);
-    const initialCopay = p ? getCopayAmount(p) : 0;
+    // Ticket modérateur pré-rempli sur le LOT effectivement facturé : une pièce
+    // seule n'appelle que sa propre quote-part.
+    const initialCopay = p ? getCopayAmount(p, pieceSeule?.items) : 0;
     setCopayCash(initialCopay > 0 ? String(initialCopay) : '');
     setSelPatientId(pid);
-    setSelConsultId(getConsults(pid)[0]?.id || null);
+    setSelConsultId(pieceSeule?.consultationId || consults[0]?.id || null);
     setPaymentModalOpen(true);
   };
   const closePaymentModal = () => {
     setPaymentModalOpen(false);
     setSelPatientId(null);
     setSelConsultId(null);
+    setSelPieceKeys(null);
     setCustomTicketModerateur(null);
     setCopayCash('');
   };
@@ -769,20 +971,42 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     // Client société → pas d'encaissement en espèces : validation en CRÉDIT SOCIÉTÉ.
     const isSocieteCredit = selPatient.clientType === 'societe';
     const unpaidConsults = getConsults(selPatient.id);
-    // PIÈCES DU DOSSIER — une par prescription, JAMAIS fusionnées (voir
+    // PIÈCES DU LOT — une par prescription, JAMAIS fusionnées (voir
     // `pendingPiecesOf`) : factures services en attente + médicaments d'UNE
     // consultation par pièce. Quantité et prix unitaire restent dans leurs
     // CHAMPS (imprimés dans les colonnes Qté / Prix de la facture).
-    // TOUTES les pièces en attente du dossier sont encaissées ensemble : la
-    // liste de facturation les affiche avec leur total, sans case à cocher.
-    // Chaque pièce garde néanmoins son identité et son propre numéro (jamais
-    // fusionnées, même au nom de la même personne).
+    // SEULES LES PIÈCES SÉLECTIONNÉES sont encaissées : le guichet peut régler
+    // une prescription isolée, les autres restent dans la file avec leur numéro.
     const pieces = piecesPayees;
+    if (pieces.length === 0 && piecesEnAttente.length > 0) {
+      flash('Aucune prescription sélectionnée — cochez la (ou les) ligne(s) à encaisser.');
+      payingRef.current = false;
+      return;
+    }
     const idsPayes = new Set(pieces.map(piece => piece.key));
-    const serviceInvoices = pendingServiceInvoices.filter(i => i.patientId === selPatient.id && idsPayes.has(i.id));
+    /**
+     * Lignes RÉELLEMENT encaissées par facture : une pièce peut être une facture
+     * « globale » allégée de ses médicaments (découpée pour que chaque prescription
+     * reste une ligne indépendante). La facture est alors enregistrée à SON
+     * nouveau total — l'ordonnance part sur sa propre ligne, avec son numéro.
+     */
+    const lignesParFacture = new Map<string, InvoiceItem[]>(
+      pieces.filter(p => p.invoiceId).map(p => [p.invoiceId as string, p.items]),
+    );
+    const facturesScindees = new Set(pieces.filter(p => p.scindee && p.invoiceId).map(p => p.invoiceId as string));
+    const totalDeLignes = (lignes: InvoiceItem[]) => roundTo2(lignes.reduce((ss, it) => ss + (Number(it.amount) || 0), 0));
+    const serviceInvoices = pendingServiceInvoices
+      .filter(i => i.patientId === selPatient.id && idsPayes.has(i.id))
+      .map(i => (facturesScindees.has(i.id)
+        ? { ...i, items: lignesParFacture.get(i.id) || i.items, totalAmount: totalDeLignes(lignesParFacture.get(i.id) || i.items) }
+        : i));
     const medicationPieces = pieces.filter(p => p.invoiceId === undefined);
     const medicationItems: InvoiceItem[] = medicationPieces.flatMap(p => p.items);
     const serviceItems = serviceInvoices.flatMap(i => i.items);
+    // Consultation de RÉFÉRENCE DU LOT (et non du dossier entier) : rattache le
+    // ticket modérateur et sa numérotation à la prescription réellement encaissée.
+    const consultLot = pieces.map(p => p.consultationId).find(Boolean);
+    const dateLot = consultLot ? state.consultations.find(c => c.id === consultLot)?.date : undefined;
     // TOUTES les lignes des pièces du dossier (services, médicaments, anciennes
     // factures pharmacie) : la base du total encaissé.
     const unifiedItems: InvoiceItem[] = pieces.flatMap(piece => piece.items);
@@ -936,7 +1160,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         addJourneyEvent(next, { patientId: selPatient.id, department: 'caisse', action: 'Passage validé en caisse', status: 'invoice_paid', details: `Aucune facture — passage validé (0 Ar)${isSocieteCredit ? ' — crédit société' : ''}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name });
         return next;
       });
-      setSelConsultId(null); setSelPatientId(null); setPaymentModalOpen(false);
+      setSelConsultId(null); setSelPatientId(null); setPaymentModalOpen(false); setSelPieceKeys(null);
       payingRef.current = false;
       return;
     }
@@ -969,8 +1193,9 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         pending.clientType === 'societe' ? selPatient.company : undefined,
         pending.createdAt || paidAt, pending.createdAt || paidAt)),
       // Ticket modérateur encaissé en espèces : facture du jour (client
-      // comptoir), numérotée comme tout encaissement de la caisse.
-      ...(copayMontant > 0 ? [specPiece('comptoir', undefined, paidAt, unpaidConsults[0]?.date || paidAt)] : []),
+      // comptoir), numérotée comme tout encaissement de la caisse — rattachée à
+      // la prescription encaissée (une pièce seule ne doit rien aux autres).
+      ...(copayMontant > 0 ? [specPiece('comptoir', undefined, paidAt, dateLot || unpaidConsults[0]?.date || paidAt)] : []),
     ];
     let allocated: FactureNumberAllocation[];
     try {
@@ -1020,7 +1245,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     // répartition (brut / part société / quote-part) repris sur son ticket.
     const copayInvoice: Invoice | null = copay && copayMontant > 0 ? {
       id: uuidv4(), patientId: selPatient.id,
-      consultationId: unpaidConsults[0]?.id || serviceInvoices[0]?.consultationId,
+      consultationId: consultLot || serviceInvoices[0]?.consultationId,
       // Encaissement en espèces à la caisse : la facture suit le circuit
       // comptoir (jamais créditée à la société, jamais réclamée à l'assurance).
       clientType: 'comptoir',
@@ -1073,11 +1298,18 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         };
       }),
       ...medsInvoices,
+      // Anciennes factures pharmacie soldées EN PLACE : elles font partie du lot
+      // encaissé (une pièce, son numéro, son reçu — jamais absorbée par le lot).
+      ...pendingPharmacyInvoices.map(inv => ({
+        ...inv,
+        status: 'paid' as const, paidAt, paidBy: state.currentUser?.id || '',
+        numeroFacture: inv.numeroFacture || allocatedNumbers.get(inv.id),
+      })),
     ];
     // Reçu de référence du lot : sert au suivi des demandes d'examen soldées et
     // aux duplicatas. L'IMPRESSION, elle, se fait prescription par prescription
     // (un ticket + un bon d'examens par prescription, jamais fusionnés).
-    const receipt = prepareReceipts(piecesReglees, piecesReglees[0]);
+    const receipt = piecesReglees.length ? prepareReceipts(piecesReglees, piecesReglees[0]) : null;
 
     setState(prev => {
       // PIÈCES SOLDÉES : chaque facture en attente (services + anciennes
@@ -1099,10 +1331,15 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
             // (part prise en charge) et son suivi assurance — la facturation
             // société réclame ce net, la quote-part ayant été encaissée en
             // espèces à la caisse. Sans quote-part, les montants sont inchangés.
+            // Facture DÉCOUPÉE à la caisse : on n'enregistre que les lignes de sa
+            // propre pièce (médicaments encaissés sur leur propre ligne).
+            const lignes = facturesScindees.has(i.id) ? (lignesParFacture.get(i.id) || i.items) : i.items;
+            const decoupee = lignes !== i.items;
             const rep = copayParFacture.get(i.id);
-            const net = isSocieteCredit ? creditPiece(i.items, rep) : i.patientCharge;
+            const net = isSocieteCredit ? creditPiece(lignes, rep) : (decoupee ? totalDeLignes(lignes) : i.patientCharge);
             const numero = i.numeroFacture || allocatedNumbers.get(i.id);
-            return { ...i, status: 'paid' as const, paidAt, paidBy: prev.currentUser?.id || '',
+            return { ...i, ...(decoupee ? { items: lignes, totalAmount: totalDeLignes(lignes) } : null),
+                status: 'paid' as const, paidAt, paidBy: prev.currentUser?.id || '',
                 numeroFacture: numero,
                 creditSociete: isSocieteCredit,
                 patientCharge: net,
@@ -1125,7 +1362,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         ],
         // Marquer les lab requests comme payés
         labRequests: prev.labRequests.map(r =>
-          receipt.exams.pendingLabIds.has(r.id) ? { ...r, status: 'paid' as const } : r
+          receipt?.exams.pendingLabIds.has(r.id) ? { ...r, status: 'paid' as const } : r
         ),
         // Marquer les analyses ET les échos comme payés sur les consultations.
         // ⚠️ IMPORTANT : le laboratoire affiche les demandes via la copie rattachée à la
@@ -1136,31 +1373,46 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
           return {
             ...c,
             labRequests: (c.labRequests || []).map(l =>
-              receipt.exams.pendingLabIds.has(l.id) ? { ...l, status: 'paid' as const } : l
+              receipt?.exams.pendingLabIds.has(l.id) ? { ...l, status: 'paid' as const } : l
             ),
             echoRequests: (c.echoRequests || []).map(e =>
-              receipt.exams.pendingEchoIds.has(e.id) ? { ...e, status: 'paid' as const } : e
+              receipt?.exams.pendingEchoIds.has(e.id) ? { ...e, status: 'paid' as const } : e
             ),
           };
         }),
-        // lastVisitAt mis à jour au paiement (clients déjà payés inclus).
-        // Toutes les pièces du dossier étant encaissées d'un coup, le patient
-        // passe en « payé » : il ne reste aucune facture en attente.
-        patients: prev.patients.map(p => p.id === selPatient.id
-          ? { ...p, status: 'invoice_paid' as Patient['status'], lastVisitAt: paidAt }
-          : p),
+        // Le statut du patient se décide APRÈS construction de `next` : il dépend
+        // des pièces qui y restent en attente (encaissement éventuellement PARTIEL).
+        patients: prev.patients,
       };
+      /**
+       * DOSSIER ENCORE EN ATTENTE ? `next` étant l'état qui sera publié, on y
+       * relit les pièces restées au guichet : un encaissement PARTIEL (une
+       * prescription seule réglée) laisse le patient dans la file pour les
+       * autres lignes ; il ne passe en « payé » qu'une fois la dernière pièce
+       * encaissée. `lastVisitAt` est néanmoins mis à jour à chaque validation.
+       */
+      const piecesRestantes = pendingPiecesOf(next, selPatient, getConsultsSur(next, selPatient.id)).length;
+      next.patients = prev.patients.map(p => p.id === selPatient.id
+        ? {
+            ...p,
+            status: (piecesRestantes > 0 ? 'consulted_awaiting_payment' : 'invoice_paid') as Patient['status'],
+            lastVisitAt: paidAt,
+          }
+        : p);
       const parts = [
         medicationItems.length ? 'médicaments' : '',
         serviceItems.some(i => i.category === 'lab') ? 'analyses' : '',
         serviceItems.some(i => i.category === 'echo') ? 'échographies' : '',
       ].filter(Boolean).join(' + ');
-      addAuditLog(next, isSocieteCredit ? 'VALIDATION_CREDIT_SOCIETE' : 'PAIEMENT_UNIFIE', `${formatAr(total)}${detailCredit} — ${parts || 'facture'} — ${selPatient.lastName}${selPatient.company ? ` (${selPatient.company})` : ''}`, selPatient.id);
-      addJourneyEvent(next, { patientId: selPatient.id, department: 'caisse', action: isSocieteCredit ? (copayMontant > 0 ? 'Crédit société validé + ticket modérateur encaissé' : 'Paiement validé en crédit société') : 'Paiement unifié enregistré', status: 'invoice_paid', details: `${formatAr(total)} (${parts || 'facture'})${isSocieteCredit ? ` — crédit société ${selPatient.company || ''}${copayMontant > 0 ? ` (${formatAr(partSocieteTotale)}) + ticket modérateur ${formatAr(copayMontant)} réglé en espèces` : ''}` : ''}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name });
+      const mentionLot = piecesEnAttente.length > 1
+        ? ` — ${pieces.length}/${piecesEnAttente.length} prescription(s) du dossier${piecesRestantes > 0 ? `, ${piecesRestantes} restante(s) en file` : ''}`
+        : '';
+      addAuditLog(next, isSocieteCredit ? 'VALIDATION_CREDIT_SOCIETE' : 'PAIEMENT_UNIFIE', `${formatAr(total)}${detailCredit} — ${parts || 'facture'}${mentionLot} — ${selPatient.lastName}${selPatient.company ? ` (${selPatient.company})` : ''}`, selPatient.id);
+      addJourneyEvent(next, { patientId: selPatient.id, department: 'caisse', action: isSocieteCredit ? (copayMontant > 0 ? 'Crédit société validé + ticket modérateur encaissé' : 'Paiement validé en crédit société') : (piecesRestantes > 0 ? 'Paiement partiel enregistré' : 'Paiement unifié enregistré'), status: piecesRestantes > 0 ? 'consulted_awaiting_payment' : 'invoice_paid', details: `${formatAr(total)} (${parts || 'facture'})${mentionLot}${isSocieteCredit ? ` — crédit société ${selPatient.company || ''}${copayMontant > 0 ? ` (${formatAr(partSocieteTotale)}) + ticket modérateur ${formatAr(copayMontant)} réglé en espèces` : ''}` : ''}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name });
       return next;
     });
 
-    setLastReceipt(receipt);
+    if (receipt) setLastReceipt(receipt);
     // Pièces du dernier encaissement (ticket modérateur compris) : un duplicata
     // PAR PIÈCE — les prescriptions ne sont jamais fusionnées.
     setLastReceiptPieces(copayInvoice ? [...piecesReglees, copayInvoice] : piecesReglees);
@@ -1183,7 +1435,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         state.users.find(u => u.id === copayInvoice.paidBy) || state.currentUser || undefined,
       );
     }
-    setSelConsultId(null); setSelPatientId(null); setPaymentModalOpen(false); setCopayCash('');
+    setSelConsultId(null); setSelPatientId(null); setPaymentModalOpen(false); setCopayCash(''); setSelPieceKeys(null);
     payingRef.current = false;
   };
 
@@ -2181,26 +2433,29 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                   {fileAttente.length === 0 ? <div className="p-6 text-center text-ink-faint text-sm">Aucune facture</div>
                     : fileAttente.map(({ patient: p, piece, date }, index) => {
                       const estSociete = p.clientType === 'societe';
-                      const copayFile = getCopayAmount(p);
+                      // Ticket modérateur de CETTE ligne seulement (le lot facturé
+                      // est la prescription cliquée, jamais le dossier entier).
+                      const copayFile = piece ? getCopayAmount(p, piece.items) : getCopayAmount(p);
                       const dateLigne = date ? new Date(date).toLocaleDateString('fr-FR') : undefined;
                       // MONTANT DE CETTE PRESCRIPTION SEULE (jamais le cumul du dossier) :
                       // c'est ce que le guichet encaisse pour la pièce affichée.
                       const montant = piece
                         ? (estSociete ? brutPiece(piece.items) : roundTo2(piece.items.reduce((ss, it) => ss + (Number(it.amount) || 0), 0)))
                         : getPendingAmount(p);
-                      // Retrait de la file = action sur TOUT le dossier : bouton sur la
-                      // première ligne du patient seulement (son nom est répété).
+                      // Combien de lignes ce patient occupe-t-il dans la file ? Sert à
+                      // rappeler que les autres prescriptions restent en attente.
+                      const lignesDuPatient = fileAttente.filter(e => e.patient.id === p.id).length;
+                      // Retrait de TOUT le dossier = action sur les autres lignes : bouton
+                      // sur la première ligne du patient seulement (son nom est répété).
                       const premierDuPatient = fileAttente.findIndex(e => e.patient.id === p.id) === index;
-                      const libellePiece = piece
-                        ? `${piece.label}${piece.resume ? ` — ${piece.resume}` : ''}${piece.numero ? ` · n° ${piece.numero}` : ' · en attente (sans numéro)'}`
-                        : '';
+                      const lib = piece ? libellePiece(piece) : '';
                       return (
                         <div
                           key={piece ? `${p.id}-${piece.key}` : `${p.id}-passage`}
                           className={`p-3 cursor-pointer hover:bg-amber-50/60 dark:hover:bg-amber-500/5 transition ${selPatientId === p.id && paymentModalOpen ? 'bg-amber-50 dark:bg-amber-500/8 border-l-4 border-amber-500' : ''}`}
                           onClick={() => openPaymentModal(p.id)}
                           title={piece
-                            ? `Ouvrir la facturation du dossier : ${libellePiece} — toutes les prescriptions en attente y sont listées, chacune avec son numéro`
+                            ? `Ouvrir la facturation du dossier : ${lib} — les prescriptions en attente y sont listées, chacune cochable indépendamment`
                             : 'Ouvrir la facture en fenêtre modale'}
                         >
                           <div className="flex justify-between items-start gap-2">
@@ -2208,8 +2463,13 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                               <div className="font-medium text-sm truncate">
                                 {p.lastName} {p.firstName}
                                 {dateLigne ? <span className="text-xs text-ink-muted font-normal"> {dateLigne}</span> : null}
+                                {piece && lignesDuPatient > 1 ? (
+                                  <span className="ml-1 px-1 py-0.5 rounded bg-surface-hover text-ink-muted text-[9px] font-bold" title={`${lignesDuPatient} prescriptions en attente pour ce dossier — elles se facturent et se retirent une par une`}>
+                                    {lignesDuPatient}
+                                  </span>
+                                ) : null}
                               </div>
-                              <div className="text-xs text-ink-muted truncate" title={libellePiece}>
+                              <div className="text-xs text-ink-muted truncate" title={lib}>
                                 {piece
                                   ? <>{piece.label}{piece.resume ? ` — ${piece.resume}` : ''}{piece.numero ? <span className="font-mono"> · n° {piece.numero}</span> : <span> · en attente (sans numéro)</span>}</>
                                   : <>{(getConsults(p.id)[0]?.doctorName) || 'Passage sans facturation'}</>}
@@ -2220,16 +2480,27 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                               <div className={`font-mono font-bold text-sm ${estSociete ? 'text-blue-700 dark:text-cyan-400' : 'text-amber-700 dark:text-amber-400'}`}>{formatAr(montant)}</div>
                               {piece && (
                                 <button
-                                  onClick={(e) => { e.stopPropagation(); openPaymentModal(p.id); }}
+                                  onClick={(e) => { e.stopPropagation(); openPaymentModal(p.id, piece.key); }}
                                   className="px-1.5 py-0.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold cursor-pointer shrink-0"
-                                  title="Ouvrir la facturation du dossier — toutes les prescriptions en attente y sont listées et encaissées ensemble"
+                                  title={lignesDuPatient > 1
+                                    ? "Facturer SEULEMENT cette prescription — les autres lignes du dossier restent en attente (les cocher dans la fenêtre pour tout encaisser d'un coup)"
+                                    : 'Ouvrir la facturation de cette prescription'}
                                 >Facturer</button>
+                              )}
+                              {piece && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); removePendingPiece(p, piece); }}
+                                  className="p-1 rounded-lg text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-500/15 hover:text-rose-700 dark:hover:text-rose-400 cursor-pointer transition"
+                                  title="Retirer CETTE prescription de la file caisse — les autres lignes du dossier restent en attente, le dossier patient est conservé"
+                                ><X className="w-3.5 h-3.5" /></button>
                               )}
                               {premierDuPatient && (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); removePendingPatient(p.id); }}
                                   className="p-1 rounded-lg text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-500/15 hover:text-rose-700 dark:hover:text-rose-400 cursor-pointer transition"
-                                  title="Retirer de la file caisse — dossier patient conservé"
+                                  title={lignesDuPatient > 1
+                                    ? `Retirer TOUTES les prescriptions en attente de ce dossier (${lignesDuPatient}) — dossier patient conservé`
+                                    : 'Retirer de la file caisse — dossier patient conservé'}
                                 ><Trash2 className="w-4 h-4" /></button>
                               )}
                             </div>
@@ -2238,7 +2509,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                             {estSociete && <span className="px-1 py-0.5 bg-blue-100 dark:bg-cyan-500/15 text-blue-700 dark:text-cyan-400 text-[10px] rounded font-semibold" title={copayFile > 0 ? "Le NET est porté au crédit de la société ; la quote-part de l'assuré se règle en espèces" : "Pas d'espèces : la facture est portée au crédit de la société"}>🏢 Crédit Société</span>}
                             {copayFile > 0 && (
                               <span className="px-1 py-0.5 bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-400 text-[10px] rounded font-bold"
-                                title="Ticket modérateur : quote-part de l'assuré à encaisser en espèces (un ticket lui est remis)">
+                                title="Ticket modérateur : quote-part de l'assuré à encaisser en espèces pour cette prescription (un ticket lui est remis)">
                                 💰 Ticket mod. {formatAr(copayFile)}
                               </span>
                             )}
@@ -2247,7 +2518,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                       );
                     })}
                 </div>
-                {fileAttente.length > 0 && <div className="px-3 py-1.5 bg-surface-muted border-t text-[10px] text-ink-muted text-center">👆 Une ligne par prescription (le nom se répète), du plus récent au plus ancien — chaque ligne porte son contenu, son numéro et son montant ; cliquez pour facturer le dossier</div>}
+                {fileAttente.length > 0 && <div className="px-3 py-1.5 bg-surface-muted border-t text-[10px] text-ink-muted text-center">👆 Une ligne par prescription (le nom se répète) — « Facturer » encaisse la ligne, ✕ la retire de la file : les autres lignes du même patient restent en attente. Un clic sur la ligne ouvre le dossier et permet de cocher plusieurs prescriptions.</div>}
               </div>
 
               {/* VENTE DIRECTE — CLIENT EXTERNE (affichée à la place du détail de facturation) */}
@@ -3081,9 +3352,27 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
               </div>
               )}
 
-              {/* === LISTE DES PRESCRIPTIONS === */}
+              {/* === LISTE DES PRESCRIPTIONS — UNE LIGNE PAR PIÈCE, COCHABLE === */}
               <div className="border rounded-lg overflow-hidden mb-3">
-                <div className="bg-surface-hover px-3 py-2 border-b font-bold text-sm text-ink flex items-center gap-2">📋 Liste des prescriptions</div>
+                <div className="bg-surface-hover px-3 py-2 border-b font-bold text-sm text-ink flex items-center gap-2">
+                  <span>📋 Liste des prescriptions</span>
+                  {lotSelectionnable && (
+                    <span className="ml-auto flex items-center gap-2 font-normal text-[11px] text-ink-secondary">
+                      <label className="flex items-center gap-1.5 cursor-pointer" title="Cocher ou décocher TOUTES les prescriptions en attente du dossier">
+                        <input
+                          type="checkbox"
+                          className="w-3.5 h-3.5 accent-amber-600 cursor-pointer"
+                          checked={piecesPayees.length === piecesEnAttente.length}
+                          onChange={e => cocherToutLeDossier(e.target.checked)}
+                        />
+                        Tout le dossier
+                      </label>
+                      <span className="text-ink-faint">
+                        {piecesPayees.length}/{piecesEnAttente.length} à encaisser
+                      </span>
+                    </span>
+                  )}
+                </div>
                 <div className="overflow-x-auto max-h-[260px] overflow-y-auto">
                   <table className="w-full text-xs">
                     <thead className="bg-surface-muted border-b text-ink-secondary sticky top-0">
@@ -3098,15 +3387,17 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                     <tbody className="divide-y">
                       {(() => {
                         const unpaidConsults = getConsults(selPatient.id);
-                        const pieces = pendingPiecesOf(selPatient, unpaidConsults);
-                        // UNE PRESCRIPTION = UN BLOC : titre (date + numéro, jamais la
-                        // famille), les articles qu'elle contient, et son total. Les
-                        // prescriptions ne sont JAMAIS fusionnées, même au nom de la
-                        // même personne ; toutes sont encaissées ensemble.
+                        const pieces = pendingPiecesOf(state, selPatient, unpaidConsults);
+                        // UNE PRESCRIPTION = UN BLOC COCHABLE : titre (date + numéro,
+                        // jamais la famille), les articles qu'elle contient, son total.
+                        // Jamais fusionnées, même au nom de la même personne ; chacune
+                        // s'encaisse SEULE (case) ou se retire de la file (✕) sans
+                        // toucher aux autres lignes du dossier.
                         const societeClient = selPatient.clientType === 'societe';
                         if (pieces.length === 0) {
-                          return <tr><td colSpan={5} className="p-4 text-center text-ink-faint">Aucune prescription</td></tr>;
+                          return <tr><td colSpan={5} className="p-4 text-center text-ink-faint">Aucune prescription en attente — la caisse valide le passage</td></tr>;
                         }
+                        const aFacturer = new Set(piecesPayees.map(p => p.key));
                         const lignesDePiece = (piece: typeof pieces[number]) => piece.items.map(it => {
                           const qty = it.quantity || 1;
                           // Brut = prix conventionné AVANT la remise du médecin
@@ -3121,17 +3412,45 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                         });
                         return pieces.flatMap((piece, index) => {
                           const brutPiece = roundTo2(piece.items.reduce((ss, it) => ss + brutLigneDepuisItem(it), 0));
+                          const choisie = aFacturer.has(piece.key);
                           return [
-                            <tr key={`titre-${piece.key}`} className="border-y border-line bg-amber-50/60 dark:bg-amber-500/8">
+                            <tr
+                              key={`titre-${piece.key}`}
+                              className={`border-y border-line ${choisie ? 'bg-amber-50/70 dark:bg-amber-500/10' : 'bg-surface-muted/70 dark:bg-slate-500/10 opacity-60'} ${lotSelectionnable ? 'cursor-pointer hover:bg-amber-100/70 dark:hover:bg-amber-500/15' : ''}`}
+                              onClick={() => { if (lotSelectionnable) basculerPiece(piece.key); }}
+                              title={lotSelectionnable
+                                ? (choisie
+                                  ? 'Décocher pour NE PAS encaisser cette prescription : elle reste en attente au guichet'
+                                  : 'Cocher pour ajouter cette prescription au lot à encaisser')
+                                : 'Cette prescription sera encaissée à la validation'}
+                            >
                               <td colSpan={5} className="px-2 py-1">
-                                <div className="flex items-center justify-between gap-2 text-[10px] font-bold text-ink-secondary uppercase tracking-wide">
-                                  <span className="normal-case">
+                                <div className="flex items-center gap-2 text-[10px] font-bold text-ink-secondary uppercase tracking-wide">
+                                  {lotSelectionnable && (
+                                    <input
+                                      type="checkbox"
+                                      className="w-3.5 h-3.5 accent-amber-600 cursor-pointer shrink-0"
+                                      checked={choisie}
+                                      onChange={() => basculerPiece(piece.key)}
+                                      onClick={e => e.stopPropagation()}
+                                      aria-label={`Encaisser ${libellePiece(piece)}`}
+                                    />
+                                  )}
+                                  <span className="normal-case truncate">
                                     <span className="text-ink-faint mr-1">{index + 1}.</span>{piece.label}{piece.resume ? ` — ${piece.resume}` : ''}
                                     {piece.numero
                                       ? <span className="font-mono text-ink-faint"> · n° {piece.numero}</span>
                                       : <span className="text-ink-faint"> · en attente (sans numéro)</span>}
                                   </span>
-                                  <span className="font-mono shrink-0 text-amber-700 dark:text-amber-400">{formatAr(brutPiece)}</span>
+                                  <span className="ml-auto flex items-center gap-1.5 shrink-0">
+                                    <span className="font-mono text-amber-700 dark:text-amber-400">{formatAr(brutPiece)}</span>
+                                    <button
+                                      type="button"
+                                      onClick={e => { e.stopPropagation(); removePendingPiece(selPatient, piece); }}
+                                      className="p-0.5 rounded text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-500/15 cursor-pointer"
+                                      title="Retirer CETTE prescription de la file caisse — les autres lignes du dossier restent facturables, le dossier médical est conservé"
+                                    ><X className="w-3.5 h-3.5" /></button>
+                                  </span>
                                 </div>
                               </td>
                             </tr>,
@@ -3153,14 +3472,15 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                         <td colSpan={5} className="p-2">
                           <div className="flex items-center justify-between gap-2 flex-wrap">
                             <span className="text-[10px] text-ink-muted">
-                              {piecesEnAttente.length} prescription{piecesEnAttente.length > 1 ? 's' : ''} — encaissées ensemble (jamais fusionnées : un numéro de facture chacune)
+                              {piecesEnAttente.length} prescription{piecesEnAttente.length > 1 ? 's' : ''} en attente · {piecesPayees.length} sélectionnée{piecesPayees.length > 1 ? 's' : ''} — jamais fusionnées : une facture et un numéro PAR prescription.
+                              {lotSelectionnable && <span className="text-ink-faint"> Décochez ce qui ne doit pas être encaissé aujourd'hui.</span>}
                             </span>
                           </div>
                         </td>
                       </tr>
                       <tr>
                         <td colSpan={4} className="p-2 text-right font-bold font-sans">
-                          TOTAL {piecesPayees.length ? `(${piecesPayees.length} prescription${piecesPayees.length > 1 ? 's' : ''})` : ''} :
+                          TOTAL {piecesPayees.length ? `(${piecesPayees.length} prescription${piecesPayees.length > 1 ? 's' : ''} sélectionnée${piecesPayees.length > 1 ? 's' : ''})` : '(rien de sélectionné)'} :
                         </td>
                         <td className="p-2 text-right font-mono font-bold text-amber-700 dark:text-amber-400 text-sm">
                           {formatAr(selPatient.clientType === 'societe'
@@ -3439,7 +3759,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
               <div className={`flex justify-between text-xl font-bold ${selPatient.clientType === 'societe' ? 'text-blue-800 dark:text-cyan-300' : ''} ${copayDu > 0 ? 'pt-1' : 'border-t-2 pt-2'} mb-2`}>
                 <span>{selPatient.clientType === 'societe' ? 'MONTANT EN CRÉDIT SOCIÉTÉ' : 'À PAYER'}</span>
                 <span className={`font-mono ${selPatient.clientType === 'societe' ? 'text-blue-600 dark:text-cyan-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                  {formatAr(selPatient.clientType === 'societe' && copayPreview ? partSocieteEffective : getPendingAmount(selPatient))}
+                  {formatAr(selPatient.clientType === 'societe' && copayPreview ? partSocieteEffective : montantSelection)}
                 </span>
               </div>
               {selPatient.clientType === 'societe' && copayPreview && (
@@ -3486,6 +3806,15 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                         ))}
                       </ol>
                     )}
+                    {/* Facturation INDÉPENDANTE : ce qui n'est pas coché reste au guichet. */}
+                    {piecesEnAttente.length > pieces.length && (
+                      <div className="mt-1.5 ml-6 px-2 py-1 rounded bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/25 text-[10px] text-amber-800 dark:text-amber-300">
+                        ⏳ {(() => {
+                          const reste = piecesEnAttente.filter(p => !pieces.some(x => x.key === p.key));
+                          return <>{reste.length} prescription{reste.length > 1 ? 's' : ''} {reste.length > 1 ? 'resteront' : 'restera'} en attente au guichet après cette validation — le dossier reste dans la file pour {reste.map(p => p.label).join(', ')}.</>;
+                        })()}
+                      </div>
+                    )}
                   </div>
                 );
               })()}
@@ -3497,13 +3826,19 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                     </button>
                   </div>
                 ) : (
-                  <button onClick={handlePayment} className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 cursor-pointer shadow-lg flex items-center justify-center gap-2">
-                    <Building2 className="w-5 h-5" /> Valider en Crédit Société {formatAr(partSocieteEffective)}
+                  <button onClick={handlePayment} disabled={piecesPayees.length === 0 && piecesEnAttente.length > 0} className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 cursor-pointer disabled:opacity-40 shadow-lg flex items-center justify-center gap-2">
+                    <Building2 className="w-5 h-5" /> {piecesPayees.length === 0 && piecesEnAttente.length > 0
+                      ? 'Aucune prescription sélectionnée'
+                      : `Valider en Crédit Société ${formatAr(partSocieteEffective)}`}
                   </button>
                 )
               ) : (
                 <button onClick={handlePayment} className="w-full py-3 bg-amber-600 text-white rounded-xl font-semibold hover:bg-amber-700 cursor-pointer shadow-lg flex items-center justify-center gap-2">
-                  <CreditCard className="w-5 h-5" /> {getPendingAmount(selPatient) > 0 ? `Encaisser ${formatAr(getPendingAmount(selPatient))}` : 'Valider le passage (0 Ar)'}
+                  <CreditCard className="w-5 h-5" /> {piecesEnAttente.length === 0
+                    ? 'Valider le passage (0 Ar)'
+                    : piecesPayees.length === 0
+                      ? 'Aucune prescription sélectionnée'
+                      : `Encaisser ${formatAr(montantSelection)} (${piecesPayees.length} prescription${piecesPayees.length > 1 ? 's' : ''})`}
                 </button>
               )}
             </div>
