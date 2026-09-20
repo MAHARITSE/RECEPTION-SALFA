@@ -183,12 +183,30 @@ export interface PatientJourneyEvent {
   hospitalizationId?: string;
 }
 
+/**
+ * Retrait INDIVIDUEL d'une pièce de la file d'attente de la caisse.
+ * La caisse affiche une ligne par prescription : chaque ligne peut être retirée
+ * SANS retirer les autres. Le retrait d'une pièce « médicaments » ne détruit
+ * rien : il pose ce marqueur sur la consultation, dont l'ordonnance reste
+ * visible dans le dossier médical et à la pharmacie. La pièce ne remonte plus
+ * en caisse (elle n'est plus facturable) et le numéro de facture n'est pas
+ * consommé — la numérotation se fait à l'encaissement.
+ */
+export interface RetraitFacturationCaisse {
+  at: string;
+  by?: string;
+  byName?: string;
+  motif?: string;
+}
+
 export interface Consultation {
   id: string; patientId: string; doctorId: string; doctorName: string; date: string;
   vitalSigns: VitalSigns; visitReason: string; diagnosis: string; notes: string;
   prescriptions: Prescription[]; labRequests: LabRequest[];
   echoRequests?: EchoRequest[];
   hospitalizeRequested: boolean; surgeryRequested: boolean; isEmergency: boolean;
+  /** Pièce « médicaments » retirée de la file de la caisse (voir RetraitFacturationCaisse). */
+  facturationRetiree?: RetraitFacturationCaisse;
 }
 
 export interface InvoiceItem {
