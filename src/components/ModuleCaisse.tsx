@@ -15,7 +15,7 @@ import {
   familyManagesStock, isLabFamily, isEchoFamily, isConsultFamily, allocateFactureNumber, allocateFactureNumberAsync, allocateFactureNumbersAsync, applySocieteUpsert, collectExistingFactureNumbers, companyIsBlocked, companyOptions, sousSocietesConnues,
   invoiceNatureRemise,
 } from '../store';
-import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText, RefreshCw, X } from 'lucide-react';
+import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText, RefreshCw } from 'lucide-react';
 import { SearchableSelect, optionsFromValues } from './SearchableSelect';
 import { SuggestionInput, classerSuggestions, motsIdentite } from './SuggestionInput';
 import { printPaymentTicket as openThermalTicket, printClosingTicket, printExamRequestTicket, printHbPaymentTicket, printPharmaDeliveryClosingTicket } from '../utils/printTicket';
@@ -849,15 +849,12 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     const montantPiece = roundTo2(piece.items.reduce((s, it) => s + (Number(it.amount) || 0), 0));
     const restantes = pendingPiecesOf(state, patient, getConsults(patient.id)).filter(p => p.key !== piece.key);
     askConfirmation({
-      title: "Retrait d'une ligne de la file Caisse",
-      message: `Retirer « ${libellePiece(piece)} » (${formatAr(montantPiece)}) de la file caisse de ${patient.lastName} ${patient.firstName} (${patient.dossier}) ?`,
-      subText: (restantes.length
-        ? `Les ${restantes.length} autre(s) prescription(s) du dossier restent en attente : elles pourront être facturées séparément. `
-        : 'C\u2019est la dernière prescription en attente de ce dossier. ')
-        + (descripteur.kind === 'medicaments'
-          ? "L'ordonnance reste conservée au dossier médical et à la pharmacie : seule la facturation en caisse est retirée."
-          : 'La facture non encaissée est annulée, ainsi que les examens quelle porte qui n\u2019ont pas encore été réalisés. Le dossier patient reste conservé.'),
-      confirmText: 'Retirer cette ligne',
+      title: "Retrait d'une prescription de la file Caisse",
+      message: `Retirer « ${libellePiece(piece)} » (${formatAr(montantPiece)}) de la file caisse pour ${patient.lastName} ${patient.firstName} (${patient.dossier}) ?`,
+      subText: descripteur.kind === 'medicaments'
+        ? "L'ordonnance reste conservée au dossier médical et à la pharmacie : seule la facturation en caisse est retirée."
+        : "La facture non encaissée est annulée, ainsi que les examens qu'elle porte qui n'ont pas encore été réalisés. Le dossier patient reste conservé.",
+      confirmText: 'Retirer de la file',
       cancelText: 'Annuler',
       type: 'danger',
       onConfirm: () => {
@@ -2426,48 +2423,34 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                       title="Rechercher les nouvelles consultations validées par les médecins"
                       className="p-1 rounded-lg text-amber-700 dark:text-amber-400 hover:bg-amber-200/70 dark:hover:bg-amber-500/18 cursor-pointer transition"
                     ><RefreshCw className="w-3.5 h-3.5" /></button>
-                    <span className="px-2 py-0.5 rounded-full bg-amber-600 text-white text-[10px] font-bold" title={`${fileAttente.length} prescription(s) en attente — une ligne par prescription, le nom du patient se répète à chaque fois`}>{fileAttente.length}</span>
+                    <span className="px-2 py-0.5 rounded-full bg-amber-600 text-white text-[10px] font-bold" title={`${fileAttente.length} prescription(s) en attente`}>{fileAttente.length}</span>
                   </span>
                 </div>
                 <div className="divide-y max-h-[500px] overflow-y-auto">
                   {fileAttente.length === 0 ? <div className="p-6 text-center text-ink-faint text-sm">Aucune facture</div>
-                    : fileAttente.map(({ patient: p, piece, date }, index) => {
+                    : fileAttente.map(({ patient: p, piece, date }) => {
                       const estSociete = p.clientType === 'societe';
-                      // Ticket modérateur de CETTE ligne seulement (le lot facturé
-                      // est la prescription cliquée, jamais le dossier entier).
+                      // Ticket modérateur de CETTE prescription seulement
                       const copayFile = piece ? getCopayAmount(p, piece.items) : getCopayAmount(p);
                       const dateLigne = date ? new Date(date).toLocaleDateString('fr-FR') : undefined;
-                      // MONTANT DE CETTE PRESCRIPTION SEULE (jamais le cumul du dossier) :
-                      // c'est ce que le guichet encaisse pour la pièce affichée.
+                      // MONTANT DE CETTE PRESCRIPTION SEULE :
                       const montant = piece
                         ? (estSociete ? brutPiece(piece.items) : roundTo2(piece.items.reduce((ss, it) => ss + (Number(it.amount) || 0), 0)))
                         : getPendingAmount(p);
-                      // Combien de lignes ce patient occupe-t-il dans la file ? Sert à
-                      // rappeler que les autres prescriptions restent en attente.
-                      const lignesDuPatient = fileAttente.filter(e => e.patient.id === p.id).length;
-                      // Retrait de TOUT le dossier = action sur les autres lignes : bouton
-                      // sur la première ligne du patient seulement (son nom est répété).
-                      const premierDuPatient = fileAttente.findIndex(e => e.patient.id === p.id) === index;
                       const lib = piece ? libellePiece(piece) : '';
+                      const estSelectionnee = selPatientId === p.id && paymentModalOpen && (!piece || (selPieceKeys ? selPieceKeys.includes(piece.key) : true));
                       return (
                         <div
                           key={piece ? `${p.id}-${piece.key}` : `${p.id}-passage`}
-                          className={`p-3 cursor-pointer hover:bg-amber-50/60 dark:hover:bg-amber-500/5 transition ${selPatientId === p.id && paymentModalOpen ? 'bg-amber-50 dark:bg-amber-500/8 border-l-4 border-amber-500' : ''}`}
-                          onClick={() => openPaymentModal(p.id)}
-                          title={piece
-                            ? `Ouvrir la facturation du dossier : ${lib} — les prescriptions en attente y sont listées, chacune cochable indépendamment`
-                            : 'Ouvrir la facture en fenêtre modale'}
+                          className={`p-3 cursor-pointer hover:bg-amber-50/60 dark:hover:bg-amber-500/5 transition ${estSelectionnee ? 'bg-amber-50 dark:bg-amber-500/8 border-l-4 border-amber-500' : ''}`}
+                          onClick={() => openPaymentModal(p.id, piece?.key)}
+                          title={piece ? `Facturer cette prescription : ${lib} (${formatAr(montant)})` : 'Ouvrir la facture'}
                         >
                           <div className="flex justify-between items-start gap-2">
                             <div className="min-w-0">
                               <div className="font-medium text-sm truncate">
                                 {p.lastName} {p.firstName}
                                 {dateLigne ? <span className="text-xs text-ink-muted font-normal"> {dateLigne}</span> : null}
-                                {piece && lignesDuPatient > 1 ? (
-                                  <span className="ml-1 px-1 py-0.5 rounded bg-surface-hover text-ink-muted text-[9px] font-bold" title={`${lignesDuPatient} prescriptions en attente pour ce dossier — elles se facturent et se retirent une par une`}>
-                                    {lignesDuPatient}
-                                  </span>
-                                ) : null}
                               </div>
                               <div className="text-xs text-ink-muted truncate" title={lib}>
                                 {piece
@@ -2476,33 +2459,29 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                                 {p.company ? ` — ${p.company}` : ''}
                               </div>
                             </div>
-                            <div className="flex items-start gap-1 shrink-0">
+                            <div className="flex items-center gap-1.5 shrink-0">
                               <div className={`font-mono font-bold text-sm ${estSociete ? 'text-blue-700 dark:text-cyan-400' : 'text-amber-700 dark:text-amber-400'}`}>{formatAr(montant)}</div>
                               {piece && (
                                 <button
+                                  type="button"
                                   onClick={(e) => { e.stopPropagation(); openPaymentModal(p.id, piece.key); }}
-                                  className="px-1.5 py-0.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold cursor-pointer shrink-0"
-                                  title={lignesDuPatient > 1
-                                    ? "Facturer SEULEMENT cette prescription — les autres lignes du dossier restent en attente (les cocher dans la fenêtre pour tout encaisser d'un coup)"
-                                    : 'Ouvrir la facturation de cette prescription'}
+                                  className="px-2 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold cursor-pointer shrink-0 transition shadow-xs"
+                                  title="Facturer cette prescription"
                                 >Facturer</button>
                               )}
-                              {piece && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); removePendingPiece(p, piece); }}
-                                  className="p-1 rounded-lg text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-500/15 hover:text-rose-700 dark:hover:text-rose-400 cursor-pointer transition"
-                                  title="Retirer CETTE prescription de la file caisse — les autres lignes du dossier restent en attente, le dossier patient est conservé"
-                                ><X className="w-3.5 h-3.5" /></button>
-                              )}
-                              {premierDuPatient && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); removePendingPatient(p.id); }}
-                                  className="p-1 rounded-lg text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-500/15 hover:text-rose-700 dark:hover:text-rose-400 cursor-pointer transition"
-                                  title={lignesDuPatient > 1
-                                    ? `Retirer TOUTES les prescriptions en attente de ce dossier (${lignesDuPatient}) — dossier patient conservé`
-                                    : 'Retirer de la file caisse — dossier patient conservé'}
-                                ><Trash2 className="w-4 h-4" /></button>
-                              )}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (piece) {
+                                    removePendingPiece(p, piece);
+                                  } else {
+                                    removePendingPatient(p.id);
+                                  }
+                                }}
+                                className="p-1 rounded-lg text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-500/15 hover:text-rose-700 dark:hover:text-rose-400 cursor-pointer transition shrink-0"
+                                title="Retirer cette prescription de la file caisse"
+                              ><Trash2 className="w-4 h-4" /></button>
                             </div>
                           </div>
                           <div className="flex gap-1 mt-1 flex-wrap">
@@ -2518,7 +2497,11 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                       );
                     })}
                 </div>
-                {fileAttente.length > 0 && <div className="px-3 py-1.5 bg-surface-muted border-t text-[10px] text-ink-muted text-center">👆 Une ligne par prescription (le nom se répète) — « Facturer » encaisse la ligne, ✕ la retire de la file : les autres lignes du même patient restent en attente. Un clic sur la ligne ouvre le dossier et permet de cocher plusieurs prescriptions.</div>}
+                {fileAttente.length > 0 && (
+                  <div className="px-3 py-1.5 bg-surface-muted border-t text-[10px] text-ink-muted text-center">
+                    👆 File traitée par prescription individuelle — un clic sur une ligne ou sur « Facturer » ouvre la prescription à encaisser. L&apos;icône corbeille retire la prescription de la file.
+                  </div>
+                )}
               </div>
 
               {/* VENTE DIRECTE — CLIENT EXTERNE (affichée à la place du détail de facturation) */}
@@ -3253,9 +3236,20 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={closePaymentModal}>
           <div className="w-full max-w-3xl bg-surface rounded-xl shadow-2xl border border-line-strong overflow-hidden flex flex-col max-h-[92vh]" onClick={e => e.stopPropagation()}>
             <div className="bg-amber-600 px-4 py-3 flex justify-between items-center text-white shrink-0">
-              <span className="font-bold text-sm flex items-center gap-2">
-                <CreditCard className="w-4 h-4" /> Facturation — {selPatient.lastName} {selPatient.firstName}
-              </span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-bold text-sm flex items-center gap-2">
+                  <CreditCard className="w-4 h-4" /> Facturation — {selPatient.lastName} {selPatient.firstName}
+                </span>
+                {piecesPayees.length === 1 && (
+                  <span className="px-2.5 py-0.5 rounded-full bg-amber-800 text-xs font-semibold text-amber-100 shadow-xs flex items-center gap-1.5">
+                    <span>Prescription ciblée :</span>
+                    <span className="underline decoration-amber-400">{piecesPayees[0].resume || piecesPayees[0].label}</span>
+                    <span className="font-mono font-bold">
+                      ({formatAr(selPatient.clientType === 'societe' ? brutPiece(piecesPayees[0].items) : roundTo2(piecesPayees[0].items.reduce((ss, it) => ss + (Number(it.amount) || 0), 0)))})
+                    </span>
+                  </span>
+                )}
+              </div>
               <button onClick={closePaymentModal} className="hover:bg-white/20 rounded p-1 cursor-pointer text-sm" title="Fermer">✕</button>
             </div>
             <div className="p-4 overflow-y-auto">
@@ -3352,24 +3346,13 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
               </div>
               )}
 
-              {/* === LISTE DES PRESCRIPTIONS — UNE LIGNE PAR PIÈCE, COCHABLE === */}
+              {/* === LISTE DES ARTICLES DE LA PRESCRIPTION SÉLECTIONNÉE === */}
               <div className="border rounded-lg overflow-hidden mb-3">
-                <div className="bg-surface-hover px-3 py-2 border-b font-bold text-sm text-ink flex items-center gap-2">
-                  <span>📋 Liste des prescriptions</span>
-                  {lotSelectionnable && (
-                    <span className="ml-auto flex items-center gap-2 font-normal text-[11px] text-ink-secondary">
-                      <label className="flex items-center gap-1.5 cursor-pointer" title="Cocher ou décocher TOUTES les prescriptions en attente du dossier">
-                        <input
-                          type="checkbox"
-                          className="w-3.5 h-3.5 accent-amber-600 cursor-pointer"
-                          checked={piecesPayees.length === piecesEnAttente.length}
-                          onChange={e => cocherToutLeDossier(e.target.checked)}
-                        />
-                        Tout le dossier
-                      </label>
-                      <span className="text-ink-faint">
-                        {piecesPayees.length}/{piecesEnAttente.length} à encaisser
-                      </span>
+                <div className="bg-surface-hover px-3 py-2 border-b font-bold text-sm text-ink flex items-center justify-between">
+                  <span>📋 Articles à facturer</span>
+                  {piecesPayees.length === 1 && (
+                    <span className="text-xs font-semibold text-amber-700 dark:text-amber-400 font-mono">
+                      {piecesPayees[0].resume || piecesPayees[0].label}
                     </span>
                   )}
                 </div>
@@ -3386,23 +3369,13 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                     </thead>
                     <tbody className="divide-y">
                       {(() => {
-                        const unpaidConsults = getConsults(selPatient.id);
-                        const pieces = pendingPiecesOf(state, selPatient, unpaidConsults);
-                        // UNE PRESCRIPTION = UN BLOC COCHABLE : titre (date + numéro,
-                        // jamais la famille), les articles qu'elle contient, son total.
-                        // Jamais fusionnées, même au nom de la même personne ; chacune
-                        // s'encaisse SEULE (case) ou se retire de la file (✕) sans
-                        // toucher aux autres lignes du dossier.
+                        const pieces = piecesPayees;
                         const societeClient = selPatient.clientType === 'societe';
                         if (pieces.length === 0) {
-                          return <tr><td colSpan={5} className="p-4 text-center text-ink-faint">Aucune prescription en attente — la caisse valide le passage</td></tr>;
+                          return <tr><td colSpan={5} className="p-4 text-center text-ink-faint">Aucune prescription sélectionnée — veuillez en choisir une</td></tr>;
                         }
-                        const aFacturer = new Set(piecesPayees.map(p => p.key));
                         const lignesDePiece = (piece: typeof pieces[number]) => piece.items.map(it => {
                           const qty = it.quantity || 1;
-                          // Brut = prix conventionné AVANT la remise du médecin
-                          // (= avant le ticket modérateur) pour un client société ;
-                          // net réellement dû par le patient pour le comptoir.
                           const brut = brutLigneDepuisItem(it);
                           return {
                             description: it.description, quantity: qty, discount: it.discount || 0,
@@ -3412,51 +3385,38 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                         });
                         return pieces.flatMap((piece, index) => {
                           const brutPiece = roundTo2(piece.items.reduce((ss, it) => ss + brutLigneDepuisItem(it), 0));
-                          const choisie = aFacturer.has(piece.key);
                           return [
                             <tr
                               key={`titre-${piece.key}`}
-                              className={`border-y border-line ${choisie ? 'bg-amber-50/70 dark:bg-amber-500/10' : 'bg-surface-muted/70 dark:bg-slate-500/10 opacity-60'} ${lotSelectionnable ? 'cursor-pointer hover:bg-amber-100/70 dark:hover:bg-amber-500/15' : ''}`}
-                              onClick={() => { if (lotSelectionnable) basculerPiece(piece.key); }}
-                              title={lotSelectionnable
-                                ? (choisie
-                                  ? 'Décocher pour NE PAS encaisser cette prescription : elle reste en attente au guichet'
-                                  : 'Cocher pour ajouter cette prescription au lot à encaisser')
-                                : 'Cette prescription sera encaissée à la validation'}
+                              className="border-y border-line bg-amber-50/70 dark:bg-amber-500/10 text-ink"
                             >
-                              <td colSpan={5} className="px-2 py-1">
-                                <div className="flex items-center gap-2 text-[10px] font-bold text-ink-secondary uppercase tracking-wide">
-                                  {lotSelectionnable && (
-                                    <input
-                                      type="checkbox"
-                                      className="w-3.5 h-3.5 accent-amber-600 cursor-pointer shrink-0"
-                                      checked={choisie}
-                                      onChange={() => basculerPiece(piece.key)}
-                                      onClick={e => e.stopPropagation()}
-                                      aria-label={`Encaisser ${libellePiece(piece)}`}
-                                    />
-                                  )}
-                                  <span className="normal-case truncate">
-                                    <span className="text-ink-faint mr-1">{index + 1}.</span>{piece.label}{piece.resume ? ` — ${piece.resume}` : ''}
-                                    {piece.numero
-                                      ? <span className="font-mono text-ink-faint"> · n° {piece.numero}</span>
-                                      : <span className="text-ink-faint"> · en attente (sans numéro)</span>}
+                              <td colSpan={5} className="px-2.5 py-1.5">
+                                <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wide">
+                                  <span className="normal-case truncate flex items-center gap-1.5">
+                                    <span className="text-ink-faint mr-0.5">{index + 1}.</span>
+                                    <span className="font-bold text-ink">
+                                      {piece.label}{piece.resume ? ` — ${piece.resume}` : ''}
+                                    </span>
+                                    {piece.numero && (
+                                      <span className="font-mono text-ink-faint text-[10px]"> · n° {piece.numero}</span>
+                                    )}
                                   </span>
                                   <span className="ml-auto flex items-center gap-1.5 shrink-0">
-                                    <span className="font-mono text-amber-700 dark:text-amber-400">{formatAr(brutPiece)}</span>
-                                    <button
-                                      type="button"
-                                      onClick={e => { e.stopPropagation(); removePendingPiece(selPatient, piece); }}
-                                      className="p-0.5 rounded text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-500/15 cursor-pointer"
-                                      title="Retirer CETTE prescription de la file caisse — les autres lignes du dossier restent facturables, le dossier médical est conservé"
-                                    ><X className="w-3.5 h-3.5" /></button>
+                                    <span className="font-mono font-bold text-amber-700 dark:text-amber-400">
+                                      {formatAr(brutPiece)}
+                                    </span>
                                   </span>
                                 </div>
                               </td>
                             </tr>,
                             ...lignesDePiece(piece).map((item, idx) => (
-                              <tr key={`${piece.key}-${idx}`} className="hover:bg-surface-muted">
-                                <td className="p-2 font-sans">{item.description}</td>
+                              <tr
+                                key={`${piece.key}-${idx}`}
+                                className="hover:bg-surface-muted transition-colors"
+                              >
+                                <td className="p-2 font-sans pl-4">
+                                  <span>{item.description}</span>
+                                </td>
                                 <td className="p-2 text-center font-mono">{item.quantity || '—'}</td>
                                 <td className="p-2 text-center font-mono text-amber-700 dark:text-amber-400 font-semibold">{item.discount ? `${item.discount}%` : '—'}</td>
                                 <td className="p-2 text-right font-mono">{item.unitPrice ? formatNum(Number(item.unitPrice)) : '—'}</td>
@@ -3469,18 +3429,8 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                     </tbody>
                     <tfoot className="bg-amber-50 dark:bg-amber-500/8 border-t-2 border-amber-300 dark:border-amber-500/40">
                       <tr>
-                        <td colSpan={5} className="p-2">
-                          <div className="flex items-center justify-between gap-2 flex-wrap">
-                            <span className="text-[10px] text-ink-muted">
-                              {piecesEnAttente.length} prescription{piecesEnAttente.length > 1 ? 's' : ''} en attente · {piecesPayees.length} sélectionnée{piecesPayees.length > 1 ? 's' : ''} — jamais fusionnées : une facture et un numéro PAR prescription.
-                              {lotSelectionnable && <span className="text-ink-faint"> Décochez ce qui ne doit pas être encaissé aujourd'hui.</span>}
-                            </span>
-                          </div>
-                        </td>
-                      </tr>
-                      <tr>
                         <td colSpan={4} className="p-2 text-right font-bold font-sans">
-                          TOTAL {piecesPayees.length ? `(${piecesPayees.length} prescription${piecesPayees.length > 1 ? 's' : ''} sélectionnée${piecesPayees.length > 1 ? 's' : ''})` : '(rien de sélectionné)'} :
+                          TOTAL :
                         </td>
                         <td className="p-2 text-right font-mono font-bold text-amber-700 dark:text-amber-400 text-sm">
                           {formatAr(selPatient.clientType === 'societe'
@@ -3756,8 +3706,15 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                   <span className="font-mono">{formatAr(copayPreview.brut)}</span>
                 </div>
               )}
-              <div className={`flex justify-between text-xl font-bold ${selPatient.clientType === 'societe' ? 'text-blue-800 dark:text-cyan-300' : ''} ${copayDu > 0 ? 'pt-1' : 'border-t-2 pt-2'} mb-2`}>
-                <span>{selPatient.clientType === 'societe' ? 'MONTANT EN CRÉDIT SOCIÉTÉ' : 'À PAYER'}</span>
+              <div className={`flex justify-between items-baseline text-xl font-bold ${selPatient.clientType === 'societe' ? 'text-blue-800 dark:text-cyan-300' : ''} ${copayDu > 0 ? 'pt-1' : 'border-t-2 pt-2'} mb-2`}>
+                <div>
+                  <span>{selPatient.clientType === 'societe' ? 'MONTANT EN CRÉDIT SOCIÉTÉ' : 'À PAYER'}</span>
+                  {piecesPayees.length === 1 && (
+                    <span className="block text-xs font-normal text-ink-secondary mt-0.5">
+                      Prescription : <strong>{piecesPayees[0].resume || piecesPayees[0].label}</strong>
+                    </span>
+                  )}
+                </div>
                 <span className={`font-mono ${selPatient.clientType === 'societe' ? 'text-blue-600 dark:text-cyan-400' : 'text-amber-600 dark:text-amber-400'}`}>
                   {formatAr(selPatient.clientType === 'societe' && copayPreview ? partSocieteEffective : montantSelection)}
                 </span>
@@ -3772,74 +3729,35 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                   </span>
                 </div>
               )}
-              {/* DOCUMENTS IMPRIMÉS À L'ENCAISSEMENT — une facture ticket PAR
-                  PRESCRIPTION, listée sur sa PROPRE LIGNE (jamais fusionnée,
-                  même au nom de la même personne), puis le ticket modérateur,
-                  puis les bons d'examen. */}
-              {(() => {
-                const pieces = piecesPayees;
-                const libelle = (p: { label: string; resume?: string; numero?: string }) =>
-                  `${p.label}${p.resume ? ` — ${p.resume}` : ''}${p.numero ? ` — n° ${p.numero}` : ' — en attente (sans numéro)'}`;
-                const montant = (items: typeof pieces[number]['items']) => formatAr(selPatient.clientType === 'societe'
-                  ? items.reduce((s, it) => s + brutLigneDepuisItem(it), 0)
-                  : items.reduce((s, it) => s + (Number(it.amount) || 0), 0));
-                const hasLab = pieces.some(p => p.items.some(it => it.category === 'lab'));
-                const hasEcho = pieces.some(p => p.items.some(it => it.category === 'echo'));
-                return (
-                  <div className="p-2.5 mb-3 bg-surface border border-line rounded-lg text-[11px] text-ink-secondary leading-relaxed">
-                    <div className="flex items-start gap-2">
-                      <Printer className="w-4 h-4 text-ink-muted shrink-0 mt-0.5" />
-                      <span>
-                        À l&apos;encaissement : <strong>{pieces.length || 1} FACTURE{pieces.length > 1 ? 'S' : ''} — une par prescription</strong>, sur des lignes séparées (jamais fusionnées, même au nom de la même personne : un numéro chacune){copayDu > 0 ? ', 1 ticket modérateur' : ''}
-                        {hasLab ? ', bon d’analyse' : ''}{hasEcho ? ', bon d’échographie' : ''}.
-                      </span>
-                    </div>
-                    {pieces.length > 0 && (
-                      <ol className="mt-1.5 ml-6 space-y-0.5">
-                        {pieces.map((piece, index) => (
-                          <li key={piece.key} className="flex items-center justify-between gap-2">
-                            <span className="truncate">
-                              <span className="text-ink-faint mr-1">{index + 1}.</span>{libelle(piece)}
-                            </span>
-                            <span className="font-mono text-ink shrink-0">{montant(piece.items)}</span>
-                          </li>
-                        ))}
-                      </ol>
-                    )}
-                    {/* Facturation INDÉPENDANTE : ce qui n'est pas coché reste au guichet. */}
-                    {piecesEnAttente.length > pieces.length && (
-                      <div className="mt-1.5 ml-6 px-2 py-1 rounded bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/25 text-[10px] text-amber-800 dark:text-amber-300">
-                        ⏳ {(() => {
-                          const reste = piecesEnAttente.filter(p => !pieces.some(x => x.key === p.key));
-                          return <>{reste.length} prescription{reste.length > 1 ? 's' : ''} {reste.length > 1 ? 'resteront' : 'restera'} en attente au guichet après cette validation — le dossier reste dans la file pour {reste.map(p => p.label).join(', ')}.</>;
-                        })()}
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
               {selPatient.clientType === 'societe' ? (
                 copayDu > 0 ? (
                   <div className="space-y-2">
                     <button onClick={handlePayment} className="w-full py-3 bg-amber-600 text-white rounded-xl font-semibold hover:bg-amber-700 cursor-pointer shadow-lg flex items-center justify-center gap-2">
                       <CreditCard className="w-5 h-5" /> Encaisser {formatAr(copayDu)} + Crédit société {formatAr(partSocieteEffective)}
+                      {piecesPayees.length === 1 && (
+                        <span className="text-xs opacity-90 font-normal">({piecesPayees[0].resume || piecesPayees[0].label})</span>
+                      )}
                     </button>
                   </div>
                 ) : (
-                  <button onClick={handlePayment} disabled={piecesPayees.length === 0 && piecesEnAttente.length > 0} className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 cursor-pointer disabled:opacity-40 shadow-lg flex items-center justify-center gap-2">
-                    <Building2 className="w-5 h-5" /> {piecesPayees.length === 0 && piecesEnAttente.length > 0
-                      ? 'Aucune prescription sélectionnée'
-                      : `Valider en Crédit Société ${formatAr(partSocieteEffective)}`}
-                  </button>
+                  <div className="space-y-1.5">
+                    <button onClick={handlePayment} disabled={piecesPayees.length === 0 && piecesEnAttente.length > 0} className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 cursor-pointer disabled:opacity-40 shadow-lg flex items-center justify-center gap-2">
+                      <Building2 className="w-5 h-5" /> {piecesPayees.length === 0 && piecesEnAttente.length > 0
+                        ? 'Aucune prescription sélectionnée'
+                        : `Valider en Crédit Société ${formatAr(partSocieteEffective)}${piecesPayees.length === 1 ? ` (${piecesPayees[0].resume || piecesPayees[0].label})` : ''}`}
+                    </button>
+                  </div>
                 )
               ) : (
-                <button onClick={handlePayment} className="w-full py-3 bg-amber-600 text-white rounded-xl font-semibold hover:bg-amber-700 cursor-pointer shadow-lg flex items-center justify-center gap-2">
-                  <CreditCard className="w-5 h-5" /> {piecesEnAttente.length === 0
-                    ? 'Valider le passage (0 Ar)'
-                    : piecesPayees.length === 0
-                      ? 'Aucune prescription sélectionnée'
-                      : `Encaisser ${formatAr(montantSelection)} (${piecesPayees.length} prescription${piecesPayees.length > 1 ? 's' : ''})`}
-                </button>
+                <div className="space-y-1.5">
+                  <button onClick={handlePayment} className="w-full py-3 bg-amber-600 text-white rounded-xl font-semibold hover:bg-amber-700 cursor-pointer shadow-lg flex items-center justify-center gap-2">
+                    <CreditCard className="w-5 h-5" /> {piecesEnAttente.length === 0
+                      ? 'Valider le passage (0 Ar)'
+                      : piecesPayees.length === 0
+                        ? 'Aucune prescription sélectionnée'
+                        : `Encaisser ${formatAr(montantSelection)}${piecesPayees.length === 1 ? ` (${piecesPayees[0].resume || piecesPayees[0].label})` : ` (${piecesPayees.length} prescriptions)`}`}
+                  </button>
+                </div>
               )}
             </div>
           </div>

@@ -286,3 +286,22 @@ test('facture sans médicaments (analyses seules) : rien n’est découpé, les 
   expect(lignes).toEqual(analyses);
   expect(absorbees.size).toBe(0);
 });
+
+test('clic sur la prescription de 32 500 Ar ou 1 000 Ar : seule la prescription cliquée passe à la caisse', () => {
+  const pieces = [
+    { key: 'inv-32500', label: 'Prescription du 16/09/2026', montant: 32500 },
+    { key: 'meds-1000', label: 'Prescription du 16/09/2026', montant: 1000 },
+  ];
+  // Quand on clique sur la prescription de 32 500 Ar (clé 'inv-32500') :
+  const selection32500 = piecesSelectionnees(pieces, ['inv-32500']);
+  expect(selection32500).toHaveLength(1);
+  expect(selection32500[0].key).toBe('inv-32500');
+  expect(selection32500[0].montant).toBe(32500);
+
+  // Quand on clique sur la prescription de 1 000 Ar (clé 'meds-1000') :
+  const selection1000 = piecesSelectionnees(pieces, ['meds-1000']);
+  expect(selection1000).toHaveLength(1);
+  expect(selection1000[0].key).toBe('meds-1000');
+  expect(selection1000[0].montant).toBe(1000);
+});
+
