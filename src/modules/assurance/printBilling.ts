@@ -106,8 +106,19 @@ function individualContent(invoice: MonthlyInvoice, settings?: TicketSettings): 
   const gross = document.individualGross ?? document.total;
   const net = document.individualNet ?? document.payable;
   const reduction = Math.round((gross - net) * 100) / 100;
+  const isRemise = document.natureRemise === 'remise';
   const libelleReduction = natureRemiseLabel(document.natureRemise);
+  const libelleBrut = isRemise ? 'Total avant Remise' : 'Total Brut';
+  const libelleNet = isRemise ? 'TOTAL' : 'Net à payer';
+  const hasReduction = reduction > 0.005;
   const payer = document.companyName || (document.category === 'societe' ? invoice.recipient : 'CLIENT COMPTOIR');
+
+  const totalsHtml = hasReduction
+    ? `<tr><th>${escape(libelleBrut)}</th><td class="number">${decimal(gross)}</td></tr>
+    <tr><th>${escape(libelleReduction)}</th><td class="number">${decimal(reduction)}</td></tr>
+    <tr><th>${escape(libelleNet)}</th><td class="number">${decimal(net)}</td></tr>`
+    : `<tr><th>TOTAL</th><td class="number">${decimal(net)}</td></tr>`;
+
   return `
     ${invoiceHeader(settings)}<h1>FACTURE N° : &nbsp; ${escape(invoice.number)}</h1>
     <div class="identity"><p>Date de consultation :&emsp; ${escape(dateLabel(document.consultationDate || document.date))}</p>
@@ -117,9 +128,7 @@ function individualContent(invoice: MonthlyInvoice, settings?: TicketSettings): 
     <thead><tr><th style="width:28px">N</th><th>Libellé Article</th><th style="width:65px;text-align:right">Quantité</th><th style="width:85px;text-align:right">Prix</th><th style="width:85px;text-align:right">Montant</th></tr></thead>
     <tbody>${document.items.map((item, index) => `<tr><td class="center" style="width:28px">${index + 1}</td><td><strong>${escape(item.description)}</strong></td><td class="number" style="width:65px">${item.quantity == null ? '—' : decimal(item.quantity)}</td><td class="number" style="width:85px">${item.unitPrice == null ? '—' : decimal(item.unitPrice)}</td><td class="number" style="width:85px">${decimal(item.quantity != null && item.unitPrice != null ? item.quantity * item.unitPrice : item.amount)}</td></tr>`).join('') || '<tr><td colspan="5">Voir les articles sur la pièce d’origine.</td></tr>'}</tbody></table>
     <div class="summary"><table class="totals" aria-label="Totaux individuels"><tbody>
-    <tr><th>Total avant Remise</th><td class="number">${decimal(gross)}</td></tr>
-    <tr><th>${escape(reduction > 0 ? libelleReduction : 'Remise')}</th><td class="number">${decimal(reduction)}</td></tr>
-    <tr><th>TOTAL</th><td class="number">${decimal(net)}</td></tr></tbody></table>
+    ${totalsHtml}</tbody></table>
     <p class="words">Arrêtez à la somme de ${escape(billingAmountInWords(net, invoice.facility.currency))}</p>
     <div class="footer-line"><span>Page 1/1</span><span>Date de facture : &nbsp;<strong>${escape(dateLabel(invoice.issuedAt))}</strong></span></div></div>`;
 }

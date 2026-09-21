@@ -15,7 +15,11 @@ import {
   ArrowUpDown, 
   ArrowUp, 
   ArrowDown,
-  Receipt
+  Receipt,
+  Printer,
+  Merge,
+  ClipboardEdit,
+  Ban
 } from 'lucide-react';
 import { GroupedFacture, FactureSortField } from '../PrestationsView';
 import { formatDate, formatMoney } from '../../utils/formatters';
@@ -33,6 +37,11 @@ interface FacturesGroupedTableProps {
   onDeleteFacture?: (facture: GroupedFacture) => void;
   getPersonne: (id?: string) => Personne | undefined;
   getPrestationFinancials?: (p: Prestation) => { tot: number; mod: number; remb: number; totalPaye: number; totalExclu: number; resteAPayer: number; statut: string };
+  onPrintPrestation?: (prestation: Prestation) => void;
+  onFusionner?: (prestation: Prestation) => void;
+  onEditPrestation?: (prestation: Prestation) => void;
+  onDeletePrestation?: (prestation: Prestation) => void;
+  onExcludePrestation?: (prestation: Prestation, maxExclu: number) => void;
 }
 
 export const FacturesGroupedTable: React.FC<FacturesGroupedTableProps> = ({
@@ -46,6 +55,11 @@ export const FacturesGroupedTable: React.FC<FacturesGroupedTableProps> = ({
   onDeleteFacture,
   getPersonne,
   getPrestationFinancials,
+  onPrintPrestation,
+  onFusionner,
+  onEditPrestation,
+  onDeletePrestation,
+  onExcludePrestation,
 }) => {
   // Réduction (brut − net) : ticket modérateur par défaut ; la colonne ne
   // s'intitule « Remise » que si toutes les factures affichées sont concernées.
@@ -412,6 +426,7 @@ export const FacturesGroupedTable: React.FC<FacturesGroupedTableProps> = ({
                                     <th className="py-2 px-2.5 text-right text-emerald-700">Total Perçu</th>
                                     <th className="py-2 px-2.5 text-right text-rose-700">Reste</th>
                                     <th className="py-2 px-2.5 text-center">Statut</th>
+                                    <th className="py-2 px-2.5 text-right">Actions</th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
@@ -481,6 +496,64 @@ export const FacturesGroupedTable: React.FC<FacturesGroupedTableProps> = ({
                                           }`}>
                                             {pStatut}
                                           </span>
+                                        </td>
+                                        <td className="py-2 px-2.5 text-right whitespace-nowrap">
+                                          <div className="flex items-center justify-end space-x-1" onClick={(e) => e.stopPropagation()}>
+                                            {onPrintPrestation && (
+                                              <button
+                                                type="button"
+                                                onClick={() => onPrintPrestation(p)}
+                                                title="Imprimer la facture"
+                                                aria-label={`Imprimer la facture ${p.numeroFacture}`}
+                                                className="p-1.5 text-accent hover:bg-accent-soft rounded-lg cursor-pointer transition"
+                                              >
+                                                <Printer className="w-3.5 h-3.5" />
+                                              </button>
+                                            )}
+                                            {onFusionner && (
+                                              <button
+                                                type="button"
+                                                onClick={() => onFusionner(p)}
+                                                title="Fusionner avec une autre facture (regrouper deux factures, même à des dates différentes, en une seule)"
+                                                aria-label={`Fusionner la facture ${p.numeroFacture}`}
+                                                className="p-1.5 text-ink-faint hover:text-indigo-600 hover:bg-indigo-50 rounded-lg cursor-pointer transition"
+                                              >
+                                                <Merge className="w-3.5 h-3.5" />
+                                              </button>
+                                            )}
+                                            {onEditPrestation && (
+                                              <button
+                                                type="button"
+                                                onClick={() => onEditPrestation(p)}
+                                                title="Modifier la prescription — ajouter une VENTE OMISE (stock pharmacie régularisé) ou une ORDONNANCE EXTERNE (sans impact stock)"
+                                                aria-label={`Modifier la prescription ${p.numeroFacture}`}
+                                                className="p-1.5 text-ink-faint hover:text-emerald-600 hover:bg-emerald-50 rounded-lg cursor-pointer transition"
+                                              >
+                                                <ClipboardEdit className="w-3.5 h-3.5" />
+                                              </button>
+                                            )}
+                                            {onExcludePrestation && pReste > 0 && (
+                                              <button
+                                                type="button"
+                                                onClick={() => onExcludePrestation(p, pReste)}
+                                                title="Rejeter / Exclure le reste à payer de cette facture"
+                                                className="p-1.5 text-ink-faint hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer transition"
+                                              >
+                                                <Ban className="w-3.5 h-3.5" />
+                                              </button>
+                                            )}
+                                            {onDeletePrestation && (
+                                              <button
+                                                type="button"
+                                                onClick={() => onDeletePrestation(p)}
+                                                title="Supprimer le dossier de soins"
+                                                aria-label={`Supprimer le dossier ${p.numeroFacture}`}
+                                                className="p-1.5 text-ink-faint hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer transition"
+                                              >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                              </button>
+                                            )}
+                                          </div>
                                         </td>
                                       </tr>
                                     );

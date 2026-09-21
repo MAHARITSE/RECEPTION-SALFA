@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Printer, Receipt, FileText, X, PencilLine, Banknote } from 'lucide-react';
+import { Printer, Receipt, FileText, X, PencilLine, Banknote, Merge, ClipboardEdit, Trash2, AlertTriangle } from 'lucide-react';
 import type { Prestation } from '../types';
 import type { AppState } from '../../../store';
 import type { ClientType } from '../../../types';
@@ -41,6 +41,9 @@ export function BillingWorkspace({ state, setState, reliquatsAHuiter = 0, onOuvr
   const [fusionSource, setFusionSource] = useState<Prestation | null>(null);
   // Règlement « payeur global » : facture mensuelle (mois + société) à régler
   const [paiementGlobal, setPaiementGlobal] = useState<MonthlyScope | null>(null);
+  // Suppression dossier individuel dans la vue détaillée société
+  const [prestationToDelete, setPrestationToDelete] = useState<Prestation | null>(null);
+  const [prestationDeleteBlocked, setPrestationDeleteBlocked] = useState<{ prestation: Prestation; montantPaye: number } | null>(null);
   // Facturation = sociétés uniquement : les clients comptoir & externes sont
   // regroupés dans l'onglet dédié (règlement encaissé à la validation Caisse).
   const documents = useMemo(() => collectBillingDocuments(state).filter(d => d.category === 'societe'), [state]);
@@ -121,6 +124,23 @@ export function BillingWorkspace({ state, setState, reliquatsAHuiter = 0, onOuvr
     }
   }
 
+  const handleRequestDeletePrestation = (prestation: Prestation, paid = 0) => {
+    if (paid > 0 || (prestation.totalPaye && prestation.totalPaye > 0)) {
+      setPrestationDeleteBlocked({
+        prestation,
+        montantPaye: paid || prestation.totalPaye || 0,
+      });
+      return;
+    }
+    setPrestationToDelete(prestation);
+  };
+
+  const handleConfirmDeletePrestation = () => {
+    if (!prestationToDelete) return;
+    details.onDeletePrestation(prestationToDelete.id);
+    setPrestationToDelete(null);
+  };
+
   return <section className="space-y-4" aria-label="Facturation clients">
     <div className="flex flex-wrap items-center gap-3">
       <div className="inline-flex p-1 bg-surface-hover rounded-xl border border-line text-xs" role="tablist" aria-label="Vues de facturation">
@@ -149,8 +169,6 @@ export function BillingWorkspace({ state, setState, reliquatsAHuiter = 0, onOuvr
           <span className={`px-1.5 py-0.5 text-[10px] rounded-full font-bold ${reliquatsAHuiter ? 'bg-amber-200 text-amber-900 dark:bg-amber-500/25 dark:text-amber-100' : 'bg-surface-hover text-ink-faint'}`}>{reliquatsAHuiter}</span>
         </button>
       )}
-      <label className="text-sm text-ink">Mois <input aria-label="Mois de facturation" type="month" value={month} onChange={event => setMonth(event.target.value)} className="ml-2 rounded-lg border border-line bg-field p-2" /></label>
-      {month && <button type="button" className="text-xs text-accent underline" onClick={() => setMonth('')}>Tous les mois</button>}
     </div>
     {articleIssues.length > 0 && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
       {articleIssues.length} article(s) ne peuvent pas être rattachés automatiquement à une famille valide. Aucun classement arbitraire n’a été appliqué.
@@ -227,7 +245,13 @@ export function BillingWorkspace({ state, setState, reliquatsAHuiter = 0, onOuvr
             <p className="text-xs text-ink-muted"><strong>Double-cliquez sur le nom</strong> d'un assuré pour ouvrir sa prescription et y saisir les omissions ou les ordonnances externes remboursées par l'hôpital.</p>
             <div className="overflow-x-auto rounded-xl border border-line">
               <table className="w-full text-left text-xs" aria-label={`Prescriptions de ${destinataire}`}>
-                <thead className="bg-surface-muted text-ink-secondary"><tr>{['Date', 'Facture', 'Assuré / Client', 'Sous-soc.', 'Actes', 'Brut', 'À rembourser', 'Payé', 'Solde', 'Statut'].map(label => <th className="p-2.5" key={label}>{label}</th>)}</tr></thead>
+                <thead className="bg-surface-muted text-ink-secondary">
+                  <tr>
+                    {['Date', 'Facture', 'Assuré / Client', 'Sous-soc.', 'Actes', 'Brut', 'À rembourser', 'Payé', 'Solde', 'Statut', 'Actions'].map(label => (
+                      <th className={`p-2.5 ${label === 'Actions' ? 'text-right' : ''}`} key={label}>{label}</th>
+                    ))}
+                  </tr>
+                </thead>
                 <tbody>
                   {lignes.map(d => {
                     const p = prestationDe(d.id);
@@ -236,7 +260,7 @@ export function BillingWorkspace({ state, setState, reliquatsAHuiter = 0, onOuvr
                     return (
                       <tr key={d.id} className={`border-t border-line hover:bg-surface-hover${p ? ' cursor-pointer' : ''}`}
                           title={p ? 'Double-clic : ouvrir la prescription' : undefined}
-                          onDoubleClick={() => { if (!p) return; if (estCaisse(p) && onFusionPrescription) { setFusionSource(p); } else { setPrescription(p); } }}>
+                          onDoubleClick={() => { if (!p) return; setPrescription(p); }}>
                         <td className="p-2.5 whitespace-nowrap">{formatDate(d.date)}</td>
                         <td className="p-2.5 font-mono font-semibold">{d.number}</td>
                         <td className={`p-2.5 ${p ? 'font-semibold text-indigo-700 dark:text-indigo-300 underline decoration-dotted underline-offset-2' : ''}`}>
@@ -250,10 +274,56 @@ export function BillingWorkspace({ state, setState, reliquatsAHuiter = 0, onOuvr
                         <td className="p-2.5 whitespace-nowrap font-mono">{formatMoney(d.paid)}</td>
                         <td className="p-2.5 whitespace-nowrap font-mono">{formatMoney(solde)}</td>
                         <td className="p-2.5">{p?.statut || '—'}</td>
+                        <td className="p-2.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-end space-x-1">
+                            <button
+                              type="button"
+                              onClick={() => printIndividualBillingDocument(state, d)}
+                              title="Imprimer la facture"
+                              aria-label={`Imprimer la facture ${d.number}`}
+                              className="p-1.5 text-accent hover:bg-accent-soft rounded-lg cursor-pointer transition"
+                            >
+                              <Printer className="w-3.5 h-3.5" />
+                            </button>
+                            {p && onFusionPrescription && (
+                              <button
+                                type="button"
+                                onClick={() => setFusionSource(p)}
+                                title="Fusionner avec une autre facture (regrouper deux factures, même à des dates différentes, en une seule)"
+                                aria-label={`Fusionner la facture ${d.number}`}
+                                className="p-1.5 text-ink-faint hover:text-indigo-600 hover:bg-indigo-50 rounded-lg cursor-pointer transition"
+                              >
+                                <Merge className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {p && (
+                              <button
+                                type="button"
+                                onClick={() => setPrescription(p)}
+                                title="Modifier la prescription — ajouter une VENTE OMISE ou une ORDONNANCE EXTERNE"
+                                aria-label={`Modifier la prescription ${d.number}`}
+                                className="p-1.5 text-ink-faint hover:text-emerald-600 hover:bg-emerald-50 rounded-lg cursor-pointer transition"
+                              >
+                                <ClipboardEdit className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {p && (
+                              <button
+                                type="button"
+                                onClick={() => handleRequestDeletePrestation(p, d.paid)}
+                                title="Supprimer le dossier de soins"
+                                aria-label={`Supprimer le dossier ${d.number}`}
+                                className="p-1.5 text-ink-faint hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer transition"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
                       </tr>
                     );
                   })}
-                  {!lignes.length && <tr><td colSpan={10} className="p-6 text-center text-ink-muted italic">Aucune prescription pour cette sélection.</td></tr>}
+                  {!lignes.length && <tr><td colSpan={11} className="p-6 text-center text-ink-muted italic">Aucune prescription pour cette sélection.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -313,5 +383,121 @@ export function BillingWorkspace({ state, setState, reliquatsAHuiter = 0, onOuvr
         }}
       />;
     })()}
+
+    {/* Confirmation Modal: Delete Single Dossier */}
+    {prestationToDelete && (
+      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-rose-100 flex flex-col">
+          <div className="px-6 py-4 bg-rose-50 border-b border-rose-100 flex items-center justify-between">
+            <div className="flex items-center space-x-2.5 text-rose-900">
+              <div className="p-2 bg-rose-100 rounded-xl text-rose-700">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold">Supprimer le Dossier de Soins ?</h3>
+                <p className="text-xs text-rose-700 font-medium">Suppression de la prescription individuelle</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setPrestationToDelete(null)}
+              className="p-1.5 text-rose-400 hover:text-rose-700 hover:bg-rose-100 rounded-lg transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="p-6 space-y-3.5 text-xs text-ink">
+            <p>
+              Êtes-vous sûr de vouloir supprimer ce dossier de soins ?
+            </p>
+
+            <div className="bg-surface-muted border border-line rounded-xl p-3.5 space-y-1.5">
+              <div className="flex justify-between items-center">
+                <span className="text-ink-muted font-medium">Patient / Assuré :</span>
+                <span className="font-bold text-ink-strong">{prestationToDelete.nomAgent || details.personnes.find(p => p.id === prestationToDelete.personneId)?.nomPrenom || prestationToDelete.matricule || 'Assuré'}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-ink-muted font-medium">N° Facture :</span>
+                <span className="font-mono font-semibold text-ink-strong">{prestationToDelete.numeroFacture}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-ink-muted font-medium">Date des soins :</span>
+                <span className="font-semibold text-ink-strong">{formatDate(prestationToDelete.date)}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-ink-muted font-medium">Total brut :</span>
+                <span className="font-bold text-ink-strong">{formatMoney(prestationToDelete.totalPrestation || prestationToDelete.montantTotal || 0)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="px-6 py-4 bg-surface-muted border-t border-line-soft flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setPrestationToDelete(null)}
+              className="px-4 py-2 rounded-xl text-xs font-semibold border border-line text-ink bg-surface hover:bg-surface-hover transition cursor-pointer"
+            >
+              Non, Annuler
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmDeletePrestation}
+              className="px-5 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Oui, Supprimer le dossier</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Blocked Modal: Single Dossier with Payments Cannot Be Deleted */}
+    {prestationDeleteBlocked && (
+      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-amber-200 flex flex-col">
+          <div className="px-6 py-4 bg-amber-50 border-b border-amber-100 flex items-center justify-between">
+            <div className="flex items-center space-x-2.5 text-amber-900">
+              <div className="p-2 bg-amber-100 rounded-xl text-amber-700">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold">Suppression Impossible</h3>
+                <p className="text-xs text-amber-700 font-medium">Dossier avec règlement associé</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setPrestationDeleteBlocked(null)}
+              className="p-1.5 text-amber-400 hover:text-amber-700 hover:bg-amber-100 rounded-lg transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="p-6 space-y-3.5 text-xs text-ink">
+            <p>
+              Ce dossier de soins ne peut pas être supprimé car un montant de{' '}
+              <strong className="text-emerald-700 font-mono font-bold">
+                {formatMoney(prestationDeleteBlocked.montantPaye)}
+              </strong>{' '}
+              a déjà été perçu / réglé par l'assurance ou le client.
+            </p>
+            <p className="text-ink-muted">
+              Pour pouvoir supprimer ce dossier, veuillez d'abord annuler ou délier les encaissements correspondants dans l'onglet des paiements.
+            </p>
+          </div>
+
+          <div className="px-6 py-4 bg-surface-muted border-t border-line-soft flex items-center justify-end">
+            <button
+              type="button"
+              onClick={() => setPrestationDeleteBlocked(null)}
+              className="px-5 py-2 rounded-xl text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-white transition cursor-pointer"
+            >
+              Compris
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
   </section>;
 }

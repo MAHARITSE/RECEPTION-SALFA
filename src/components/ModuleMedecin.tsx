@@ -46,7 +46,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
   // Vue « Bloc & Hospitalisation » (lecture seule pour le médecin) :
   // le médecin peut CONSULTER les dossiers d'hospitalisation et de bloc,
   // sans jamais les modifier (saisie/paiement réservés à la caisse / pharmacie).
-  const [hbFiltre, setHbFiltre] = useState<'tous' | 'hospit' | 'bloc'>('tous');
+  const [hbFiltre, setHbFiltre] = useState<'hospit' | 'bloc'>('hospit');
   const [hbAfficherSortis, setHbAfficherSortis] = useState(false);
   // Prescriptions du médecin DANS un dossier de bloc / d'hospitalisation :
   // la liste est partagée (caisse, pharmacie de garde, bloc) — c'est le
@@ -1259,7 +1259,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
   // revanche réservés à la caisse / pharmacie — le médecin n'y touche pas.
   const hbTous = state.hbRecords || [];
   const hbActifsCount = hbTous.filter((r) => !r.dischargedAt).length;
-  const hbFiltres = hbTous.filter((r) => (hbAfficherSortis || !r.dischargedAt) && (hbFiltre === 'tous' || r.type === hbFiltre));
+  const hbFiltres = hbTous.filter((r) => (hbAfficherSortis || !r.dischargedAt) && r.type === hbFiltre);
 
   /** Écrit une mise à jour des dossiers Bloc/Hospitalisation (liste partagée). */
   const majHbRecords = (updater: (prev: HbRecord[]) => HbRecord[]) =>
@@ -1509,7 +1509,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
           )}
 
           <div className="flex flex-wrap items-center gap-2">
-            {([['tous', 'Tous'], ['hospit', '🏨 Hospitalisation'], ['bloc', '🏥 Bloc']] as const).map(([f, lbl]) => (
+            {([['hospit', '🏨 Hospitalisation'], ['bloc', '🏥 Bloc']] as const).map(([f, lbl]) => (
               <button key={f} onClick={() => setHbFiltre(f)} className={`px-3 py-1.5 rounded-lg text-sm border cursor-pointer ${hbFiltre === f ? 'bg-rose-600 text-white border-rose-600' : 'bg-surface border-line-strong text-ink-secondary hover:bg-surface-hover'}`}>{lbl}</button>
             ))}
             <button onClick={() => setHbAfficherSortis(v => !v)} className="ml-auto px-3 py-1.5 rounded-lg text-sm border cursor-pointer bg-surface border-line-strong text-ink-secondary hover:bg-surface-hover">
@@ -1554,145 +1554,144 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                   </button>
                 </div>
 
-                {/* SAISIE SAGE — prescription du médecin sur le dossier */}
+                {/* SAISIE SAGE + LISTE DES LIGNES — uniquement lorsque le médecin clique sur « Prescrire » */}
                 {hbPrescritRecordId === record.id && (
-                  <div className="border-t border-line bg-surface-muted">
-                    <div className="bg-surface-hover border-b border-line-strong p-2 m-2 mb-0 rounded shadow-inner">
-                      <div className="flex flex-wrap items-end gap-1.5">
-                        <div className="flex-1 min-w-[150px] relative">
-                          <label className="block text-[10px] font-bold text-ink-muted mb-0.5">Article / acte (tapez + ↑↓ + Entrée)</label>
-                          <input
-                            ref={hbArtRef}
-                            type="text"
-                            value={hbArtForm.articleName && !hbArtSearch ? hbArtForm.articleName : hbArtSearch}
-                            onChange={(e) => {
-                              setHbArtSearch(e.target.value);
-                              setHbArtIdx(0);
-                              if (hbArtForm.articleName && e.target.value !== hbArtForm.articleName) {
-                                setHbArtForm(prev => ({ ...prev, articleName: '' }));
-                              }
-                            }}
-                            onKeyDown={hbArtKeyDown}
-                            className="w-full bg-surface border border-blue-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-accent focus:ring-1 focus:ring-accent/25 text-ink-strong"
-                            placeholder="🔍 Saisir un article, un médicament ou un acte de soin..."
-                          />
-                          {hbArtSearch.length >= 1 && hbArtFiltered.length > 0 && (
-                            <div className="absolute top-full left-0 right-0 bg-surface border border-line-strong rounded-b shadow-2xl z-40 max-h-44 overflow-y-auto">
-                              {hbArtFiltered.slice(0, 40).map((a, idx) => {
-                                const av = articleAvailability(a);
-                                const isOut = av.outOfStock;
-                                const isLow = av.manages && !isOut && a.stockPharmacie <= a.minStockPharmacie && !a.alertDisabledPharmacie;
-                                return (
-                                  <div key={a.id} onClick={() => hbArtSelectArticle(a.id)}
-                                    title={isOut ? 'Rupture de stock — non délivrable' : undefined}
-                                    className={`px-3 py-1.5 text-xs flex justify-between border-b border-line-soft ${isOut ? 'bg-red-50 dark:bg-red-500/8 text-red-700 dark:text-red-400 cursor-not-allowed' : `cursor-pointer ${idx === hbArtIdx ? 'bg-blue-500 text-white font-medium' : 'hover:bg-surface-muted text-ink-strong'}`}`}>
-                                    <span className={isOut ? 'line-through decoration-red-400/60' : ''}><span className="text-[9px] text-ink-faint mr-1">[{a.family}]</span>{a.name}</span>
-                                    <span className="flex items-center gap-2">
-                                      {isOut
-                                        ? <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-[9px] font-bold">🚨 RUPTURE</span>
-                                        : av.manages
-                                          ? <span className={`font-mono text-[10px] ${idx === hbArtIdx ? 'text-white/90' : isLow ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-ink-faint'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>
-                                          : <span className={`font-mono text-[10px] ${idx === hbArtIdx ? 'text-white/80' : 'text-ink-faint'}`} title="Famille non gérée en stock">stock: —</span>}
-                                      <span className={`font-mono ${isOut ? 'text-red-400' : idx === hbArtIdx ? 'text-white' : 'text-blue-600 dark:text-cyan-400 font-medium'}`}>{formatAr(getPrice(a, record.clientType || 'comptoir'))}</span>
-                                    </span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
+                  <>
+                    <div className="border-t border-line bg-surface-muted">
+                      <div className="bg-surface-hover border-b border-line-strong p-2 m-2 mb-0 rounded shadow-inner">
+                        <div className="flex flex-wrap items-end gap-1.5">
+                          <div className="flex-1 min-w-[150px] relative">
+                            <label className="block text-[10px] font-bold text-ink-muted mb-0.5">Article / acte (tapez + ↑↓ + Entrée)</label>
+                            <input
+                              ref={hbArtRef}
+                              type="text"
+                              value={hbArtForm.articleName && !hbArtSearch ? hbArtForm.articleName : hbArtSearch}
+                              onChange={(e) => {
+                                setHbArtSearch(e.target.value);
+                                setHbArtIdx(0);
+                                if (hbArtForm.articleName && e.target.value !== hbArtForm.articleName) {
+                                  setHbArtForm(prev => ({ ...prev, articleName: '' }));
+                                }
+                              }}
+                              onKeyDown={hbArtKeyDown}
+                              className="w-full bg-surface border border-blue-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-accent focus:ring-1 focus:ring-accent/25 text-ink-strong"
+                              placeholder="🔍 Saisir un article, un médicament ou un acte de soin..."
+                            />
+                            {hbArtSearch.length >= 1 && hbArtFiltered.length > 0 && (
+                              <div className="absolute top-full left-0 right-0 bg-surface border border-line-strong rounded-b shadow-2xl z-40 max-h-44 overflow-y-auto">
+                                {hbArtFiltered.slice(0, 40).map((a, idx) => {
+                                  const av = articleAvailability(a);
+                                  const isOut = av.outOfStock;
+                                  const isLow = av.manages && !isOut && a.stockPharmacie <= a.minStockPharmacie && !a.alertDisabledPharmacie;
+                                  return (
+                                    <div key={a.id} onClick={() => hbArtSelectArticle(a.id)}
+                                      title={isOut ? 'Rupture de stock — non délivrable' : undefined}
+                                      className={`px-3 py-1.5 text-xs flex justify-between border-b border-line-soft ${isOut ? 'bg-red-50 dark:bg-red-500/8 text-red-700 dark:text-red-400 cursor-not-allowed' : `cursor-pointer ${idx === hbArtIdx ? 'bg-blue-500 text-white font-medium' : 'hover:bg-surface-muted text-ink-strong'}`}`}>
+                                      <span className={isOut ? 'line-through decoration-red-400/60' : ''}><span className="text-[9px] text-ink-faint mr-1">[{a.family}]</span>{a.name}</span>
+                                      <span className="flex items-center gap-2">
+                                        {isOut
+                                          ? <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-[9px] font-bold">🚨 RUPTURE</span>
+                                          : av.manages
+                                            ? <span className={`font-mono text-[10px] ${idx === hbArtIdx ? 'text-white/90' : isLow ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-ink-faint'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>
+                                            : <span className={`font-mono text-[10px] ${idx === hbArtIdx ? 'text-white/80' : 'text-ink-faint'}`} title="Famille non gérée en stock">stock: —</span>}
+                                        <span className={`font-mono ${isOut ? 'text-red-400' : idx === hbArtIdx ? 'text-white' : 'text-blue-600 dark:text-cyan-400 font-medium'}`}>{formatAr(getPrice(a, record.clientType || 'comptoir'))}</span>
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                          <div className="w-16">
+                            <label className="block text-[10px] font-bold text-ink-muted mb-0.5">Qté</label>
+                            <input id="hb-med-qty" type="number" min={1} value={hbArtForm.quantity}
+                              onChange={e => setHbArtForm(prev => ({ ...prev, quantity: parseFloat(e.target.value) || 1 }))}
+                              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
+                              className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-accent text-ink-strong" />
+                          </div>
+                          <div className="w-16">
+                            <label className="block text-[10px] font-bold text-ink-muted mb-0.5">Rem%</label>
+                            <input type="number" min={0} max={100} value={hbArtForm.discount}
+                              onChange={e => setHbArtForm(prev => ({ ...prev, discount: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) }))}
+                              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
+                              className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-accent text-ink-strong" />
+                          </div>
+                          <div className="w-24">
+                            <label className="block text-[10px] font-bold text-ink-muted mb-0.5">P.U.</label>
+                            <MoneyInput value={hbArtForm.unitPrice} onChange={n => setHbArtForm(prev => ({ ...prev, unitPrice: n }))} decimals={2}
+                              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
+                              ariaLabel="Prix unitaire" title="Prix unitaire — séparateur de milliers automatique"
+                              className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-accent text-ink-strong" />
+                          </div>
+                          <div className="w-28">
+                            <label className="block text-[10px] font-bold text-ink-muted mb-0.5">Montant</label>
+                            <input readOnly value={formatAr(hbLineAmt(hbArtForm))} className="w-full bg-surface-active border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono font-bold text-ink" />
+                          </div>
+                          <div className="w-36">
+                            <label className="block text-[10px] font-bold text-ink-muted mb-0.5" title="Conservée après validation : plusieurs actes le même jour">Date d&apos;acte / de sortie 📌</label>
+                            <input type="date" value={hbArtForm.dateSort || ''}
+                              onChange={e => setHbArtForm(prev => ({ ...prev, dateSort: e.target.value }))}
+                              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
+                              className="w-full bg-amber-50 dark:bg-amber-500/8 border border-amber-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-accent text-ink-strong" />
+                          </div>
                         </div>
-                        <div className="w-16">
-                          <label className="block text-[10px] font-bold text-ink-muted mb-0.5">Qté</label>
-                          <input id="hb-med-qty" type="number" min={1} value={hbArtForm.quantity}
-                            onChange={e => setHbArtForm(prev => ({ ...prev, quantity: parseFloat(e.target.value) || 1 }))}
-                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
-                            className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-accent text-ink-strong" />
+                        <div className="flex justify-end gap-1.5 mt-2">
+                          <button onClick={hbArtNew} className="flex items-center gap-1 px-2.5 py-1 bg-surface hover:bg-surface-muted border border-line-strong rounded shadow-sm text-ink transition cursor-pointer text-xs font-medium">
+                            <Plus className="h-3.5 w-3.5 text-ink-muted" /> Nouveau
+                          </button>
+                          <button type="button"
+                            onClick={() => { if (hbArtSelLineId) hbArtDelete(hbArtSelLineId); }}
+                            disabled={!hbArtSelLineId}
+                            className="flex items-center gap-1 px-2.5 py-1 bg-surface hover:bg-surface-muted border border-line-strong rounded shadow-sm text-ink disabled:opacity-40 transition cursor-pointer text-xs font-medium">
+                            <Trash2 className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" /> Supprimer
+                          </button>
+                          <button onClick={hbArtSave} disabled={!hbArtForm.articleName}
+                            className="flex items-center gap-1 px-2.5 py-1 bg-sky-500 hover:bg-sky-600 text-white border border-sky-600 rounded shadow-sm font-semibold disabled:opacity-40 transition cursor-pointer text-xs">
+                            <Save className="h-3.5 w-3.5" /> Enregistrer
+                          </button>
                         </div>
-                        <div className="w-16">
-                          <label className="block text-[10px] font-bold text-ink-muted mb-0.5">Rem%</label>
-                          <input type="number" min={0} max={100} value={hbArtForm.discount}
-                            onChange={e => setHbArtForm(prev => ({ ...prev, discount: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) }))}
-                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
-                            className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-accent text-ink-strong" />
-                        </div>
-                        <div className="w-24">
-                          <label className="block text-[10px] font-bold text-ink-muted mb-0.5">P.U.</label>
-                          <MoneyInput value={hbArtForm.unitPrice} onChange={n => setHbArtForm(prev => ({ ...prev, unitPrice: n }))} decimals={2}
-                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
-                            ariaLabel="Prix unitaire" title="Prix unitaire — séparateur de milliers automatique"
-                            className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-accent text-ink-strong" />
-                        </div>
-                        <div className="w-28">
-                          <label className="block text-[10px] font-bold text-ink-muted mb-0.5">Montant</label>
-                          <input readOnly value={formatAr(hbLineAmt(hbArtForm))} className="w-full bg-surface-active border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono font-bold text-ink" />
-                        </div>
-                        <div className="w-36">
-                          <label className="block text-[10px] font-bold text-ink-muted mb-0.5" title="Conservée après validation : plusieurs actes le même jour">Date d&apos;acte / de sortie 📌</label>
-                          <input type="date" value={hbArtForm.dateSort || ''}
-                            onChange={e => setHbArtForm(prev => ({ ...prev, dateSort: e.target.value }))}
-                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
-                            className="w-full bg-amber-50 dark:bg-amber-500/8 border border-amber-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-accent text-ink-strong" />
-                        </div>
-                      </div>
-                      <div className="flex justify-end gap-1.5 mt-2">
-                        <button onClick={hbArtNew} className="flex items-center gap-1 px-2.5 py-1 bg-surface hover:bg-surface-muted border border-line-strong rounded shadow-sm text-ink transition cursor-pointer text-xs font-medium">
-                          <Plus className="h-3.5 w-3.5 text-ink-muted" /> Nouveau
-                        </button>
-                        <button type="button"
-                          onClick={() => { if (hbArtSelLineId) hbArtDelete(hbArtSelLineId); }}
-                          disabled={!hbArtSelLineId}
-                          className="flex items-center gap-1 px-2.5 py-1 bg-surface hover:bg-surface-muted border border-line-strong rounded shadow-sm text-ink disabled:opacity-40 transition cursor-pointer text-xs font-medium">
-                          <Trash2 className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" /> Supprimer
-                        </button>
-                        <button onClick={hbArtSave} disabled={!hbArtForm.articleName}
-                          className="flex items-center gap-1 px-2.5 py-1 bg-sky-500 hover:bg-sky-600 text-white border border-sky-600 rounded shadow-sm font-semibold disabled:opacity-40 transition cursor-pointer text-xs">
-                          <Save className="h-3.5 w-3.5" /> Enregistrer
-                        </button>
                       </div>
                     </div>
-                  </div>
-                )}
 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-[11px]">
-                    <thead className="bg-surface-hover text-ink-secondary"><tr className="divide-x divide-line"><th className="p-1.5 text-left">Article</th><th className="p-1.5 text-center w-10">Qté</th><th className="p-1.5 text-center w-12">Rem%</th><th className="p-1.5 text-right w-24">P.U.</th><th className="p-1.5 text-right w-24">Montant</th>{hbPrescritRecordId === record.id && <th className="p-1.5 text-center w-10"></th>}</tr></thead>
-                    <tbody className="divide-y font-mono">
-                      {record.lines.length === 0 ? <tr><td colSpan={hbPrescritRecordId === record.id ? 6 : 5} className="p-2 text-center text-ink-faint font-sans">Aucune ligne — cliquez sur « Prescrire » pour en ajouter</td></tr> :
-                        record.lines.map(l => (
-                          <tr key={l.id}
-                            onClick={() => {
-                              if (hbPrescritRecordId !== record.id) return;
-                              setHbArtSelLineId(l.id); setHbArtForm({ ...l }); setHbArtIsNew(false);
-                            }}
-                            className={`divide-x divide-line ${hbPrescritRecordId === record.id ? 'cursor-pointer' : ''} ${hbArtSelLineId === l.id ? 'bg-blue-500 text-white' : 'hover:bg-surface-muted'}`}>
-                            <td className="p-1.5 font-sans">{l.articleName}</td>
-                            <td className="p-1.5 text-center">{l.quantity}</td>
-                            <td className="p-1.5 text-center text-amber-700 dark:text-amber-400 font-semibold">{l.discount ? `${l.discount}%` : '—'}</td>
-                            <td className="p-1.5 text-right">{formatNum(l.unitPrice)}</td>
-                            <td className="p-1.5 text-right font-bold">{formatNum(hbLineAmt(l))}</td>
-                            {hbPrescritRecordId === record.id && (
-                              <td className="p-1.5 text-center">
-                                <button onClick={(e) => { e.stopPropagation(); hbArtDelete(l.id); }}
-                                  className={`cursor-pointer ${hbArtSelLineId === l.id ? 'text-white hover:text-red-200' : 'text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-300'}`}
-                                  title="Retirer cette ligne du dossier">
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </td>
-                            )}
-                          </tr>
-                        ))}
-                    </tbody>
-                    {record.lines.length > 0 && (
-                      <tfoot className="bg-emerald-50 dark:bg-emerald-500/8 border-t-2 border-emerald-300 dark:border-emerald-500/40">
-                        <tr><td colSpan={4} className="p-1.5 text-right font-bold font-sans">TOTAL DOSSIER :</td><td colSpan={hbPrescritRecordId === record.id ? 2 : 1} className="p-1.5 text-right font-mono font-bold text-emerald-800 dark:text-emerald-300">{formatAr(totalFact)}</td></tr>
-                      </tfoot>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-[11px]">
+                        <thead className="bg-surface-hover text-ink-secondary"><tr className="divide-x divide-line"><th className="p-1.5 text-left">Article</th><th className="p-1.5 text-center w-10">Qté</th><th className="p-1.5 text-center w-12">Rem%</th><th className="p-1.5 text-right w-24">P.U.</th><th className="p-1.5 text-right w-24">Montant</th><th className="p-1.5 text-center w-10"></th></tr></thead>
+                        <tbody className="divide-y font-mono">
+                          {record.lines.length === 0 ? <tr><td colSpan={6} className="p-2 text-center text-ink-faint font-sans">Aucune ligne — commencez la saisie ci-dessus pour en ajouter</td></tr> :
+                            record.lines.map(l => (
+                              <tr key={l.id}
+                                onClick={() => {
+                                  setHbArtSelLineId(l.id); setHbArtForm({ ...l }); setHbArtIsNew(false);
+                                }}
+                                className={`divide-x divide-line cursor-pointer ${hbArtSelLineId === l.id ? 'bg-blue-500 text-white' : 'hover:bg-surface-muted'}`}>
+                                <td className="p-1.5 font-sans">{l.articleName}</td>
+                                <td className="p-1.5 text-center">{l.quantity}</td>
+                                <td className="p-1.5 text-center text-amber-700 dark:text-amber-400 font-semibold">{l.discount ? `${l.discount}%` : '—'}</td>
+                                <td className="p-1.5 text-right">{formatNum(l.unitPrice)}</td>
+                                <td className="p-1.5 text-right font-bold">{formatNum(hbLineAmt(l))}</td>
+                                <td className="p-1.5 text-center">
+                                  <button onClick={(e) => { e.stopPropagation(); hbArtDelete(l.id); }}
+                                    className={`cursor-pointer ${hbArtSelLineId === l.id ? 'text-white hover:text-red-200' : 'text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-300'}`}
+                                    title="Retirer cette ligne du dossier">
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                        {record.lines.length > 0 && (
+                          <tfoot className="bg-emerald-50 dark:bg-emerald-500/8 border-t-2 border-emerald-300 dark:border-emerald-500/40">
+                            <tr><td colSpan={4} className="p-1.5 text-right font-bold font-sans">TOTAL DOSSIER :</td><td colSpan={2} className="p-1.5 text-right font-mono font-bold text-emerald-800 dark:text-emerald-300">{formatAr(totalFact)}</td></tr>
+                          </tfoot>
+                        )}
+                      </table>
+                    </div>
+                    {record.payments.length > 0 && (
+                      <div className="px-3 py-2 border-t border-line text-[11px] text-ink-muted">
+                        <span className="font-semibold">Paiements :</span> {record.payments.map(p => `${formatAr(p.amount)} (${new Date(p.date).toLocaleDateString('fr-FR')})`).join(' · ')}
+                      </div>
                     )}
-                  </table>
-                </div>
-                {record.payments.length > 0 && (
-                  <div className="px-3 py-2 border-t border-line text-[11px] text-ink-muted">
-                    <span className="font-semibold">Paiements :</span> {record.payments.map(p => `${formatAr(p.amount)} (${new Date(p.date).toLocaleDateString('fr-FR')})`).join(' · ')}
-                  </div>
+                  </>
                 )}
               </div>
             );

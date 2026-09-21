@@ -203,7 +203,10 @@ export function salfaIndividualInvoiceHtml(
   // l'assuré) ; pour les sociétés / assurés réglés en « remise », c'est une vraie
   // remise accordée sur le prix. Le montant reste le même, seul l'intitulé suit.
   const natureReduction = natureRemiseOuDefaut(natureRemise ?? companyNatureRemise(company));
+  const isRemise = natureReduction === 'remise';
   const libelleReduction = natureRemiseLabel(natureReduction);
+  const libelleBrut = isRemise ? 'Total avant Remise' : 'Total Brut';
+  const libelleNet = isRemise ? 'TOTAL' : 'Net à payer';
 
   const montantLettres = numberToFrenchWords(netAPayer);
 
@@ -470,18 +473,25 @@ ${mentionsLegalesSalfa()}
 
   <div class="summary-box">
     <table class="summary-table">
+      ${remise > 0.005 ? `
       <tr>
-        <td class="lbl">Total avant Remise</td>
+        <td class="lbl">${escapeHtml(libelleBrut)}</td>
         <td class="val">${formatArDec(totalBrut)}</td>
       </tr>
       <tr>
-        <td class="lbl">${escapeHtml(remise > 0 ? libelleReduction : 'Remise')}</td>
+        <td class="lbl">${escapeHtml(libelleReduction)}</td>
         <td class="val">${formatArDec(remise)}</td>
       </tr>
+      <tr>
+        <td class="lbl">${escapeHtml(libelleNet)}</td>
+        <td class="val">${formatArDec(netAPayer)}</td>
+      </tr>
+      ` : `
       <tr>
         <td class="lbl">TOTAL</td>
         <td class="val">${formatArDec(netAPayer)}</td>
       </tr>
+      `}
     </table>
   </div>
 

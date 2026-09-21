@@ -2233,6 +2233,11 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
           onDeleteFacture={handleRequestDeleteFacture}
           getPersonne={getPersonne}
           getPrestationFinancials={getPrestationFinancials}
+          onPrintPrestation={onPrintPrestation}
+          onFusionner={onFusionner}
+          onEditPrestation={(p) => setPrescriptionEditCible(p)}
+          onDeletePrestation={handleRequestDeletePrestation}
+          onExcludePrestation={onSavePaiement ? (p, maxExclu) => setFactureExcludeContext({ prestation: p, maxExclu }) : undefined}
         />
       ) : (
         /* Detailed Dossiers Table */
@@ -2529,17 +2534,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
                         </td>
                         <td className="py-3 px-3 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end space-x-1">
-                            {onPrintPrestation && <button type="button" onClick={() => onPrintPrestation(prestation)} title="Imprimer la facture" aria-label={`Imprimer la facture ${prestation.numeroFacture}`} className="p-1.5 text-accent hover:bg-accent-soft rounded-lg"><Printer className="w-3.5 h-3.5" /></button>}
-                            {onFusionner && (
-                              <button
-                                onClick={() => onFusionner(prestation)}
-                                title="Fusionner avec une autre facture (regrouper deux factures, même à des dates différentes, en une seule)"
-                                aria-label={`Fusionner la facture ${prestation.numeroFacture}`}
-                                className="p-1.5 text-ink-faint hover:text-indigo-600 hover:bg-indigo-50 rounded-lg cursor-pointer"
-                              >
-                                <Merge className="w-3.5 h-3.5" />
-                              </button>
-                            )}
+                            {onPrintPrestation && <button type="button" onClick={() => onPrintPrestation(prestation)} title="Imprimer la facture" aria-label={`Imprimer la facture ${prestation.numeroFacture}`} className="p-1.5 text-accent hover:bg-accent-soft rounded-lg cursor-pointer"><Printer className="w-3.5 h-3.5" /></button>}
                             <button
                               onClick={() => setPrescriptionEditCible(prestation)}
                               title="Modifier la prescription — ajouter une VENTE OMISE (stock pharmacie régularisé) ou une ORDONNANCE EXTERNE (sans impact stock)"
