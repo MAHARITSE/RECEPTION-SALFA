@@ -3297,15 +3297,6 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                 <span className="font-bold text-sm flex items-center gap-2">
                   <CreditCard className="w-4 h-4" /> Facturation — {selPatient.lastName} {selPatient.firstName}
                 </span>
-                {piecesPayees.length === 1 && (
-                  <span className="px-2.5 py-0.5 rounded-full bg-amber-800 text-xs font-semibold text-amber-100 shadow-xs flex items-center gap-1.5">
-                    <span>Prescription ciblée :</span>
-                    <span className="underline decoration-amber-400">{piecesPayees[0].resume || piecesPayees[0].label}</span>
-                    <span className="font-mono font-bold">
-                      ({formatAr(selPatient.clientType === 'societe' ? brutPiece(piecesPayees[0].items) : roundTo2(piecesPayees[0].items.reduce((ss, it) => ss + (Number(it.amount) || 0), 0)))})
-                    </span>
-                  </span>
-                )}
               </div>
               <button onClick={closePaymentModal} className="hover:bg-white/20 rounded p-1 cursor-pointer text-sm" title="Fermer">✕</button>
             </div>
