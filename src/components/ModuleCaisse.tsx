@@ -743,28 +743,85 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const copayMonnaie = copayDu > 0 ? Math.max(0, roundTo2(copayEspeces - copayDu)) : 0;
 
   /**
-   * Répartition PIÈCE PAR PIÈCE (factures analyses / échographies / consultation
-   * en attente + médicaments) : le ticket modérateur ou la remise des examens du
-   * médecin arrive à la caisse visible — même calcul que la validation.
+   * Récapitulatif PAR FAMILLE d'articles — remplace l'ancien tableau Pièce/Brut/Ticket mod.
+   * Groupement par famille catalogue (MEDIC, LABO, ECHO, CONSULT, etc.) avec totaux brut,
+   * ticket modérateur / remise et part société. Utilisé pour l'affichage dans la modale
+   * de facturation (demande : supprimer le tableau par pièce et remettre le recap par famille).
    */
-  const copayLotPreview = useMemo(() => {
-    if (!selPatient || selPatient.clientType !== 'societe') return null;
+  const recapParFamille = useMemo(() => {
+    if (!selPatient) return null;
     const pieces = piecesPayees;
     if (pieces.length === 0) return null;
-    const { societe, personne } = societeEtPersonneParmi(selPatient, baseCommune.societes, baseCommune.personnes);
-    const lot = repartirLotCaisse({ societe, personne, factures: pieces.map(p => ({ items: p.items })) });
-    return {
-      societe: societe || null,
-      nature: lot.total.nature,
-      pieces: pieces.map((p, i) => ({
-        ...p,
-        brut: lot.parFacture[i]?.brut ?? 0,
-        quote: lot.parFacture[i]?.ticketModerateur ?? 0,
-        remise: lot.parFacture[i] ? quotePartSiTicketModerateur({ societe, personne, items: p.items }) : 0,
-      })),
+    const { societe, personne } = selPatient.clientType === 'societe'
+      ? societeEtPersonneParmi(selPatient, baseCommune.societes, baseCommune.personnes)
+      : { societe: undefined, personne: undefined };
+
+    // Résolution de la famille d'un article à partir de son nom / catégorie
+    const resolveFamily = (item: InvoiceItem): string => {
+      const raw = (item.description || '').trim();
+      const baseName = raw.split('×')[0].trim();
+      const norm = (s: string) => normaliserRecherche(s);
+      const normBase = norm(baseName);
+      const normRaw = norm(raw);
+      let art = state.articles.find(a => norm(a.name) === normBase || norm(a.name) === normRaw);
+      if (!art) {
+        art = state.articles.find(a => {
+          const n = norm(a.name);
+          return n && (normBase.includes(n) || n.includes(normBase) || normRaw.includes(n) || n.includes(normRaw));
+        });
+      }
+      if (!art && (item as any).code) {
+        const c = norm((item as any).code);
+        art = state.articles.find(a => norm(a.code || '') === c || norm(a.id) === c);
+      }
+      if (art?.family) return art.family.trim().toUpperCase();
+      const catMap: Record<string, string> = { lab: 'LABO', echo: 'ECHO', pharmacy: 'MEDIC', consultation: 'CONSULT', surgery: 'CHIR', hospitalization: 'HOSP', bloc: 'BLOC', externe: 'EXTERNE' };
+      return catMap[item.category] || 'AUTRE';
     };
+
+    const groups = new Map<string, { items: InvoiceItem[]; brut: number }>();
+    for (const piece of pieces) {
+      for (const it of piece.items) {
+        const fam = resolveFamily(it);
+        const cur = groups.get(fam) || { items: [], brut: 0 };
+        cur.items.push(it);
+        cur.brut += brutLigneDepuisItem(it);
+        groups.set(fam, cur);
+      }
+    }
+
+    const parFamille = Array.from(groups.entries()).map(([famille, g]) => {
+      const brut = roundTo2(g.brut);
+      let ticket = 0;
+      let remise = 0;
+      let partSoc = brut;
+      let nature: 'ticket_moderateur' | 'remise' = 'ticket_moderateur';
+      if (selPatient.clientType === 'societe') {
+        const rep = repartirItemsCaisse({ societe, personne, items: g.items });
+        ticket = roundTo2(rep.ticketModerateur);
+        partSoc = roundTo2(rep.partSociete);
+        nature = rep.nature as any;
+        if (nature === 'remise') {
+          remise = roundTo2(quotePartSiTicketModerateur({ societe, personne, items: g.items }));
+          ticket = 0;
+        }
+      }
+      return { famille, brut, ticket, remise, partSoc, nature, count: g.items.length };
+    });
+
+    parFamille.sort((a, b) => a.famille.localeCompare(b.famille));
+
+    const totalBrut = roundTo2(parFamille.reduce((s, f) => s + f.brut, 0));
+    const totalTicket = roundTo2(parFamille.reduce((s, f) => s + f.ticket, 0));
+    const totalRemise = roundTo2(parFamille.reduce((s, f) => s + f.remise, 0));
+    const totalPartSoc = roundTo2(parFamille.reduce((s, f) => s + f.partSoc, 0));
+    const natureGlobale = parFamille.find(f => f.nature === 'ticket_moderateur')?.nature || parFamille[0]?.nature || 'ticket_moderateur';
+    const hasRemise = parFamille.some(f => f.nature === 'remise' && f.remise > 0);
+    const hasTicket = parFamille.some(f => f.ticket > 0);
+
+    return { parFamille, totalBrut, totalTicket, totalRemise, totalPartSoc, natureGlobale, hasRemise, hasTicket, societe: societe || null };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selPatientId, piecesPayees, baseCommune]);
+  }, [selPatientId, piecesPayees, state.articles, baseCommune]);
 
   // Confirmation Modal State
   const [confirmModalState, setConfirmModalState] = useState<{
@@ -3443,44 +3500,67 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                 </div>
               </div>
 
-               {/* === CLIENT SOCIÉTÉ : crédit société + TICKET MODÉRATEUR ajustable === */}
-              {/* RÉPARTITION PIÈCE PAR PIÈCE : le ticket modérateur / la remise des
-                  analyses et échographies du médecin arrive à la caisse visible. */}
-              {selPatient.clientType === 'societe' && copayLotPreview && (
+               {/* === RÉCAPITULATIF PAR FAMILLE D'ARTICLES — remplace l'ancien tableau Pièce/Brut/Ticket mod. === */}
+              {recapParFamille && recapParFamille.parFamille.length > 0 && (
                 <div className="mb-3 border border-line rounded-lg overflow-hidden">
+                  <div className="bg-surface-muted px-2.5 py-1.5 border-b border-line text-[11px] font-bold text-ink flex items-center gap-1.5">
+                    📦 Récapitulatif par famille d'articles
+                    <span className="ml-auto font-normal text-ink-muted">{recapParFamille.parFamille.length} famille(s) · {piecesPayees.flatMap(p => p.items).length} article(s)</span>
+                  </div>
                   <table className="w-full text-[11px]">
                     <thead>
                       <tr className="bg-surface-muted text-ink-muted">
-                        <th className="text-left p-1.5 font-semibold">Pièce</th>
+                        <th className="text-left p-1.5 font-semibold">Famille</th>
+                        <th className="text-center p-1.5 font-semibold">Nb</th>
                         <th className="text-right p-1.5 font-semibold">Brut</th>
-                        <th className="text-right p-1.5 font-semibold">{copayLotPreview.nature === 'remise' ? 'Remise (non payée)' : 'Ticket mod. (à payer)'}</th>
+                        {selPatient.clientType === 'societe' ? (
+                          <>
+                            <th className="text-right p-1.5 font-semibold">{recapParFamille.natureGlobale === 'remise' || recapParFamille.hasRemise ? 'Remise' : 'Ticket mod. (à payer)'}</th>
+                            <th className="text-right p-1.5 font-semibold">Crédit Société</th>
+                          </>
+                        ) : (
+                          <th className="text-right p-1.5 font-semibold">Montant</th>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
-                      {copayLotPreview.pieces.map(pc => (
-                        <tr key={pc.key} className="border-t border-line-soft">
-                          <td className="p-1.5">{pc.label}{pc.resume ? ` — ${pc.resume}` : ''}
-                            {pc.numero
-                              ? <span className="text-ink-faint font-mono"> — n° {pc.numero}</span>
-                              : <span className="text-ink-faint"> — en attente (sans numéro)</span>}</td>
-                          <td className="p-1.5 text-right font-mono">{formatAr(pc.brut)}</td>
-                          <td className={`p-1.5 text-right font-mono font-bold ${copayLotPreview.nature === 'remise' ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                            {formatAr(copayLotPreview.nature === 'remise' ? pc.remise : pc.quote)}
-                          </td>
+                      {recapParFamille.parFamille.map(f => (
+                        <tr key={f.famille} className="border-t border-line-soft">
+                          <td className="p-1.5 font-bold">{f.famille}</td>
+                          <td className="p-1.5 text-center font-mono">{f.count}</td>
+                          <td className="p-1.5 text-right font-mono">{formatAr(f.brut)}</td>
+                          {selPatient.clientType === 'societe' ? (
+                            <>
+                              <td className={`p-1.5 text-right font-mono font-bold ${f.nature === 'remise' ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                                {formatAr(f.nature === 'remise' ? f.remise : f.ticket)}
+                              </td>
+                              <td className="p-1.5 text-right font-mono font-bold text-blue-700 dark:text-cyan-400">{formatAr(f.partSoc)}</td>
+                            </>
+                          ) : (
+                            <td className="p-1.5 text-right font-mono font-bold">{formatAr(f.brut)}</td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
-                      <tr className="border-t-2 border-line bg-surface-muted/60">
-                        <td className="p-1.5 font-bold">{copayLotPreview.nature === 'remise' ? 'TOTAL — remise (non payée)' : 'TOTAL — part à payer par le patient'}</td>
-                        <td className="p-1.5 text-right font-mono font-bold">{formatAr(copayLotPreview.pieces.reduce((s, pc) => s + pc.brut, 0))}</td>
-                        <td className={`p-1.5 text-right font-mono font-bold ${copayLotPreview.nature === 'remise' ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                          {formatAr(copayLotPreview.pieces.reduce((s, pc) => s + (copayLotPreview.nature === 'remise' ? pc.remise : pc.quote), 0))}
-                        </td>
+                      <tr className="border-t-2 border-line bg-surface-muted/60 font-bold">
+                        <td className="p-1.5">TOTAL</td>
+                        <td className="p-1.5 text-center font-mono">{recapParFamille.parFamille.reduce((s, f) => s + f.count, 0)}</td>
+                        <td className="p-1.5 text-right font-mono">{formatAr(recapParFamille.totalBrut)}</td>
+                        {selPatient.clientType === 'societe' ? (
+                          <>
+                            <td className={`p-1.5 text-right font-mono ${recapParFamille.natureGlobale === 'remise' || recapParFamille.hasRemise ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                              {formatAr(recapParFamille.hasRemise && recapParFamille.totalTicket === 0 ? recapParFamille.totalRemise : recapParFamille.totalTicket)}
+                            </td>
+                            <td className="p-1.5 text-right font-mono text-blue-700 dark:text-cyan-400">{formatAr(recapParFamille.totalPartSoc)}</td>
+                          </>
+                        ) : (
+                          <td className="p-1.5 text-right font-mono">{formatAr(recapParFamille.totalBrut)}</td>
+                        )}
                       </tr>
                     </tfoot>
                   </table>
-                  {!copayLotPreview.societe && (
+                  {selPatient.clientType === 'societe' && !recapParFamille.societe && (
                     <div className="p-1.5 text-[10px] bg-orange-50 dark:bg-orange-500/10 text-orange-800 dark:text-orange-300">
                       ⚠ Société « {selPatient.company || 'inconnue'} » non reconnue dans la base assurance — quote-part calculée par défaut ou ajustable manuellement.
                     </div>
