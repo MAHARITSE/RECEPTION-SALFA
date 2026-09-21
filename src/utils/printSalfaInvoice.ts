@@ -261,11 +261,6 @@ ${mentionsLegalesSalfa()}
     @page {
       size: A4 landscape;
       margin: 8mm;
-      @bottom-left {
-        content: "Page " counter(page) "/" counter(pages);
-        font: 9px Arial, Helvetica, sans-serif;
-        color: #000;
-      }
     }
     @media print {
       body { width: 100%; margin: 0; padding: 0; }
@@ -299,19 +294,6 @@ ${mentionsLegalesSalfa()}
       border-left: 1.5px dashed #666;
       min-height: 185mm;
       margin-left: 0.5mm;
-      position: relative;
-    }
-    .a4-duo .free-half::before {
-      content: "✂ Découpe";
-      position: absolute;
-      top: 12px;
-      left: -8px;
-      background: #fff;
-      padding: 2px 4px;
-      font-size: 9px;
-      color: #777;
-      font-weight: bold;
-      letter-spacing: 0.5px;
     }
     /* L'en-tête reste sur la première page : jamais de coupure à l'intérieur,
        jamais de ligne du tableau détachée juste après lui. */
@@ -616,6 +598,19 @@ export function salfaCompanyMonthlyInvoiceHtml(
   }).join('');
 
   const montantLettres = numberToFrenchWords(totalNetGlobal);
+  const customHeader = customInvoiceHeaderMarkup(settings);
+  const headerMarkup = customHeader !== null
+    ? `<div class="header header-custom"><div class="header-custom-inner">${customHeader}</div></div>`
+    : `<div class="header header-standard">
+      <div class="church-main">${ETABLISSEMENT_SALFA.eglise}</div>
+      <div class="sub">${ETABLISSEMENT_SALFA.egliseTraduction}</div>
+      <div class="sub">${ETABLISSEMENT_SALFA.synode}</div>
+      <div class="sub">${ETABLISSEMENT_SALFA.salfa}</div>
+      <div class="sub">${ETABLISSEMENT_SALFA.departement}</div>
+      <div class="sub">${ETABLISSEMENT_SALFA.dispensaire}</div>
+      <div class="sub">${ETABLISSEMENT_SALFA.hopital}</div>
+${mentionsLegalesSalfa()}
+    </div>`;
 
   const html = `<!doctype html>
 <html lang="fr">
@@ -636,6 +631,11 @@ export function salfaCompanyMonthlyInvoiceHtml(
       padding: 0;
       margin: 0;
       line-height: 1.35;
+    }
+    ${INVOICE_HEADER_CSS}
+    ${INVOICE_HEADER_STYLE}
+    .header, .invoice-header {
+      margin-bottom: 4mm;
     }
     .title-block {
       text-align: center;
@@ -716,6 +716,8 @@ export function salfaCompanyMonthlyInvoiceHtml(
   </style>
 </head>
 <body>
+
+  ${headerMarkup}
 
   <div class="title-block">
     <div class="doit-title">Doit : ${escapeHtml(company.name.toUpperCase())}</div>

@@ -46,9 +46,10 @@ export function billingAmountInWords(value: number, currency: string): string {
 // The common Administration header is presentation-only; financial snapshots stay frozen.
 // Native pagination handles variable-height rows and repeats the column headings.
 type PrintMode = 'monthly' | 'individual' | 'duo' | 'fusion';
-const css = (mode: PrintMode) => `@page{size:${(mode === 'duo' || mode === 'fusion') ? 'A4 landscape' : `${mode === 'monthly' ? 'A4' : 'A5'} portrait`};margin:${mode === 'monthly' ? '12mm 10mm 12mm' : (mode === 'duo' || mode === 'fusion') ? '8mm' : '8mm 7mm 12mm'};@bottom-left{content:"Page " counter(page) "/" counter(pages);font:9px Arial,sans-serif;color:#000}}
+const css = (mode: PrintMode) => `@page{size:${(mode === 'duo' || mode === 'fusion') ? 'A4 landscape' : `${mode === 'monthly' ? 'A4' : 'A5'} portrait`};margin:${mode === 'monthly' ? '12mm 10mm 12mm' : (mode === 'duo' || mode === 'fusion') ? '8mm' : '8mm 7mm 12mm'}}
 *{box-sizing:border-box}body{font:11px Arial,sans-serif;color:#000;background:#fff;margin:0}h1{font-size:16px;text-align:center;margin:8px 0 12px;font-weight:bold;letter-spacing:0.5px}p{margin:6px 0}table{font:inherit;width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #000;padding:4px 6px;overflow-wrap:anywhere;vertical-align:middle}th{text-align:center;font-weight:bold;background:#fff}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}.number{text-align:right;white-space:nowrap}.center{text-align:center}.summary{break-inside:avoid;page-break-inside:avoid}.totals{width:235px;margin-left:auto;margin-top:-1px}.totals th{text-align:left;font-weight:bold;background:#fff;width:150px}.totals td{text-align:right;font-weight:bold;width:85px}.words{margin-top:14px;font-size:11px}.invoice-date{text-align:right;margin-top:14px}.individual .identity{margin-bottom:12px;font-size:11px}.individual .identity p{margin:4px 0}.individual .net{font-weight:bold}.individual{font-size:10px}.individual h1{font-size:16px}.individual .footer-line{margin-top:18px;display:flex;justify-content:space-between;align-items:center;font-size:10.5px}
 .monthly{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#fff;margin:0;padding:0}
+.monthly .invoice-header{margin-bottom:4mm}
 .monthly .company-header-block{text-align:center;margin-top:4mm;margin-bottom:6mm}
 .monthly .company-doit{font-size:18px;font-weight:bold;margin-bottom:12px}
 .monthly .company-month{font-size:13px;text-align:left;margin-left:10mm;margin-bottom:8px}
@@ -69,8 +70,7 @@ const css = (mode: PrintMode) => `@page{size:${(mode === 'duo' || mode === 'fusi
 .monthly .gest-block{text-align:center;min-width:140px}
 .monthly .gest-title{margin-top:8px;font-weight:bold;text-decoration:underline}
 .monthly .page-num{text-align:center;margin-top:25px;font-size:10px}
-.duo-page{display:flex;gap:6mm;align-items:stretch;min-height:185mm;break-after:page;page-break-after:always}.duo-half{flex:0 0 140mm;width:140mm;min-width:0}.duo-half+.duo-half{flex:1;min-width:0;border-left:1.5px dashed #666;padding-left:6mm;position:relative}
-.duo-half+.duo-half::before{content:"✂ Découpe";position:absolute;top:12px;left:-8px;background:#fff;padding:2px 4px;font-size:9px;color:#777;font-weight:bold;letter-spacing:0.5px}
+.duo-page{display:flex;gap:6mm;align-items:stretch;min-height:185mm;break-after:page;page-break-after:always}.duo-half{flex:0 0 140mm;width:140mm;min-width:0}.duo-half+.duo-half{flex:1;min-width:0;border-left:1.5px dashed #666;padding-left:6mm}
 /* Chaque facture du 2-par-page garde son propre en-tête, limité à sa
    demi-feuille A5 : jamais un en-tête unique étendu sur la feuille entière. */
 .duo-half>.invoice-header{margin-bottom:4mm}
@@ -80,7 +80,7 @@ const css = (mode: PrintMode) => `@page{size:${(mode === 'duo' || mode === 'fusi
 .fusion-flow>.invoice-header{margin-bottom:4mm}.fusion .identity{margin-bottom:10px}.fusion .identity p{margin:5px 0}.fusion .totals{width:62%;margin-left:38%;margin-top:6px}.fusion .totals th{width:71%}.fusion .net{font-weight:bold}.fusion .words{margin-top:8px}.fusion .note{font-size:8px}`;
 
 function shell(number: string, kind: PrintMode, content: string, settings?: TicketSettings): string {
-  const header = kind === 'monthly' ? '' : (settings ? invoiceHeaderMarkup(settings) : '');
+  const header = kind === 'monthly' ? (settings ? invoiceHeaderMarkup(settings) : '') : '';
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${escape(number)}</title><style>${css(kind)}${INVOICE_HEADER_STYLE}</style></head><body class="${kind}">${header}${content}</body></html>`;
 }
 
