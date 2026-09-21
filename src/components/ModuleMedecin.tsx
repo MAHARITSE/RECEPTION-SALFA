@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { Consultation, VitalSigns, Prescription, LabRequest, ClientType, Invoice, EchoRequest, PatientStatus, Patient, Article, HbLine, HbRecord } from '../types';
+import type { Consultation, VitalSigns, Prescription, LabRequest, ClientType, Invoice, InvoiceItem, EchoRequest, PatientStatus, Patient, Article, HbLine, HbRecord } from '../types';
 import type { AppState } from '../store';
 import { SearchableSelect, optionsFromValues } from './SearchableSelect';
 import { SuggestionInput, classerSuggestions } from './SuggestionInput';
@@ -1098,15 +1098,17 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     // attribution atomique au moment de l'encaissement) — une prescription qui
     // n'est jamais payée ne consomme donc aucun numéro, et deux personnes ne
     // peuvent pas se voir attribuer le même.
-    // ---- Analyses labo -> facture en attente (bon imprimé à la CAISSE après paiement) ----
-    const labInvoiceId = labDraft.length > 0 ? uuidv4() : null;
+    // ---- Regroupement de la prescription (Médicaments + Analyses + Échographies) en une seule pièce ----
+    const hasPrescriptionItems = lines.length > 0 || labDraft.length > 0 || echoDraft.length > 0;
+    const consultInvoiceId = hasPrescriptionItems ? uuidv4() : null;
+
     const newLabRequests: LabRequest[] = labDraft.map((d) => {
       const e = currentLabCatalog.find((x) => x.id === d.examId) || state.labCatalog.find((x) => x.id === d.examId);
       const examName = e ? e.name : 'Examen de laboratoire';
       const examCode = e?.code || 'LAB';
       const category = e?.category;
       const parameters = e?.parameters ? [...e.parameters] : [examName];
-        const sampleType = e?.sampleType || 'Sang veineux';
+      const sampleType = e?.sampleType || 'Sang veineux';
       // Remise par saisie : le prix facturé est le prix catalogue remisé.
       const discount = Math.max(0, Math.min(100, d.discount || 0));
       const price = roundTo2(priceForExam(d.examId, ct, d.urgent) * (1 - discount / 100));
@@ -1114,11 +1116,10 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
         id: uuidv4(), patientId: selectedPatientId, consultationId: consultId, examType: examName, code: examCode,
         category, parameters, urgent: d.urgent, status: 'pending' as const,
         sampleType, requestedBy: state.currentUser?.id || '', requestedAt: new Date().toISOString(),
-        invoiceId: labInvoiceId || undefined, discount: discount > 0 ? discount : undefined, price,
+        invoiceId: consultInvoiceId || undefined, discount: discount > 0 ? discount : undefined, price,
       };
     });
-    // ---- Échographies -> facture en attente (bon imprimé à la CAISSE après paiement) ----
-    const echoInvoiceId = echoDraft.length > 0 ? uuidv4() : null;
+    // ---- Échographies -> rattachées à la même facture ----
     const newEchoRequests: EchoRequest[] = echoDraft.map((d) => {
       const e = currentEchoCatalog.find((x) => x.id === d.examId) || ECHO_CATALOG.find((x) => x.id === d.examId);
       const examName = e ? e.name : 'Échographie';
@@ -1129,7 +1130,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
         id: uuidv4(), patientId: selectedPatientId, consultationId: consultId,
         examType: examName, notes: d.notes || undefined, urgent: d.urgent,
         status: 'pending' as const, requestedBy: state.currentUser?.id || '',
-        requestedAt: new Date().toISOString(), invoiceId: echoInvoiceId || undefined,
+        requestedAt: new Date().toISOString(), invoiceId: consultInvoiceId || undefined,
         discount: discount > 0 ? discount : undefined, price,
       };
     });
@@ -1156,8 +1157,23 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
           ? { ...p, status: nextStatus, lastVisitAt: new Date().toISOString() }
           : p),
       };
-      if (newLabRequests.length > 0 && labInvoiceId) {
-        const labItems = newLabRequests.map((lr) => {
+      if (consultInvoiceId) {
+        const medItems: InvoiceItem[] = lines.map((l) => {
+          const discount = Math.max(0, Math.min(100, l.discount || 0));
+          const unitPrice = l.unitPrice || 0;
+          const qte = l.quantity || 1;
+          const amount = roundTo2(qte * unitPrice * (1 - discount / 100));
+          return {
+            code: l.articleId || 'MED',
+            description: l.articleName,
+            quantity: qte,
+            unitPrice,
+            amount,
+            category: 'pharmacy' as const,
+            discount: discount > 0 ? discount : undefined,
+          };
+        });
+        const labItems: InvoiceItem[] = newLabRequests.map((lr) => {
           const discount = lr.discount || 0;
           const price = lr.price || 0;
           const unitPrice = discount > 0 ? roundTo2(price / (1 - discount / 100)) : price;
@@ -1168,23 +1184,10 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
             unitPrice,
             amount: price,
             category: 'lab' as const,
-            discount,
+            discount: discount > 0 ? discount : undefined,
           };
         });
-        const labTotalAmt = labItems.reduce((s, i) => s + i.amount, 0);
-        const labInv: Invoice = {
-          id: labInvoiceId, patientId: selectedPatientId, consultationId: consultation.id, clientType: ct,
-          items: labItems, totalAmount: labTotalAmt, patientCharge: labTotalAmt,
-          // Numéro attribué AU PAIEMENT (caisse) — jamais à la prescription.
-          numeroFacture: undefined,
-          status: 'pending' as const, createdAt: new Date().toISOString(), isExternal: ct === 'externe',
-        };
-        next = { ...next, labRequests: [...next.labRequests, ...newLabRequests], invoices: [...next.invoices, labInv] };
-        addAuditLog(next, 'DEMANDE_ANALYSE', `${newLabRequests.map((r) => r.examType).join(', ')} — ${formatAr(labTotalAmt)} (${selectedPatient.dossier})`, selectedPatientId);
-        addJourneyEvent(next, { patientId: selectedPatientId, department: 'consultation', action: "Demande d'analyse", status: 'analyses_pending', details: `${newLabRequests.map((r) => r.examType).join(', ')} — à facturer (caisse)`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId: consultation.id });
-      }
-      if (newEchoRequests.length > 0 && echoInvoiceId) {
-        const echoItems = newEchoRequests.map((er) => {
+        const echoItems: InvoiceItem[] = newEchoRequests.map((er) => {
           const discount = er.discount || 0;
           const price = er.price || 0;
           const unitPrice = discount > 0 ? roundTo2(price / (1 - discount / 100)) : price;
@@ -1195,20 +1198,37 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
             unitPrice,
             amount: price,
             category: 'echo' as const,
-            discount,
+            discount: discount > 0 ? discount : undefined,
           };
         });
-        const echoTotalAmt = echoItems.reduce((s, i) => s + i.amount, 0);
-        const echoInv: Invoice = {
-          id: echoInvoiceId, patientId: selectedPatientId, consultationId: consultation.id, clientType: ct,
-          items: echoItems, totalAmount: echoTotalAmt, patientCharge: echoTotalAmt,
-          // Numéro attribué AU PAIEMENT (caisse) — jamais à la prescription.
+        const allItems: InvoiceItem[] = [...medItems, ...labItems, ...echoItems];
+        const consultTotalAmt = roundTo2(allItems.reduce((s, i) => s + i.amount, 0));
+        const consultInv: Invoice = {
+          id: consultInvoiceId,
+          patientId: selectedPatientId,
+          consultationId: consultation.id,
+          clientType: ct,
+          items: allItems,
+          totalAmount: consultTotalAmt,
+          patientCharge: consultTotalAmt,
           numeroFacture: undefined,
-          status: 'pending' as const, createdAt: new Date().toISOString(), isExternal: ct === 'externe',
+          status: 'pending' as const,
+          createdAt: new Date().toISOString(),
+          isExternal: ct === 'externe',
         };
-        next = { ...next, invoices: [...next.invoices, echoInv] };
-        addAuditLog(next, 'DEMANDE_ECHO', `${newEchoRequests.map((r) => r.examType).join(', ')} — ${formatAr(echoTotalAmt)} (${selectedPatient.dossier})`, selectedPatientId);
-        addJourneyEvent(next, { patientId: selectedPatientId, department: 'imagerie', action: "Demande d'échographie", status: nextStatus, details: `${newEchoRequests.map((r) => r.examType).join(', ')} — à facturer (caisse)`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId: consultation.id });
+        next = {
+          ...next,
+          labRequests: [...next.labRequests, ...newLabRequests],
+          invoices: [...next.invoices, consultInv],
+        };
+        if (newLabRequests.length > 0) {
+          addAuditLog(next, 'DEMANDE_ANALYSE', `${newLabRequests.map((r) => r.examType).join(', ')} — ${formatAr(labTotal)} (${selectedPatient.dossier})`, selectedPatientId);
+          addJourneyEvent(next, { patientId: selectedPatientId, department: 'consultation', action: "Demande d'analyse", status: 'analyses_pending', details: `${newLabRequests.map((r) => r.examType).join(', ')} — à facturer (caisse)`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId: consultation.id });
+        }
+        if (newEchoRequests.length > 0) {
+          addAuditLog(next, 'DEMANDE_ECHO', `${newEchoRequests.map((r) => r.examType).join(', ')} — ${formatAr(echoTotal)} (${selectedPatient.dossier})`, selectedPatientId);
+          addJourneyEvent(next, { patientId: selectedPatientId, department: 'imagerie', action: "Demande d'échographie", status: nextStatus, details: `${newEchoRequests.map((r) => r.examType).join(', ')} — à facturer (caisse)`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId: consultation.id });
+        }
       }
 
       addAuditLog(next, 'CONSULTATION', `${selectedPatient.lastName} — ${formatAr(grandTotal)}${lines.length === 0 ? ' (sans ordonnance)' : ''} — envoyé à la caisse${ct === 'societe' ? ' (crédit société)' : ''}`, selectedPatientId);

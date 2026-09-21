@@ -46,8 +46,31 @@ export function billingAmountInWords(value: number, currency: string): string {
 // The common Administration header is presentation-only; financial snapshots stay frozen.
 // Native pagination handles variable-height rows and repeats the column headings.
 type PrintMode = 'monthly' | 'individual' | 'duo' | 'fusion';
-const css = (mode: PrintMode) => `@page{size:${(mode === 'duo' || mode === 'fusion') ? 'A4 landscape' : `${mode === 'monthly' ? 'A4' : 'A5'} portrait`};margin:${mode === 'monthly' ? '12mm 10mm 16mm' : (mode === 'duo' || mode === 'fusion') ? '8mm' : '8mm 7mm 12mm'};@bottom-left{content:"Page " counter(page) "/" counter(pages);font:9px Arial,sans-serif;color:#000}}
-*{box-sizing:border-box}body{font:12px Arial,sans-serif;color:#000;background:#fff;margin:0}h1{font-size:19px;text-align:center;margin:8px 0 14px}p{margin:8px 0}table{font:inherit;width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #000;padding:4px;overflow-wrap:anywhere;vertical-align:top}th{text-align:center;font-weight:bold}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}.number{text-align:right;white-space:nowrap}.center{text-align:center}.summary{break-inside:avoid;page-break-inside:avoid}.totals{width:40%;margin-left:auto;margin-top:-1px}.totals th{text-align:right}.totals th{width:55%}.words{margin-top:12px}.invoice-date{text-align:right;margin-top:14px}.note{font-size:9px;margin-top:12px}.individual .identity{margin-bottom:18px}.individual .identity p{margin:9px 0}.individual .net{font-weight:bold}.individual{font-size:10px}.individual h1{font-size:16px}.individual .totals{width:40%;margin-left:60%}.individual .totals th{width:55%}.individual .note{font-size:8px}.monthly{font-size:10px}.monthly h1{font-size:16px;margin-bottom:18px}.monthly .period{margin-bottom:12px}.monthly .invoice-number{text-align:center;margin-bottom:16px}.monthly th,.monthly td{padding:3px 2px}.monthly .acts{font-size:9px;line-height:1.25}.monthly .grand-total{font-weight:bold}.monthly .number{font-variant-numeric:tabular-nums}.monthly .note{font-size:8px}.duo-page{display:flex;gap:5mm;align-items:flex-start;break-after:page;page-break-after:always}.duo-half{flex:1;min-width:0}.duo-half+.duo-half{border-left:1px dashed #999;padding-left:5mm}
+const css = (mode: PrintMode) => `@page{size:${(mode === 'duo' || mode === 'fusion') ? 'A4 landscape' : `${mode === 'monthly' ? 'A4' : 'A5'} portrait`};margin:${mode === 'monthly' ? '12mm 10mm 12mm' : (mode === 'duo' || mode === 'fusion') ? '8mm' : '8mm 7mm 12mm'};@bottom-left{content:"Page " counter(page) "/" counter(pages);font:9px Arial,sans-serif;color:#000}}
+*{box-sizing:border-box}body{font:11px Arial,sans-serif;color:#000;background:#fff;margin:0}h1{font-size:16px;text-align:center;margin:8px 0 12px;font-weight:bold;letter-spacing:0.5px}p{margin:6px 0}table{font:inherit;width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #000;padding:4px 6px;overflow-wrap:anywhere;vertical-align:middle}th{text-align:center;font-weight:bold;background:#fff}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}.number{text-align:right;white-space:nowrap}.center{text-align:center}.summary{break-inside:avoid;page-break-inside:avoid}.totals{width:235px;margin-left:auto;margin-top:-1px}.totals th{text-align:left;font-weight:bold;background:#fff;width:150px}.totals td{text-align:right;font-weight:bold;width:85px}.words{margin-top:14px;font-size:11px}.invoice-date{text-align:right;margin-top:14px}.individual .identity{margin-bottom:12px;font-size:11px}.individual .identity p{margin:4px 0}.individual .net{font-weight:bold}.individual{font-size:10px}.individual h1{font-size:16px}.individual .footer-line{margin-top:18px;display:flex;justify-content:space-between;align-items:center;font-size:10.5px}
+.monthly{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#fff;margin:0;padding:0}
+.monthly .company-header-block{text-align:center;margin-top:4mm;margin-bottom:6mm}
+.monthly .company-doit{font-size:18px;font-weight:bold;margin-bottom:12px}
+.monthly .company-month{font-size:13px;text-align:left;margin-left:10mm;margin-bottom:8px}
+.monthly .company-invoice-no{font-size:13px;text-align:center;margin-bottom:12px}
+.monthly table.company-table{width:100%;border-collapse:collapse;table-layout:fixed;border:1.5px solid #000}
+.monthly table.company-table th,.monthly table.company-table td{border:1px solid #000;padding:4px 4px;vertical-align:middle;overflow-wrap:break-word}
+.monthly table.company-table th{font-size:10.5px;font-weight:bold;text-align:center;background:#fff}
+.monthly table.company-table td{font-size:10px}
+.monthly td.center{text-align:center}
+.monthly td.patient-name{font-size:9.5px;line-height:1.25;text-align:left;padding-left:5px}
+.monthly td.acts{font-size:9px;line-height:1.25;text-align:center;white-space:nowrap}
+.monthly td.number{text-align:right;padding-right:5px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.monthly tr.total-row td{font-weight:bold;border-top:1.5px solid #000;border-bottom:1.5px solid #000;padding:5px 4px}
+.monthly tr.total-row td.total-label{text-align:left;padding-left:8px;font-size:11px}
+.monthly .bottom-words{margin-top:15px;font-size:11.5px}
+.monthly .bottom-signatures{margin-top:20px;display:flex;justify-content:space-between;align-items:flex-end;font-size:11px}
+.monthly .rib-block{font-size:12px;font-weight:bold}
+.monthly .gest-block{text-align:center;min-width:140px}
+.monthly .gest-title{margin-top:8px;font-weight:bold;text-decoration:underline}
+.monthly .page-num{text-align:center;margin-top:25px;font-size:10px}
+.duo-page{display:flex;gap:6mm;align-items:stretch;min-height:185mm;break-after:page;page-break-after:always}.duo-half{flex:0 0 140mm;width:140mm;min-width:0}.duo-half+.duo-half{flex:1;min-width:0;border-left:1.5px dashed #666;padding-left:6mm;position:relative}
+.duo-half+.duo-half::before{content:"✂ Découpe";position:absolute;top:12px;left:-8px;background:#fff;padding:2px 4px;font-size:9px;color:#777;font-weight:bold;letter-spacing:0.5px}
 /* Chaque facture du 2-par-page garde son propre en-tête, limité à sa
    demi-feuille A5 : jamais un en-tête unique étendu sur la feuille entière. */
 .duo-half>.invoice-header{margin-bottom:4mm}
@@ -57,7 +80,8 @@ const css = (mode: PrintMode) => `@page{size:${(mode === 'duo' || mode === 'fusi
 .fusion-flow>.invoice-header{margin-bottom:4mm}.fusion .identity{margin-bottom:10px}.fusion .identity p{margin:5px 0}.fusion .totals{width:62%;margin-left:38%;margin-top:6px}.fusion .totals th{width:71%}.fusion .net{font-weight:bold}.fusion .words{margin-top:8px}.fusion .note{font-size:8px}`;
 
 function shell(number: string, kind: PrintMode, content: string, settings?: TicketSettings): string {
-  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${escape(number)}</title><style>${css(kind)}${INVOICE_HEADER_STYLE}</style></head><body class="${kind}">${settings ? invoiceHeaderMarkup(settings) : ''}${content}</body></html>`;
+  const header = kind === 'monthly' ? '' : (settings ? invoiceHeaderMarkup(settings) : '');
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${escape(number)}</title><style>${css(kind)}${INVOICE_HEADER_STYLE}</style></head><body class="${kind}">${header}${content}</body></html>`;
 }
 
 /** En-tête propre à UNE facture (A5 ou demi-feuille A4 du 2 par page).
@@ -82,25 +106,22 @@ function individualContent(invoice: MonthlyInvoice, settings?: TicketSettings): 
   const gross = document.individualGross ?? document.total;
   const net = document.individualNet ?? document.payable;
   const reduction = Math.round((gross - net) * 100) / 100;
-  // Ticket modérateur (quote-part de l'assuré) par défaut, vraie remise si la
-  // société / l'assuré est réglé ainsi : le montant ne change pas, l'intitulé si.
   const libelleReduction = natureRemiseLabel(document.natureRemise);
   const payer = document.companyName || (document.category === 'societe' ? invoice.recipient : 'CLIENT COMPTOIR');
   return `
-    ${invoiceHeader(settings)}<h1>FACTURE&nbsp; ${escape(invoice.number)}</h1>
+    ${invoiceHeader(settings)}<h1>FACTURE N° : &nbsp; ${escape(invoice.number)}</h1>
     <div class="identity"><p>Date de consultation :&emsp; ${escape(dateLabel(document.consultationDate || document.date))}</p>
     <p>Nom :&emsp; <strong>${escape(document.client)}</strong></p>
-    <p>Prise en charge :&emsp; ${escape(payer)}</p></div>
-    <table aria-label="Articles facturés"><colgroup><col style="width:5%"><col style="width:49%"><col style="width:10%"><col style="width:18%"><col style="width:18%"></colgroup>
-    <thead><tr><th>N°</th><th>Libellé Article</th><th>Qté</th><th>Prix</th><th>Montant</th></tr></thead>
-    <tbody>${document.items.map((item, index) => `<tr><td class="number">${index + 1}</td><td>${escape(item.description)}</td><td class="number">${item.quantity == null ? '—' : quantite(item.quantity)}</td><td class="number">${item.unitPrice == null ? '—' : decimal(item.unitPrice)}</td><td class="number">${decimal(item.quantity != null && item.unitPrice != null ? item.quantity * item.unitPrice : item.amount)}</td></tr>`).join('') || '<tr><td colspan="5">Voir les articles sur la pièce d’origine.</td></tr>'}</tbody></table>
+    ${payer && payer !== 'CLIENT COMPTOIR' ? `<p>Prise en charge :&emsp; ${escape(payer)}</p>` : ''}</div>
+    <table aria-label="Articles facturés"><colgroup><col style="width:28px"><col><col style="width:65px"><col style="width:85px"><col style="width:85px"></colgroup>
+    <thead><tr><th style="width:28px">N</th><th>Libellé Article</th><th style="width:65px;text-align:right">Quantité</th><th style="width:85px;text-align:right">Prix</th><th style="width:85px;text-align:right">Montant</th></tr></thead>
+    <tbody>${document.items.map((item, index) => `<tr><td class="center" style="width:28px">${index + 1}</td><td><strong>${escape(item.description)}</strong></td><td class="number" style="width:65px">${item.quantity == null ? '—' : decimal(item.quantity)}</td><td class="number" style="width:85px">${item.unitPrice == null ? '—' : decimal(item.unitPrice)}</td><td class="number" style="width:85px">${decimal(item.quantity != null && item.unitPrice != null ? item.quantity * item.unitPrice : item.amount)}</td></tr>`).join('') || '<tr><td colspan="5">Voir les articles sur la pièce d’origine.</td></tr>'}</tbody></table>
     <div class="summary"><table class="totals" aria-label="Totaux individuels"><tbody>
-    <tr><th>Total Brut</th><td class="number">${decimal(gross)}</td></tr>
-    <tr><th>${escape(libelleReduction)}</th><td class="number">${decimal(reduction)}</td></tr>
-    <tr class="net"><th>Net à payer</th><td class="number">${decimal(net)}</td></tr></tbody></table>
-    <p class="words">Arrêtée à la somme de : ${escape(billingAmountInWords(net, invoice.facility.currency))}</p>
-    <p class="invoice-date">Date de facture :&emsp; ${escape(dateLabel(invoice.issuedAt))}</p>
-    <p class="note">Montants de la pièce d’origine, avant imputation des règlements. Réimpression sans nouvel encaissement.</p></div>`;
+    <tr><th>Total avant Remise</th><td class="number">${decimal(gross)}</td></tr>
+    <tr><th>${escape(reduction > 0 ? libelleReduction : 'Remise')}</th><td class="number">${decimal(reduction)}</td></tr>
+    <tr><th>TOTAL</th><td class="number">${decimal(net)}</td></tr></tbody></table>
+    <p class="words">Arrêtez à la somme de ${escape(billingAmountInWords(net, invoice.facility.currency))}</p>
+    <div class="footer-line"><span>Page 1/1</span><span>Date de facture : &nbsp;<strong>${escape(dateLabel(invoice.issuedAt))}</strong></span></div></div>`;
 }
 
 function individualHtml(invoice: MonthlyInvoice, settings?: TicketSettings): string {
@@ -121,21 +142,102 @@ function acts(document: BillingDocument): string {
     .map(group => `${escape(group.family)} : ${decimal(group.amount)}`).join('<br>') || 'Voir la pièce d’origine';
 }
 
+function renderRibBlock(settings?: TicketSettings): string {
+  const activeBanks = (settings?.banques && settings.banques.length > 0)
+    ? settings.banques.filter((b) => b.bankAccount?.trim())
+    : [];
+
+  if (activeBanks.length > 0) {
+    if (activeBanks.length === 1) {
+      const b = activeBanks[0];
+      const bankName = b.bankName?.trim() ? ` (${escape(b.bankName.trim())})` : '';
+      return `<strong>RIB${bankName} : ${escape(b.bankAccount)}</strong>`;
+    }
+    return activeBanks.map((b) => {
+      const bankName = b.bankName?.trim() ? ` (${escape(b.bankName.trim())})` : '';
+      return `<div><strong>RIB${bankName} : ${escape(b.bankAccount)}</strong></div>`;
+    }).join('');
+  }
+
+  if (settings?.rib?.trim()) {
+    const bankName = settings.bankName?.trim() ? ` (${escape(settings.bankName.trim())})` : '';
+    return `<strong>RIB${bankName} : ${escape(settings.rib.trim())}</strong>`;
+  }
+
+  return `<strong>RIB : &mdash;</strong>`;
+}
+
 export function billingPrintHtml(invoice: MonthlyInvoice, monthly = true, settings?: TicketSettings): string {
   if (!monthly) return individualHtml(invoice, settings);
   const documents = [...invoice.documents].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
-  const libelleParticipation = libelleReductionCommunCourt(documents.map(d => d.natureRemise));
   return shell(invoice.number, 'monthly', `
-    <h1>Doit : ${escape(invoice.recipient)}</h1>
-    <p class="period">Mois de prise en charge : <strong>${escape(monthLabel(invoice.month))}</strong></p>
-    <p class="invoice-number">Facture N° : <strong>${escape(invoice.number)}</strong></p>
-    <table aria-label="Détail de la facture société"><colgroup><col style="width:4%"><col style="width:8%"><col style="width:9%"><col style="width:28%"><col style="width:18%"><col style="width:11%"><col style="width:11%"><col style="width:11%"></colgroup>
-    <thead><tr><th>N°</th><th>Date</th><th>Mlle</th><th>Nom et Prénom</th><th>Acte médicale/Prix</th><th>Montant</th><th>${escape(libelleParticipation)}</th><th>Net à Payer</th></tr></thead>
-    <tbody>${documents.map((d, index) => `<tr data-source-id="${escape(d.sourceId)}" title="Facture ${escape(d.number)}"><td class="number">${index + 1}</td><td class="center">${escape(dateLabel(d.date, true))}</td><td class="center">${escape(d.matricule || d.dossier || '—')}</td><td>${escape(d.client)}${d.subCompany ? `<br>(${escape(d.subCompany)})` : ''}</td><td class="acts">${acts(d)}</td><td class="number">${decimal(d.total)}</td><td class="number">${decimal(d.copay)}</td><td class="number">${decimal(d.payable)}</td></tr>`).join('')}
-    <tr class="grand-total"><td colspan="5">TOTAL (${escape(invoice.facility.currency)})</td><td class="number">${decimal(invoice.total)}</td><td class="number">${decimal(invoice.copay)}</td><td class="number">${decimal(invoice.payable)}</td></tr></tbody></table>
-    <div class="summary"><p class="words">Arrêtée à la somme de : ${escape(billingAmountInWords(invoice.payable, invoice.facility.currency))}</p>
-    <p class="invoice-date">Date de facture :&emsp; ${escape(dateLabel(invoice.issuedAt))}</p>
-    <p class="note">Net à payer : part facturée avant règlements, et non solde restant dû. Récapitulatif sans nouvelle créance ni nouvel encaissement. Contenu et numéro conservés à la réimpression.</p></div>`, settings);
+    <div class="company-header-block">
+      <div class="company-doit">Doit : ${escape((invoice.recipient || 'Société').toUpperCase())}</div>
+      <div class="company-month">Mois de prise en charge : &nbsp;<strong>${escape(monthLabel(invoice.month))}</strong></div>
+      <div class="company-invoice-no">Facture N° : &nbsp;<strong>${escape(invoice.number)}</strong></div>
+    </div>
+    <table class="company-table" aria-label="Détail de la facture société">
+      <colgroup>
+        <col style="width:4.5%">
+        <col style="width:8%">
+        <col style="width:8%">
+        <col style="width:28%">
+        <col style="width:19%">
+        <col style="width:11%">
+        <col style="width:10.5%">
+        <col style="width:11%">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>N°</th>
+          <th>Date</th>
+          <th>Mlle</th>
+          <th>Nom et Prénom</th>
+          <th>Acte médicale/Prix</th>
+          <th>Montant</th>
+          <th>Participat°</th>
+          <th>Net à Payer</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${documents.map((d, index) => {
+          const mat = d.matricule ? escape(d.matricule) : '';
+          const clientUpper = escape((d.client || '').toUpperCase());
+          const subUpper = d.subCompany ? `<br>(${escape(d.subCompany.toUpperCase())})` : '';
+          return `<tr data-source-id="${escape(d.sourceId)}" title="Facture ${escape(d.number)}">
+            <td class="center">${index + 1}</td>
+            <td class="center">${escape(dateLabel(d.date, true))}</td>
+            <td class="center">${mat}</td>
+            <td class="patient-name">${clientUpper}${subUpper}</td>
+            <td class="acts">${acts(d)}</td>
+            <td class="number">${decimal(d.total)}</td>
+            <td class="number">${decimal(d.copay)}</td>
+            <td class="number">${decimal(d.payable)}</td>
+          </tr>`;
+        }).join('')}
+        <tr class="total-row">
+          <td colspan="5" class="total-label">Total</td>
+          <td class="number">${decimal(invoice.total)}</td>
+          <td class="number">${decimal(invoice.copay)}</td>
+          <td class="number">${decimal(invoice.payable)}</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="bottom-words">
+      Arrêtez à la somme de : &nbsp;<strong>${escape(billingAmountInWords(invoice.payable, invoice.facility.currency))}</strong>
+    </div>
+    <div class="bottom-signatures">
+      <div class="rib-block">
+        ${renderRibBlock(settings)}
+      </div>
+      <div class="gest-block">
+        <div>${escape(settings?.city || 'Toliara')} le, &nbsp;&nbsp;&nbsp;&nbsp;${escape(dateLabel(invoice.issuedAt || new Date().toISOString()))}</div>
+        <div class="gest-title"><u>Gestionnaire</u></div>
+      </div>
+    </div>
+    <div class="page-num">
+      1/1
+    </div>`, settings);
 }
 export function printMonthlyInvoice(invoice: MonthlyInvoice, settings?: TicketSettings): void {
   printDocument(billingPrintHtml(invoice, true, settings), `Facture mensuelle ${invoice.number}`);

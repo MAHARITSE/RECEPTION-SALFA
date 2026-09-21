@@ -6,8 +6,15 @@ const normalize = (value: string) => value.trim().normalize('NFKC').toUpperCase(
 /** Equivalent family codes, not guesses from an article's description. */
 export function canonicalBillingFamilyCode(value?: string): string {
   const code = normalize(value || '');
-  if (['PH', 'PHAR', 'PHARMACIE', 'MEDIC'].includes(code)) return 'MEDIC';
-  if (['LAB', 'LABO'].includes(code)) return 'LABO';
+  if (['PH', 'PHAR', 'PHARMACIE', 'MEDIC', 'MEDICAMENT', 'MEDICAMENTS'].includes(code)) return 'MEDIC';
+  if (['LAB', 'LABO', 'LABORATOIRE', 'ANALYSES', 'ANALYSE', 'EXAMEN', 'NFS', 'BIO'].includes(code)) return 'LABO';
+  if (['CONS', 'CONSULTATION', 'CONSULTATIONS'].includes(code)) return 'CONS';
+  if (['SOIN', 'SOINS', 'PANSEMENT', 'PANSEMENTS', 'INJECTION', 'INJECTIONS', 'PERFUSION'].includes(code)) return 'SOINS';
+  if (['ECHO', 'ECHOGRAPHIE', 'ECHOGRAPHIES', 'IMAGERIE', 'RADIO', 'RADIOGRAPHIE'].includes(code)) return 'ECHO';
+  if (['CHIR', 'CHIRURGIE', 'OPERATION'].includes(code)) return 'CHIR';
+  if (['HOSP', 'HOSPITALISATION', 'SEJOUR'].includes(code)) return 'HOSP';
+  if (['BLOC', 'BLOC OPERATOIRE'].includes(code)) return 'BLOC';
+  if (['DENT', 'DENTAIRE', 'ODONTO'].includes(code)) return 'DENT';
   return code;
 }
 const categories: Record<string, string> = { consultation: 'CONS', pharmacy: 'MEDIC', lab: 'LABO', echo: 'ECHO', surgery: 'CHIR', hospitalization: 'HOSP', bloc: 'BLOC', externe: 'EXT' };

@@ -60044,46 +60044,6 @@
       "closingId": "3bc5a941-8e37-4a54-f23e-3df2e5414397"
     },
     {
-      "id": "b11e5007-e992-1683-52e0-8bfbda52111c",
-      "patientId": "5cd495c6-af24-890d-6568-3067adfdf976",
-      "consultationId": "ebc12238-329a-cf0e-f468-92b71899d0f2",
-      "clientName": "RAZAFINDRALAMBO SITRAKA",
-      "clientType": "societe",
-      "items": [
-        {
-          "code": "CONS",
-          "description": "Consultation Générale",
-          "quantity": 1,
-          "unitPrice": 13500,
-          "amount": 13500,
-          "category": "consultation"
-        },
-        {
-          "code": "art-004",
-          "description": "Oméprazole 20mg",
-          "quantity": 1,
-          "unitPrice": 1000,
-          "amount": 1000,
-          "category": "pharmacy"
-        },
-        {
-          "code": "LAB009",
-          "description": "Bilan lipidique complet",
-          "quantity": 1,
-          "unitPrice": 18000,
-          "amount": 18000,
-          "category": "lab"
-        }
-      ],
-      "totalAmount": 32500,
-      "patientCharge": 0,
-      "status": "pending",
-      "createdAt": "2026-09-16T09:29:34.000Z",
-      "isExternal": false,
-      "creditSociete": true,
-      "closingId": "cb130a5f-827f-f916-2f7f-5d90a257d16a"
-    },
-    {
       "id": "7eaac759-d2c4-cdf3-6051-5ddda1484f97",
       "patientId": "be6e8978-1da9-9a14-3bb2-d53521a7f7da",
       "consultationId": "eba4889b-0742-050a-a37a-42028769babf",
@@ -60260,6 +60220,46 @@
       "paidBy": "USR-BIL",
       "paidAt": "2026-09-16T17:29:09.000Z",
       "closingId": "a022bda1-2c63-07c5-5380-e57e4c40148e"
+    },
+    {
+      "id": "b11e5007-e992-1683-52e0-8bfbda52111c",
+      "patientId": "5cd495c6-af24-890d-6568-3067adfdf976",
+      "consultationId": "ebc12238-329a-cf0e-f468-92b71899d0f2",
+      "clientName": "RAZAFINDRALAMBO SITRAKA",
+      "clientType": "societe",
+      "items": [
+        {
+          "code": "CONS",
+          "description": "Consultation Générale",
+          "quantity": 1,
+          "unitPrice": 13500,
+          "amount": 13500,
+          "category": "consultation"
+        },
+        {
+          "code": "art-004",
+          "description": "Oméprazole 20mg",
+          "quantity": 1,
+          "unitPrice": 1000,
+          "amount": 1000,
+          "category": "pharmacy"
+        },
+        {
+          "code": "LAB009",
+          "description": "Bilan lipidique complet",
+          "quantity": 1,
+          "unitPrice": 18000,
+          "amount": 18000,
+          "category": "lab"
+        }
+      ],
+      "totalAmount": 32500,
+      "patientCharge": 0,
+      "status": "pending",
+      "createdAt": "2026-09-16T09:29:34.000Z",
+      "isExternal": false,
+      "creditSociete": true,
+      "closingId": "cb130a5f-827f-f916-2f7f-5d90a257d16a"
     }
   ],
   "ventes": [
@@ -74232,29 +74232,6 @@
       "legacyInvoiceId": "6a1c1287-af56-f330-827f-daf587ed422a"
     },
     {
-      "id": "8ccf3e27-725f-3940-c4d3-2c8e37713fad",
-      "patientId": "5cd495c6-af24-890d-6568-3067adfdf976",
-      "consultationId": "ebc12238-329a-cf0e-f468-92b71899d0f2",
-      "numeroFacture": "FAC-2026-0512",
-      "type": "labo",
-      "clientType": "societe",
-      "clientName": "RAZAFINDRALAMBO SITRAKA",
-      "family": "LABO",
-      "subtotal": 32500,
-      "remisePct": 0,
-      "remiseMontant": 0,
-      "montantFacture": 32500,
-      "montantPaye": 0,
-      "status": "pending",
-      "isExterne": false,
-      "source": "caisse",
-      "dateVente": "2026-09-16T09:29:34.000Z",
-      "createdBy": "USR-CASH2",
-      "createdByName": "Caisse 2 - Pierre Duval",
-      "createdAt": "2026-09-16T09:29:34.000Z",
-      "legacyInvoiceId": "b11e5007-e992-1683-52e0-8bfbda52111c"
-    },
-    {
       "id": "d1ab81c6-874c-2e5e-3d42-7844369935b9",
       "patientId": "be6e8978-1da9-9a14-3bb2-d53521a7f7da",
       "consultationId": "eba4889b-0742-050a-a37a-42028769babf",
@@ -74351,6 +74328,29 @@
       "createdByName": "Caisse 1 - Miora Kanto",
       "createdAt": "2026-09-16T16:02:09.000Z",
       "legacyInvoiceId": "82db2374-d605-2c86-c45f-f1c8267e04ef"
+    },
+    {
+      "id": "8ccf3e27-725f-3940-c4d3-2c8e37713fad",
+      "patientId": "5cd495c6-af24-890d-6568-3067adfdf976",
+      "consultationId": "ebc12238-329a-cf0e-f468-92b71899d0f2",
+      "numeroFacture": "FAC-2026-0512",
+      "type": "labo",
+      "clientType": "societe",
+      "clientName": "RAZAFINDRALAMBO SITRAKA",
+      "family": "LABO",
+      "subtotal": 32500,
+      "remisePct": 0,
+      "remiseMontant": 0,
+      "montantFacture": 32500,
+      "montantPaye": 0,
+      "status": "pending",
+      "isExterne": false,
+      "source": "caisse",
+      "dateVente": "2026-09-16T09:29:34.000Z",
+      "createdBy": "USR-CASH2",
+      "createdByName": "Caisse 2 - Pierre Duval",
+      "createdAt": "2026-09-16T09:29:34.000Z",
+      "legacyInvoiceId": "b11e5007-e992-1683-52e0-8bfbda52111c"
     }
   ],
   "venteLines": [
@@ -91625,39 +91625,6 @@
       "family": "MEDIC"
     },
     {
-      "id": "b9f04df8-73d5-0c22-5f57-0effe2cb3ef9",
-      "venteId": "8ccf3e27-725f-3940-c4d3-2c8e37713fad",
-      "dateSort": "2026-09-16",
-      "articleName": "Consultation Générale",
-      "quantity": 1,
-      "unitPrice": 13500,
-      "discount": 0,
-      "category": "consultation",
-      "family": "CONSULT"
-    },
-    {
-      "id": "2648a34b-6f88-7f54-1474-8872cdbaf8a5",
-      "venteId": "8ccf3e27-725f-3940-c4d3-2c8e37713fad",
-      "dateSort": "2026-09-16",
-      "articleName": "Oméprazole 20mg",
-      "quantity": 1,
-      "unitPrice": 1000,
-      "discount": 0,
-      "category": "pharmacy",
-      "family": "MEDIC"
-    },
-    {
-      "id": "832dbed1-2d85-b4ec-1f6b-4243e97050a7",
-      "venteId": "8ccf3e27-725f-3940-c4d3-2c8e37713fad",
-      "dateSort": "2026-09-16",
-      "articleName": "Bilan lipidique complet",
-      "quantity": 1,
-      "unitPrice": 18000,
-      "discount": 0,
-      "category": "lab",
-      "family": "LABO"
-    },
-    {
       "id": "5e5bae64-8b71-26a1-6058-e4fd010177da",
       "venteId": "df7eb551-cef6-c8a6-48c7-2d08d9f33179",
       "dateSort": "2026-09-16",
@@ -92316,6 +92283,39 @@
       "discount": 0,
       "category": "bloc",
       "family": "HOSP"
+    },
+    {
+      "id": "b9f04df8-73d5-0c22-5f57-0effe2cb3ef9",
+      "venteId": "8ccf3e27-725f-3940-c4d3-2c8e37713fad",
+      "dateSort": "2026-09-16",
+      "articleName": "Consultation Générale",
+      "quantity": 1,
+      "unitPrice": 13500,
+      "discount": 0,
+      "category": "consultation",
+      "family": "CONSULT"
+    },
+    {
+      "id": "2648a34b-6f88-7f54-1474-8872cdbaf8a5",
+      "venteId": "8ccf3e27-725f-3940-c4d3-2c8e37713fad",
+      "dateSort": "2026-09-16",
+      "articleName": "Oméprazole 20mg",
+      "quantity": 1,
+      "unitPrice": 1000,
+      "discount": 0,
+      "category": "pharmacy",
+      "family": "MEDIC"
+    },
+    {
+      "id": "832dbed1-2d85-b4ec-1f6b-4243e97050a7",
+      "venteId": "8ccf3e27-725f-3940-c4d3-2c8e37713fad",
+      "dateSort": "2026-09-16",
+      "articleName": "Bilan lipidique complet",
+      "quantity": 1,
+      "unitPrice": 18000,
+      "discount": 0,
+      "category": "lab",
+      "family": "LABO"
     }
   ],
   "ventePayments": [
@@ -121596,8 +121596,8 @@
         "8985da19-2305-2ecc-33df-91c05fb870c3",
         "0a7e3f00-1399-ef57-28cd-8efe2c01ccc2",
         "6a1c1287-af56-f330-827f-daf587ed422a",
-        "b11e5007-e992-1683-52e0-8bfbda52111c",
-        "9c32c396-30fb-bc6b-aafa-2b0d1f2694e9"
+        "9c32c396-30fb-bc6b-aafa-2b0d1f2694e9",
+        "b11e5007-e992-1683-52e0-8bfbda52111c"
       ],
       "totalAmount": 1180350,
       "paidAmount": 0,

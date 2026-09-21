@@ -38,6 +38,18 @@ export interface TicketSettings {
   invoicePrefix: string; // préfixe des numéros de facture
   ticketFooter2?: string; // 2e ligne d'en-tête (ex: "Service des urgences")
   ticketHeaderColor?: string; // couleur d'accent (hex) — utilisée dans la prévisualisation seulement
+  rib?: string;
+  bankName?: string;
+  city?: string;
+  banques?: EtablissementBanque[];
+}
+
+export interface EtablissementBanque {
+  id: string;
+  bankName: string;
+  bankAccount: string;
+  agency?: string;
+  isDefault?: boolean;
 }
 
 export interface VitalSigns {
@@ -600,9 +612,10 @@ export interface Etablissement {
   directorTitle?: string;
   directorPhone?: string;
 
-  /* Coordonnées bancaires (encaissements par virement / chèque) */
+  /* Coordonnées bancaires (encaissements par virement / chèque — jusqu'à 5 banques) */
   bankName?: string;
   bankAccount?: string;
+  banques?: EtablissementBanque[];
 
   /* Visuel & état */
   logoUrl?: string;

@@ -282,9 +282,12 @@ ${mentionsLegalesSalfa()}
     }
     /* Ligne de découpe AU CENTRE de la feuille : marge gauche 8 mm +
        colonne 140 mm = 148 mm ≈ le centre exact de l'A4 paysage (148,5 mm).
-       La facture garde sa largeur d'avant (132 mm de contenu, comme sur
-       l'ancienne page A5) ; la moitié droite (une page A5 entière) est libre. */
-    .a4-duo { display: flex; align-items: flex-start; }
+       La facture occupe une moitié A5 et la seconde moitié est séparée par un trait de coupe. */
+    .a4-duo {
+      display: flex;
+      align-items: stretch;
+      min-height: 185mm;
+    }
     .a4-duo .invoice-half {
       flex: 0 0 140mm;
       width: 140mm;
@@ -293,8 +296,22 @@ ${mentionsLegalesSalfa()}
     .a4-duo .free-half {
       flex: 1;
       min-width: 0;
-      border-left: 1px dashed #999;
+      border-left: 1.5px dashed #666;
+      min-height: 185mm;
       margin-left: 0.5mm;
+      position: relative;
+    }
+    .a4-duo .free-half::before {
+      content: "✂ Découpe";
+      position: absolute;
+      top: 12px;
+      left: -8px;
+      background: #fff;
+      padding: 2px 4px;
+      font-size: 9px;
+      color: #777;
+      font-weight: bold;
+      letter-spacing: 0.5px;
     }
     /* L'en-tête reste sur la première page : jamais de coupure à l'intérieur,
        jamais de ligne du tableau détachée juste après lui. */
@@ -342,7 +359,7 @@ ${mentionsLegalesSalfa()}
       text-align: center;
       font-size: 16px;
       font-weight: bold;
-      margin: 12px 0 10px 0;
+      margin: 10px 0 12px 0;
       letter-spacing: 1px;
     }
     .info-block {
@@ -354,7 +371,7 @@ ${mentionsLegalesSalfa()}
       margin-bottom: 4px;
     }
     .info-label {
-      width: 140px;
+      width: 150px;
       font-weight: normal;
     }
     .info-val {
@@ -365,7 +382,6 @@ ${mentionsLegalesSalfa()}
       border-collapse: collapse;
       margin-top: 10px;
       font-size: 10px;
-      /* Largeurs de colonnes respectées au pixel : le libellé prend le reste. */
       table-layout: fixed;
     }
     table.invoice-table th, table.invoice-table td {
@@ -373,32 +389,27 @@ ${mentionsLegalesSalfa()}
       padding: 4px 6px;
       overflow-wrap: anywhere;
     }
-    /* Colonnes numériques de MÊME largeur : Qté = Prix = Montant = la case des
-       totaux (Total Brut / réduction / Net à payer). Les « cages » de chiffres
-       du tableau et du récapitulatif ont donc exactement la même largeur et
-       s'alignent verticalement sur la page A5. */
     table.invoice-table th.num, table.invoice-table td.num {
-      width: 90px;
+      width: 85px;
+      text-align: right;
     }
-    /* Colonne Qté plus fine (les quantités sont courtes) : le libellé gagne
-       de la place, les colonnes Prix / Montant gardent leur largeur 90 px
-       (alignement des totaux conservé). */
     table.invoice-table th:nth-child(3), table.invoice-table td:nth-child(3) {
-      width: 60px;
+      width: 65px;
+      text-align: right;
     }
     table.invoice-table th {
       font-weight: bold;
       text-align: center;
-      background-color: #f8f8f8;
+      background-color: #fff;
     }
     .summary-box {
-      margin-top: 8px;
+      margin-top: -1px;
       display: flex;
       justify-content: flex-end;
     }
     table.summary-table {
       border-collapse: collapse;
-      width: 310px;
+      width: 235px;
       font-size: 10px;
       table-layout: fixed;
     }
@@ -408,30 +419,27 @@ ${mentionsLegalesSalfa()}
       overflow-wrap: anywhere;
     }
     table.summary-table td.lbl {
-      width: 130px;
+      width: 150px;
       font-weight: bold;
-      text-align: right;
-      background-color: #f8f8f8;
+      text-align: left;
+      background-color: #fff;
     }
-    /* 180 px : la case « Total Brut » COMMENCE exactement où FINIT la colonne
-       Qté du tableau (fin Qté = bord droit − 180 px, car Prix 90 + Montant 90
-       s'étendent jusqu'au bord droit de la facture) et s'aligne en bout avec
-       la colonne Montant. */
     table.summary-table td.val {
-      width: 180px;
+      width: 85px;
       text-align: right;
       font-weight: bold;
     }
     .words-block {
-      margin-top: 15px;
+      margin-top: 14px;
       font-size: 11px;
-      font-style: italic;
+      font-style: normal;
     }
     .footer-block {
-      margin-top: 25px;
+      margin-top: 20px;
       display: flex;
       justify-content: space-between;
-      font-size: 10px;
+      align-items: center;
+      font-size: 10.5px;
     }
     ${INVOICE_HEADER_CSS}
     ${INVOICE_HEADER_STYLE}
@@ -442,7 +450,7 @@ ${mentionsLegalesSalfa()}
   <div class="invoice-half">
   ${headerMarkup}
 
-  <div class="doc-title">FACTURE &nbsp; ${invNumber}</div>
+  <div class="doc-title">FACTURE N° : &nbsp; ${invNumber}</div>
 
   <div class="info-block">
     <div class="info-row">
@@ -453,10 +461,10 @@ ${mentionsLegalesSalfa()}
       <span class="info-label">Nom :</span>
       <span class="info-val">${patientName}</span>
     </div>
-    <div class="info-row">
+    ${priseEnCharge && priseEnCharge !== 'CLIENT COMPTOIR' ? `<div class="info-row">
       <span class="info-label">Prise en charge :</span>
       <span class="info-val">${escapeHtml(priseEnCharge)}</span>
-    </div>
+    </div>` : ''}
     ${prescriberName ? `<div class="info-row">
       <span class="info-label">Médecin prescripteur :</span>
       <span class="info-val">${escapeHtml(prescriberName)}</span>
@@ -466,11 +474,11 @@ ${mentionsLegalesSalfa()}
   <table class="invoice-table">
     <thead>
       <tr>
-        <th style="width: 30px;">N</th>
+        <th style="width: 28px;">N</th>
         <th>Libellé Article</th>
-        <th class="num">Qté</th>
-        <th class="num">Prix</th>
-        <th class="num">Montant</th>
+        <th class="num" style="width: 65px;">Quantité</th>
+        <th class="num" style="width: 85px;">Prix</th>
+        <th class="num" style="width: 85px;">Montant</th>
       </tr>
     </thead>
     <tbody>
@@ -481,26 +489,27 @@ ${mentionsLegalesSalfa()}
   <div class="summary-box">
     <table class="summary-table">
       <tr>
-        <td class="lbl">Total Brut</td>
+        <td class="lbl">Total avant Remise</td>
         <td class="val">${formatArDec(totalBrut)}</td>
       </tr>
-      ${remise > 0 ? `<tr>
-        <td class="lbl">${escapeHtml(libelleReduction)}</td>
-        <td class="val">${formatArDec(remise)}</td>
-      </tr>` : ''}
       <tr>
-        <td class="lbl">Net à payer</td>
+        <td class="lbl">${escapeHtml(remise > 0 ? libelleReduction : 'Remise')}</td>
+        <td class="val">${formatArDec(remise)}</td>
+      </tr>
+      <tr>
+        <td class="lbl">TOTAL</td>
         <td class="val">${formatArDec(netAPayer)}</td>
       </tr>
     </table>
   </div>
 
   <div class="words-block">
-    Arrêtez à la somme de : <strong>${montantLettres}</strong>
+    Arrêtez à la somme de ${montantLettres} Ariary
   </div>
 
   <div class="footer-block">
-    <span>Date de facture : <strong>${dateFacture}</strong></span>
+    <span>Page 1/1</span>
+    <span>Date de facture : &nbsp;<strong>${dateFacture}</strong></span>
   </div>
   </div>
   <div class="free-half" aria-hidden="true"></div>
@@ -551,11 +560,14 @@ export function salfaCompanyMonthlyInvoiceHtml(
     const dateInv = new Date(inv.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' });
     const matricule = pt?.dossier || pt?.insureName || '';
     const patientName = pt ? `${pt.lastName} ${pt.firstName}`.toUpperCase() : (inv.clientName || '').toUpperCase();
+    const sousSoc = pt?.subCompany || (inv as any).subCompany || (inv as any).sousSociete || '';
+    const sousSocMarkup = sousSoc ? `<br>(${escapeHtml(sousSoc.toUpperCase())})` : '';
 
     let consAmt = 0;
     let medicAmt = 0;
     let laboAmt = 0;
     let soinsAmt = 0;
+    let echoAmt = 0;
 
     (inv.items || []).forEach(it => {
       const desc = (it.description || '').toUpperCase();
@@ -565,6 +577,8 @@ export function salfaCompanyMonthlyInvoiceHtml(
         laboAmt += it.amount;
       } else if (desc.includes('SOIN') || desc.includes('INJECTION') || desc.includes('PANSEMENT')) {
         soinsAmt += it.amount;
+      } else if (desc.includes('ECHO') || desc.includes('RADIO')) {
+        echoAmt += it.amount;
       } else {
         medicAmt += it.amount;
       }
@@ -575,6 +589,7 @@ export function salfaCompanyMonthlyInvoiceHtml(
     if (medicAmt > 0) actsParts.push(`MEDIC : ${formatArDec(medicAmt)}`);
     if (laboAmt > 0) actsParts.push(`LABO : ${formatArDec(laboAmt)}`);
     if (soinsAmt > 0) actsParts.push(`SOINS : ${formatArDec(soinsAmt)}`);
+    if (echoAmt > 0) actsParts.push(`ECHO : ${formatArDec(echoAmt)}`);
 
     const actDisplay = actsParts.length > 0 ? actsParts.join('<br>') : `MEDIC : ${formatArDec(inv.totalAmount)}`;
 
@@ -588,153 +603,93 @@ export function salfaCompanyMonthlyInvoiceHtml(
 
     return `
       <tr>
-        <td style="text-align: center; font-weight: bold;">${idx + 1}</td>
+        <td style="text-align: center;">${idx + 1}</td>
         <td style="text-align: center;">${dateInv}</td>
-        <td style="text-align: center;">${matricule}</td>
-        <td style="text-align: center; font-weight: bold;">${patientName}</td>
-        <td style="text-align: center; font-family: monospace; font-size: 9px; line-height: 1.2;">${actDisplay}</td>
-        <td style="text-align: center; font-weight: bold;">${formatArDec(montant)}</td>
-        <td style="text-align: center;">${formatArDec(participat)}</td>
-        <td style="text-align: center; font-weight: bold;">${formatArDec(netAPayer)}</td>
+        <td style="text-align: center;">${matricule ? escapeHtml(matricule) : ''}</td>
+        <td style="text-align: left; padding-left: 5px; font-size: 9.5px; line-height: 1.25;">${escapeHtml(patientName)}${sousSocMarkup}</td>
+        <td style="text-align: center; font-size: 9px; line-height: 1.25; white-space: nowrap;">${actDisplay}</td>
+        <td style="text-align: right; padding-right: 5px; font-variant-numeric: tabular-nums;">${formatArDec(montant)}</td>
+        <td style="text-align: right; padding-right: 5px; font-variant-numeric: tabular-nums;">${formatArDec(participat)}</td>
+        <td style="text-align: right; padding-right: 5px; font-variant-numeric: tabular-nums;">${formatArDec(netAPayer)}</td>
       </tr>
     `;
   }).join('');
 
   const montantLettres = numberToFrenchWords(totalNetGlobal);
 
-  const customHeader = customInvoiceHeaderMarkup(settings);
-  const headerMarkup = customHeader ?? `  <div class="header">
-    <div class="logo-container">
-      <svg width="60" height="60" viewBox="0 0 100 100">
-        <circle cx="50" cy="50" r="46" fill="#15803d"/>
-        <polygon points="50,12 61,35 85,35 66,50 73,73 50,58 27,73 34,50 15,35 39,35" fill="#ffffff"/>
-        <circle cx="50" cy="48" r="14" fill="#dc2626"/>
-        <path d="M50 40 L50 56 M42 48 L58 48" stroke="#ffffff" stroke-width="4"/>
-      </svg>
-    </div>
-    <div class="header-text">
-      <div class="title-lg">${ETABLISSEMENT_SALFA.eglise}</div>
-      <div class="sub">${ETABLISSEMENT_SALFA.egliseTraduction}</div>
-      <div class="sub" style="font-weight:bold;">${ETABLISSEMENT_SALFA.synode}</div>
-      <div class="title-lg" style="margin-top:3px;">${ETABLISSEMENT_SALFA.salfa} (SALFA)</div>
-      <div class="sub">${ETABLISSEMENT_SALFA.departement}</div>
-      <div class="title-lg" style="margin-top:3px;">${ETABLISSEMENT_SALFA.hopital}</div>
-${mentionsLegalesSalfa()}
-    </div>
-    ${settings.secondLogoUrl ? `<div class="logo-container"><img src="${escapeHtml(settings.secondLogoUrl)}" alt="Logo Société" /></div>` : `<div class="logo-container">
-      <svg width="60" height="60" viewBox="0 0 100 100">
-        <circle cx="50" cy="50" r="45" fill="#003399"/>
-        <path d="M50 15 L50 85 M15 50 L85 50" stroke="#ffffff" stroke-width="12"/>
-        <path d="M50 35 C40 30 35 45 50 60 C65 45 60 30 50 35 Z" fill="#cc0000"/>
-        <text x="50" y="92" text-anchor="middle" fill="#ffffff" font-size="12" font-weight="bold">SALFA</text>
-      </svg>
-    </div>`}
-  </div>`;
-
   const html = `<!doctype html>
 <html lang="fr">
 <head>
   <meta charset="utf-8">
-  <title>Facture Société ${company.name}</title>
+  <title>Facture Société ${escapeHtml(company.name)}</title>
   <style>
     @page {
       size: A4 portrait;
-      margin: 10mm;
+      margin: 12mm 10mm 12mm;
     }
     * { box-sizing: border-box; }
     body {
       font-family: Arial, Helvetica, sans-serif;
-      font-size: 11px;
+      font-size: 10px;
       color: #000;
       background: #fff;
-      padding: 10px;
+      padding: 0;
+      margin: 0;
       line-height: 1.35;
-    }
-    /* En-tête de la première page uniquement : jamais étendu ni répété sur la
-       deuxième page d'une facture société longue. */
-    .header, .invoice-header {
-      break-inside: avoid;
-      page-break-inside: avoid;
-      break-after: avoid;
-      page-break-after: avoid;
-    }
-    .header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      border-bottom: 2px solid #000;
-      padding-bottom: 6px;
-      margin-bottom: 15px;
-    }
-    .logo-container {
-      width: 65px;
-      height: 65px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .logo-container img {
-      max-width: 100%;
-      max-height: 100%;
-      object-fit: contain;
-    }
-    .header-text {
-      text-align: center;
-      flex: 1;
-      padding: 0 10px;
-    }
-    .header-text .title-lg {
-      font-weight: bold;
-      font-size: 11.5px;
-    }
-    .header-text .sub {
-      font-size: 9.5px;
-      margin-top: 2px;
     }
     .title-block {
       text-align: center;
-      margin: 15px 0;
+      margin: 4mm 0 6mm;
     }
     .doit-title {
       font-size: 18px;
       font-weight: bold;
-      margin-bottom: 8px;
+      margin-bottom: 12px;
     }
     .month-title {
       font-size: 13px;
-      font-weight: bold;
-      margin-bottom: 6px;
+      font-weight: normal;
+      text-align: left;
+      margin-left: 10mm;
+      margin-bottom: 8px;
     }
     .facture-num {
       font-size: 13px;
-      font-weight: bold;
+      font-weight: normal;
+      text-align: center;
+      margin-bottom: 12px;
     }
     table.company-table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 15px;
+      table-layout: fixed;
+      border: 1.5px solid #000;
       font-size: 10px;
     }
     table.company-table th, table.company-table td {
       border: 1px solid #000;
-      padding: 5px 6px;
+      padding: 4px 4px;
+      vertical-align: middle;
+      overflow-wrap: break-word;
     }
     table.company-table th {
+      font-size: 10.5px;
       font-weight: bold;
       text-align: center;
-      background-color: #f5f5f5;
+      background-color: #fff;
     }
     table.company-table tr.total-row td {
       font-weight: bold;
-      background-color: #f5f5f5;
-      font-size: 11px;
+      border-top: 1.5px solid #000;
+      border-bottom: 1.5px solid #000;
+      padding: 5px 4px;
     }
     .bottom-words {
-      margin-top: 20px;
-      font-size: 12px;
+      margin-top: 15px;
+      font-size: 11.5px;
     }
     .bottom-signatures {
-      margin-top: 25px;
+      margin-top: 20px;
       display: flex;
       justify-content: space-between;
       align-items: flex-end;
@@ -745,62 +700,79 @@ ${mentionsLegalesSalfa()}
       font-size: 12px;
     }
     .gest-block {
-      text-align: right;
+      text-align: center;
+      min-width: 140px;
     }
     .gest-title {
       text-decoration: underline;
       font-weight: bold;
-      margin-top: 10px;
+      margin-top: 8px;
     }
-    ${INVOICE_HEADER_CSS}
-    ${INVOICE_HEADER_STYLE}
+    .page-num {
+      text-align: center;
+      margin-top: 25px;
+      font-size: 10px;
+    }
   </style>
 </head>
 <body>
-  ${headerMarkup}
 
   <div class="title-block">
-    <div class="doit-title">Doit : ${company.name.toUpperCase()}</div>
-    <div class="month-title">Mois de prise en charge : ${monthYearStr}</div>
-    <div class="facture-num">Facture N° : ${invoiceNumber}</div>
+    <div class="doit-title">Doit : ${escapeHtml(company.name.toUpperCase())}</div>
+    <div class="month-title">Mois de prise en charge : &nbsp;<strong>${escapeHtml(monthYearStr)}</strong></div>
+    <div class="facture-num">Facture N° : &nbsp;<strong>${escapeHtml(invoiceNumber)}</strong></div>
   </div>
 
   <table class="company-table">
+    <colgroup>
+      <col style="width: 4.5%;">
+      <col style="width: 8%;">
+      <col style="width: 8%;">
+      <col style="width: 28%;">
+      <col style="width: 19%;">
+      <col style="width: 11%;">
+      <col style="width: 10.5%;">
+      <col style="width: 11%;">
+    </colgroup>
     <thead>
       <tr>
-        <th style="width: 30px;">N°</th>
-        <th style="width: 65px;">Date</th>
-        <th style="width: 60px;">Mlle</th>
+        <th>N°</th>
+        <th>Date</th>
+        <th>Mlle</th>
         <th>Nom et Prénom</th>
-        <th style="width: 140px;">Acte médicale/Prix</th>
-        <th style="width: 90px;">Montant</th>
-        <th style="width: 90px;">${escapeHtml(libelleParticipation)}</th>
-        <th style="width: 90px;">Net à Payer</th>
+        <th>Acte médicale/Prix</th>
+        <th>Montant</th>
+        <th>Participat°</th>
+        <th>Net à Payer</th>
       </tr>
     </thead>
     <tbody>
       ${rowsHtml}
       <tr class="total-row">
-        <td colspan="5" style="text-align: center;">Total</td>
-        <td style="text-align: center;">${formatArDec(totalMontantGlobal)}</td>
-        <td style="text-align: center;">${formatArDec(totalParticipatGlobal)}</td>
-        <td style="text-align: center;">${formatArDec(totalNetGlobal)}</td>
+        <td colspan="5" style="text-align: left; padding-left: 8px;">Total</td>
+        <td style="text-align: right; padding-right: 5px; font-variant-numeric: tabular-nums;">${formatArDec(totalMontantGlobal)}</td>
+        <td style="text-align: right; padding-right: 5px; font-variant-numeric: tabular-nums;">${formatArDec(totalParticipatGlobal)}</td>
+        <td style="text-align: right; padding-right: 5px; font-variant-numeric: tabular-nums;">${formatArDec(totalNetGlobal)}</td>
       </tr>
     </tbody>
   </table>
 
   <div class="bottom-words">
-    Arrêtez à la somme de : <strong>${montantLettres}</strong>
+    Arrêtez à la somme de : &nbsp;<strong>${montantLettres}</strong>
   </div>
 
   <div class="bottom-signatures">
     <div class="rib-block">
-      RIB : 00005-00041-43200100200-85
+      RIB : ${escapeHtml(settings?.rib || '00005-00041-43200100200-85')}
     </div>
     <div class="gest-block">
-      <div>Toliara le, ${dateToday}</div>
-      <div class="gest-title">Gestionnaire</div>
+      <div>${escapeHtml(settings?.city || 'Toliara')} le, &nbsp;&nbsp;&nbsp;&nbsp;${dateToday}</div>
+      <div class="gest-title"><u>Gestionnaire</u></div>
     </div>
+  </div>
+
+  <div class="page-num">
+    1/1
   </div>
 
 </body>

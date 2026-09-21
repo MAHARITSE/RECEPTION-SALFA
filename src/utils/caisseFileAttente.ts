@@ -22,7 +22,8 @@ import type { AppState } from '../store';
  */
 export type PieceFileCaisse =
   | { kind: 'facture'; invoiceId: string }
-  | { kind: 'medicaments'; consultationId: string };
+  | { kind: 'medicaments'; consultationId: string }
+  | { kind: 'consultation'; consultationId: string; invoiceIds?: string[] };
 
 /** Résultat d'un retrait de pièce : sert au journal d'audit et au message opérateur. */
 export interface RetraitPieceResultat {
@@ -53,6 +54,55 @@ export function purgePieceFromQueue(
   auteur?: { id?: string; name?: string },
 ): RetraitPieceResultat {
   const round = (n: number) => Math.round((n || 0) * 100) / 100;
+  if (piece.kind === 'consultation') {
+    const c = state.consultations.find(x => x.id === piece.consultationId && x.patientId === patientId);
+    let montant = 0;
+    const dateStr = c?.date || new Date().toISOString();
+    const libelle = `Prescription du ${new Date(dateStr).toLocaleDateString('fr-FR')}`;
+
+    if (c) {
+      if (!c.facturationRetiree) {
+        montant += round((c.prescriptions || []).reduce((s, p) => s + (p.unitPrice || 0) * (p.quantity || 0), 0));
+        state.consultations = state.consultations.map(x => x.id === c.id
+          ? { ...x, facturationRetiree: { at: new Date().toISOString(), by: auteur?.id, byName: auteur?.name } }
+          : x);
+      }
+    }
+
+    const targetInvoiceIds = new Set(piece.invoiceIds || []);
+    const invs = state.invoices.filter(i =>
+      i.patientId === patientId &&
+      i.status === 'pending' &&
+      (targetInvoiceIds.has(i.id) || (piece.consultationId && i.consultationId === piece.consultationId))
+    );
+
+    for (const inv of invs) {
+      montant += round(inv.totalAmount || inv.items.reduce((s, it) => s + (Number(it.amount) || 0), 0));
+      const numero = (inv.numeroFacture || '').trim();
+      if (numero) {
+        const registre = new Set([...(state.issuedFactureNumbers || []), numero]);
+        state.issuedFactureNumbers = [...registre];
+      }
+    }
+    const invIdsToRemove = new Set(invs.map(i => i.id));
+    state.invoices = state.invoices.filter(i => !invIdsToRemove.has(i.id));
+
+    const luiAppartient = (r: { id: string; invoiceId?: string; consultationId?: string; status?: string }) =>
+      r.status === 'pending' && ((r.invoiceId && invIdsToRemove.has(r.invoiceId)) || (!!piece.consultationId && r.consultationId === piece.consultationId));
+
+    state.labRequests = state.labRequests.filter(r => !luiAppartient(r));
+    state.consultations = state.consultations.map(cons => {
+      if (cons.id !== piece.consultationId) return cons;
+      return {
+        ...cons,
+        labRequests: (cons.labRequests || []).filter(r => !luiAppartient(r)),
+        echoRequests: (cons.echoRequests || []).filter(e => !luiAppartient(e)),
+      };
+    });
+
+    return { ok: true, libelle, montant: round(montant) };
+  }
+
   if (piece.kind === 'medicaments') {
     const c = state.consultations.find(x => x.id === piece.consultationId && x.patientId === patientId);
     if (!c) return { ok: false, raison: 'Ordonnance introuvable dans le dossier.', libelle: '', montant: 0 };

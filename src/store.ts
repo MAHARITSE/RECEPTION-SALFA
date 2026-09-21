@@ -803,6 +803,24 @@ export function etablissementFullAddress(e?: Etablissement): string {
 /** Crée un établissement complet à partir d'une saisie partielle. */
 export function makeEtablissement(data: Partial<Etablissement> = {}): Etablissement {
   const now = new Date().toISOString();
+  // Gestion de jusqu'à 5 banques
+  let banques = (data.banques || []).slice(0, 5);
+  if (!banques.length && (data.bankAccount || data.bankName)) {
+    banques = [{
+      id: uuidv4(),
+      bankName: (data.bankName || '').trim(),
+      bankAccount: (data.bankAccount || '').trim(),
+      isDefault: true,
+    }];
+  }
+  // S'assurer qu'au moins une banque est marquée par défaut si la liste n'est pas vide
+  if (banques.length > 0 && !banques.some((b) => b.isDefault)) {
+    banques[0] = { ...banques[0], isDefault: true };
+  }
+  const defaultBank = banques.find((b) => b.isDefault) || banques[0];
+  const primaryBankName = defaultBank?.bankName || (data.bankName || '').trim();
+  const primaryBankAccount = defaultBank?.bankAccount || (data.bankAccount || '').trim();
+
   return {
     id: data.id || uuidv4(),
     code: (data.code || '').trim().toUpperCase(),
@@ -817,7 +835,8 @@ export function makeEtablissement(data: Partial<Etablissement> = {}): Etablissem
     phone: data.phone, phone2: data.phone2, fax: data.fax,
     email: data.email, website: data.website,
     directorName: data.directorName, directorTitle: data.directorTitle, directorPhone: data.directorPhone,
-    bankName: data.bankName, bankAccount: data.bankAccount,
+    bankName: primaryBankName, bankAccount: primaryBankAccount,
+    banques,
     logoUrl: data.logoUrl, notes: data.notes,
     active: data.active ?? true,
     isPrincipal: data.isPrincipal ?? false,
@@ -831,15 +850,27 @@ export function ticketSettingsFromEtablissement(
   settings: TicketSettings,
   e: Etablissement,
 ): TicketSettings {
+  const banques = (e.banques && e.banques.length > 0)
+    ? e.banques
+    : (e.bankAccount || e.bankName)
+      ? [{ id: 'b1', bankName: e.bankName || '', bankAccount: e.bankAccount || '', isDefault: true }]
+      : [];
+
+  const defaultBanque = banques.find((b) => b.isDefault) || banques[0];
+
   return {
     ...settings,
     facilityName: e.tradeName?.trim() || e.name,
     address: etablissementFullAddress(e) || settings.address,
+    city: e.city || settings.city || 'Toliara',
     phone: e.phone || settings.phone,
     email: e.email ?? settings.email,
     website: e.website ?? settings.website,
     nif: e.nif || settings.nif,
     logoUrl: e.logoUrl || settings.logoUrl,
+    bankName: defaultBanque?.bankName || e.bankName || settings.bankName,
+    rib: defaultBanque?.bankAccount || e.bankAccount || settings.rib,
+    banques: banques.length > 0 ? banques : settings.banques,
   };
 }
 
@@ -931,7 +962,33 @@ export function createInitialState(): AppState {
  */
 export function ensureEtablissements(state: AppState): AppState {
   const existing = normalizeEtablissements(state.etablissements || []);
-  if (existing.length) return { ...state, etablissements: existing };
+  if (existing.length) {
+    const updated = existing.map((e) => {
+      if (e.isPrincipal && (!e.banques || e.banques.length === 0) && !e.bankAccount) {
+        return makeEtablissement({
+          ...e,
+          banques: [{
+            id: 'bnq-1',
+            bankName: 'BNI Madagascar',
+            bankAccount: '00005-00041-43200100200-85',
+            agency: e.city || 'Toliara',
+            isDefault: true,
+          }],
+        });
+      }
+      return e;
+    });
+    const principal = updated.find((e) => e.isPrincipal) || updated[0];
+    const ts = state.ticketSettings || DEFAULT_TICKET_SETTINGS;
+    if (principal && (!ts.rib || !ts.banques?.length)) {
+      return {
+        ...state,
+        etablissements: updated,
+        ticketSettings: ticketSettingsFromEtablissement(ts, principal),
+      };
+    }
+    return { ...state, etablissements: updated };
+  }
 
   const ts = state.ticketSettings || DEFAULT_TICKET_SETTINGS;
   const principal = makeEtablissement({
@@ -941,14 +998,26 @@ export function ensureEtablissements(state: AppState): AppState {
     type: 'centre_sante',
     nif: ts.nif,
     address: ts.address,
+    city: 'Toliara',
     phone: ts.phone,
     email: ts.email,
     website: ts.website,
     logoUrl: ts.logoUrl,
+    banques: [{
+      id: 'bnq-1',
+      bankName: 'BNI Madagascar',
+      bankAccount: '00005-00041-43200100200-85',
+      agency: 'Toliara',
+      isDefault: true,
+    }],
     active: true,
     isPrincipal: true,
   });
-  return { ...state, etablissements: [principal] };
+  return {
+    ...state,
+    etablissements: [principal],
+    ticketSettings: ticketSettingsFromEtablissement(ts, principal),
+  };
 }
 
 export function addAuditLog(s: AppState, action: string, details: string, patientId?: string): AuditLog {

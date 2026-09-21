@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import type { Etablissement, EtablissementType } from '../types';
+import type { Etablissement, EtablissementBanque, EtablissementType } from '../types';
 import { normaliserRecherche } from '../utils/recherche';
 import type { AppState } from '../store';
 import {
@@ -75,13 +75,46 @@ export default function TableEtablissements({ state, setState, showToast }: Prop
 
   const openCreate = () => {
     const nextCode = `ETB-${String(etablissements.length + 1).padStart(3, '0')}`;
-    setForm({ ...EMPTY_FORM, code: nextCode, isPrincipal: etablissements.length === 0 });
+    setForm({
+      ...EMPTY_FORM,
+      code: nextCode,
+      isPrincipal: etablissements.length === 0,
+      banques: [{
+        id: `bnq-${Date.now()}-1`,
+        bankName: 'BNI Madagascar',
+        bankAccount: '00005-00041-43200100200-85',
+        agency: 'Toliara',
+        isDefault: true,
+      }],
+    });
     setEditingId(null);
     setFormOpen(true);
   };
 
   const openEdit = (e: Etablissement) => {
-    setForm({ ...e });
+    let banques = (e.banques && e.banques.length > 0)
+      ? [...e.banques]
+      : (e.bankAccount || e.bankName)
+        ? [{
+            id: `bnq-${Date.now()}-1`,
+            bankName: e.bankName || '',
+            bankAccount: e.bankAccount || '',
+            agency: e.city || '',
+            isDefault: true,
+          }]
+        : [{
+            id: `bnq-${Date.now()}-1`,
+            bankName: 'BNI Madagascar',
+            bankAccount: '00005-00041-43200100200-85',
+            agency: e.city || 'Toliara',
+            isDefault: true,
+          }];
+
+    if (!banques.some((b) => b.isDefault)) {
+      banques[0] = { ...banques[0], isDefault: true };
+    }
+
+    setForm({ ...e, banques });
     setEditingId(e.id);
     setFormOpen(true);
   };
@@ -90,6 +123,46 @@ export default function TableEtablissements({ state, setState, showToast }: Prop
     setFormOpen(false);
     setEditingId(null);
     setForm({ ...EMPTY_FORM });
+  };
+
+  const addBank = () => {
+    const current = form.banques || [];
+    if (current.length >= 5) {
+      showToast('⚠️ Maximum 5 banques autorisées');
+      return;
+    }
+    const newBank: EtablissementBanque = {
+      id: `bnq-${Date.now()}-${current.length + 1}`,
+      bankName: '',
+      bankAccount: '',
+      agency: form.city || '',
+      isDefault: current.length === 0,
+    };
+    set({ banques: [...current, newBank] });
+  };
+
+  const updateBank = (index: number, patch: Partial<EtablissementBanque>) => {
+    const current = [...(form.banques || [])];
+    if (!current[index]) return;
+    current[index] = { ...current[index], ...patch };
+    set({ banques: current });
+  };
+
+  const setDefaultBank = (index: number) => {
+    const current = (form.banques || []).map((b, idx) => ({
+      ...b,
+      isDefault: idx === index,
+    }));
+    set({ banques: current });
+  };
+
+  const removeBank = (index: number) => {
+    const current = [...(form.banques || [])];
+    current.splice(index, 1);
+    if (current.length > 0 && !current.some((b) => b.isDefault)) {
+      current[0] = { ...current[0], isDefault: true };
+    }
+    set({ banques: current });
   };
 
   const handleLogo = (ev: React.ChangeEvent<HTMLInputElement>) => {
@@ -114,11 +187,16 @@ export default function TableEtablissements({ state, setState, showToast }: Prop
 
     setState((prev) => {
       const current = prev.etablissements || [];
+      const banques = (form.banques || []).slice(0, 5);
+      const defaultBank = banques.find((b) => b.isDefault) || banques[0];
       const record = makeEtablissement({
         ...form,
         id: editingId || undefined,
         code,
         name,
+        bankName: defaultBank?.bankName || form.bankName,
+        bankAccount: defaultBank?.bankAccount || form.bankAccount,
+        banques,
         createdAt: editingId ? current.find((e) => e.id === editingId)?.createdAt : undefined,
       });
 
@@ -240,6 +318,20 @@ export default function TableEtablissements({ state, setState, showToast }: Prop
               {principal.stat ? ` · STAT ${principal.stat}` : ''}
             </div>
             <div className="text-xs text-ink-muted">{etablissementFullAddress(principal) || '—'}</div>
+            {((principal.banques && principal.banques.length > 0) || principal.bankAccount) && (
+              <div className="text-xs text-indigo-700 dark:text-indigo-300 font-medium flex items-center gap-1.5 mt-1">
+                <Landmark className="w-3.5 h-3.5 shrink-0 text-indigo-600 dark:text-indigo-400" />
+                <span>
+                  RIB : <span className="font-mono font-bold">{principal.banques?.[0]?.bankAccount || principal.bankAccount}</span>
+                  {principal.banques?.[0]?.bankName ? ` (${principal.banques[0].bankName})` : ''}
+                  {principal.banques && principal.banques.length > 1 && (
+                    <span className="text-[11px] font-semibold text-ink-muted ml-1.5 px-2 py-0.5 rounded-md bg-indigo-100/70 dark:bg-indigo-500/15">
+                      +{principal.banques.length - 1} autre{principal.banques.length > 2 ? 's' : ''} banque{principal.banques.length > 2 ? 's' : ''}
+                    </span>
+                  )}
+                </span>
+              </div>
+            )}
           </div>
           <button
             onClick={() => applyToDocuments(principal)}
@@ -373,46 +465,161 @@ export default function TableEtablissements({ state, setState, showToast }: Prop
             </div>
           </div>
 
-          {/* Représentant légal & banque */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="rounded-2xl bg-surface border border-line p-4 space-y-3">
-              <h5 className="text-xs font-bold text-ink uppercase tracking-wide flex items-center gap-1.5">
-                <UserIcon className="w-4 h-4 text-indigo-600 dark:text-indigo-400" /> Représentant légal
-              </h5>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className={labelCls}>Nom & prénoms</label>
-                  <input value={form.directorName || ''} onChange={(e) => set({ directorName: e.target.value })} className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>Fonction</label>
-                  <input value={form.directorTitle || ''} onChange={(e) => set({ directorTitle: e.target.value })} className={inputCls} placeholder="Directeur, Médecin-chef…" />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className={labelCls}>Téléphone</label>
-                  <PhoneInput value={form.directorPhone || ''} onChange={(v) => set({ directorPhone: v })} className={inputCls} />
-                </div>
+          {/* Représentant légal */}
+          <div className="rounded-2xl bg-surface border border-line p-4 space-y-3">
+            <h5 className="text-xs font-bold text-ink uppercase tracking-wide flex items-center gap-1.5">
+              <UserIcon className="w-4 h-4 text-indigo-600 dark:text-indigo-400" /> Représentant légal
+            </h5>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className={labelCls}>Nom & prénoms</label>
+                <input value={form.directorName || ''} onChange={(e) => set({ directorName: e.target.value })} className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Fonction</label>
+                <input value={form.directorTitle || ''} onChange={(e) => set({ directorTitle: e.target.value })} className={inputCls} placeholder="Directeur, Médecin-chef…" />
+              </div>
+              <div>
+                <label className={labelCls}>Téléphone</label>
+                <PhoneInput value={form.directorPhone || ''} onChange={(v) => set({ directorPhone: v })} className={inputCls} />
+              </div>
+            </div>
+          </div>
+
+          {/* Coordonnées bancaires (jusqu'à 5 banques) */}
+          <div className="rounded-2xl bg-surface border border-line p-4 space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <h5 className="text-xs font-bold text-ink uppercase tracking-wide flex items-center gap-1.5">
+                  <Landmark className="w-4 h-4 text-indigo-600 dark:text-indigo-400" /> Coordonnées bancaires (jusqu'à 5 banques)
+                </h5>
+                <p className="text-[11px] text-ink-muted mt-0.5">
+                  Saisie jusqu'à 5 comptes bancaires. La banque marquée par défaut est automatiquement reprise en pied de page des factures globales société et relevés de prise en charge.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 font-bold border border-indigo-200 dark:border-indigo-500/20">
+                  {(form.banques || []).length} / 5 banque{(form.banques || []).length > 1 ? 's' : ''}
+                </span>
+                {(form.banques || []).length < 5 && (
+                  <button
+                    type="button"
+                    onClick={addBank}
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition shadow-xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Ajouter une banque
+                  </button>
+                )}
               </div>
             </div>
 
-            <div className="rounded-2xl bg-surface border border-line p-4 space-y-3">
-              <h5 className="text-xs font-bold text-ink uppercase tracking-wide flex items-center gap-1.5">
-                <Landmark className="w-4 h-4 text-indigo-600 dark:text-indigo-400" /> Coordonnées bancaires
-              </h5>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className={labelCls}>Banque</label>
-                  <input value={form.bankName || ''} onChange={(e) => set({ bankName: e.target.value })} className={inputCls} />
+            {/* Cartes des banques */}
+            <div className="space-y-3">
+              {(!form.banques || form.banques.length === 0) ? (
+                <div className="p-4 border-2 border-dashed border-line rounded-xl text-center text-ink-muted text-xs">
+                  Aucun compte bancaire configuré. Cliquez sur « Ajouter une banque » pour enregistrer un compte.
                 </div>
-                <div>
-                  <label className={labelCls}>N° de compte / RIB</label>
-                  <input value={form.bankAccount || ''} onChange={(e) => set({ bankAccount: e.target.value })} className={`${inputCls} font-mono`} />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className={labelCls}>Observations</label>
-                  <input value={form.notes || ''} onChange={(e) => set({ notes: e.target.value })} className={inputCls} />
-                </div>
-              </div>
+              ) : (
+                form.banques.map((b, idx) => (
+                  <div
+                    key={b.id || idx}
+                    className={`p-3.5 rounded-xl border transition ${
+                      b.isDefault
+                        ? 'bg-indigo-50/50 dark:bg-indigo-500/10 border-indigo-300 dark:border-indigo-500/35'
+                        : 'bg-surface-muted/40 border-line hover:border-line-strong'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-[10px]">
+                          {idx + 1}
+                        </span>
+                        <span className="font-bold text-xs text-ink-strong">
+                          {b.bankName || `Banque #${idx + 1}`}
+                        </span>
+                        {b.isDefault ? (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 flex items-center gap-1 border border-amber-200 dark:border-amber-500/30">
+                            <Star className="w-3 h-3 fill-amber-500 text-amber-500" /> Banque par défaut (Factures)
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setDefaultBank(idx)}
+                            className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 hover:underline cursor-pointer flex items-center gap-1"
+                          >
+                            <Star className="w-3 h-3" /> Définir par défaut
+                          </button>
+                        )}
+                      </div>
+
+                      {form.banques && form.banques.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeBank(idx)}
+                          className="p-1.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg cursor-pointer transition"
+                          title="Supprimer cette banque"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className={labelCls}>Nom de la banque</label>
+                        <input
+                          list="liste-banques-suggestions"
+                          value={b.bankName || ''}
+                          onChange={(e) => updateBank(idx, { bankName: e.target.value })}
+                          className={inputCls}
+                          placeholder="Ex : BNI Madagascar"
+                        />
+                      </div>
+                      <div>
+                        <label className={labelCls}>N° de compte / RIB *</label>
+                        <input
+                          value={b.bankAccount || ''}
+                          onChange={(e) => updateBank(idx, { bankAccount: e.target.value })}
+                          className={`${inputCls} font-mono`}
+                          placeholder="Ex : 00005-00041-43200100200-85"
+                        />
+                      </div>
+                      <div>
+                        <label className={labelCls}>Agence / Ville</label>
+                        <input
+                          value={b.agency || ''}
+                          onChange={(e) => updateBank(idx, { agency: e.target.value })}
+                          className={inputCls}
+                          placeholder="Ex : Toliara"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <datalist id="liste-banques-suggestions">
+              <option value="BNI Madagascar" />
+              <option value="Bank of Africa (BOA)" />
+              <option value="BFV-SG / Société Générale" />
+              <option value="BMOI (Banque Malgache de l'Océan Indien)" />
+              <option value="MCB Madagascar" />
+              <option value="SBM Madagascar" />
+              <option value="BIA" />
+              <option value="SIPEM Banque" />
+              <option value="Baobab Banque Madagascar" />
+              <option value="AccèsBanque Madagascar" />
+            </datalist>
+
+            <div>
+              <label className={labelCls}>Observations / Notes bancaires (optionnel)</label>
+              <input
+                value={form.notes || ''}
+                onChange={(e) => set({ notes: e.target.value })}
+                className={inputCls}
+                placeholder="Ex : Mentionner le numéro de facture sur l'ordre de virement..."
+              />
             </div>
           </div>
 
@@ -521,9 +728,18 @@ export default function TableEtablissements({ state, setState, showToast }: Prop
                   {e.numeroAgrement && <div>Agrément : {e.numeroAgrement}</div>}
                 </td>
                 <td className="p-3.5 text-[11px] text-ink-secondary space-y-0.5">
-                  <div className="flex items-center gap-1"><MapPin className="w-3 h-3 text-ink-faint" /> {etablissementFullAddress(e) || '—'}</div>
-                  {e.phone && <div className="flex items-center gap-1"><Phone className="w-3 h-3 text-ink-faint" /> {e.phone}</div>}
-                  {e.email && <div className="flex items-center gap-1"><Mail className="w-3 h-3 text-ink-faint" /> {e.email}</div>}
+                  <div className="flex items-center gap-1"><MapPin className="w-3 h-3 text-ink-faint shrink-0" /> {etablissementFullAddress(e) || '—'}</div>
+                  {e.phone && <div className="flex items-center gap-1"><Phone className="w-3 h-3 text-ink-faint shrink-0" /> {e.phone}</div>}
+                  {e.email && <div className="flex items-center gap-1"><Mail className="w-3 h-3 text-ink-faint shrink-0" /> {e.email}</div>}
+                  {((e.banques && e.banques.length > 0) || e.bankAccount) && (
+                    <div className="flex items-center gap-1 text-indigo-700 dark:text-indigo-400 font-mono pt-0.5">
+                      <Landmark className="w-3 h-3 text-indigo-500 shrink-0" />
+                      <span>
+                        RIB : {e.banques?.[0]?.bankAccount || e.bankAccount}
+                        {e.banques && e.banques.length > 1 ? ` (+${e.banques.length - 1})` : ''}
+                      </span>
+                    </div>
+                  )}
                 </td>
                 <td className="p-3.5 text-center">
                   <button
