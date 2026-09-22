@@ -588,8 +588,8 @@ export const SocietesView: React.FC<SocietesViewProps> = ({
             )}
 
             {/* Instructions */}
-            <p className="text-xs text-ink-secondary leading-relaxed bg-amber-50/70 p-3 rounded-2xl border border-amber-200/80 shrink-0">
-              💡 <strong>Principe :</strong> cochez les variantes ou doublons de sous-sociétés ci-dessous pour les fusionner instantanément en une seule sous-société officielle sur toutes les prestations et tous les adhérents existants.
+            <p className="text-xs text-ink-secondary bg-amber-50/70 p-2.5 rounded-xl border border-amber-200/80 shrink-0">
+              💡 Cochez les doublons de sous-sociétés ci-dessous pour les fusionner.
             </p>
 
             {/* List & Controls */}

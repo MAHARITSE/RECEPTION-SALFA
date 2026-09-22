@@ -915,13 +915,13 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                       <Search className="absolute left-3 top-2.5 w-5 h-5 text-ink-faint" />
                       <input type="text" value={searchStock} onChange={(e) => setSearchStock(e.target.value)} className="w-full pl-10 pr-4 py-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-purple-500 outline-none" placeholder="Rechercher un article..." />
                     </div>
-                    <div className="text-xs text-ink-muted bg-orange-50 dark:bg-orange-500/8 border border-orange-200 dark:border-orange-500/25 px-3 py-2 rounded-lg flex items-center gap-2">
+                    <div className="text-xs text-ink-muted bg-orange-50 dark:bg-orange-500/8 border border-orange-200 dark:border-orange-500/25 px-3 py-1.5 rounded-lg flex items-center gap-2">
                       <Ban className="w-4 h-4 text-orange-600 dark:text-orange-400" />
-                      Bloquez la vente même si le stock est encore disponible (réservé, régularisation…).
+                      Bloquer la vente
                     </div>
-                    <div className="text-xs text-ink-muted bg-sky-50 dark:bg-sky-500/8 border border-sky-200 dark:border-sky-500/25 px-3 py-2 rounded-lg flex items-center gap-2">
+                    <div className="text-xs text-ink-muted bg-sky-50 dark:bg-sky-500/8 border border-sky-200 dark:border-sky-500/25 px-3 py-1.5 rounded-lg flex items-center gap-2">
                       <BellOff className="w-4 h-4 text-sky-600 dark:text-sky-400" />
-                      Réglez le <strong>stock d'alerte</strong> par article ou désactivez l'alerte (🔕). En rupture, l'article reste <strong>invendable</strong> même si l'alerte est désactivée.
+                      Stock d'alerte &amp; ruptures
                     </div>
                   </div>
                   <div className="overflow-x-auto">
@@ -1205,10 +1205,8 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
                   <p className="text-base font-semibold text-ink-strong leading-relaxed">
                     Débloquer la vente de l'article « {blockModal.name} » ?
                   </p>
-                  <p className="text-xs text-ink-muted bg-surface-muted border border-line rounded-xl p-3">
-                    En répondant <strong>Oui</strong>, l'article est <strong>débloqué immédiatement</strong> par la pharmacie :
-                    aucune validation de la caisse n'est nécessaire. Il redevient vendable et délivrable aussitôt
-                    (l'opération est tracée dans le journal d'audit).
+                  <p className="text-xs text-ink-muted bg-surface-muted border border-line rounded-xl p-2.5">
+                    L'article redevient immédiatement vendable à la caisse et à la pharmacie.
                   </p>
                 </>
               )}

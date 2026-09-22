@@ -154,8 +154,8 @@ export const FamillesView: React.FC<FamillesViewProps> = ({
             <h2 className="text-xl font-bold text-ink-strong mt-1">
               Actes Médicaux & Reconnaissance des Codes d'Assurance
             </h2>
-            <p className="text-xs text-ink-muted mt-0.5 max-w-3xl leading-relaxed">
-              Chaque famille correspond directement à un <strong>acte médical</strong>. Vous pouvez y ajouter <strong>plusieurs descriptions et codes alternatifs</strong> (ex : <code>PH</code>, <code>PHSB</code> ou <code>PHARMACIE</code> pour BSA ; <code>CG</code> ou <code>CONS</code> pour Consultation ; <code>DC</code> ou <code>DK</code> pour Dentaire ; <code>EB</code> pour Laboratoire). Lors des importations de factures et décomptes, le système fait le rattachement automatique instantanément.
+            <p className="text-xs text-ink-muted mt-0.5">
+              Rattachement automatique des actes médicaux et codes d'assurance.
             </p>
           </div>
 

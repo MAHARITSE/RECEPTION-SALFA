@@ -37,9 +37,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange, 
     { id: 'rejets', label: 'Rejets', icon: AlertTriangle },
     { id: 'historique', label: 'Historique', icon: History },
     { id: 'societes', label: 'Sociétés', icon: Building, startsGroup: true },
-    { id: 'personnes', label: 'Assurés', icon: Users },
     { id: 'familles', label: 'Actes', icon: Layers },
-    { id: 'etats', label: 'Rapports', icon: Printer },
     { id: 'entete', label: 'Entête', icon: Type, startsGroup: true },
   ];
 

@@ -10,7 +10,10 @@ import {
   ArrowRight,
   Clock,
   Calendar,
-  Filter
+  Filter,
+  BarChart3,
+  Building2,
+  Maximize2
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -27,6 +30,8 @@ import {
 } from 'recharts';
 import { Prestation, Paiement, Societe, Personne, ActiveTab } from '../types';
 import { formatMoney, formatDate } from '../utils/formatters';
+import { MonthSocieteBreakdownModal } from './MonthSocieteBreakdownModal';
+import { SocieteMonthlyMatrixTable } from './SocieteMonthlyMatrixTable';
 
 interface DashboardProps {
   prestations: Prestation[];
@@ -145,6 +150,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
   }, [filteredPrestations]);
 
   const [selectedYear, setSelectedYear] = useState<string>('ALL');
+  // Masqué par défaut pour accélérer l'interface et supprimer tout ralentissement lors des clics
+  const [showCharts, setShowCharts] = useState<boolean>(false);
+
+  // État de la fenêtre modale d'aperçu par société pour un mois donné (ouvert au double-clic)
+  const [modalMonthKey, setModalMonthKey] = useState<string | null>(null);
+  const [modalMonthLabel, setModalMonthLabel] = useState<string>('');
+
+  const handleOpenMonthBreakdown = (monthKey: string, monthLabel: string) => {
+    setModalMonthKey(monthKey);
+    setModalMonthLabel(monthLabel);
+  };
 
   // Prestations filtered by selected year for monthly analysis
   const monthlyFilteredPrestations = useMemo(() => {
@@ -304,8 +320,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <h2 className="text-xl font-bold text-ink-strong">Vue d'ensemble</h2>
           <p className="mt-0.5 text-sm text-ink-muted">Les indicateurs essentiels de votre activité.</p>
         </div>
-
-
+        <button
+          type="button"
+          onClick={() => setShowCharts(!showCharts)}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border text-xs font-bold transition cursor-pointer ${
+            showCharts
+              ? 'bg-indigo-50 border-indigo-200 text-indigo-700 shadow-2xs'
+              : 'bg-surface border-line text-ink-muted hover:text-ink-strong hover:bg-surface-hover'
+          }`}
+          title={showCharts ? 'Masquer les graphiques SVG' : 'Afficher les graphiques (Masqués par défaut pour la rapidité)'}
+        >
+          <BarChart3 className="w-4 h-4 text-indigo-600" />
+          <span>{showCharts ? 'Masquer les graphiques' : 'Graphiques visuels'}</span>
+          <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${showCharts ? 'bg-indigo-200 text-indigo-900' : 'bg-surface-muted text-ink-muted'}`}>
+            {showCharts ? 'ON' : 'OFF'}
+          </span>
+        </button>
       </div>
 
       {/* 5 Major Metric KPI Cards */}
@@ -389,83 +419,85 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
       </div>
 
-      {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Pie Chart: Répartition CA par Société */}
-        <div className="bg-surface p-5 rounded-xl border border-line shadow-xs flex flex-col">
-          <h3 className="font-bold text-ink-strong text-sm mb-4">Répartition par Société</h3>
-          <div className="flex-1 min-h-[250px]">
-            {caParSocieteData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={caParSocieteData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={90}
-                    paddingAngle={2}
-                    dataKey="value"
-                  >
-                    {caParSocieteData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <RechartsTooltip content={<CustomTooltip />} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full flex items-center justify-center text-xs text-ink-faint">
-                Aucune donnée disponible
-              </div>
-            )}
-          </div>
-          {/* Custom minimal legend */}
-          {caParSocieteData.length > 0 && (
-            <div className="flex flex-wrap items-center justify-center gap-3 mt-4">
-              {caParSocieteData.slice(0, 8).map((entry, index) => (
-                <div key={entry.name} className="flex items-center text-[11px] text-ink-secondary">
-                  <span className="w-2.5 h-2.5 rounded-full mr-1.5 shrink-0" style={{ backgroundColor: COLORS[index % COLORS.length] }}></span>
-                  <span className="truncate max-w-[120px]" title={entry.name}>{entry.name}</span>
+      {/* Charts Section (Masqués par défaut pour la vitesse de l'application) */}
+      {showCharts && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Pie Chart: Répartition CA par Société */}
+          <div className="bg-surface p-5 rounded-xl border border-line shadow-xs flex flex-col">
+            <h3 className="font-bold text-ink-strong text-sm mb-4">Répartition par Société</h3>
+            <div className="flex-1 min-h-[250px]">
+              {caParSocieteData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={caParSocieteData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={90}
+                      paddingAngle={2}
+                      dataKey="value"
+                    >
+                      {caParSocieteData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip content={<CustomTooltip />} />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-xs text-ink-faint">
+                  Aucune donnée disponible
                 </div>
-              ))}
+              )}
             </div>
-          )}
-        </div>
-
-        {/* Bar Chart: Évolution mensuelle */}
-        <div className="bg-surface p-5 rounded-xl border border-line shadow-xs flex flex-col">
-          <h3 className="font-bold text-ink-strong text-sm mb-4">Évolution Mensuelle</h3>
-          <div className="flex-1 min-h-[250px]">
-            {monthlyData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={monthlyData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                  <XAxis 
-                    dataKey="label" 
-                    axisLine={false} 
-                    tickLine={false} 
-                    tick={{ fontSize: 11, fill: '#64748b' }} 
-                    dy={10} 
-                  />
-                  <YAxis 
-                    axisLine={false} 
-                    tickLine={false} 
-                    tick={{ fontSize: 11, fill: '#64748b' }} 
-                    tickFormatter={(value) => value >= 1000 ? `${(value / 1000).toFixed(0)}k` : value}
-                  />
-                  <RechartsTooltip content={<CustomTooltip />} cursor={{ fill: '#f1f5f9' }} />
-                  <Bar dataKey="total" fill="#6366f1" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full flex items-center justify-center text-xs text-ink-faint">
-                Aucune donnée disponible
+            {/* Custom minimal legend */}
+            {caParSocieteData.length > 0 && (
+              <div className="flex flex-wrap items-center justify-center gap-3 mt-4">
+                {caParSocieteData.slice(0, 8).map((entry, index) => (
+                  <div key={entry.name} className="flex items-center text-[11px] text-ink-secondary">
+                    <span className="w-2.5 h-2.5 rounded-full mr-1.5 shrink-0" style={{ backgroundColor: COLORS[index % COLORS.length] }}></span>
+                    <span className="truncate max-w-[120px]" title={entry.name}>{entry.name}</span>
+                  </div>
+                ))}
               </div>
             )}
           </div>
+
+          {/* Bar Chart: Évolution mensuelle */}
+          <div className="bg-surface p-5 rounded-xl border border-line shadow-xs flex flex-col">
+            <h3 className="font-bold text-ink-strong text-sm mb-4">Évolution Mensuelle</h3>
+            <div className="flex-1 min-h-[250px]">
+              {monthlyData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={monthlyData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                    <XAxis 
+                      dataKey="label" 
+                      axisLine={false} 
+                      tickLine={false} 
+                      tick={{ fontSize: 11, fill: '#64748b' }} 
+                      dy={10} 
+                    />
+                    <YAxis 
+                      axisLine={false} 
+                      tickLine={false} 
+                      tick={{ fontSize: 11, fill: '#64748b' }} 
+                      tickFormatter={(value) => value >= 1000 ? `${(value / 1000).toFixed(0)}k` : value}
+                    />
+                    <RechartsTooltip content={<CustomTooltip />} cursor={{ fill: '#f1f5f9' }} />
+                    <Bar dataKey="total" fill="#6366f1" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-xs text-ink-faint">
+                  Aucune donnée disponible
+                </div>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* SECTION : Factures à Recouvrir par Mois */}
       <div className="bg-surface rounded-xl border border-line shadow-xs p-5 space-y-5">
@@ -485,6 +517,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
               <p className="text-xs text-ink-muted">
                 Suivi mensuel et historique des montants de la part assurance restant en attente de paiement.
+                <span className="hidden sm:inline ml-1 text-sky-700 dark:text-sky-400 font-semibold">
+                  • 💡 Double-cliquez sur une ligne pour ouvrir l'aperçu de toutes les sociétés du mois.
+                </span>
               </p>
             </div>
           </div>
@@ -540,8 +575,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </div>
 
-        {/* Visual Graph: Règlements reçus vs Solde à recouvrir par mois */}
-        {monthlyRecouvrementChronological.length > 0 && (
+        {/* Visual Graph: Règlements reçus vs Solde à recouvrir par mois (Masqué par défaut) */}
+        {showCharts && monthlyRecouvrementChronological.length > 0 && (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-ink">
@@ -617,13 +652,34 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   const isPartiel = item.totalPaye > 0 && !isSolde;
 
                   return (
-                    <tr key={item.monthKey} className="hover:bg-surface-muted/80 transition">
-                      <td className="py-3 px-3.5 font-bold text-ink-strong flex items-center gap-2">
-                        <Calendar className="w-3.5 h-3.5 text-ink-faint shrink-0" />
-                        <span>{item.monthLabel}</span>
+                    <tr 
+                      key={item.monthKey} 
+                      onDoubleClick={() => handleOpenMonthBreakdown(item.monthKey, item.monthLabel)}
+                      className="hover:bg-sky-50/70 dark:hover:bg-sky-500/10 transition cursor-pointer select-none group"
+                      title="Double-cliquez pour ouvrir l'aperçu détaillé de toutes les sociétés pour ce mois"
+                    >
+                      <td className="py-3 px-3.5 font-bold text-ink-strong">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <Calendar className="w-3.5 h-3.5 text-ink-faint shrink-0" />
+                            <span>{item.monthLabel}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenMonthBreakdown(item.monthKey, item.monthLabel);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 transition px-2 py-0.5 rounded-lg text-[10.5px] font-bold bg-sky-100 dark:bg-sky-500/20 text-sky-800 dark:text-sky-300 hover:bg-sky-200 border border-sky-300 dark:border-sky-500/30 flex items-center gap-1 shrink-0"
+                            title="Aperçu des sociétés pour ce mois"
+                          >
+                            <Maximize2 className="w-3 h-3" />
+                            <span>Aperçu</span>
+                          </button>
+                        </div>
                       </td>
                       <td className="py-3 px-3 text-center font-medium">
-                        <span className={item.countEnAttente > 0 ? 'text-sky-700 font-bold' : 'text-ink-muted'}>
+                        <span className={item.countEnAttente > 0 ? 'text-sky-700 dark:text-sky-400 font-bold' : 'text-ink-muted'}>
                           {item.countEnAttente}
                         </span>
                         <span className="text-ink-faint"> / {item.countTotal}</span>
@@ -634,13 +690,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       <td className="py-3 px-3 text-right font-mono text-ink font-medium">
                         {formatMoney(item.partAssurance)}
                       </td>
-                      <td className="py-3 px-3 text-right font-mono font-semibold text-emerald-600">
+                      <td className="py-3 px-3 text-right font-mono font-semibold text-emerald-600 dark:text-emerald-400">
                         {formatMoney(item.totalPaye)}
                       </td>
-                      <td className="py-3 px-3 text-right font-mono text-rose-600">
+                      <td className="py-3 px-3 text-right font-mono text-rose-600 dark:text-rose-400">
                         {item.totalExclu > 0 ? formatMoney(item.totalExclu) : '-'}
                       </td>
-                      <td className="py-3 px-3 text-right font-mono font-extrabold text-sky-800 bg-sky-50/40">
+                      <td className="py-3 px-3 text-right font-mono font-extrabold text-sky-800 dark:text-sky-300 bg-sky-50/40 dark:bg-sky-500/10">
                         {formatMoney(item.totalARecouvrer)}
                       </td>
                       <td className="py-3 px-3 text-center">
@@ -659,10 +715,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       <td className="py-3 px-3 text-center">
                         <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
                           isSolde 
-                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                            ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30'
                             : isPartiel
-                            ? 'bg-sky-100 text-sky-800 border border-sky-200'
-                            : 'bg-amber-100 text-amber-800 border border-amber-200'
+                            ? 'bg-sky-100 dark:bg-sky-500/20 text-sky-800 dark:text-sky-300 border border-sky-200 dark:border-sky-500/30'
+                            : 'bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30'
                         }`}>
                           {isSolde ? 'Soldé' : isPartiel ? 'En cours' : 'En attente'}
                         </span>
@@ -679,13 +735,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     {selectedYear === 'ALL' ? 'Total Général' : `Total Année ${selectedYear}`}
                   </td>
                   <td className="py-3 px-3 text-center">
-                    <span className="text-sky-800">{monthlySectionDossiersARecouvrer}</span> / {monthlyFilteredPrestations.length}
+                    <span className="text-sky-800 dark:text-sky-400">{monthlySectionDossiersARecouvrer}</span> / {monthlyFilteredPrestations.length}
                   </td>
                   <td className="py-3 px-3 text-right font-mono">{formatMoney(monthlySectionTotalReclame)}</td>
                   <td className="py-3 px-3 text-right font-mono">{formatMoney(monthlySectionTotalPartAssurance)}</td>
-                  <td className="py-3 px-3 text-right font-mono text-emerald-700">{formatMoney(monthlySectionTotalPaye)}</td>
-                  <td className="py-3 px-3 text-right font-mono text-rose-700">{formatMoney(monthlySectionTotalExclu)}</td>
-                  <td className="py-3 px-3 text-right font-mono text-sky-900 text-sm bg-sky-100/70 border-x border-sky-200">
+                  <td className="py-3 px-3 text-right font-mono text-emerald-700 dark:text-emerald-400">{formatMoney(monthlySectionTotalPaye)}</td>
+                  <td className="py-3 px-3 text-right font-mono text-rose-700 dark:text-rose-400">{formatMoney(monthlySectionTotalExclu)}</td>
+                  <td className="py-3 px-3 text-right font-mono text-sky-900 dark:text-sky-200 text-sm bg-sky-100/70 dark:bg-sky-500/20 border-x border-sky-200 dark:border-sky-500/30">
                     {formatMoney(monthlySectionTotalARecouvrer)}
                   </td>
                   <td className="py-3 px-3 text-center font-mono text-ink">{monthlySectionTauxCouverture}%</td>
@@ -700,6 +756,27 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </table>
         </div>
       </div>
+
+      {/* SECTION : Factures à Recouvrir par Société & par Mois (Tableau Croisé avec Mois en Titre Horizontal) */}
+      <SocieteMonthlyMatrixTable
+        prestations={filteredPrestations}
+        societes={societes}
+        selectedYear={selectedYear}
+        onOpenMonthDetail={handleOpenMonthBreakdown}
+      />
+
+      {/* MODAL : Aperçu détaillé de toutes les sociétés pour le mois sélectionné (double-clic) */}
+      {modalMonthKey && (
+        <MonthSocieteBreakdownModal
+          isOpen={Boolean(modalMonthKey)}
+          onClose={() => setModalMonthKey(null)}
+          monthKey={modalMonthKey}
+          monthLabel={modalMonthLabel}
+          prestations={prestations}
+          societes={societes}
+          personnes={personnes}
+        />
+      )}
     </div>
   );
 };

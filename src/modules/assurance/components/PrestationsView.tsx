@@ -1949,21 +1949,14 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
               </button>
             </div>}
           </div>
-          <p className="text-xs text-ink-muted mt-1">
-            Suivi des factures médicales, total perçu, restants à réclamer et état des tickets modérateurs
-          </p>
         </div>
 
         {/* Action Buttons */}
         <div className="flex items-center flex-wrap gap-2">
-          <button id="btn-create-prestation" onClick={handleOpenCreate}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white">
-            <Plus className="w-3.5 h-3.5" /> Nouvelle prestation
-          </button>
-
           {/* Consolidated Export Dropdown */}
           <div className="relative">
             <button
+              type="button"
               onClick={() => setShowExportMenu(prev => !prev)}
               className="flex items-center space-x-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-surface border border-line text-ink hover:bg-surface-muted shadow-2xs transition cursor-pointer"
             >
@@ -1980,6 +1973,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
                 />
                 <div className="absolute right-0 mt-1.5 w-64 bg-surface rounded-xl shadow-xl border border-line py-1.5 z-30 text-xs animate-in fade-in zoom-in-95 duration-100">
                   <button
+                    type="button"
                     onClick={() => { setShowExportMenu(false); handleExportExcel(); }}
                     className="w-full text-left px-3.5 py-2 hover:bg-surface-muted text-ink flex items-center space-x-2 cursor-pointer"
                   >
@@ -1993,6 +1987,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
                   </button>
 
                   <button
+                    type="button"
                     onClick={() => { setShowExportMenu(false); void handleExportRecouvrementPdfSelected(); }}
                     disabled={selectionExportable.length === 0}
                     className={`w-full text-left px-3.5 py-2 flex items-center space-x-2 ${
@@ -2019,6 +2014,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
             )}
           </div>
         </div>
+
       </div>
 
       {/* Main Multi-criteria Filter Bar */}
@@ -2303,74 +2299,41 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
                   className={`py-3 px-3 cursor-pointer group hover:bg-surface-hover/80 transition ${sortField === 'societe' ? 'bg-indigo-50/60 text-indigo-900 font-bold' : ''}`}
                 >
                   <div className="flex items-center">
-                    <span>Société / Sous-société</span>
+                    <span>Sous-soc.</span>
                     {renderSortIcon('societe')}
                   </div>
                 </th>
 
-                {/* Montant Total */}
+                {/* Montant Brut */}
                 <th 
                   onClick={() => handleSort('totalPrestation')}
                   className={`py-3 px-3 text-right cursor-pointer group hover:bg-surface-hover/80 transition ${sortField === 'totalPrestation' ? 'bg-indigo-50/60 text-indigo-900 font-bold' : ''}`}
                 >
                   <div className="flex items-center justify-end">
-                    <span>Montant Total</span>
+                    <span>Montant Brut</span>
                     {renderSortIcon('totalPrestation')}
                   </div>
                 </th>
 
-                {/* Ticket Modérateur */}
+                {/* Ticket Modérateur / Remise */}
                 <th 
                   onClick={() => handleSort('participation')}
                   className={`py-3 px-3 text-right cursor-pointer group hover:bg-surface-hover/80 transition ${sortField === 'participation' ? 'bg-indigo-50/60 text-indigo-900 font-bold' : ''}`}
                 >
                   <div className="flex items-center justify-end">
-                    <span>Ticket Mod.</span>
+                    <span>Ticket modérateur / Remise</span>
                     {renderSortIcon('participation')}
                   </div>
                 </th>
 
-                {/* À Rembourser */}
+                {/* Part Assurance */}
                 <th 
                   onClick={() => handleSort('montantARembourser')}
                   className={`py-3 px-3 text-right cursor-pointer group hover:bg-surface-hover/80 transition ${sortField === 'montantARembourser' ? 'bg-indigo-50/60 text-indigo-900 font-bold' : ''}`}
                 >
                   <div className="flex items-center justify-end">
-                    <span>À Rembourser</span>
+                    <span>Part Assurance</span>
                     {renderSortIcon('montantARembourser')}
-                  </div>
-                </th>
-
-                {/* Total Payé */}
-                <th 
-                  onClick={() => handleSort('totalPaye')}
-                  className={`py-3 px-3 text-right cursor-pointer group hover:bg-surface-hover/80 transition ${sortField === 'totalPaye' ? 'bg-indigo-50/60 text-indigo-900 font-bold' : ''}`}
-                >
-                  <div className="flex items-center justify-end">
-                    <span>Total Payé</span>
-                    {renderSortIcon('totalPaye')}
-                  </div>
-                </th>
-
-                {/* Reste à Payer */}
-                <th 
-                  onClick={() => handleSort('resteAPayer')}
-                  className={`py-3 px-3 text-right cursor-pointer group hover:bg-surface-hover/80 transition ${sortField === 'resteAPayer' ? 'bg-indigo-50/60 text-indigo-900 font-bold' : ''}`}
-                >
-                  <div className="flex items-center justify-end">
-                    <span>Reste à Payer</span>
-                    {renderSortIcon('resteAPayer')}
-                  </div>
-                </th>
-
-                {/* Statut */}
-                <th 
-                  onClick={() => handleSort('statut')}
-                  className={`py-3 px-3 text-center cursor-pointer group hover:bg-surface-hover/80 transition ${sortField === 'statut' ? 'bg-indigo-50/60 text-indigo-900 font-bold' : ''}`}
-                >
-                  <div className="flex items-center justify-center">
-                    <span>Statut</span>
-                    {renderSortIcon('statut')}
                   </div>
                 </th>
 
@@ -2380,7 +2343,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
             <tbody className="divide-y divide-slate-100">
               {filteredAndSortedList.length === 0 ? (
                 <tr>
-                  <td colSpan={13} className="py-12 text-center text-ink-muted space-y-3">
+                  <td colSpan={10} className="py-12 text-center text-ink-muted space-y-3">
                     <AlertCircle className="w-10 h-10 text-slate-300 mx-auto" />
                     <div className="font-semibold text-ink text-sm">
                       {prestations.length > 0
@@ -2422,9 +2385,13 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
 
                   return (
                     <React.Fragment key={prestation.id}>
-                      <tr className={`transition hover:bg-surface-muted/80 ${
-                        recInfo.hasMatch ? 'bg-emerald-50/20' : recInfo.hasDuplicate ? 'bg-amber-50/20' : ''
-                      }`}>
+                      <tr 
+                        onDoubleClick={() => setPrescriptionEditCible(prestation)}
+                        title="Double-clic : modifier la prescription — ajouter une vente omise ou ordonnance externe"
+                        className={`transition hover:bg-surface-muted/80 cursor-pointer select-none ${
+                          recInfo.hasMatch ? 'bg-emerald-50/20' : recInfo.hasDuplicate ? 'bg-amber-50/20' : ''
+                        }`}
+                      >
                         <td className="py-3 px-2 text-center">
                           <input 
                             type="checkbox" 
@@ -2511,27 +2478,6 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
                         <td className="py-3 px-3 text-right font-bold text-ink-strong whitespace-nowrap">
                           {formatMoney(fin.remb)}
                         </td>
-                        <td className="py-3 px-3 text-right text-emerald-700 font-bold whitespace-nowrap">
-                          {formatMoney(fin.totalPaye)}
-                        </td>
-                        <td className="py-3 px-3 text-right font-bold whitespace-nowrap">
-                          <span className={fin.resteAPayer > 0 ? 'text-rose-700 font-bold' : 'text-ink-faint'}>
-                            {formatMoney(fin.resteAPayer)}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 text-center whitespace-nowrap">
-                          <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                            fin.statut === 'Payé'
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                              : fin.statut === 'Partiellement payé'
-                              ? 'bg-sky-100 text-sky-800 border border-sky-200'
-                              : fin.statut === 'Rejeté'
-                              ? 'bg-rose-100 text-rose-800 border border-rose-200'
-                              : 'bg-amber-100 text-amber-800 border border-amber-200'
-                          }`}>
-                            {fin.statut}
-                          </span>
-                        </td>
                         <td className="py-3 px-3 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end space-x-1">
                             {onPrintPrestation && <button type="button" onClick={() => onPrintPrestation(prestation)} title="Imprimer la facture" aria-label={`Imprimer la facture ${prestation.numeroFacture}`} className="p-1.5 text-accent hover:bg-accent-soft rounded-lg cursor-pointer"><Printer className="w-3.5 h-3.5" /></button>}
@@ -2566,7 +2512,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
                       {/* Nested Expandable Sub-Table of Medical Acts (Base 2) & Attached Payments */}
                       {isExpanded && (
                         <tr className="bg-surface-muted/90 border-y border-line/80">
-                          <td colSpan={13} className="p-4 pl-12 space-y-3">
+                          <td colSpan={10} className="p-4 pl-12 space-y-3">
                             <div className="bg-surface rounded-lg border border-line p-3 shadow-xs space-y-2">
                               <div className="text-[11px] font-bold text-ink uppercase tracking-wider flex items-center justify-between">
                                 <span className="flex items-center gap-1.5 text-indigo-700">
@@ -3293,7 +3239,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
             <form onSubmit={handleSaveLigneExclude} className="p-6 space-y-4">
               <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg text-amber-800 text-xs mb-4">
                 <p className="font-semibold mb-1 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5"/> Action comptable</p>
-                <p>Le montant exclu sera enregistré dans le tableau de bord des rejets et soustrait du reste à payer de la facture.</p>
+                <p>Soustrait du reste à payer et enregistré dans l'onglet Rejets.</p>
               </div>
               
               <div>
@@ -3373,7 +3319,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
             <form onSubmit={handleSaveFactureExclude} className="p-6 space-y-4">
               <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg text-amber-800 text-xs mb-4">
                 <p className="font-semibold mb-1 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5"/> Action comptable & Rejets</p>
-                <p>Le montant saisi sera déduit du reste à payer de la facture et envoyé directement dans l'onglet <strong>Rejets</strong> pour suivi et contestation.</p>
+                <p>Déduit du reste à payer et envoyé dans l'onglet Rejets.</p>
               </div>
               
               <div>

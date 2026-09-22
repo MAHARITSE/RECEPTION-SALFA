@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   ChevronDown, 
   ChevronRight, 
@@ -61,6 +61,27 @@ export const FacturesGroupedTable: React.FC<FacturesGroupedTableProps> = ({
   onDeletePrestation,
   onExcludePrestation,
 }) => {
+  // Suivi des personnes traitées par la facturière (conservé en mémoire locale contre les coupures d'électricité)
+  const [checkedPrestations, setCheckedPrestations] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('facturation_checked_prestations');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const togglePrestationChecked = (id: string) => {
+    setCheckedPrestations((prev: Record<string, boolean>) => {
+      const next = { ...prev, [id]: !prev[id] };
+      try {
+        localStorage.setItem('facturation_checked_prestations', JSON.stringify(next));
+      } catch (e) {
+        console.error(e);
+      }
+      return next;
+    });
+  };
   // Réduction (brut − net) : ticket modérateur par défaut ; la colonne ne
   // s'intitule « Remise » que si toutes les factures affichées sont concernées.
   const libelleReductionColonne = factures.length > 0 && factures.every(f => f.natureRemise === 'remise')
@@ -239,9 +260,14 @@ export const FacturesGroupedTable: React.FC<FacturesGroupedTableProps> = ({
                   <React.Fragment key={facture.numeroFacture}>
                     <tr 
                       onClick={() => toggleFactureRow(facture.numeroFacture)}
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        onViewFacture(facture);
+                      }}
                       className={`hover:bg-indigo-50/30 transition-colors cursor-pointer select-none ${
                         isExpanded ? 'bg-indigo-50/40' : ''
                       }`}
+                      title="Clic : développer/réduire les bénéficiaires • Double-clic : ouvrir la vue détaillée de cette facture"
                     >
                       {/* Chevron */}
                       <td className="py-3 px-2 text-center text-ink-faint">
@@ -416,16 +442,13 @@ export const FacturesGroupedTable: React.FC<FacturesGroupedTableProps> = ({
                               <table className="w-full text-left text-xs">
                                 <thead>
                                   <tr className="text-ink-muted border-b border-line-soft text-[10px] uppercase font-semibold">
-                                    <th className="py-2 px-2.5">Bénéficiaire / Matricule</th>
-                                    <th className="py-2 px-2.5">Date Soins</th>
-                                    <th className="py-2 px-2.5">Sous-Société</th>
-                                    <th className="py-2 px-2.5 text-center">Actes</th>
+                                    <th className="py-2 px-2 text-center w-8" title="Cocher pour marquer la personne comme traitée (conservé en mémoire contre les coupures d'électricité)">Traitée</th>
+                                    <th className="py-2 px-2.5">Assuré / Client</th>
+                                    <th className="py-2 px-2.5">Date</th>
+                                    <th className="py-2 px-2.5">Sous-soc.</th>
                                     <th className="py-2 px-2.5 text-right">Montant Brut</th>
                                     <th className="py-2 px-2.5 text-right">{natureRemiseLabelCourt(facture.natureRemise)}</th>
-                                    <th className="py-2 px-2.5 text-right">Part Assurance</th>
-                                    <th className="py-2 px-2.5 text-right text-emerald-700">Total Perçu</th>
-                                    <th className="py-2 px-2.5 text-right text-rose-700">Reste</th>
-                                    <th className="py-2 px-2.5 text-center">Statut</th>
+                                    <th className="py-2 px-2.5 text-right font-bold text-indigo-900 dark:text-indigo-200">Part Assurance</th>
                                     <th className="py-2 px-2.5 text-right">Actions</th>
                                   </tr>
                                 </thead>
@@ -434,6 +457,8 @@ export const FacturesGroupedTable: React.FC<FacturesGroupedTableProps> = ({
                                     const pers = getPersonne(p.personneId);
                                     const pNom = p.nomAgent || pers?.nomPrenom || p.matricule || 'Assuré';
                                     const pMat = pers?.matricule || p.matricule || '-';
+                                    const pId = p.id || `prest-${pIdx}`;
+                                    const isProcessed = !!checkedPrestations[pId];
                                     
                                     const fin = getPrestationFinancials ? getPrestationFinancials(p) : {
                                       tot: p.montantTotal ?? p.totalPrestation ?? 0,
@@ -448,14 +473,34 @@ export const FacturesGroupedTable: React.FC<FacturesGroupedTableProps> = ({
                                     const pTot = fin.tot;
                                     const pPart = fin.mod;
                                     const pRemb = fin.remb;
-                                    const pPaye = fin.totalPaye;
                                     const pReste = fin.resteAPayer;
-                                    const pStatut = fin.statut;
 
                                     return (
-                                      <tr key={p.id || pIdx} className="hover:bg-surface-muted/80">
+                                      <tr 
+                                        key={pId} 
+                                        onDoubleClick={(e) => {
+                                          e.stopPropagation();
+                                          if (onEditPrestation) onEditPrestation(p);
+                                        }}
+                                        className={`transition cursor-pointer select-none ${
+                                          isProcessed ? 'bg-emerald-50/70 hover:bg-emerald-100/70 border-l-4 border-emerald-500' : 'hover:bg-surface-muted/80'
+                                        }`}
+                                        title={isProcessed ? "Dossier coché / traité — Double-clic : modifier la prescription" : "Double-clic : modifier la prescription — ajouter une vente omise ou ordonnance externe"}
+                                      >
+                                        <td className="py-2 px-2 text-center" onClick={(e) => e.stopPropagation()}>
+                                          <input 
+                                            type="checkbox"
+                                            checked={isProcessed}
+                                            onChange={() => togglePrestationChecked(pId)}
+                                            className="w-4 h-4 rounded border-emerald-400 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                                            title={isProcessed ? "Décocher" : "Marquer comme traité (sauvegardé contre coupure élec)"}
+                                          />
+                                        </td>
                                         <td className="py-2 px-2.5">
-                                          <div className="font-bold text-ink-strong">{pNom}</div>
+                                          <div className={`font-bold ${isProcessed ? 'text-emerald-950' : 'text-ink-strong'}`}>
+                                            {pNom}
+                                            {isProcessed && <span className="ml-1.5 text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded-full">Traité</span>}
+                                          </div>
                                           <div className="text-[10px] text-ink-muted font-mono">Mat: {pMat}</div>
                                         </td>
                                         <td className="py-2 px-2.5 text-ink-secondary whitespace-nowrap">
@@ -464,38 +509,14 @@ export const FacturesGroupedTable: React.FC<FacturesGroupedTableProps> = ({
                                         <td className="py-2 px-2.5 text-ink-secondary">
                                           {p.sousSociete || '-'}
                                         </td>
-                                        <td className="py-2 px-2.5 text-center font-mono">
-                                          {p.lignes?.length || 1}
-                                        </td>
                                         <td className="py-2 px-2.5 text-right font-mono text-ink-strong">
                                           {formatMoney(pTot)}
                                         </td>
                                         <td className="py-2 px-2.5 text-right font-mono text-amber-700">
                                           {formatMoney(pPart)}
                                         </td>
-                                        <td className="py-2 px-2.5 text-right font-mono font-bold text-ink-strong">
+                                        <td className="py-2 px-2.5 text-right font-mono font-bold text-indigo-700 dark:text-indigo-300">
                                           {formatMoney(pRemb)}
-                                        </td>
-                                        <td className="py-2 px-2.5 text-right font-mono font-bold text-emerald-700">
-                                          {formatMoney(pPaye)}
-                                        </td>
-                                        <td className="py-2 px-2.5 text-right font-mono font-bold">
-                                          <span className={pReste > 0 ? 'text-rose-700' : 'text-ink-faint'}>
-                                            {formatMoney(pReste)}
-                                          </span>
-                                        </td>
-                                        <td className="py-2 px-2.5 text-center">
-                                          <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-bold ${
-                                            pStatut === 'Payé'
-                                              ? 'bg-emerald-100 text-emerald-800'
-                                              : pStatut === 'Partiellement payé'
-                                              ? 'bg-sky-100 text-sky-800'
-                                              : pStatut === 'Rejeté'
-                                              ? 'bg-rose-100 text-rose-800'
-                                              : 'bg-amber-100 text-amber-800'
-                                          }`}>
-                                            {pStatut}
-                                          </span>
                                         </td>
                                         <td className="py-2 px-2.5 text-right whitespace-nowrap">
                                           <div className="flex items-center justify-end space-x-1" onClick={(e) => e.stopPropagation()}>

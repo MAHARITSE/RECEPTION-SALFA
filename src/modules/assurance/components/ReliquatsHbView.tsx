@@ -180,10 +180,8 @@ export function ReliquatsHbView({ state, setState }: Props) {
             </div>
             <div>
               <h2 className="text-lg font-bold text-ink-strong">Bloc &amp; Hospitalisation — argent dû après autorisation de sortie</h2>
-              <p className="mt-0.5 max-w-3xl text-xs text-ink-muted">
-                Les patients sortis sur autorisation <strong>alors qu'il restait de l'argent au centre</strong>. Un dossier
-                sorti disparaît de la liste de la caisse : c'est ici qu'il reste visible jusqu'au dernier ariary. Un
-                encaissement saisi ici est ajouté au dossier de caisse (mêmes totaux, même ticket).
+              <p className="mt-0.5 text-xs text-ink-muted">
+                Suivi et recouvrement des soldes dus pour les patients sortis de bloc ou d'hospitalisation.
               </p>
             </div>
           </div>
@@ -396,8 +394,7 @@ export function ReliquatsHbView({ state, setState }: Props) {
               Imprimer le ticket de paiement (58 mm), comme à la caisse
             </label>
             <p className="mt-3 rounded-xl border border-line bg-surface-muted p-2 text-[10px] text-ink-muted">
-              Le règlement est ajouté au dossier de caisse du patient : la caisse et la pharmacie le voient
-              immédiatement, et la ligne quitte cette liste dès que le solde est atteint.
+              Mise à jour immédiate du dossier de caisse.
             </p>
             <div className="mt-4 flex justify-end gap-2">
               <button type="button" onClick={() => setEncaissement(null)}

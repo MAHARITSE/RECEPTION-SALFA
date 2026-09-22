@@ -11,9 +11,7 @@ import { RejetsView } from './components/RejetsView';
 import type { RejetDetail } from './components/RejetsView';
 import { HistoriqueView } from './components/HistoriqueView';
 import { SocietesView } from './components/SocietesView';
-import { PersonnesView } from './components/PersonnesView';
 import { FamillesView } from './components/FamillesView';
-import { EtatsView } from './components/EtatsView';
 import { EnteteView } from './components/EnteteView';
 import { readSharedTable, writeSharedTable, sharedTransactions, sharedSocietes, sharedPersonnes, sharedFamilles, fusionnerPrescription, annulerFusionPrescription } from './sharedData';
 import { getCurrentTimestamp } from './utils/formatters';
@@ -745,33 +743,11 @@ export default function ModuleSuiviAssurance({ state, setState }: Props) {
           />
         )}
 
-        {activeTab === 'personnes' && (
-          <PersonnesView
-            personnes={personnes}
-            societes={societes}
-            familles={familles}
-            selectedSocieteId={selectedSocieteId}
-            onSavePersonne={handleSavePersonne}
-            onDeletePersonne={handleDeletePersonne}
-          />
-        )}
-
         {activeTab === 'familles' && (
           <FamillesView
             familles={familles}
             onSaveFamille={handleSaveFamille}
             onDeleteFamille={handleDeleteFamille}
-          />
-        )}
-
-        {activeTab === 'etats' && (
-          <EtatsView
-            prestations={prestations}
-            paiements={paiements}
-            societes={societes}
-            personnes={personnes}
-            familles={familles}
-            selectedSocieteId={selectedSocieteId}
           />
         )}
 

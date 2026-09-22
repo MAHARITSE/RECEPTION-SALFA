@@ -1135,18 +1135,54 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
       };
     });
 
+    const isHospitalized = Boolean(consultForm.hospitalizeRequested);
+    const nowIso = new Date().toISOString();
+    let hospitNumeroFacture = '';
+    let socUpsert: ReturnType<typeof applySocieteUpsert> extends AppState ? any : any = undefined;
+    const existingHospit = isHospitalized
+      ? (state.hbRecords || []).find((r) => r.patientId === selectedPatientId && r.type === 'hospit' && !r.dischargedAt)
+      : undefined;
+
+    if (isHospitalized && !existingHospit) {
+      try {
+        const allocated = await allocateFactureNumbersAsync(state, [{
+          clientType: selectedPatient.clientType,
+          company: selectedPatient.company,
+          invoiceDate: nowIso,
+          prescriptionDate: nowIso,
+        }]);
+        hospitNumeroFacture = allocated[0]?.numeroFacture || '';
+        if (allocated[0]?.societeUpsert) {
+          socUpsert = allocated[0].societeUpsert;
+        }
+      } catch {
+        hospitNumeroFacture = `HOSP-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`;
+      }
+    }
+
+    const hbLinesFromPresc: HbLine[] = isHospitalized
+      ? lines.map((l) => ({
+          id: uuidv4(),
+          articleId: l.articleId,
+          articleName: l.articleName,
+          quantity: l.quantity,
+          unitPrice: l.unitPrice,
+          discount: l.discount,
+          prescribedAt: nowIso,
+          prescribedBy: state.currentUser?.name,
+          prescribedByUserId: state.currentUser?.id,
+        }))
+      : [];
+
     const consultation: Consultation = {
       id: consultId, patientId: selectedPatientId, doctorId: state.currentUser?.id || '', doctorName: state.currentUser?.name || '',
-      date: new Date().toISOString(), vitalSigns: { ...vitals }, visitReason: consultForm.visitReason, diagnosis: consultForm.diagnosis, notes: consultForm.notes,
+      date: nowIso, vitalSigns: { ...vitals }, visitReason: consultForm.visitReason, diagnosis: consultForm.diagnosis, notes: consultForm.notes,
       prescriptions: lines.map((l) => ({ ...l })), labRequests: newLabRequests, echoRequests: newEchoRequests,
       hospitalizeRequested: consultForm.hospitalizeRequested, surgeryRequested: consultForm.surgeryRequested, isEmergency: consultForm.isEmergency,
     };
 
-    // RÈGLE MÉTIER : TOUT patient vu par le médecin (client comptoir OU société)
-    // est envoyé à la caisse pour validation du paiement. Les clients société ne
-    // paient pas en espèces : la caisse valide un CRÉDIT SOCIÉTÉ (prise en charge).
-    // Le patient sort en même temps de la file d'attente du médecin.
-    const nextStatus = 'consulted_awaiting_payment' as const;
+    // Si le patient est admis directement en hospitalisation, il ne passe pas à l'attente caisse
+    const nextStatus = isHospitalized ? ('completed' as const) : ('consulted_awaiting_payment' as const);
     const grandTotal = totalPres + labTotal + echoTotal;
 
     setState((prev) => {
@@ -1154,91 +1190,143 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
         ...prev,
         consultations: [...prev.consultations, consultation],
         patients: prev.patients.map((p) => p.id === selectedPatientId
-          ? { ...p, status: nextStatus, lastVisitAt: new Date().toISOString() }
+          ? { ...p, status: nextStatus, lastVisitAt: nowIso }
           : p),
       };
-      if (consultInvoiceId) {
-        const medItems: InvoiceItem[] = lines.map((l) => {
-          const discount = Math.max(0, Math.min(100, l.discount || 0));
-          const unitPrice = l.unitPrice || 0;
-          const qte = l.quantity || 1;
-          const amount = roundTo2(qte * unitPrice * (1 - discount / 100));
-          return {
-            code: l.articleId || 'MED',
-            description: l.articleName,
-            quantity: qte,
-            unitPrice,
-            amount,
-            category: 'pharmacy' as const,
-            discount: discount > 0 ? discount : undefined,
-          };
-        });
-        const labItems: InvoiceItem[] = newLabRequests.map((lr) => {
-          const discount = lr.discount || 0;
-          const price = lr.price || 0;
-          const unitPrice = discount > 0 ? roundTo2(price / (1 - discount / 100)) : price;
-          return {
-            code: lr.code,
-            description: `${lr.examType}${lr.urgent ? ' (Urgent)' : ''}`,
-            quantity: 1,
-            unitPrice,
-            amount: price,
-            category: 'lab' as const,
-            discount: discount > 0 ? discount : undefined,
-          };
-        });
-        const echoItems: InvoiceItem[] = newEchoRequests.map((er) => {
-          const discount = er.discount || 0;
-          const price = er.price || 0;
-          const unitPrice = discount > 0 ? roundTo2(price / (1 - discount / 100)) : price;
-          return {
-            code: 'ECHO',
-            description: `${er.examType}${er.urgent ? ' (Urgent)' : ''}`,
-            quantity: 1,
-            unitPrice,
-            amount: price,
-            category: 'echo' as const,
-            discount: discount > 0 ? discount : undefined,
-          };
-        });
-        const allItems: InvoiceItem[] = [...medItems, ...labItems, ...echoItems];
-        const consultTotalAmt = roundTo2(allItems.reduce((s, i) => s + i.amount, 0));
-        const consultInv: Invoice = {
-          id: consultInvoiceId,
-          patientId: selectedPatientId,
-          consultationId: consultation.id,
-          clientType: ct,
-          items: allItems,
-          totalAmount: consultTotalAmt,
-          patientCharge: consultTotalAmt,
-          numeroFacture: undefined,
-          status: 'pending' as const,
-          createdAt: new Date().toISOString(),
-          isExternal: ct === 'externe',
-        };
-        next = {
-          ...next,
-          labRequests: [...next.labRequests, ...newLabRequests],
-          invoices: [...next.invoices, consultInv],
-        };
-        if (newLabRequests.length > 0) {
-          addAuditLog(next, 'DEMANDE_ANALYSE', `${newLabRequests.map((r) => r.examType).join(', ')} — ${formatAr(labTotal)} (${selectedPatient.dossier})`, selectedPatientId);
-          addJourneyEvent(next, { patientId: selectedPatientId, department: 'consultation', action: "Demande d'analyse", status: 'analyses_pending', details: `${newLabRequests.map((r) => r.examType).join(', ')} — à facturer (caisse)`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId: consultation.id });
-        }
-        if (newEchoRequests.length > 0) {
-          addAuditLog(next, 'DEMANDE_ECHO', `${newEchoRequests.map((r) => r.examType).join(', ')} — ${formatAr(echoTotal)} (${selectedPatient.dossier})`, selectedPatientId);
-          addJourneyEvent(next, { patientId: selectedPatientId, department: 'imagerie', action: "Demande d'échographie", status: nextStatus, details: `${newEchoRequests.map((r) => r.examType).join(', ')} — à facturer (caisse)`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId: consultation.id });
-        }
+
+      if (socUpsert) {
+        next = applySocieteUpsert(next, socUpsert);
       }
 
-      addAuditLog(next, 'CONSULTATION', `${selectedPatient.lastName} — ${formatAr(grandTotal)}${lines.length === 0 ? ' (sans ordonnance)' : ''} — envoyé à la caisse${ct === 'societe' ? ' (crédit société)' : ''}`, selectedPatientId);
-      addJourneyEvent(next, { patientId: selectedPatientId, department: 'consultation', action: 'Consultation terminée', status: nextStatus, details: `${formatAr(grandTotal)} — ${consultForm.diagnosis} — envoyé à la caisse pour validation du paiement${ct === 'societe' ? ' (crédit société)' : ''}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId: consultation.id });
+      if (isHospitalized) {
+        if (existingHospit) {
+          next = {
+            ...next,
+            hbRecords: (next.hbRecords || []).map((r) =>
+              r.id === existingHospit.id
+                ? { ...r, lines: [...r.lines, ...hbLinesFromPresc] }
+                : r
+            ),
+          };
+        } else {
+          const newHbRecord: HbRecord = {
+            id: uuidv4(),
+            patientId: selectedPatient.id,
+            patientName: `${selectedPatient.lastName} ${selectedPatient.firstName}`,
+            clientType: selectedPatient.clientType,
+            company: selectedPatient.company,
+            subCompany: selectedPatient.subCompany,
+            numeroFacture: hospitNumeroFacture,
+            type: 'hospit',
+            lines: hbLinesFromPresc,
+            payments: [],
+            openedAt: nowIso,
+            openedBy: prev.currentUser?.name,
+            openedByUserId: prev.currentUser?.id,
+          };
+          next = {
+            ...next,
+            hbRecords: [...(next.hbRecords || []), newHbRecord],
+          };
+        }
+
+        if (newLabRequests.length > 0) {
+          next = { ...next, labRequests: [...next.labRequests, ...newLabRequests] };
+        }
+
+        const numAff = hospitNumeroFacture || existingHospit?.numeroFacture || '';
+        addAuditLog(next, 'ADMISSION_HOSPITALISATION', `${selectedPatient.lastName} — ${consultForm.diagnosis} — admis directement en hospitalisation${numAff ? ` (dossier ${numAff})` : ''}`, selectedPatientId);
+        addJourneyEvent(next, { patientId: selectedPatientId, department: 'consultation', action: 'Admission en hospitalisation', status: nextStatus, details: `Dossier ${numAff} — admis directement en hospitalisation`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId: consultation.id });
+      } else {
+        if (consultInvoiceId) {
+          const medItems: InvoiceItem[] = lines.map((l) => {
+            const discount = Math.max(0, Math.min(100, l.discount || 0));
+            const unitPrice = l.unitPrice || 0;
+            const qte = l.quantity || 1;
+            const amount = roundTo2(qte * unitPrice * (1 - discount / 100));
+            return {
+              code: l.articleId || 'MED',
+              description: l.articleName,
+              quantity: qte,
+              unitPrice,
+              amount,
+              category: 'pharmacy' as const,
+              discount: discount > 0 ? discount : undefined,
+            };
+          });
+          const labItems: InvoiceItem[] = newLabRequests.map((lr) => {
+            const discount = lr.discount || 0;
+            const price = lr.price || 0;
+            const unitPrice = discount > 0 ? roundTo2(price / (1 - discount / 100)) : price;
+            return {
+              code: lr.code,
+              description: `${lr.examType}${lr.urgent ? ' (Urgent)' : ''}`,
+              quantity: 1,
+              unitPrice,
+              amount: price,
+              category: 'lab' as const,
+              discount: discount > 0 ? discount : undefined,
+            };
+          });
+          const echoItems: InvoiceItem[] = newEchoRequests.map((er) => {
+            const discount = er.discount || 0;
+            const price = er.price || 0;
+            const unitPrice = discount > 0 ? roundTo2(price / (1 - discount / 100)) : price;
+            return {
+              code: 'ECHO',
+              description: `${er.examType}${er.urgent ? ' (Urgent)' : ''}`,
+              quantity: 1,
+              unitPrice,
+              amount: price,
+              category: 'echo' as const,
+              discount: discount > 0 ? discount : undefined,
+            };
+          });
+          const allItems: InvoiceItem[] = [...medItems, ...labItems, ...echoItems];
+          const consultTotalAmt = roundTo2(allItems.reduce((s, i) => s + i.amount, 0));
+          const consultInv: Invoice = {
+            id: consultInvoiceId,
+            patientId: selectedPatientId,
+            consultationId: consultation.id,
+            clientType: ct,
+            items: allItems,
+            totalAmount: consultTotalAmt,
+            patientCharge: consultTotalAmt,
+            numeroFacture: undefined,
+            status: 'pending' as const,
+            createdAt: nowIso,
+            isExternal: ct === 'externe',
+          };
+          next = {
+            ...next,
+            labRequests: [...next.labRequests, ...newLabRequests],
+            invoices: [...next.invoices, consultInv],
+          };
+          if (newLabRequests.length > 0) {
+            addAuditLog(next, 'DEMANDE_ANALYSE', `${newLabRequests.map((r) => r.examType).join(', ')} — ${formatAr(labTotal)} (${selectedPatient.dossier})`, selectedPatientId);
+            addJourneyEvent(next, { patientId: selectedPatientId, department: 'consultation', action: "Demande d'analyse", status: 'analyses_pending', details: `${newLabRequests.map((r) => r.examType).join(', ')} — à facturer (caisse)`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId: consultation.id });
+          }
+          if (newEchoRequests.length > 0) {
+            addAuditLog(next, 'DEMANDE_ECHO', `${newEchoRequests.map((r) => r.examType).join(', ')} — ${formatAr(echoTotal)} (${selectedPatient.dossier})`, selectedPatientId);
+            addJourneyEvent(next, { patientId: selectedPatientId, department: 'imagerie', action: "Demande d'échographie", status: nextStatus, details: `${newEchoRequests.map((r) => r.examType).join(', ')} — à facturer (caisse)`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId: consultation.id });
+          }
+        }
+
+        addAuditLog(next, 'CONSULTATION', `${selectedPatient.lastName} — ${formatAr(grandTotal)}${lines.length === 0 ? ' (sans ordonnance)' : ''} — envoyé à la caisse${ct === 'societe' ? ' (crédit société)' : ''}`, selectedPatientId);
+        addJourneyEvent(next, { patientId: selectedPatientId, department: 'consultation', action: 'Consultation terminée', status: nextStatus, details: `${formatAr(grandTotal)} — ${consultForm.diagnosis} — envoyé à la caisse pour validation du paiement${ct === 'societe' ? ' (crédit société)' : ''}`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId: consultation.id });
+      }
+
       return next;
     });
 
     const savedPatientName = `${selectedPatient.lastName} ${selectedPatient.firstName}`;
     const savedDiagnosis = consultForm.diagnosis;
-    setToastFeedback(`✅ Diagnostic & consultation validés pour ${savedPatientName} (${savedDiagnosis}) ! Patient envoyé à la caisse${clientType === 'societe' ? ' — crédit société' : ''}.`);
+    if (isHospitalized) {
+      const numAff = hospitNumeroFacture || existingHospit?.numeroFacture || '';
+      setToastFeedback(`✅ ${savedPatientName} admis directement en Hospitalisation${numAff ? ` (dossier ${numAff})` : ''} !`);
+    } else {
+      setToastFeedback(`✅ Diagnostic & consultation validés pour ${savedPatientName} (${savedDiagnosis}) ! Patient envoyé à la caisse${clientType === 'societe' ? ' — crédit société' : ''}.`);
+    }
     setTimeout(() => setToastFeedback(null), 6000);
 
     setSelectedPatientId(null); setConsultForm({ visitReason: '', diagnosis: '', notes: '', isEmergency: false, hospitalizeRequested: false, surgeryRequested: false });
@@ -1460,21 +1548,6 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
       {/* BLOC & HOSPITALISATION — le médecin prescrit les actes et articles */}
       {view === 'hospit_bloc' && (
         <div className="space-y-3">
-          <div className="bg-surface rounded-xl shadow-sm border p-3 flex flex-wrap items-center justify-between gap-2">
-            <h3 className="font-semibold flex items-center gap-2 text-ink-strong">
-              <Building2 className="w-5 h-5 text-rose-600 dark:text-rose-400" /> Bloc & Hospitalisation
-              <span className="text-xs text-ink-muted font-normal">— prescriptions du médecin (liste partagée avec la caisse)</span>
-            </h3>
-            <div className="flex items-center gap-2">
-              <button onClick={() => { setHbNewDossierOpen(v => !v); setHbNewDossierSearch(''); }}
-                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-sm font-semibold cursor-pointer flex items-center gap-1.5"
-                title="Admettre un patient en hospitalisation ou au bloc : un dossier (avec son numéro) est ouvert, puis vous pouvez y prescrire">
-                <UserPlus className="w-4 h-4" /> Ouvrir un dossier
-              </button>
-              <button onClick={() => { setView('queue'); setHbPrescritRecordId(null); }} className="px-3 py-1 bg-surface-active hover:bg-line-strong rounded text-sm cursor-pointer">← File</button>
-            </div>
-          </div>
-
           {/* Ouverture d'un dossier (admission) — le patient peut ensuite être prescrit */}
           {hbNewDossierOpen && (
             <div className="bg-surface rounded-xl shadow-sm border border-rose-200 dark:border-rose-500/25 p-3 space-y-2">
@@ -1508,13 +1581,13 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
             </div>
           )}
 
-          <div className="flex flex-wrap items-center gap-2">
-            {([['hospit', '🏨 Hospitalisation'], ['bloc', '🏥 Bloc']] as const).map(([f, lbl]) => (
-              <button key={f} onClick={() => setHbFiltre(f)} className={`px-3 py-1.5 rounded-lg text-sm border cursor-pointer ${hbFiltre === f ? 'bg-rose-600 text-white border-rose-600' : 'bg-surface border-line-strong text-ink-secondary hover:bg-surface-hover'}`}>{lbl}</button>
-            ))}
-            <button onClick={() => setHbAfficherSortis(v => !v)} className="ml-auto px-3 py-1.5 rounded-lg text-sm border cursor-pointer bg-surface border-line-strong text-ink-secondary hover:bg-surface-hover">
-              {hbAfficherSortis ? '🙈 Masquer les sortis' : `👁 Sortis (${hbTous.filter(h => h.dischargedAt).length})`}
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              {([['hospit', '🏨 Hospitalisation'], ['bloc', '🏥 Bloc']] as const).map(([f, lbl]) => (
+                <button key={f} onClick={() => setHbFiltre(f)} className={`px-3 py-1.5 rounded-lg text-sm border cursor-pointer ${hbFiltre === f ? 'bg-rose-600 text-white border-rose-600' : 'bg-surface border-line-strong text-ink-secondary hover:bg-surface-hover'}`}>{lbl}</button>
+              ))}
+            </div>
+            <button onClick={() => { setView('queue'); setHbPrescritRecordId(null); }} className="px-3 py-1.5 bg-surface-active hover:bg-line-strong rounded-lg text-sm border border-line cursor-pointer">← File</button>
           </div>
 
           {hbFiltres.length === 0 ? (
@@ -2015,10 +2088,15 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
                 <input type="text" value={consultForm.visitReason} onChange={(e)=>setConsultForm({...consultForm,visitReason:e.target.value})} className="w-full px-2 py-0.5 border rounded text-xs outline-none" placeholder="Motif (optionnel)" />
                 <textarea ref={diagnosisRef} value={consultForm.diagnosis} onChange={(e)=>setConsultForm({...consultForm,diagnosis:e.target.value})} className="w-full px-2 py-0.5 border border-red-300 dark:border-red-500/40 rounded text-xs outline-none" rows={2} placeholder="Diagnostic * (obligatoire)" />
                 <textarea value={consultForm.notes} onChange={(e)=>setConsultForm({...consultForm,notes:e.target.value})} className="w-full px-2 py-0.5 border rounded text-xs outline-none" rows={1} placeholder="Notes" />
-                <div className="flex gap-3 text-[10px]">
-                  <label className="cursor-pointer"><input type="checkbox" checked={consultForm.isEmergency} onChange={(e)=>setConsultForm({...consultForm,isEmergency:e.target.checked})} /> <span className="text-red-600 dark:text-red-400">🚨 Urgence</span></label>
-                  <label className="cursor-pointer"><input type="checkbox" checked={consultForm.hospitalizeRequested} onChange={(e)=>setConsultForm({...consultForm,hospitalizeRequested:e.target.checked})} /> Hospit.</label>
-                  <label className="cursor-pointer"><input type="checkbox" checked={consultForm.surgeryRequested} onChange={(e)=>setConsultForm({...consultForm,surgeryRequested:e.target.checked})} /> <span className="text-blue-600 dark:text-cyan-400">🏥 Bloc</span></label>
+                <div className="flex gap-4 text-xs pt-0.5">
+                  <label className="cursor-pointer flex items-center gap-1.5 font-medium text-red-600 dark:text-red-400">
+                    <input type="checkbox" checked={consultForm.isEmergency} onChange={(e)=>setConsultForm({...consultForm,isEmergency:e.target.checked})} className="rounded text-red-600 cursor-pointer" />
+                    <span>🚨 Urgence</span>
+                  </label>
+                  <label className="cursor-pointer flex items-center gap-1.5 font-medium text-rose-600 dark:text-rose-400">
+                    <input type="checkbox" checked={consultForm.hospitalizeRequested} onChange={(e)=>setConsultForm({...consultForm,hospitalizeRequested:e.target.checked})} className="rounded text-rose-600 cursor-pointer" />
+                    <span>🏥 Hospitalisation</span>
+                  </label>
                 </div>
               </div>
             </div>

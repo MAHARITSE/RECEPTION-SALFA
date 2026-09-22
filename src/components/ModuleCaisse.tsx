@@ -509,7 +509,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     // (ordonnance médicaments, analyses labo, échographies) fusionnent en UNE SEULE pièce de caisse.
     for (const c of consults) {
       consultIdsHandled.add(c.id);
-      if (c.facturationRetiree) continue;
+      if (c.facturationRetiree || c.hospitalizeRequested) continue;
 
       // Factures en attente rattachées à cette consultation (créées en bloc ou séparément)
       const invs = services.filter(i => i.consultationId === c.id);
@@ -633,7 +633,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       // ou retirer une ligne voisine (même la dernière facture en attente) ne
       // doit JAMAIS faire disparaître les autres prescriptions de la personne.
       state.consultations.some(c => c.patientId === p.id && (c.prescriptions?.length || 0) > 0
-        && !c.facturationRetiree && !consultationPharmacyPaidSur(state, c))
+        && !c.facturationRetiree && !c.hospitalizeRequested && !consultationPharmacyPaidSur(state, c))
     )
     .sort((a, b) => {
       const da = new Date((a.lastVisitAt || a.registeredAt || 0) as string | number).getTime() || 0;
@@ -2484,7 +2484,6 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                     </table>
                   </div>
                 </div>
-                <p className="text-[10px] text-purple-700/80 dark:text-purple-300/80 italic text-center">Client externe : prix catalogue « externe » — <strong>jamais de remise</strong> (la remise est réservée aux clients comptoir comme réduction commerciale, ou accordée par contrat à certaines sociétés).</p>
                 <button onClick={extPay} disabled={extLines.length === 0} className="w-full py-3 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 disabled:opacity-40 cursor-pointer flex items-center justify-center gap-2"><CreditCard className="w-5 h-5" /> Encaisser {formatAr(extTotal)}</button>
 
               </div>

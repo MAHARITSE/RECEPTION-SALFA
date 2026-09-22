@@ -287,10 +287,6 @@ export function ComptoirExterneView({ state, setState }: Props) {
         </span>
       </label>
     </div>
-    <p className="flex items-start gap-2 rounded-xl border border-line bg-surface-muted p-3 text-sm text-ink-secondary">
-      <Info className="w-4 h-4 shrink-0 mt-0.5 text-accent" />
-      <span>Clients <strong>comptoir</strong> et <strong>externes</strong> regroupés ici : leur règlement est encaissé au moment de la validation à la Caisse — aucun suivi de règlement n'est nécessaire. Cet onglet sert à l'archivage et à l'édition des factures mensuelles.</span>
-    </p>
     {articleIssues.length > 0 && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
       {articleIssues.length} article(s) ne peuvent pas être rattachés automatiquement à une famille valide. Aucun classement arbitraire n’a été appliqué.
       <ul className="max-h-48 overflow-auto">{articleIssues.map(a => <li key={a.id}>{a.name} ({a.id}) — {a.reason}{a.family ? ` : ${a.family}` : ''}</li>)}</ul>
@@ -322,7 +318,7 @@ export function ComptoirExterneView({ state, setState }: Props) {
       </table>{!groups.length && <p className="p-6 text-center text-sm text-ink-muted">Aucune facture pour cette sélection.</p>}</div>
     </div> : <div data-testid="comptoir-detail-view">
       {renderDossiersTable()}
-      <p className="text-xs text-ink-muted">Double-cliquez sur le nom d'un client pour ouvrir la liste complète de ses factures et les imprimer.</p>
+      <p className="text-xs text-ink-muted">Double-cliquez pour modifier.</p>
     </div>}
 
     {/* ===== MODAL : liste complète des factures d'un client (double-clic sur son nom) ===== */}
@@ -357,8 +353,7 @@ export function ComptoirExterneView({ state, setState }: Props) {
                     className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink transition cursor-pointer"><X className="w-3.5 h-3.5" /></button>}
                 </span>
               </div>
-              <p className="mb-2 text-[11px] text-ink-muted flex items-center gap-1.5"><Printer size={13} className="text-indigo-500" /> Cochez plusieurs factures puis « Imprimer la sélection — 2 par page A4 » pour économiser le papier (2 factures côte à côte par feuille A4 paysage, <strong>chacune avec son propre en-tête</strong>, limité à sa moitié de feuille), ou « Fusionner » pour n'en faire qu'une seule facture, numérotée avec la <strong>plus ancienne</strong> des factures cochées.</p>
-              <p className="mb-2 text-[11px] text-ink-muted flex items-center gap-1.5"><FilePlus2 size={13} className="text-emerald-600" /> <span><strong>Double-cliquez sur un n° facture</strong> (ou 🧾) pour ouvrir sa prescription et y saisir, comme dans les sociétés, les <strong>ventes omises</strong> (− stock pharmacie) ou les <strong>ordonnances externes</strong> remboursées par l'hôpital (sans stock).</span></p>
+              <p className="mb-2 text-xs text-ink-muted flex items-center gap-1.5"><Info size={13} className="text-indigo-500" /> Double-cliquez pour modifier.</p>
               <div className="overflow-x-auto rounded-xl border border-line">
                 <table className="w-full text-left text-xs" aria-label={`Factures de ${nom}`}>
                   <thead className="bg-surface-muted text-ink-secondary"><tr>

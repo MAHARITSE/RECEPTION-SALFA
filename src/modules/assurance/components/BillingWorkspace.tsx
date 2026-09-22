@@ -37,6 +37,28 @@ export function BillingWorkspace({ state, setState, reliquatsAHuiter = 0, onOuvr
   const [societeDetail, setSocieteDetail] = useState<MonthlyScope | null>(null);
   // Double-clic sur le nom → édition de la prescription (omissions / ordonnances externes)
   const [prescription, setPrescription] = useState<Prestation | null>(null);
+
+  // Suivi des personnes traitées par la facturière (conservé en mémoire locale contre les coupures d'électricité)
+  const [checkedPrestations, setCheckedPrestations] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('facturation_checked_prestations');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const togglePrestationChecked = (id: string) => {
+    setCheckedPrestations((prev: Record<string, boolean>) => {
+      const next = { ...prev, [id]: !prev[id] };
+      try {
+        localStorage.setItem('facturation_checked_prestations', JSON.stringify(next));
+      } catch (e) {
+        console.error(e);
+      }
+      return next;
+    });
+  };
   // Fusion : prescription Caisse à absorber + cible choisie dans le modal
   const [fusionSource, setFusionSource] = useState<Prestation | null>(null);
   // Règlement « payeur global » : facture mensuelle (mois + société) à régler
@@ -157,18 +179,6 @@ export function BillingWorkspace({ state, setState, reliquatsAHuiter = 0, onOuvr
           <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-surface-active text-ink font-bold">{groups.length}</span>
         </button>
       </div>
-      {onOuvrirReliquats && (
-        <button type="button" onClick={onOuvrirReliquats}
-          className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition cursor-pointer ${
-            reliquatsAHuiter
-              ? 'border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200'
-              : 'border-line bg-surface text-ink-muted hover:bg-surface-muted'}`}
-          title="Patients sortis d'hospitalisation ou de bloc alors qu'il reste une somme due au centre">
-          <Banknote className="w-3.5 h-3.5" />
-          <span>Reliquats Bloc &amp; Hospit.</span>
-          <span className={`px-1.5 py-0.5 text-[10px] rounded-full font-bold ${reliquatsAHuiter ? 'bg-amber-200 text-amber-900 dark:bg-amber-500/25 dark:text-amber-100' : 'bg-surface-hover text-ink-faint'}`}>{reliquatsAHuiter}</span>
-        </button>
-      )}
     </div>
     {articleIssues.length > 0 && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
       {articleIssues.length} article(s) ne peuvent pas être rattachés automatiquement à une famille valide. Aucun classement arbitraire n’a été appliqué.
@@ -242,13 +252,14 @@ export function BillingWorkspace({ state, setState, reliquatsAHuiter = 0, onOuvr
               </div>
               <button onClick={() => setSocieteDetail(null)} aria-label="Fermer" className="p-2 rounded-xl text-ink-faint hover:text-ink hover:bg-surface-hover transition cursor-pointer"><X className="w-5 h-5" /></button>
             </div>
-            <p className="text-xs text-ink-muted"><strong>Double-cliquez sur le nom</strong> d'un assuré pour ouvrir sa prescription et y saisir les omissions ou les ordonnances externes remboursées par l'hôpital.</p>
+            <p className="text-xs text-ink-muted">Double-cliquez pour modifier.</p>
             <div className="overflow-x-auto rounded-xl border border-line">
               <table className="w-full text-left text-xs" aria-label={`Prescriptions de ${destinataire}`}>
                 <thead className="bg-surface-muted text-ink-secondary">
                   <tr>
-                    {['Date', 'Facture', 'Assuré / Client', 'Sous-soc.', 'Actes', 'Brut', 'À rembourser', 'Payé', 'Solde', 'Statut', 'Actions'].map(label => (
-                      <th className={`p-2.5 ${label === 'Actions' ? 'text-right' : ''}`} key={label}>{label}</th>
+                    <th className="p-2.5 text-center w-8" title="Cocher pour marquer la personne comme traitée (conservé en mémoire contre les coupures d'électricité)">Traitée</th>
+                    {['Date', 'Facture', 'Assuré / Client', 'Sous-soc.', 'Montant Brut', 'Ticket modérateur / Remise', 'Part Assurance', 'Actions'].map(label => (
+                      <th className={`p-2.5 ${label === 'Actions' ? 'text-right' : label.includes('Montant') || label.includes('Ticket') || label.includes('Part') ? 'text-right' : ''}`} key={label}>{label}</th>
                     ))}
                   </tr>
                 </thead>
@@ -256,11 +267,21 @@ export function BillingWorkspace({ state, setState, reliquatsAHuiter = 0, onOuvr
                   {lignes.map(d => {
                     const p = prestationDe(d.id);
                     const nbAjouts = p ? ajoutsDe(p) : 0;
-                    const solde = Math.max(0, d.payable - d.paid - d.rejected);
+                    const mod = Math.max(0, d.total - d.payable);
+                    const isProcessed = !!checkedPrestations[d.id];
                     return (
-                      <tr key={d.id} className={`border-t border-line hover:bg-surface-hover${p ? ' cursor-pointer' : ''}`}
-                          title={p ? 'Double-clic : ouvrir la prescription' : undefined}
+                      <tr key={d.id} className={`border-t border-line transition ${isProcessed ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-l-4 border-emerald-500 font-medium' : 'hover:bg-surface-hover'}${p ? ' cursor-pointer' : ''}`}
+                          title={isProcessed ? "Dossier coché / traité — Double-clic : ouvrir la prescription" : (p ? 'Double-clic : ouvrir la prescription' : undefined)}
                           onDoubleClick={() => { if (!p) return; setPrescription(p); }}>
+                        <td className="p-2.5 text-center" onClick={(e) => e.stopPropagation()}>
+                          <input 
+                            type="checkbox"
+                            checked={isProcessed}
+                            onChange={() => togglePrestationChecked(d.id)}
+                            className="w-4 h-4 rounded border-emerald-400 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                            title={isProcessed ? "Décocher" : "Marquer comme traité (sauvegardé contre coupure élec)"}
+                          />
+                        </td>
                         <td className="p-2.5 whitespace-nowrap">{formatDate(d.date)}</td>
                         <td className="p-2.5 font-mono font-semibold">{d.number}</td>
                         <td className={`p-2.5 ${p ? 'font-semibold text-indigo-700 dark:text-indigo-300 underline decoration-dotted underline-offset-2' : ''}`}>
@@ -268,12 +289,9 @@ export function BillingWorkspace({ state, setState, reliquatsAHuiter = 0, onOuvr
                           {nbAjouts > 0 && <span className="ml-1.5 inline-block px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300 text-[10px] font-bold" title="Lignes ajoutées par le facturier">+{nbAjouts}</span>}
                         </td>
                         <td className="p-2.5">{d.subCompany || '—'}</td>
-                        <td className="p-2.5">{d.items.length} acte(s)</td>
-                        <td className="p-2.5 whitespace-nowrap font-mono">{formatMoney(d.total)}</td>
-                        <td className="p-2.5 whitespace-nowrap font-mono">{formatMoney(d.payable)}</td>
-                        <td className="p-2.5 whitespace-nowrap font-mono">{formatMoney(d.paid)}</td>
-                        <td className="p-2.5 whitespace-nowrap font-mono">{formatMoney(solde)}</td>
-                        <td className="p-2.5">{p?.statut || '—'}</td>
+                        <td className="p-2.5 whitespace-nowrap font-mono text-right">{formatMoney(d.total)}</td>
+                        <td className="p-2.5 whitespace-nowrap font-mono text-right text-amber-700">{formatMoney(mod)}</td>
+                        <td className="p-2.5 whitespace-nowrap font-mono text-right font-bold text-indigo-700 dark:text-indigo-300">{formatMoney(d.payable)}</td>
                         <td className="p-2.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-end space-x-1">
                             <button
