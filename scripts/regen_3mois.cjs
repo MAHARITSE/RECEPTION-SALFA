@@ -48,8 +48,8 @@ const short = (id) => id.split('-')[0];
 const round50 = (n) => Math.round(n / 50) * 50;
 
 // ------------------------------------------------------------- fenêtre ----
-const START = new Date(Date.UTC(2026, 5, 17)); // 17/06/2026
-const END = new Date(Date.UTC(2026, 8, 16));   // 16/09/2026 (aujourd'hui)
+const START = new Date(Date.UTC(2026, 5, 23)); // 23/06/2026 (~3 mois)
+const END = new Date(Date.UTC(2026, 8, 22));   // 22/09/2026 (aujourd'hui)
 const days = [];
 for (let d = new Date(START); d <= END; d.setUTCDate(d.getUTCDate() + 1)) {
   if (d.getUTCDay() !== 0) days.push(new Date(d)); // fermé le dimanche
@@ -180,8 +180,17 @@ const patients = [], consultations = [], invoices = [], ventes = [], venteLines 
   companyBillingAccounts = [], journey = [], labRequests = [], auditLogs = [],
   notifications = [], messages = [];
 
-let factureSeq = 0;
-const numeroFacture = () => `FAC-2026-${String(++factureSeq).padStart(4, '0')}`;
+const dailyCounts = {};
+function numeroFacture(d) {
+  const dt = d ? new Date(d) : new Date();
+  const yy = String(dt.getUTCFullYear() % 100).padStart(2, '0');
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getUTCDate()).padStart(2, '0');
+  const key = `${yy}${mm}${dd}`;
+  dailyCounts[key] = (dailyCounts[key] || 0) + 1;
+  const seq = String(dailyCounts[key]).padStart(3, '0');
+  return `${yy}FA${mm}${dd}${seq}`;
+}
 
 const audit = (ts, u, action, details) => auditLogs.push({
   id: uuid(), timestamp: iso(ts), userId: u.id, userName: u.name, userRole: u.role, action, details,
@@ -327,8 +336,9 @@ function genererVisite(day) {
   // Facture Caisse
   const cashier = pick(cashiers);
   const invoiceId = uuid();
+  const numFac = numeroFacture(consultDate);
   const invoice = {
-    id: invoiceId, patientId: patient.id, consultationId: consultation.id,
+    id: invoiceId, numeroFacture: numFac, patientId: patient.id, consultationId: consultation.id,
     clientName, clientType, items, totalAmount,
     patientCharge: clientType === 'societe' ? 0 : totalAmount,
     status: 'pending', createdAt: iso(consultDate), isExternal: false,
@@ -361,7 +371,7 @@ function genererVisite(day) {
   const paidNow = invoice.status === 'paid' && clientType !== 'societe';
   const vente = {
     id: uuid(), patientId: patient.id, consultationId: consultation.id,
-    numeroFacture: numeroFacture(), type: typeVente, clientType, clientName,
+    numeroFacture: numFac, type: typeVente, clientType, clientName,
     // Toute vente est rattachée à une famille (celle de ses lignes).
     family: familleVente(items),
     subtotal: totalAmount, remisePct: 0, remiseMontant: 0,
@@ -482,15 +492,16 @@ function genererVenteExterne(day) {
   }
   const total = items.reduce((s, i) => s + i.amount, 0);
   const invoiceId = uuid();
+  const numFac = numeroFacture(createdAt);
   invoices.push({
-    id: invoiceId, patientId: undefined, consultationId: undefined,
+    id: invoiceId, numeroFacture: numFac, patientId: undefined, consultationId: undefined,
     clientName: extName, clientType: 'externe', items, totalAmount: total,
     patientCharge: total, status: 'paid', paidAt: iso(createdAt), paidBy: cashier.id,
     createdAt: iso(createdAt), isExternal: true,
   });
   const vente = {
     id: uuid(), patientId: undefined, consultationId: undefined,
-    numeroFacture: numeroFacture(), type: 'externe', clientType: 'externe', clientName: extName,
+    numeroFacture: numFac, type: 'externe', clientType: 'externe', clientName: extName,
     family: familleVente(items),
     subtotal: total, remisePct: 0, remiseMontant: 0, montantFacture: total,
     montantPaye: total, status: 'paid', isExterne: true, source: 'caisse',
@@ -540,16 +551,17 @@ function genererHb(day) {
   const total = lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
   const cashier = pick(cashiers);
   const paidAt = iso(addMin(openedAt, int(180, 420)));
+  const numFac = numeroFacture(openedAt);
   const hb = {
     id: uuid(), patientId: patient.id, patientName: `${patient.lastName} ${patient.firstName}`,
     clientType, company: patient.company, type, lines,
     payments: [{ amount: total, paidBy: cashier.name, date: paidAt, paidByUserId: cashier.id, receivedBy: 'caisse' }],
-    openedAt: iso(openedAt), openedBy: U_REC.name, openedByUserId: U_REC.id,
+    openedAt: iso(openedAt), openedBy: U_REC.name, openedByUserId: U_REC.id, numeroFacture: numFac,
   };
   hbRecords.push(hb);
   const vente = {
     id: uuid(), patientId: patient.id, consultationId: undefined,
-    numeroFacture: numeroFacture(), type: type === 'hospit' ? 'hospitalisation' : 'bloc',
+    numeroFacture: numFac, type: type === 'hospit' ? 'hospitalisation' : 'bloc',
     clientType, clientName: hb.patientName, company: patient.company,
     family: 'HOSP', // hospitalisation et bloc opératoire : famille Hospitalisation
     subtotal: total, remisePct: 0, remiseMontant: 0, montantFacture: total,
@@ -908,7 +920,7 @@ Object.assign(data, {
   movementLines, inventorySessions, pharmaDeliveryItems, pharmaDeliveryClosings,
   pharmaClosingCounter: pharmaDeliveryClosings.length,
   hbRecords, companyBillingAccounts, journey, labRequests, auditLogs,
-  notifications, messages, factureCounter: factureSeq,
+  notifications, messages, factureCounter: Object.values(dailyCounts).reduce((a, b) => a + b, 0),
 });
 
 fs.writeFileSync(FILE, JSON.stringify(data, null, 2));

@@ -127,8 +127,17 @@ const hbRecords = [];
 const cashClosings = [];
 const companyBillingAccounts = [];
 
-let facSeq = 0;
-const mkFac = () => `FAC-2026-${String(++facSeq).padStart(4, '0')}`;
+const dailyCounts = {};
+function mkDailyFac(dateStr) {
+  const d = new Date(dateStr);
+  const yy = String(d.getUTCFullYear() % 100).padStart(2, '0');
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  const key = `${yy}${mm}${dd}`;
+  dailyCounts[key] = (dailyCounts[key] || 0) + 1;
+  const seq = String(dailyCounts[key]).padStart(3, '0');
+  return `${yy}FA${mm}${dd}${seq}`;
+}
 let dossierSeq = 1000;
 const mkDossier = (ln) => `${ln.slice(0, 3).toUpperCase()}${++dossierSeq}`;
 
@@ -460,11 +469,12 @@ function episode(patient, date, opts) {
   addJourney(patient.id, date, 'consultation', 'Consultation médicale', 'in_consultation', { actorId: doc.id, actorName: doc.name, consultationId: consultId });
 
   /* -- facture (legacy) -- */
+  const numFac = mkDailyFac(date);
   const isSociete = ct === 'societe';
   const paid = opts.paymentState === 'paid';
   const paidAt = paid ? plusHours(date, 1) : undefined;
   const invoice = {
-    id: uuid(), patientId: patient.id, consultationId: consultId,
+    id: uuid(), numeroFacture: numFac, patientId: patient.id, consultationId: consultId,
     clientName: `${patient.lastName} ${patient.firstName}`, clientType: ct, items,
     totalAmount: total, patientCharge: isSociete ? 0 : total,
     status: paid ? 'paid' : 'pending',
@@ -481,7 +491,7 @@ function episode(patient, date, opts) {
     : items.some((i) => i.category === 'lab') ? 'labo'
       : items.some((i) => i.category === 'pharmacy') ? 'pharmacie' : 'consultation';
   ventes.push({
-    id: venteId, patientId: patient.id, consultationId: consultId, numeroFacture: mkFac(),
+    id: venteId, patientId: patient.id, consultationId: consultId, numeroFacture: numFac,
     type: vType, clientType: ct, clientName: `${patient.lastName} ${patient.firstName}`,
     company: patient.company, subtotal: total, remisePct: 0, remiseMontant: 0,
     montantFacture: total, montantPaye,
@@ -593,8 +603,9 @@ function venteExterne(date, paymentState) {
   }
   const total = items.reduce((s, i) => s + i.amount, 0);
   const paid = paymentState === 'paid';
+  const numFac = mkDailyFac(date);
   const invoice = {
-    id: uuid(), clientName, clientType: 'externe', items, totalAmount: total, patientCharge: total,
+    id: uuid(), numeroFacture: numFac, clientName, clientType: 'externe', items, totalAmount: total, patientCharge: total,
     status: paid ? 'paid' : 'pending', paidAt: paid ? date : undefined, paidBy: paid ? cashier.id : undefined,
     createdAt: date, isExternal: true,
   };
@@ -602,7 +613,7 @@ function venteExterne(date, paymentState) {
   const venteId = uuid();
   const montantPaye = paid ? total : paymentState === 'partiel' ? Math.round(total * 0.5) : 0;
   ventes.push({
-    id: venteId, numeroFacture: mkFac(), type: 'externe', clientType: 'externe', clientName,
+    id: venteId, numeroFacture: numFac, type: 'externe', clientType: 'externe', clientName,
     subtotal: total, remisePct: 0, remiseMontant: 0, montantFacture: total, montantPaye,
     status: paid ? 'paid' : montantPaye > 0 ? 'partiel' : 'pending',
     isExterne: true, source: 'caisse', dateVente: date, datePaiement: montantPaye ? date : undefined,
@@ -654,17 +665,18 @@ function hbDossier(patient, mo, day, type, paymentState) {
       payments.push({ amount: amt, paidBy: cashier.name, date: plusHours(openedAt, 6 + i * 24), paidByUserId: cashier.id, receivedBy: i % 2 ? 'pharmacie' : 'caisse' });
     }
   }
+  const numFac = mkDailyFac(openedAt);
   const rec = {
     id: uuid(), patientId: patient.id, patientName: `${patient.lastName} ${patient.firstName}`,
     clientType: patient.clientType, company: patient.company, type, lines, payments,
-    openedAt, openedBy: cashier.name, openedByUserId: cashier.id,
+    openedAt, openedBy: cashier.name, openedByUserId: cashier.id, numeroFacture: numFac,
   };
   hbRecords.push(rec);
 
   const venteId = uuid();
   const paye = payments.reduce((s, p) => s + p.amount, 0);
   ventes.push({
-    id: venteId, patientId: patient.id, numeroFacture: mkFac(),
+    id: venteId, patientId: patient.id, numeroFacture: numFac,
     type: type === 'hospit' ? 'hospitalisation' : 'bloc', clientType: patient.clientType,
     clientName: rec.patientName, company: patient.company,
     subtotal: total, remisePct: 0, remiseMontant: 0, montantFacture: total, montantPaye: paye,
@@ -953,7 +965,7 @@ const out = {
   auditLogs: auditLogs.sort((a, b) => b.timestamp.localeCompare(a.timestamp)),
   notifications: notifications.sort((a, b) => b.timestamp.localeCompare(a.timestamp)),
   messages,
-  factureCounter: facSeq,
+  factureCounter: Object.values(dailyCounts).reduce((a, b) => a + b, 0),
 };
 fs.writeFileSync(FILE, JSON.stringify(out, null, 2), 'utf-8');
 

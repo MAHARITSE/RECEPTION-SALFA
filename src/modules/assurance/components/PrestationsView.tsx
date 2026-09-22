@@ -1089,7 +1089,7 @@ export const PrestationsView: React.FC<PrestationsViewProps> = ({
         dates: Array.from(grp.dates),
         dateMin: grp.dateMin,
         dateMax: grp.dateMax,
-        prestations: grp.prestations,
+        prestations: [...grp.prestations].sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.numeroFacture || '').localeCompare(b.numeroFacture || '')),
         nombreAssures: grp.assuresSet.size,
         nombreActes: grp.nombreActes,
         totalFacture: grp.totalFacture,

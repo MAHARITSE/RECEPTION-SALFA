@@ -15,6 +15,7 @@ import { PaiementGlobalModal } from './billing/PaiementGlobalModal';
 import { societeEstPayeurGlobal } from '../utils/societeExclusions';
 import { natureRemisePour } from '../utils/natureRemise';
 import { formatDate } from '../utils/formatters';
+import { memePersonne, memeSociete } from '../sharedData';
 
 type Props = PrestationsViewProps & {
   state: AppState;
@@ -110,29 +111,24 @@ export function BillingWorkspace({ state, setState, reliquatsAHuiter = 0, onOuvr
   const prestationDe = (docId: string) => details.prestations.find(p => p.id === docId);
   const estCaisse = (p: Prestation) => !!(p.sourceInvoiceId || p.id.startsWith('caisse:'));
   const nbFusions = (p: Prestation) => p.fusionsAnnulees?.length || 0;
-  // La facture ABSORBÉE doit être celle de la MÊME personne (même assuré) :
-  // même personneId ; à défaut (données anciennes) même matricule.
-  const memePersonne = (a: Prestation, b: Prestation) =>
-    (!!a.personneId && a.personneId === b.personneId)
-    || (!a.personneId && !b.personneId && !!a.matricule && a.matricule === b.matricule);
-  // Les candidates sont proposées par DATE LA PLUS PROCHE de la prescription
-  // d'où l'on lance la fusion (écart absolu en jours, puis date décroissante).
-  const candidatesFusion = (source: Prestation) => details.prestations
-    .filter(p => p.id !== source.id && p.societeId === source.societeId && memePersonne(source, p))
-    .sort((a, b) => {
-      const tSource = new Date(source.date).getTime();
-      const ecart = (p: Prestation) => {
-        const t = new Date(p.date).getTime();
-        return Number.isNaN(t) || Number.isNaN(tSource) ? Number.POSITIVE_INFINITY : Math.abs(t - tSource);
-      };
-      return ecart(a) - ecart(b) || (b.date || '').localeCompare(a.date || '');
-    });
+  // Les candidates sont proposées avec le mois concerné en début (par date croissante).
+  const candidatesFusion = (source: Prestation) => {
+    const sourceMonth = (source.date || '').slice(0, 7);
+    return details.prestations
+      .filter(p => p.id !== source.id && memeSociete(source, p) && memePersonne(source, p))
+      .sort((a, b) => {
+        const aSameMonth = (a.date || '').slice(0, 7) === sourceMonth ? 0 : 1;
+        const bSameMonth = (b.date || '').slice(0, 7) === sourceMonth ? 0 : 1;
+        if (aSameMonth !== bSameMonth) return aSameMonth - bSameMonth;
+        return (a.date || '').localeCompare(b.date || '') || (a.numeroFacture || '').localeCompare(b.numeroFacture || '');
+      });
+  };
 
   function confirmerFusion(absorbeId: string, libelle?: string) {
     if (!fusionSource || !onFusionPrescription) return;
     onFusionPrescription(absorbeId, fusionSource.id, libelle); // l'absorbée disparaît, la source est conservée
     setFusionSource(null);
-    setSocieteDetail(null);
+    // On garde la fenêtre de traitement société ouverte pour poursuivre le travail
   }
   const ajoutsDe = (p: Prestation) => (p.lignes || []).filter(l => l.origine === 'omission' || l.origine === 'ordonnance_externe').length;
 
@@ -236,9 +232,10 @@ export function BillingWorkspace({ state, setState, reliquatsAHuiter = 0, onOuvr
     {/* ===== MODAL : vue détaillée du destinataire de la facture mensuelle ===== */}
     {societeDetail && (() => {
       const saved = snapshots.find(i => i.id === monthlyScopeId(societeDetail));
-      const lignes = saved?.documents ?? documentsForScope(documents, societeDetail);
+      const liveLignes = documentsForScope(documents, societeDetail);
+      const lignes = [...liveLignes].sort((a, b) => a.date.localeCompare(b.date) || a.number.localeCompare(b.number));
       const destinataire = saved?.recipient || (societeDetail.category === 'societe' ? state.companies.find(c => c.id === societeDetail.companyId)?.name || 'Société' : `Clients ${categoryLabels[societeDetail.category]}`);
-      const total = saved?.total ?? billingTotals(lignes).total;
+      const total = billingTotals(lignes).total;
       return (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200" onMouseDown={e => { if (e.target === e.currentTarget) setSocieteDetail(null); }}>
           <div className="bg-surface rounded-2xl max-w-5xl w-full p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto" role="dialog" aria-label={`Vue détaillée ${destinataire} ${societeDetail.month}`}>

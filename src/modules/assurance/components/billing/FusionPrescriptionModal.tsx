@@ -45,7 +45,7 @@ export function FusionPrescriptionModal({ source, candidates, societeNom, format
 
         <p className="text-xs text-ink-muted">
           La prescription <strong>absorbée</strong> (obligatoirement une facture du <strong>même assuré</strong>,
-          classée par date la plus proche) disparaît de la liste : ses lignes et ses montants s'ajoutent à la
+          proposée à partir du mois concerné par ordre chronologique) disparaît de la liste : ses lignes et ses montants s'ajoutent à la
           prescription <strong>conservée</strong>, qui garde son numéro de facture (les deux dates restent tracées dans
           le commentaire). L'opération est <strong>annulable</strong> : la prescription absorbée est restituée à l'identique.
         </p>
@@ -67,17 +67,44 @@ export function FusionPrescriptionModal({ source, candidates, societeNom, format
               <select aria-label="Prescription à absorber" value={cibleId} onChange={e => setCibleId(e.target.value)}
                 className="w-full p-2 border border-line-strong rounded-lg bg-surface text-xs cursor-pointer">
                 <option value="">— Choisir la facture à absorber —</option>
-                {candidates.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.numeroFacture} · {formatDate(p.date)} · {p.nomAgent || '—'} · {new Intl.NumberFormat('fr-FR').format(p.totalPrestation)}
-                  </option>
-                ))}
+                {(() => {
+                  const sourceMonth = (source.date || '').slice(0, 7);
+                  const sameMonthCandidates = candidates.filter(p => (p.date || '').slice(0, 7) === sourceMonth);
+                  const otherMonthCandidates = candidates.filter(p => (p.date || '').slice(0, 7) !== sourceMonth);
+
+                  if (sameMonthCandidates.length > 0 && otherMonthCandidates.length > 0) {
+                    return (
+                      <>
+                        <optgroup label="Mois concerné">
+                          {sameMonthCandidates.map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.numeroFacture} · {formatDate(p.date)} · {p.nomAgent || '—'} · {new Intl.NumberFormat('fr-FR').format(p.totalPrestation)} Ar
+                            </option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Autres mois">
+                          {otherMonthCandidates.map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.numeroFacture} · {formatDate(p.date)} · {p.nomAgent || '—'} · {new Intl.NumberFormat('fr-FR').format(p.totalPrestation)} Ar
+                            </option>
+                          ))}
+                        </optgroup>
+                      </>
+                    );
+                  }
+
+                  return candidates.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.numeroFacture} · {formatDate(p.date)} · {p.nomAgent || '—'} · {new Intl.NumberFormat('fr-FR').format(p.totalPrestation)} Ar
+                    </option>
+                  ));
+                })()}
               </select>
             ) : (
               <p className="text-xs text-ink-muted italic">Aucune autre facture de la même personne (même société) à fusionner.</p>
             )}
             {candidates.length > 0 && (
-              <p className="text-[10px] text-ink-faint -mt-0.5">Seules les factures du même assuré sont proposées — la date la plus proche de celle-ci est proposée en premier.</p>
+              <p className="text-[10px] text-ink-faint -mt-0.5">Seules les factures du même assuré sont proposées — le mois concerné est proposé en début de liste par ordre chronologique.</p>
             )}
             {cible && (
               <div className="text-xs text-ink space-y-0.5">

@@ -65,7 +65,7 @@ const MAX_OCTETS = 600000;
 
 const lignes = [
   DEBUT,
-  '-- Données de démonstration régénérées : fenêtre 17/06/2026 → 16/09/2026',
+  '-- Données de démonstration régénérées : fenêtre 23/06/2026 → 22/09/2026 (~3 mois)',
   `-- Générées le ${new Date().toISOString().slice(0, 10)} par scripts/regen_3mois.cjs + scripts/seed_sql_3mois.cjs`,
   '-- ATTENTION : cette section SUPPRIME les lignes existantes des tables',
   '-- transactionnelles puis insère le nouveau jeu de données (demande utilisateur :',
