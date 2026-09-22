@@ -543,7 +543,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
           <div className="theme-brand-mark mr-1"><Hospital className="w-5 h-5 -rotate-45" /></div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h1 className="text-lg sm:text-xl font-bold tracking-wider uppercase font-mono text-ink-strong">MediCare <span className="text-accent">HIS</span></h1>
+              <h1 className="text-lg sm:text-xl font-bold tracking-wider uppercase font-mono text-ink-strong">RÉCEPTION <span className="text-accent">SALFA</span></h1>
               <span className="hidden lg:inline-block rounded border border-accent-line bg-accent-soft text-accent-strong px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider">Réception &amp; Accueil</span>
             </div>
             <p className="text-ink-muted text-xs font-medium">Enregistrement des patients · File d'attente des consultations</p>
@@ -717,7 +717,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
           <span className="hidden sm:inline text-slate-300">|</span>
           <span className="inline-flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-blue-500" /> Aujourd'hui : <strong className="text-blue-700 dark:text-cyan-400 tabular-nums">{todayCount}</strong></span>
         </div>
-        <div className="font-semibold">MediCare HIS — Module Réception</div>
+        <div className="font-semibold">RÉCEPTION SALFA — Module Réception</div>
       </footer>
 
       {/* SAISIE PATIENT — fenêtre modale centrée */}

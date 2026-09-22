@@ -2088,10 +2088,52 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         // recevoir les dossiers d'un autre poste pendant l'allocation).
         if (fresh.some(h => h.patientId === pat.id && h.type === type)
           || additions.some(h => h.patientId === pat.id && h.type === type)) return;
+
+        const cLines: HbLine[] = [];
+        const relatedConsults = (prev.consultations || []).filter(c => c.patientId === pat.id && (type === 'hospit' ? c.hospitalizeRequested : c.surgeryRequested));
+        relatedConsults.forEach(c => {
+          (c.prescriptions || []).forEach(l => {
+            cLines.push({
+              id: uuidv4(),
+              articleName: l.articleName,
+              quantity: l.quantity || 1,
+              unitPrice: l.unitPrice || 0,
+              discount: Math.max(0, Math.min(100, l.discount || 0)),
+              dateSort: (c.date || now).split('T')[0],
+            });
+          });
+          (c.labRequests || []).forEach(lr => {
+            const discount = lr.discount || 0;
+            const price = lr.price || 0;
+            const unitPrice = discount > 0 ? roundTo2(price / (1 - discount / 100)) : price;
+            cLines.push({
+              id: uuidv4(),
+              articleName: `🔬 ${lr.examType}${lr.urgent ? ' (Urgent)' : ''}`,
+              quantity: 1,
+              unitPrice,
+              discount,
+              dateSort: (c.date || now).split('T')[0],
+            });
+          });
+          (c.echoRequests || []).forEach(er => {
+            const discount = er.discount || 0;
+            const price = er.price || 0;
+            const unitPrice = discount > 0 ? roundTo2(price / (1 - discount / 100)) : price;
+            cLines.push({
+              id: uuidv4(),
+              articleName: `📡 ${er.examType}${er.urgent ? ' (Urgent)' : ''}`,
+              quantity: 1,
+              unitPrice,
+              discount,
+              dateSort: (c.date || now).split('T')[0],
+            });
+          });
+        });
+
         additions.push({
           id: uuidv4(), patientId: pat.id, patientName: `${pat.lastName} ${pat.firstName}`,
           clientType: pat.clientType, company: pat.company, subCompany: pat.subCompany,
-          numeroFacture: allocated[i].numeroFacture, type, lines: [], payments: [],
+          numeroFacture: allocated[i].numeroFacture, type, lines: cLines, payments: [],
           openedAt: now, openedBy: openerName, openedByUserId: openerId,
         });
         const upsert = allocated[i].societeUpsert;
@@ -2146,10 +2188,32 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const myGrandTotal = myTodayTotal + myTodayPartialTotal;
 
   // Ordre décroissant : dernier saisi / dernier arrivé en haut (hospitalisation & bloc)
+  const getHbTimestamp = (r: HbRecord) => {
+    if (r.openedAt) {
+      const t = new Date(r.openedAt).getTime();
+      if (!isNaN(t)) return t;
+    }
+    if (r.payments && r.payments.length > 0) {
+      const lastPay = r.payments[r.payments.length - 1];
+      if (lastPay?.date) {
+        const t = new Date(lastPay.date).getTime();
+        if (!isNaN(t)) return t;
+      }
+    }
+    if (r.lines && r.lines.length > 0) {
+      const lastLine = r.lines[r.lines.length - 1];
+      if (lastLine?.dateSort) {
+        const t = new Date(lastLine.dateSort).getTime();
+        if (!isNaN(t)) return t;
+      }
+    }
+    return 0;
+  };
+
   const curHbRecords = hbRecords
     .filter(h => h.type === tab)
     .filter(h => hbShowDischarged || !h.dischargedAt)
-    .sort((a, b) => new Date((b.openedAt || 0) as string | number).getTime() - new Date((a.openedAt || 0) as string | number).getTime());
+    .sort((a, b) => getHbTimestamp(b) - getHbTimestamp(a));
   const closingDateKey = new Date().toDateString();
   const existingClosing = state.cashClosings.find(c => new Date(c.date).toDateString() === closingDateKey && c.cashierId === currentCashierId);
   // Une facture déjà intégrée dans un Z ne peut jamais être comptée une seconde fois.
@@ -2372,12 +2436,6 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                                 {p.lastName} {p.firstName}
                                 {dateLigne ? <span className="text-xs text-ink-muted font-normal"> {dateLigne}</span> : null}
                               </div>
-                              <div className="text-xs text-ink-muted truncate" title={lib}>
-                                {piece
-                                  ? <>{piece.label}{piece.resume ? ` — ${piece.resume}` : ''}{piece.numero ? <span className="font-mono"> · n° {piece.numero}</span> : <span> · en attente (sans numéro)</span>}</>
-                                  : <>{(getConsults(p.id)[0]?.doctorName) || 'Passage sans facturation'}</>}
-                                {p.company ? ` — ${p.company}` : ''}
-                              </div>
                             </div>
                             <div className="flex items-center gap-1.5 shrink-0">
                               <div className={`font-mono font-bold text-sm ${estSociete ? 'text-blue-700 dark:text-cyan-400' : 'text-amber-700 dark:text-amber-400'}`}>{formatAr(montant)}</div>
@@ -2405,7 +2463,11 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                             </div>
                           </div>
                           <div className="flex gap-1 mt-1 flex-wrap">
-                            {estSociete && <span className="px-1 py-0.5 bg-blue-100 dark:bg-cyan-500/15 text-blue-700 dark:text-cyan-400 text-[10px] rounded font-semibold" title={copayFile > 0 ? "Le NET est porté au crédit de la société ; la quote-part de l'assuré se règle en espèces" : "Pas d'espèces : la facture est portée au crédit de la société"}>🏢 Crédit Société</span>}
+                            {estSociete && (
+                              <span className="px-1 py-0.5 bg-blue-100 dark:bg-cyan-500/15 text-blue-700 dark:text-cyan-400 text-[10px] rounded font-semibold" title={copayFile > 0 ? "Le NET est porté au crédit de la société ; la quote-part de l'assuré se règle en espèces" : "Pas d'espèces : la facture est portée au crédit de la société"}>
+                                🏢 Crédit Société{p.company ? ` : ${p.company}` : ''}{p.subCompany ? ` / ${p.subCompany}` : ''}
+                              </span>
+                            )}
                             {copayFile > 0 && (
                               <span className="px-1 py-0.5 bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-400 text-[10px] rounded font-bold"
                                 title="Ticket modérateur : quote-part de l'assuré à encaisser en espèces pour cette prescription (un ticket lui est remis)">

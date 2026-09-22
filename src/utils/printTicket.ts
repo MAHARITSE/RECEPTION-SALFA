@@ -636,6 +636,7 @@ export function printDossierTicket(
       ${c.visitReason ? `<div><strong>Motif :</strong> ${escapeHtml(c.visitReason)}</div>` : ''}
       ${c.notes ? `<div><strong>Notes :</strong> ${escapeHtml(c.notes)}</div>` : ''}
       ${c.prescriptions.length ? `<div><strong>Ordonnance :</strong> ${c.prescriptions.map((p) => `${escapeHtml(p.articleName)} ×${p.quantity}${p.posology ? ' (' + escapeHtml(p.posology) + ')' : ''}`).join(' ; ')}</div>` : ''}
+      ${c.echoRequests && c.echoRequests.length ? `<div><strong>Échographies :</strong> ${c.echoRequests.map((e) => `${escapeHtml(e.examType)}${e.urgent ? ' [URGENT]' : ''}${e.notes ? ' (' + escapeHtml(e.notes) + ')' : ''}`).join(' ; ')}</div>` : ''}
     </div>`)
     .join('');
 

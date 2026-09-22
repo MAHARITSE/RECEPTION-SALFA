@@ -94,6 +94,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     ventes: AppState['ventes'];
     venteLines: AppState['venteLines'];
     ventePayments: AppState['ventePayments'];
+    hbRecords?: HbRecord[];
     previousStatus: PatientStatus;
   } | null>(null);
 
@@ -660,6 +661,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
             ventes: [...(next.ventes || []).filter((v) => !venteIds.has(v.id)), ...snap.ventes],
             venteLines: [...(next.venteLines || []).filter((vl) => !venteLineIds.has(vl.id)), ...snap.venteLines],
             ventePayments: [...(next.ventePayments || []).filter((vp) => !ventePaymentIds.has(vp.id)), ...snap.ventePayments],
+            ...(snap.hbRecords ? { hbRecords: snap.hbRecords } : {}),
           };
           addAuditLog(next, 'MODIF_ANNULEE', `${pat.dossier} — modification annulée, consultation restaurée`, pid);
           addJourneyEvent(next, { patientId: pid, department: 'consultation', action: 'Modification annulée', status: restoredStatus, details: `Consultation d'origine restaurée (retour sans validation)`, actorId: prev.currentUser?.id, actorName: prev.currentUser?.name, consultationId: snap.consultation.id });
@@ -1006,6 +1008,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
       ventes: (state.ventes || []).filter((v) => venteIds.has(v.id)),
       venteLines: (state.venteLines || []).filter((vl) => venteIds.has(vl.venteId)),
       ventePayments: (state.ventePayments || []).filter((vp) => venteIds.has(vp.venteId)),
+      hbRecords: state.hbRecords || [],
       previousStatus: patient?.status || 'consulted_awaiting_payment',
     };
     const defRemise = getPatientDefaultRemise(patient);
@@ -1044,6 +1047,10 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
         ventes: (prev.ventes || []).filter((v) => !venteIds.has(v.id)),
         venteLines: (prev.venteLines || []).filter((vl) => !venteIds.has(vl.venteId)),
         ventePayments: (prev.ventePayments || []).filter((vp) => !venteIds.has(vp.venteId)),
+        hbRecords: (prev.hbRecords || []).map((r) => ({
+          ...r,
+          lines: (r.lines || []).filter((l) => l.consultationId !== cid),
+        })),
         patients: prev.patients.map((p) => p.id === c.patientId ? { ...p, status: 'in_consultation' as const } : p)
       };
       addAuditLog(next, paid ? 'MODIF_PRESCRIPTION_PAIEMENT_ANNULE' : 'MODIF_PRESCRIPTION', `${patient?.dossier || c.patientId} — modification de prescription${paid ? ' (paiement annulé)' : ''}`, c.patientId);
@@ -1163,16 +1170,54 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
     const hbLinesFromPresc: HbLine[] = isHospitalized
       ? lines.map((l) => ({
           id: uuidv4(),
-          articleId: l.articleId,
           articleName: l.articleName,
-          quantity: l.quantity,
-          unitPrice: l.unitPrice,
-          discount: l.discount,
-          prescribedAt: nowIso,
-          prescribedBy: state.currentUser?.name,
-          prescribedByUserId: state.currentUser?.id,
+          quantity: l.quantity || 1,
+          unitPrice: l.unitPrice || 0,
+          discount: Math.max(0, Math.min(100, l.discount || 0)),
+          dateSort: nowIso.split('T')[0],
+          consultationId: consultId,
         }))
       : [];
+
+    const hbLinesFromLab: HbLine[] = isHospitalized
+      ? newLabRequests.map((lr) => {
+          const discount = lr.discount || 0;
+          const price = lr.price || 0;
+          const unitPrice = discount > 0 ? roundTo2(price / (1 - discount / 100)) : price;
+          return {
+            id: uuidv4(),
+            articleName: `🔬 ${lr.examType}${lr.urgent ? ' (Urgent)' : ''}`,
+            quantity: 1,
+            unitPrice,
+            discount,
+            dateSort: nowIso.split('T')[0],
+            consultationId: consultId,
+          };
+        })
+      : [];
+
+    const hbLinesFromEcho: HbLine[] = isHospitalized
+      ? newEchoRequests.map((er) => {
+          const discount = er.discount || 0;
+          const price = er.price || 0;
+          const unitPrice = discount > 0 ? roundTo2(price / (1 - discount / 100)) : price;
+          return {
+            id: uuidv4(),
+            articleName: `📡 ${er.examType}${er.urgent ? ' (Urgent)' : ''}`,
+            quantity: 1,
+            unitPrice,
+            discount,
+            dateSort: nowIso.split('T')[0],
+            consultationId: consultId,
+          };
+        })
+      : [];
+
+    const allHbLinesFromConsult: HbLine[] = [
+      ...hbLinesFromPresc,
+      ...hbLinesFromLab,
+      ...hbLinesFromEcho,
+    ];
 
     const consultation: Consultation = {
       id: consultId, patientId: selectedPatientId, doctorId: state.currentUser?.id || '', doctorName: state.currentUser?.name || '',
@@ -1204,7 +1249,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
             ...next,
             hbRecords: (next.hbRecords || []).map((r) =>
               r.id === existingHospit.id
-                ? { ...r, lines: [...r.lines, ...hbLinesFromPresc] }
+                ? { ...r, lines: [...r.lines, ...allHbLinesFromConsult] }
                 : r
             ),
           };
@@ -1218,7 +1263,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
             subCompany: selectedPatient.subCompany,
             numeroFacture: hospitNumeroFacture,
             type: 'hospit',
-            lines: hbLinesFromPresc,
+            lines: allHbLinesFromConsult,
             payments: [],
             openedAt: nowIso,
             openedBy: prev.currentUser?.name,
@@ -1231,7 +1276,7 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
         }
 
         if (newLabRequests.length > 0) {
-          next = { ...next, labRequests: [...next.labRequests, ...newLabRequests] };
+          next = { ...next, labRequests: [...(next.labRequests || []), ...newLabRequests] };
         }
 
         const numAff = hospitNumeroFacture || existingHospit?.numeroFacture || '';
@@ -1347,7 +1392,33 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
   // revanche réservés à la caisse / pharmacie — le médecin n'y touche pas.
   const hbTous = state.hbRecords || [];
   const hbActifsCount = hbTous.filter((r) => !r.dischargedAt).length;
-  const hbFiltres = hbTous.filter((r) => (hbAfficherSortis || !r.dischargedAt) && r.type === hbFiltre);
+
+  const getHbTimestamp = (r: HbRecord) => {
+    if (r.openedAt) {
+      const t = new Date(r.openedAt).getTime();
+      if (!isNaN(t)) return t;
+    }
+    if (r.payments && r.payments.length > 0) {
+      const lastPay = r.payments[r.payments.length - 1];
+      if (lastPay?.date) {
+        const t = new Date(lastPay.date).getTime();
+        if (!isNaN(t)) return t;
+      }
+    }
+    if (r.lines && r.lines.length > 0) {
+      const lastLine = r.lines[r.lines.length - 1];
+      if (lastLine?.dateSort) {
+        const t = new Date(lastLine.dateSort).getTime();
+        if (!isNaN(t)) return t;
+      }
+    }
+    return 0;
+  };
+
+  const hbFiltres = hbTous
+    .filter((r) => (hbAfficherSortis || !r.dischargedAt) && r.type === hbFiltre)
+    .slice()
+    .sort((a, b) => getHbTimestamp(b) - getHbTimestamp(a));
 
   /** Écrit une mise à jour des dossiers Bloc/Hospitalisation (liste partagée). */
   const majHbRecords = (updater: (prev: HbRecord[]) => HbRecord[]) =>

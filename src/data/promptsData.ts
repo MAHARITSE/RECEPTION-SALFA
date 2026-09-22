@@ -92,7 +92,7 @@ réception des patients, facturation multi-services (médecine, bloc opératoire
 - **Langue** : français (gabarits GenFlat / Material Design)
 `;
 
-export const WEB_PROMPT = `# Prompt Web — MediCare HIS / RECEPTION SALFA v3.0
+export const WEB_PROMPT = `# Prompt Web — RÉCEPTION SALFA v3.0
 
 > Application web de gestion hospitalière intégrée (HIS) construite avec React, Vite, Tailwind CSS, Lucide React, uuid. Monnaie : Ariary (Ar). Gère le parcours patient complet, 2 dépôts de stock (central + pharmacie), ventes directes, hospitalisations et bloc opératoire avec paiement partiel, messagerie interne, clôture de caisse avec ticket 80x80.
 

@@ -149,7 +149,7 @@ export default function MiseEnPage({ user, patients = [], notifications, onLogou
               <Hospital className="w-5 h-5 -rotate-45" />
             </div>
             <div className="min-w-0">
-              <h1 className="font-bold text-lg leading-tight font-mono uppercase tracking-wider text-ink-strong">MediCare <span className="text-accent">HIS</span></h1>
+              <h1 className="font-bold text-lg leading-tight font-mono uppercase tracking-wider text-ink-strong">RÉCEPTION <span className="text-accent">SALFA</span></h1>
               <div className="text-ink-muted text-xs flex flex-wrap items-center gap-1.5 mt-1">
                 <span className={`inline-flex rounded p-0.5 text-white ${roleBg[user.role]}`}>{roleIcons[user.role]}</span>
                 {user.roles && user.roles.length > 1 ? (

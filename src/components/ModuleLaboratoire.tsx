@@ -182,15 +182,16 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
   state.consultations.forEach((c) => {
     const patient = state.patients.find((p) => p.id === c.patientId);
     const inv = state.invoices.find((i) => i.consultationId === c.id && i.status === 'paid');
+    const isHospit = Boolean(c.hospitalizeRequested || state.hbRecords?.some(h => h.patientId === c.patientId && !h.dischargedAt));
     (c.labRequests || []).forEach((lr) => {
       if (!seenLabIds.has(lr.id)) {
         seenLabIds.add(lr.id);
-        const canProcess = !!inv || c.isEmergency;
+        const canProcess = !!inv || c.isEmergency || isHospit;
         allLabs.push({
           lr, patient,
           patientName: `${patient?.lastName || ''} ${patient?.firstName || ''}`.trim(),
           doctorName: c.doctorName, source: 'consultation', consultationId: c.id,
-          paid: !!inv, billable: !canProcess,
+          paid: !!inv || isHospit, billable: !canProcess,
         });
       }
     });
@@ -204,11 +205,13 @@ export default function ModuleLaboratoire({ state, setState }: Props) {
         ? `${patient.lastName} ${patient.firstName}`
         : (lr.patientId ? 'Inconnu' : 'Patient externe');
       const inv = lr.invoiceId ? state.invoices.find((i) => i.id === lr.invoiceId) : undefined;
-      const paid = inv?.status === 'paid';
+      const isPatientHospit = Boolean(patient && state.hbRecords?.some(h => h.patientId === patient.id && !h.dischargedAt));
+      const paid = Boolean(inv?.status === 'paid' || isPatientHospit);
+      const canProcess = paid || isPatientHospit;
       allLabs.push({
         lr, patient, patientName,
         doctorName: state.users.find((u) => u.id === lr.requestedBy)?.name || '',
-        source: 'standalone', paid, billable: !paid,
+        source: 'standalone', paid, billable: !canProcess,
       });
     }
   });

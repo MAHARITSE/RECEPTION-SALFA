@@ -790,6 +790,8 @@ export interface HbLine {
   discount: number;
   /** Date d'acte / de sortie — conservée entre validations de lignes. */
   dateSort?: string;
+  /** Identifiant de la consultation source (si prescrit lors d'une admission hospitalisée) */
+  consultationId?: string;
 }
 
 /** Dossier Hospitalisation ou Bloc Opératoire — partagé entre Caisse et Pharmacie

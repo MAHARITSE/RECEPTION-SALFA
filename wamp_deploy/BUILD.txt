@@ -1,12 +1,25 @@
 RECEPTION SALFA - Application compilée pour WAMP (index.html)
 ================================================================
-Build du       : 2026-09-17
-Commit source  : efdabd5 (branche arena/01a0adcf-reception-salfa) + corrections
-Commande       : npm run build:wamp   (VITE_WAMP_MODE=1 via .env.wamp)
-Mode vérifié   : WAMP / MySQL (ternaire replié dans le bundle)
-Taille         : 3,71 Mo (monofichier, gzip ~1 007 Ko)
+Build du       : 2026-09-22
+Commande       : npm run build:wamp   (mode WAMP avec synchronisation MySQL)
+Mode vérifié   : WAMP / MySQL (monofichier index.html autonome)
+Taille         : 8,72 Mo (monofichier inlined, gzip ~1 745 Ko)
 
-Nouvelle version 2026-09-17 — contenu :
+Nouvelle version 2026-09-22 — contenu :
+  1) Dossier Médical : affichage des Échographies prescrites directement
+     dans l'ordonnance médicale (avec indication de l'examen, mention Urgence,
+     renseignements cliniques, badge « Prescrit » et compteur dans l'en-tête de visite),
+     ainsi que sur le ticket/bulletin du dossier médical imprimé.
+  2) Médecin - Modification de consultation avec hospitalisation directe :
+     liaison de chaque ligne d'acte hospitalier à sa consultation d'origine
+     (consultationId) et nettoyage automatique des actes du dossier hbRecords
+     lors d'une ré-édition de consultation pour éliminer tout risque de doublons.
+  3) Facturation Assurance : fiabilisation de la ventilation par mois et matrice
+     mensuelle par société, double-clic sur ligne et modal détaillé.
+  4) Files d'attente Caisse & Médecin : badges de prise en charge et tri
+     antéchronologique optimal.
+
+Version précédente 2026-09-17 :
   1) En-tête : bouton « Dossiers » retiré de l'administration (conservé pour
      les médecins) et bouton « Sauvegarder » retiré de la barre supérieure de
      TOUS les rôles (la sauvegarde .sql automatique à la déconnexion et le

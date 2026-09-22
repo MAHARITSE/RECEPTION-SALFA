@@ -159,7 +159,7 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, EBState> {
       return (
         <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-8 text-center bg-canvas">
           <div className="text-6xl">⚠️</div>
-          <h1 className="text-2xl font-bold text-ink-strong">MediCare HIS — Une erreur est survenue</h1>
+          <h1 className="text-2xl font-bold text-ink-strong">RÉCEPTION SALFA — Une erreur est survenue</h1>
           <p className="text-sm text-ink-secondary max-w-lg">
             L'application a rencontré un problème inattendu. Vos données de session n'ont pas été perdues.
             <br />

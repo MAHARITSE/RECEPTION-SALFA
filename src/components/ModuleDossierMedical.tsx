@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import type { AppState } from '../store';
 import { labCategoryLabel, paidPrescriptionsForConsultation, safeInvoiceItemDescriptions } from '../store';
-import type { LabRequest, Consultation, Invoice, HbRecord } from '../types';
+import type { LabRequest, Consultation, Invoice, HbRecord, EchoRequest } from '../types';
 import { printDossierTicket, printLabResultTicket } from '../utils/printTicket';
 import { normaliserRecherche } from '../utils/recherche';
 import {
@@ -100,6 +100,7 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
     isEmergency?: boolean;
     consultation?: Consultation;
     prescriptions: any[];
+    echoRequests?: EchoRequest[];
     labs: DispLab[];
     invoice?: Invoice;
     hbRecord?: HbRecord;
@@ -113,6 +114,7 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
     // clinique de l'ordonnance, indépendamment de son règlement — pas besoin de
     // la règle de confidentialité réservée aux écrans Caisse/Pharmacie.
     const prescr = (c.prescriptions || []).map((p) => ({ ...p }));
+    const echos = (c.echoRequests || []).map((e) => ({ ...e }));
 
     const consultLabs = allLabs.filter((item) => {
       const isDirectMatch = item.lr.consultationId === c.id;
@@ -143,6 +145,7 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
       isEmergency: c.isEmergency,
       consultation: c,
       prescriptions: prescr,
+      echoRequests: echos,
       labs: consultLabs,
       invoice: consultInvoice,
     });
@@ -586,6 +589,11 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
                                     💊 Ordonnance ({item.prescriptions.length} méd.)
                                   </span>
                                 )}
+                                {item.echoRequests && item.echoRequests.length > 0 && (
+                                  <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-500/15 text-indigo-800 dark:text-indigo-300">
+                                    📡 Écho ({item.echoRequests.length})
+                                  </span>
+                                )}
                                 {item.labs.length > 0 && (
                                   <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-cyan-100 dark:bg-cyan-500/15 text-cyan-800 dark:text-cyan-300">
                                     🧪 Analyses ({item.labs.length})
@@ -662,46 +670,96 @@ export default function ModuleDossierMedical({ state, patientId, onBack }: Props
                                 </div>
                               )}
 
-                              {/* 2. Prescriptions */}
-                              {item.prescriptions.length > 0 && (
-                                <div className="bg-surface p-3.5 rounded-xl border border-purple-200 dark:border-purple-500/25 space-y-2">
-                                  <div className="text-xs font-bold text-purple-900 dark:text-purple-300 uppercase tracking-wide">
-                                    💊 Ordonnance Prescrite ({item.prescriptions.length} médicament{item.prescriptions.length > 1 ? 's' : ''})
+                              {/* 2. Prescriptions & Examens d'Échographie */}
+                              {(item.prescriptions.length > 0 || (item.echoRequests && item.echoRequests.length > 0)) && (
+                                <div className="bg-surface p-3.5 rounded-xl border border-purple-200 dark:border-purple-500/25 space-y-2.5">
+                                  <div className="text-xs font-bold text-purple-900 dark:text-purple-300 uppercase tracking-wide flex items-center justify-between">
+                                    <span>
+                                      💊 Ordonnance Prescrite (
+                                      {item.prescriptions.length > 0
+                                        ? `${item.prescriptions.length} médicament${item.prescriptions.length > 1 ? 's' : ''}`
+                                        : ''}
+                                      {item.prescriptions.length > 0 && (item.echoRequests?.length || 0) > 0 ? ' · ' : ''}
+                                      {(item.echoRequests?.length || 0) > 0
+                                        ? `${item.echoRequests!.length} échographie${item.echoRequests!.length > 1 ? 's' : ''}`
+                                        : ''}
+                                      )
+                                    </span>
                                   </div>
-                                  <div className="divide-y border rounded-lg overflow-hidden bg-purple-50/20 dark:bg-purple-500/2">
-                                    {item.prescriptions.map((p: any) => (
-                                      <div key={p.id} className="p-2.5 flex items-start justify-between gap-3 text-xs">
-                                        <div className="min-w-0 flex-1">
-                                          <div className="font-bold text-ink-strong">
-                                            {p.articleName}
-                                            {p.quantity ? (
-                                              <span className="ml-1.5 font-mono font-bold text-purple-700 dark:text-purple-400">× {p.quantity}</span>
-                                            ) : null}
-                                          </div>
-                                          <div className="mt-0.5 text-ink-secondary">
-                                            <span className="font-semibold text-ink-muted">Posologie :</span>{' '}
-                                            <strong className="text-purple-700 dark:text-purple-400">{p.posology || 'Selon prescription'}</strong>
-                                          </div>
-                                          {(p.duration || p.instructions) && (
-                                            <div className="text-[11px] text-ink-muted mt-0.5">
-                                              {p.duration ? <span>Durée : {p.duration}</span> : null}
-                                              {p.duration && p.instructions ? ' · ' : ''}
-                                              {p.instructions ? <span>{p.instructions}</span> : null}
+
+                                  {item.prescriptions.length > 0 && (
+                                    <div className="divide-y border rounded-lg overflow-hidden bg-purple-50/20 dark:bg-purple-500/2">
+                                      {item.prescriptions.map((p: any) => (
+                                        <div key={p.id} className="p-2.5 flex items-start justify-between gap-3 text-xs">
+                                          <div className="min-w-0 flex-1">
+                                            <div className="font-bold text-ink-strong">
+                                              {p.articleName}
+                                              {p.quantity ? (
+                                                <span className="ml-1.5 font-mono font-bold text-purple-700 dark:text-purple-400">× {p.quantity}</span>
+                                              ) : null}
                                             </div>
-                                          )}
+                                            <div className="mt-0.5 text-ink-secondary">
+                                              <span className="font-semibold text-ink-muted">Posologie :</span>{' '}
+                                              <strong className="text-purple-700 dark:text-purple-400">{p.posology || 'Selon prescription'}</strong>
+                                            </div>
+                                            {(p.duration || p.instructions) && (
+                                              <div className="text-[11px] text-ink-muted mt-0.5">
+                                                {p.duration ? <span>Durée : {p.duration}</span> : null}
+                                                {p.duration && p.instructions ? ' · ' : ''}
+                                                {p.instructions ? <span>{p.instructions}</span> : null}
+                                              </div>
+                                            )}
+                                          </div>
+                                          <div className="shrink-0 flex flex-col items-end gap-1">
+                                            <span
+                                              className={`inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                                                p.delivered ? 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400' : 'bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400'
+                                              }`}
+                                            >
+                                              {p.delivered ? '✓ Délivré' : 'À délivrer'}
+                                            </span>
+                                          </div>
                                         </div>
-                                        <div className="shrink-0 flex flex-col items-end gap-1">
-                                          <span
-                                            className={`inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded ${
-                                              p.delivered ? 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400' : 'bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400'
-                                            }`}
-                                          >
-                                            {p.delivered ? '✓ Délivré' : 'À délivrer'}
-                                          </span>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  {/* Échographies prescrites affichées avec l'ordonnance */}
+                                  {item.echoRequests && item.echoRequests.length > 0 && (
+                                    <div className={item.prescriptions.length > 0 ? 'pt-1.5 space-y-1.5' : 'space-y-1.5'}>
+                                      {item.prescriptions.length > 0 && (
+                                        <div className="text-[11px] font-bold text-indigo-900 dark:text-indigo-300 uppercase tracking-wide flex items-center gap-1">
+                                          <span>📡 Échographie{item.echoRequests.length > 1 ? 's' : ''} prescrite{item.echoRequests.length > 1 ? 's' : ''} ({item.echoRequests.length})</span>
                                         </div>
+                                      )}
+                                      <div className="divide-y border border-indigo-200/80 dark:border-indigo-500/25 rounded-lg overflow-hidden bg-indigo-50/30 dark:bg-indigo-500/5">
+                                        {item.echoRequests.map((echo: any, idx: number) => (
+                                          <div key={echo.id || idx} className="p-2.5 flex items-start justify-between gap-3 text-xs">
+                                            <div className="min-w-0 flex-1">
+                                              <div className="font-bold text-ink-strong flex items-center gap-1.5">
+                                                <span>📡 {echo.examType}</span>
+                                                {echo.urgent && (
+                                                  <span className="text-[10px] px-1.5 py-0.2 bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-400 font-bold rounded">
+                                                    Urgent
+                                                  </span>
+                                                )}
+                                              </div>
+                                              {echo.notes && (
+                                                <div className="text-[11px] text-ink-muted mt-0.5">
+                                                  <span className="font-semibold text-ink-faint">Renseignements / Indication :</span> {echo.notes}
+                                                </div>
+                                              )}
+                                            </div>
+                                            <div className="shrink-0 flex flex-col items-end gap-1">
+                                              <span className="inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300">
+                                                Prescrit
+                                              </span>
+                                            </div>
+                                          </div>
+                                        ))}
                                       </div>
-                                    ))}
-                                  </div>
+                                    </div>
+                                  )}
                                 </div>
                               )}
 

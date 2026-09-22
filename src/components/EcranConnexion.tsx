@@ -138,7 +138,7 @@ export default function EcranConnexion({ users, onLogin, onBack, onPasswordUpgra
             <Hospital className="w-5 h-5 -rotate-45" />
           </div>
           <h1 className="text-2xl font-bold font-mono uppercase tracking-wider text-ink-strong mb-2">
-            MediCare <span className="text-accent">HIS</span>
+            RÉCEPTION <span className="text-accent">SALFA</span>
           </h1>
           <p className="text-ink-muted text-sm">Connexion Personnel Médical</p>
         </div>
@@ -222,7 +222,7 @@ export default function EcranConnexion({ users, onLogin, onBack, onPasswordUpgra
         </form>
 
         <p className="text-center text-ink-faint text-xs mt-6">
-          © 2026 MediCare HIS
+          © 2026 RÉCEPTION SALFA
         </p>
         <p className="text-center text-ink-faint text-xs mt-1">
           MAHARITSE Hyacinthe Bertrand — Tél : <a href="tel:+261383409261" className="hover:text-accent transition-colors">+261 38 34 092 61</a>
