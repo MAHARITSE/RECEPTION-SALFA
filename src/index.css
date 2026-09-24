@@ -125,6 +125,8 @@
   html {
     font-family: var(--font-sans);
     background-color: var(--ui-canvas);
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
 
   body {
@@ -133,10 +135,26 @@
     min-width: 320px;
     background-color: var(--ui-canvas);
     color: var(--ui-ink);
+    -webkit-tap-highlight-color: transparent;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* Évite le délai de 300ms au toucher sur les écrans tactiles */
+  button, a, input, select, textarea, [role="button"] {
+    touch-action: manipulation;
+  }
+
+  /* Empêche le zoom automatique indésirable d'iOS Safari sur les champs de saisie */
+  @media screen and (max-width: 640px) {
+    :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea) {
+      font-size: 16px !important;
+    }
   }
 
   #root {
     min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
   }
 
   *, ::before, ::after {
@@ -294,3 +312,9 @@
 /* Navigation du module suivi assurance importé. */
 .assurance-module .scrollbar-none { scrollbar-width: none; }
 .assurance-module .scrollbar-none::-webkit-scrollbar { display: none; }
+
+/* Masquage de texte pour champs de sécurité sans déclencher les gestionnaires de mots de passe */
+.input-text-security-disc {
+  -webkit-text-security: disc;
+  text-security: disc;
+}

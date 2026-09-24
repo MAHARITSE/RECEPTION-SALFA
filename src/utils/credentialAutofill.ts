@@ -19,7 +19,7 @@ export const credentialAutofillOptOut = {
 } as const;
 
 export const passwordInputOptOut = {
-  autoComplete: 'one-time-code',
+  autoComplete: 'off',
   'data-lpignore': 'true',
   'data-1p-ignore': 'true',
   'data-bwignore': 'true',

@@ -143,9 +143,14 @@ export default function EcranConnexion({ users, onLogin, onBack, onPasswordUpgra
           <p className="text-ink-muted text-sm">Connexion Personnel Médical</p>
         </div>
 
-        <form
+        <div
           {...credentialAutofillOptOut}
-          onSubmit={(event) => { event.preventDefault(); void handleLogin(); }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              void handleLogin();
+            }
+          }}
           className="bg-surface rounded-2xl border border-line p-6 shadow-xl shadow-black/5"
         >
           <div className="mb-5">
@@ -174,22 +179,22 @@ export default function EcranConnexion({ users, onLogin, onBack, onPasswordUpgra
           </div>
 
           <div className="mb-5">
-            <label htmlFor="staff-password" className="block text-sm font-medium text-ink mb-2">
+            <label htmlFor="staff-auth-code" className="block text-sm font-medium text-ink mb-2">
               <Lock className="w-4 h-4 inline mr-2 text-accent" />
               Mot de passe
             </label>
             <div className="relative">
               <input
-                id="staff-password"
-                name="staff-auth-code"
-                type={showPassword ? 'text' : 'password'}
+                id="staff-auth-code"
+                name="staff_auth_code"
+                type="text"
                 {...passwordInputOptOut}
                 value={password}
                 disabled={busy}
                 onChange={(e) => { setPassword(e.target.value); setError(''); }}
                 aria-invalid={!!error}
                 aria-describedby={error ? 'login-error' : undefined}
-                className="w-full pl-4 pr-11 py-3 bg-field border border-line rounded-lg text-ink focus:ring-2 focus:ring-accent/25 focus:border-accent outline-none disabled:opacity-60"
+                className={`w-full pl-4 pr-11 py-3 bg-field border border-line rounded-lg text-ink focus:ring-2 focus:ring-accent/25 focus:border-accent outline-none disabled:opacity-60 font-mono ${showPassword ? '' : 'input-text-security-disc'}`}
                 placeholder="••••••••"
               />
               <button
@@ -212,14 +217,15 @@ export default function EcranConnexion({ users, onLogin, onBack, onPasswordUpgra
           )}
 
           <button
-            type="submit"
+            type="button"
+            onClick={() => void handleLogin()}
             disabled={!selectedUserId || !password || busy || loadingUsers}
             className="theme-primary-button w-full py-3 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {(selectedUser && roleIcons[selectedUser.role]) || null}
             {busy ? 'Connexion…' : 'Se connecter'}
           </button>
-        </form>
+        </div>
 
         <p className="text-center text-ink-faint text-xs mt-6">
           © 2026 RÉCEPTION SALFA

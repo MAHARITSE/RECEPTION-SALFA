@@ -143,35 +143,37 @@ export default function MiseEnPage({ user, patients = [], notifications, onLogou
 
       {/* Header */}
       <header className="theme-header shrink-0">
-        <div className="w-full max-w-none px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0 max-w-full">
-            <div className="theme-brand-mark mr-1">
-              <Hospital className="w-5 h-5 -rotate-45" />
+        <div className="w-full max-w-none px-3 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between gap-2 sm:gap-3 flex-wrap sm:flex-nowrap">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 sm:flex-initial">
+            <div className="theme-brand-mark !w-8 !h-8 sm:!w-9 sm:!h-9 mr-0.5 sm:mr-1 shrink-0">
+              <Hospital className="w-4 h-4 sm:w-5 sm:h-5 -rotate-45" />
             </div>
             <div className="min-w-0">
-              <h1 className="font-bold text-lg leading-tight font-mono uppercase tracking-wider text-ink-strong">RÉCEPTION <span className="text-accent">SALFA</span></h1>
-              <div className="text-ink-muted text-xs flex flex-wrap items-center gap-1.5 mt-1">
+              <h1 className="font-bold text-sm sm:text-lg leading-tight font-mono uppercase tracking-wider text-ink-strong truncate">
+                RÉCEPTION <span className="text-accent">SALFA</span>
+              </h1>
+              <div className="text-ink-muted text-[11px] sm:text-xs flex items-center gap-1 sm:gap-1.5 mt-0.5 truncate">
                 <span className={`inline-flex rounded p-0.5 text-white ${roleBg[user.role]}`}>{roleIcons[user.role]}</span>
                 {user.roles && user.roles.length > 1 ? (
                   <select
                     value={user.role}
                     onChange={(e) => onChangeRole?.(e.target.value as import('../types').UserRole)}
-                    className="bg-field hover:bg-surface-hover border border-line rounded text-xs px-1 py-0.5 cursor-pointer outline-none transition-colors font-medium text-ink"
+                    className="bg-field hover:bg-surface-hover border border-line rounded text-[11px] sm:text-xs px-1 py-0.5 cursor-pointer outline-none transition-colors font-medium text-ink max-w-[120px] sm:max-w-none truncate"
                   >
                     {user.roles.map(r => (
                       <option key={r} value={r} className="text-ink-strong">{roleLabels[r]}</option>
                     ))}
                   </select>
                 ) : (
-                  <span>{roleLabels[user.role]}</span>
+                  <span className="truncate">{roleLabels[user.role]}</span>
                 )}
-                <ChevronRight className="w-3 h-3 text-ink-faint" />
-                <span className="font-semibold">{user.name}</span>
+                <ChevronRight className="w-3 h-3 text-ink-faint shrink-0" />
+                <span className="font-semibold truncate">{user.name}</span>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0 ml-auto">
             {/* Notifications — réservées à la Pharmacie et au Magasinier (alertes stock & approvisionnements) */}
             {(user.role === 'pharmacy' || user.role === 'magasinier' || user.role === 'cashier') && (
               <div className="relative">
@@ -180,24 +182,24 @@ export default function MiseEnPage({ user, patients = [], notifications, onLogou
                   className="relative p-2 hover:bg-surface-hover hover:text-accent rounded-lg transition-colors cursor-pointer"
                   title="Notifications stock"
                 >
-                  <Bell className="w-5 h-5" />
+                  <Bell className="w-4 h-4 sm:w-5 sm:h-5" />
                   {unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center">
                       {unreadCount}
                     </span>
                   )}
                 </button>
 
                 {showNotif && (
-                  <div className="absolute right-0 top-12 w-96 max-w-[calc(100vw-2rem)] bg-surface text-ink rounded-xl shadow-2xl border border-line z-50 max-h-96 overflow-y-auto">
-                    <div className="p-4 border-b border-line-soft flex items-center justify-between">
-                      <h3 className="font-semibold text-ink-strong">Notifications Stock</h3>
-                      <button onClick={() => setShowNotif(false)} className="text-ink-faint hover:text-ink-secondary cursor-pointer">
+                  <div className="absolute right-0 top-11 sm:top-12 w-80 sm:w-96 max-w-[calc(100vw-1.5rem)] bg-surface text-ink rounded-xl shadow-2xl border border-line z-50 max-h-96 overflow-y-auto">
+                    <div className="p-3 sm:p-4 border-b border-line-soft flex items-center justify-between">
+                      <h3 className="font-semibold text-xs sm:text-sm text-ink-strong">Notifications Stock</h3>
+                      <button onClick={() => setShowNotif(false)} className="text-ink-faint hover:text-ink-secondary cursor-pointer p-1">
                         <X className="w-4 h-4" />
                       </button>
                     </div>
                     {myNotifs.length === 0 ? (
-                      <div className="p-6 text-center text-ink-faint">Aucune notification</div>
+                      <div className="p-6 text-center text-xs text-ink-faint">Aucune notification</div>
                     ) : (
                       myNotifs.slice(0, 20).map((n) => (
                         <div
@@ -214,27 +216,24 @@ export default function MiseEnPage({ user, patients = [], notifications, onLogou
                               }`}
                             />
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm text-ink">{n.message}</p>
-                              {/* Demande de déblocage EN ATTENTE : la décision reste possible
-                                  ici même si le toast a été fermé — sinon l'article resterait
-                                  bloqué sans aucun moyen de le débloquer. */}
+                              <p className="text-xs sm:text-sm text-ink">{n.message}</p>
                               {n.action?.type === 'pharmacy-unblock' && (
                                 <div className="flex gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
                                   <button
                                     onClick={() => onNotificationAction?.(n.id, true)}
-                                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer shadow-sm"
+                                    className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer shadow-sm"
                                   >
-                                    ✅ Oui, débloquer
+                                    ✅ Débloquer
                                   </button>
                                   <button
                                     onClick={() => onNotificationAction?.(n.id, false)}
-                                    className="px-3 py-1.5 rounded-lg bg-surface-active hover:bg-line-strong text-ink text-xs font-bold cursor-pointer"
+                                    className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-surface-active hover:bg-line-strong text-ink text-xs font-bold cursor-pointer"
                                   >
                                     ❌ Non
                                   </button>
                                 </div>
                               )}
-                              <p className="text-xs text-ink-faint mt-1">
+                              <p className="text-[10px] text-ink-faint mt-1">
                                 {new Date(n.timestamp).toLocaleString('fr-FR')}
                               </p>
                             </div>
@@ -250,21 +249,23 @@ export default function MiseEnPage({ user, patients = [], notifications, onLogou
             {onOpenMedicalRecord && (
               <button
                 onClick={() => onOpenMedicalRecord()}
-                className="flex items-center gap-2 px-3 py-2 bg-surface-muted hover:bg-surface-hover border border-line rounded-lg transition font-medium cursor-pointer"
+                className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 sm:py-2 bg-surface-muted hover:bg-surface-hover border border-line rounded-lg transition font-medium text-xs sm:text-sm cursor-pointer"
                 title="Dossiers médicaux"
               >
-                <FileText className="w-4 h-4" /> Dossiers
+                <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">Dossiers</span>
               </button>
             )}
+
             {/* Messagerie */}
             <button
               onClick={onOpenMessaging}
               className="relative p-2 hover:bg-surface-hover hover:text-accent rounded-lg transition-colors cursor-pointer"
-              title="Messagerie"
+              title="Messagerie interne"
             >
-              <MessageCircle className="w-5 h-5" />
+              <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5" />
               {unreadMessages > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center">
                   {unreadMessages}
                 </span>
               )}
@@ -272,9 +273,10 @@ export default function MiseEnPage({ user, patients = [], notifications, onLogou
 
             <button
               onClick={onLogout}
-              className="flex items-center gap-2 px-3 py-2 bg-surface-muted hover:bg-surface-hover border border-line rounded-lg transition-colors text-sm cursor-pointer"
+              className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 sm:py-2 bg-surface-muted hover:bg-surface-hover border border-line rounded-lg transition-colors text-xs sm:text-sm cursor-pointer"
+              title="Se déconnecter"
             >
-              <LogOut className="w-4 h-4" />
+              <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span className="hidden sm:inline">Déconnexion</span>
             </button>
           </div>
@@ -285,7 +287,7 @@ export default function MiseEnPage({ user, patients = [], notifications, onLogou
           de la fenêtre, comme le Module Réception.
           En mode `fullHeight` (console d'administration), le contenu occupe
           toute la hauteur de la fenêtre et scrolle en interne (pas de scroll de page). */}
-      <main className={`w-full max-w-none min-w-0 px-4 sm:px-6 ${fullHeight ? 'flex-1 min-h-0 py-4 flex flex-col' : 'py-6 pb-20'}`}>
+      <main className={`w-full max-w-none min-w-0 px-2 sm:px-4 md:px-6 ${fullHeight ? 'flex-1 min-h-0 py-2 sm:py-4 flex flex-col' : 'py-3 sm:py-6 pb-24 sm:pb-20'}`}>
         {children}
       </main>
     </div>

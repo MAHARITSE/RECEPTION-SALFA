@@ -336,11 +336,15 @@ export function printLabRequestTicket(
   doctor: User | undefined,
   date: Date,
   requests: readonly ExamTicketLine[],
+  numeroFacture?: string,
 ) {
   const lines = requests
     .flatMap((r) => [
       `<tr><td colspan="2" class="bold" style="padding-top:1.5mm">▸ ${escapeHtml(r.examType)}${r.quantity && r.quantity !== 1 ? ` × ${escapeHtml(r.quantity)}` : ''}${r.urgent ? ' <span style="color:#b00">[URGENT]</span>' : ''}</td></tr>`,
+      r.notes ? `<tr><td colspan="2" class="small">  ${escapeHtml(r.notes)}</td></tr>` : '',
+      r.price != null ? `<tr><td colspan="2" class="small">  Tarif : ${money(r.price)}</td></tr>` : '',
     ])
+    .filter(Boolean)
     .join('');
   const bodyHtml = `
     <div><span class="bold">Patient :</span> ${escapeHtml(patient.lastName)} ${escapeHtml(patient.firstName)}</div>
@@ -348,13 +352,17 @@ export function printLabRequestTicket(
     <div><span class="bold">Âge / Sexe :</span> ${escapeHtml(patient.age ?? '—')} / ${patient.gender === 'M' ? 'M' : patient.gender === 'F' ? 'F' : '—'}</div>
     <div><span class="bold">Prescripteur :</span> ${escapeHtml(doctor?.name || 'Non renseigné')}</div>
     <div class="rule"></div>
-    <div class="bold heading">EXAMENS DEMANDÉS</div>
+    <div class="bold heading">EXAMENS DE LABORATOIRE DEMANDÉS</div>
     <table>${lines || '<tr><td><i>Aucun examen</i></td></tr>'}</table>
+    <div class="signature">
+      <span>Patient</span>
+      <span>${escapeHtml(doctor?.name || 'Médecin')}</span>
+    </div>
   `;
   const html = buildTicketHtml({
     settings,
     title: "BON D'ANALYSE — LABORATOIRE",
-    reference: `LAB-${Date.now().toString().slice(-6)}`,
+    reference: numeroFacture || `LAB-${Date.now().toString().slice(-6)}`,
     date,
     bodyHtml,
     footerNote: "Présentez ce bon au laboratoire avec votre pièce d'identité.",
@@ -421,15 +429,15 @@ export function printEchoRequestTicket(
   doctor: User | undefined,
   date: Date,
   requests: readonly ExamTicketLine[],
+  numeroFacture?: string,
 ) {
   const lines = requests
-    .map(
-      (r) => `
-      <tr><td colspan="2" class="bold" style="padding-top:1.5mm">▸ ${escapeHtml(r.examType)}${r.quantity && r.quantity !== 1 ? ` × ${escapeHtml(r.quantity)}` : ''}${r.urgent ? ' <span style="color:#b00">[URGENT]</span>' : ''}</td></tr>
-      ${r.notes ? `<tr><td colspan="2" class="small">  ${escapeHtml(r.notes)}</td></tr>` : ''}
-      ${r.price != null ? `<tr><td colspan="2" class="small">  Tarif : ${money(r.price)}</td></tr>` : ''}
-    `,
-    )
+    .flatMap((r) => [
+      `<tr><td colspan="2" class="bold" style="padding-top:1.5mm">▸ ${escapeHtml(r.examType)}${r.quantity && r.quantity !== 1 ? ` × ${escapeHtml(r.quantity)}` : ''}${r.urgent ? ' <span style="color:#b00">[URGENT]</span>' : ''}</td></tr>`,
+      r.notes ? `<tr><td colspan="2" class="small">  ${escapeHtml(r.notes)}</td></tr>` : '',
+      r.price != null ? `<tr><td colspan="2" class="small">  Tarif : ${money(r.price)}</td></tr>` : '',
+    ])
+    .filter(Boolean)
     .join('');
   const bodyHtml = `
     <div><span class="bold">Patient :</span> ${escapeHtml(patient.lastName)} ${escapeHtml(patient.firstName)}</div>
@@ -439,11 +447,15 @@ export function printEchoRequestTicket(
     <div class="rule"></div>
     <div class="bold heading">ÉCHOGRAPHIES DEMANDÉES</div>
     <table>${lines || '<tr><td><i>Aucune échographie</i></td></tr>'}</table>
+    <div class="signature">
+      <span>Patient</span>
+      <span>${escapeHtml(doctor?.name || 'Médecin')}</span>
+    </div>
   `;
   const html = buildTicketHtml({
     settings,
     title: "BON D'ÉCHOGRAPHIE",
-    reference: `ECHO-${Date.now().toString().slice(-6)}`,
+    reference: numeroFacture || `ECHO-${Date.now().toString().slice(-6)}`,
     date,
     bodyHtml,
     footerNote: "Présentez ce bon au service d'imagerie / échographie.",

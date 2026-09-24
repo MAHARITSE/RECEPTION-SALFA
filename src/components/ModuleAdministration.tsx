@@ -736,10 +736,10 @@ export default function ModuleAdministration({ state, setState }: Props) {
                     id="admin-reset-password"
                     name="token-reset-field"
                     {...passwordInputOptOut}
-                    type={resetPasswordModal.showPassword ? 'text' : 'password'}
+                    type="text"
                     value={resetPasswordModal.newPassword}
                     onChange={(e) => setResetPasswordModal({ ...resetPasswordModal, newPassword: e.target.value })}
-                    className="w-full pl-3 pr-10 py-2 border rounded-xl text-sm font-mono outline-none"
+                    className={`w-full pl-3 pr-10 py-2 border rounded-xl text-sm font-mono outline-none ${resetPasswordModal.showPassword ? '' : 'input-text-security-disc'}`}
                   />
                   <button
                     type="button"

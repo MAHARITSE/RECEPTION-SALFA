@@ -9,6 +9,7 @@ import DemandeAchatForm, { type ReqLine } from './DemandeAchatForm';
 import ModuleCaisse from './ModuleCaisse';
 import { normaliserRecherche } from '../utils/recherche';
 import { useFlashInfo, FlashInfoBanner } from './FlashInfo';
+import { getHbMedicationStats } from '../utils/hbDeliveryTracking';
 import {
   Pill, Package, CheckCircle, Clock, Search, Send,
   Plus, Trash2, Filter, Printer, Edit3, CreditCard,
@@ -430,6 +431,9 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
   // Lignes réellement imprimées sur le ticket de clôture (stock géré + sortie > 0)
   const deliveryRecapStockOnly = deliveryRecapByArticle.filter((r) => r.finalStock !== null && r.totalQuantity > 0);
 
+  const hasGlobalPendingHbMeds = (state.hbRecords || []).some(
+    (h) => !h.dischargedAt && getHbMedicationStats(h.lines, state.articles, state.familles).pendingQty > 0
+  );
 
   return (
     <div className="space-y-6 flex flex-col">
@@ -444,7 +448,7 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
             <h3 className="font-bold text-lg">Pharmacie & Caisse de garde</h3>
           </div>
           <p className="text-xs text-blue-200 mt-1">
-            Caisse de garde en priorité pour les encaissements de nuit et jours fériés. Demandes d'appro transmises au magasinier (dépôt central).
+            Caisse de garde en priorité pour les encaissements de nuit et jours fériés. Demandes d'appro transmitted au magasinier (dépôt central).
           </p>
         </div>
         <div className="flex items-center gap-2 bg-black/20 p-1 rounded-lg border border-white/10 w-full sm:w-auto">
@@ -456,6 +460,12 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
           >
             <CreditCard className="w-4 h-4" />
             <span>Caisse de garde</span>
+            {hasGlobalPendingHbMeds && (
+              <span className="relative flex h-2.5 w-2.5" title="Sorties de médicaments à délivrer en attente">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-90" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500 border border-white" />
+              </span>
+            )}
           </button>
           <button
             onClick={() => setTab('pending')}
@@ -1157,14 +1167,14 @@ export default function ModulePharmacie({ state, setState, onOpenMessagingWithRe
       {/* Blocage / déblocage vente — Popup modale centrée */}
       {blockModal && (
         <div
-          className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200"
+          className="fixed inset-0 z-[10000] flex items-center justify-center p-2 sm:p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200"
           onClick={() => setBlockModal(null)}
         >
           <div
             role="dialog"
             aria-modal="true"
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md bg-surface rounded-2xl shadow-2xl border border-line overflow-hidden animate-in zoom-in-95 duration-200"
+            className="w-full max-w-md max-h-[92dvh] overflow-y-auto bg-surface rounded-xl sm:rounded-2xl shadow-2xl border border-line overflow-hidden animate-in zoom-in-95 duration-200"
           >
             <div className={`px-5 py-3.5 text-white font-bold flex items-center gap-2 ${blockModal.currentlyBlocked ? 'bg-gradient-to-r from-emerald-600 to-teal-600' : 'bg-gradient-to-r from-orange-500 to-orange-600'}`}>
               {blockModal.currentlyBlocked ? <Unlock className="w-5 h-5" /> : <Ban className="w-5 h-5" />}

@@ -792,6 +792,21 @@ export interface HbLine {
   dateSort?: string;
   /** Identifiant de la consultation source (si prescrit lors d'une admission hospitalisée) */
   consultationId?: string;
+  /** Catégorie de l'acte / article : 'pharmacy', 'hospitalization', 'bloc', 'lab', 'consultation', etc. */
+  category?: string;
+  /** Suivi de délivrance / livraison pharmacie pour garantir la fiabilité du stock */
+  delivered?: boolean;
+  deliveredAt?: string;
+  deliveredBy?: string;
+  deliveredByUserId?: string;
+  /** Service / Module d'origine ayant ajouté la ligne (ex: 'Pharmacie', 'Médecin', 'Laboratoire', 'Soins', 'Bloc', 'Caisse') */
+  addedByService?: string;
+  addedByName?: string;
+  addedAt?: string;
+  /** Posologie / Mode d'emploi prescrit par le médecin (ex: '1 cp 3x/j pendant 5 jours') */
+  posology?: string;
+  /** Médecin prescripteur de la ligne */
+  prescriberName?: string;
 }
 
 /** Dossier Hospitalisation ou Bloc Opératoire — partagé entre Caisse et Pharmacie

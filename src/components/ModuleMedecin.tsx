@@ -22,8 +22,9 @@ import AlerteArticleIndisponible from './AlerteArticleIndisponible';
 import type { ArticleAlertInfo } from './AlerteArticleIndisponible';
 import { printLabResultTicket } from '../utils/printTicket';
 import { PhoneInput } from './PhoneInput';
+import { HbServiceNotificationBadge, HbMedicationDeliveryBadge, HbMedicationDeliveryDrawer } from './HbDeliveryComponents';
 import {
-  Stethoscope, History, Trash2, AlertTriangle, Heart, FileText, Clock, CheckCircle,
+  Stethoscope, History, Trash2, AlertTriangle, Heart, FileText, Clock, CheckCircle, Lock,
   Send, Search, Edit2, RotateCcw, Save, FlaskConical, Scan, Plus, X, Droplets,
   Users, Printer, Eye, CheckCircle2, RefreshCw, Building2, ShieldCheck, UserPlus,
 } from 'lucide-react';
@@ -52,12 +53,15 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
   // la liste est partagée (caisse, pharmacie de garde, bloc) — c'est le
   // PAIEMENT qui fait foi, quelle que soit la personne qui a saisi.
   const [hbPrescritRecordId, setHbPrescritRecordId] = useState<string | null>(null);
+  const [hbMedDrawerRecordId, setHbMedDrawerRecordId] = useState<string | null>(null);
   const hbArtRef = useRef<HTMLInputElement>(null);
   const [hbArtSearch, setHbArtSearch] = useState('');
   const [hbArtIdx, setHbArtIdx] = useState(0);
   const [hbArtIsNew, setHbArtIsNew] = useState(true);
   const [hbArtSelLineId, setHbArtSelLineId] = useState<string | null>(null);
-  const [hbArtForm, setHbArtForm] = useState<HbLine>({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: new Date().toISOString().split('T')[0] });
+  const [lastDiscount, setLastDiscount] = useState<number>(0);
+  const [hbDraftLines, setHbDraftLines] = useState<HbLine[]>([]);
+  const [hbArtForm, setHbArtForm] = useState<HbLine>({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, posology: '', dateSort: new Date().toISOString().split('T')[0] });
   // Ouverture d'un dossier (admission) par le médecin, quand le patient n'y est pas encore.
   const [hbNewDossierOpen, setHbNewDossierOpen] = useState(false);
   const [hbNewDossierType, setHbNewDossierType] = useState<'hospit' | 'bloc'>('hospit');
@@ -1437,9 +1441,32 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
       })
     : [];
 
+  const getSmartDiscountForRecord = (rec: HbRecord | undefined): number => {
+    if (rec && rec.clientType === 'societe' && rec.company) {
+      const compName = rec.company.trim().toLowerCase();
+      const soc = (state.assuranceSocietes || []).find(s => s.nom.trim().toLowerCase() === compName || s.id === rec.company)
+        || (state.companies || []).find(c => c.name.trim().toLowerCase() === compName || c.id === rec.company);
+      if (soc) {
+        const anySoc = soc as any;
+        if (anySoc.natureRemise === 'remise' && anySoc.tauxCouvertureDefaut) {
+          return anySoc.tauxCouvertureDefaut;
+        }
+        if (anySoc.discountRate) {
+          return anySoc.discountRate;
+        }
+        if (anySoc.tauxCouvertureDefaut && anySoc.tauxCouvertureDefaut < 100) {
+          return 100 - anySoc.tauxCouvertureDefaut;
+        }
+      }
+    }
+    return lastDiscount || 0;
+  };
+
   const hbArtNew = () => {
+    const rec = hbTous.find(r => r.id === hbPrescritRecordId);
+    const disc = getSmartDiscountForRecord(rec);
     // La date d'acte / de sortie n'est jamais effacée : plusieurs sorties le même jour.
-    setHbArtForm(prev => ({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: prev.dateSort || new Date().toISOString().split('T')[0] }));
+    setHbArtForm(prev => ({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: disc, posology: '', dateSort: prev.dateSort || new Date().toISOString().split('T')[0] }));
     setHbArtSelLineId(null);
     setHbArtIsNew(true);
     setHbArtSearch('');
@@ -1462,16 +1489,36 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
       return;
     }
     const rec = hbTous.find(r => r.id === hbPrescritRecordId);
-    setHbArtForm(prev => ({ id: uuidv4(), articleName: a.name, quantity: 1, unitPrice: getPrice(a, rec?.clientType || 'comptoir'), discount: 0, dateSort: prev.dateSort || new Date().toISOString().split('T')[0] }));
+    const disc = getSmartDiscountForRecord(rec);
+    setHbArtForm(prev => ({ id: uuidv4(), articleName: a.name, quantity: 1, unitPrice: getPrice(a, rec?.clientType || 'comptoir'), discount: disc, posology: prev.posology || '', dateSort: prev.dateSort || new Date().toISOString().split('T')[0] }));
     setHbArtIsNew(true);
     setHbArtSelLineId(null);
     setHbArtSearch('');
     setTimeout(() => { const el = document.getElementById('hb-med-qty'); el?.focus(); (el as HTMLInputElement)?.select(); }, 50);
   };
 
+  useEffect(() => {
+    if (hbPrescritRecordId) {
+      const rec = (state.hbRecords || []).find(r => r.id === hbPrescritRecordId);
+      if (rec) {
+        setHbDraftLines([...rec.lines]);
+      } else {
+        setHbDraftLines([]);
+      }
+    } else {
+      setHbDraftLines([]);
+    }
+  }, [hbPrescritRecordId]);
+
   const hbArtSave = () => {
     const rec = hbTous.find(r => r.id === hbPrescritRecordId);
     if (!rec || !hbArtForm.articleName) return;
+
+    if (!hbArtIsNew && hbArtForm.delivered) {
+      alert("🔒 Cet article est verrouillé car il a déjà été LIVRÉ en stock pharmacie.\n\nPour modifier sa quantité ou son prix, annulez d'abord sa délivrance (décocher) dans le suivi des médicaments.");
+      return;
+    }
+
     const art = state.articles.find(a => a.name === hbArtForm.articleName);
     if (art && articleAvailability(art).outOfStock) {
       setArticleAlert({
@@ -1482,34 +1529,57 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
       });
       return;
     }
-    const ligne: HbLine = { ...hbArtForm, dateSort: hbArtForm.dateSort || new Date().toISOString().split('T')[0] };
-    majHbRecords(prev => prev.map(r => r.id === rec.id ? {
-      ...r,
-      lines: hbArtIsNew || !r.lines.some(l => l.id === hbArtForm.id)
-        ? [...r.lines, { ...ligne, id: ligne.id || uuidv4() }]
-        : r.lines.map(l => l.id === hbArtForm.id ? ligne : l),
-    } : r));
-    setState(prev => {
-      const next = { ...prev };
-      addAuditLog(next, 'PRESCRIPTION_BLOC_HOSPIT', `${rec.patientName} — ${ligne.articleName} × ${ligne.quantity} (${formatAr(hbLineAmt(ligne))}) ${rec.type === 'hospit' ? 'hospitalisation' : 'bloc'} par Dr. ${prev.currentUser?.name || ''}`, rec.patientId);
-      return next;
+    if (hbArtForm.discount !== undefined) {
+      setLastDiscount(hbArtForm.discount);
+    }
+    const doctorName = state.currentUser?.name
+      ? (state.currentUser.name.startsWith('Dr') ? state.currentUser.name : `Dr. ${state.currentUser.name}`)
+      : 'Médecin';
+    const ligne: HbLine = {
+      ...hbArtForm,
+      dateSort: hbArtForm.dateSort || new Date().toISOString().split('T')[0],
+      prescriberName: hbArtForm.prescriberName || doctorName,
+      addedByName: hbArtForm.addedByName || doctorName,
+      addedByService: hbArtForm.addedByService || 'Médecin'
+    };
+
+    setHbDraftLines(prev => {
+      const exists = prev.some(l => l.id === hbArtForm.id);
+      if (hbArtIsNew || !exists) {
+        return [...prev, { ...ligne, id: ligne.id || uuidv4() }];
+      } else {
+        return prev.map(l => l.id === hbArtForm.id ? ligne : l);
+      }
     });
-    setToastFeedback(`Prescription ajoutée au dossier ${rec.type === 'hospit' ? "d'hospitalisation" : 'de bloc'} de ${rec.patientName}.`);
-    setTimeout(() => setToastFeedback(null), 3000);
+
     hbArtNew();
   };
 
   const hbArtDelete = (lineId: string) => {
+    const ligne = hbDraftLines.find(l => l.id === lineId);
+    if (ligne && ligne.delivered) {
+      alert("🔒 Cet article a été marqué comme LIVRÉ en stock pharmacie.\n\nVeuillez d'abord annuler sa délivrance (décocher) dans le suivi des médicaments pour le déverrouiller et pouvoir le supprimer.");
+      return;
+    }
+    setHbDraftLines(prev => prev.filter(l => l.id !== lineId));
+    if (hbArtSelLineId === lineId) hbArtNew();
+  };
+
+  const commitHbPrescription = () => {
     const rec = hbTous.find(r => r.id === hbPrescritRecordId);
-    if (!rec) return;
-    const ligne = rec.lines.find(l => l.id === lineId);
-    majHbRecords(prev => prev.map(r => r.id === rec.id ? { ...r, lines: r.lines.filter(l => l.id !== lineId) } : r));
+    if (!rec) {
+      setHbPrescritRecordId(null);
+      return;
+    }
+    majHbRecords(prev => prev.map(r => r.id === rec.id ? { ...r, lines: hbDraftLines } : r));
     setState(prev => {
       const next = { ...prev };
-      addAuditLog(next, 'SUPPRESSION_PRESCRIPTION_BLOC_HOSPIT', `${rec.patientName} — ${ligne?.articleName || 'ligne'} retirée du dossier ${rec.type === 'hospit' ? 'hospitalisation' : 'bloc'} par Dr. ${prev.currentUser?.name || ''}`, rec.patientId);
+      addAuditLog(next, 'PRESCRIPTION_BLOC_HOSPIT', `${rec.patientName} — prescription de ${hbDraftLines.length} ligne(s) enregistrée et transmise par Dr. ${prev.currentUser?.name || ''}`, rec.patientId);
       return next;
     });
-    if (hbArtSelLineId === lineId) hbArtNew();
+    setToastFeedback(`✅ Prescription enregistrée et transmise pour le dossier de ${rec.patientName}.`);
+    setTimeout(() => setToastFeedback(null), 3000);
+    setHbPrescritRecordId(null);
   };
 
   const hbArtKeyDown = (e: React.KeyboardEvent) => {
@@ -1598,10 +1668,40 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
       )}
       {/* Notification rouge centrée : article bloqué en vente par la pharmacie ou en rupture de stock */}
       <AlerteArticleIndisponible alert={articleAlert} onClose={() => { setArticleAlert(null); setTimeout(() => searchRef.current?.focus(), 50); }} />
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <div className="bg-surface rounded-xl p-4 shadow-sm border cursor-pointer hover:border-amber-400" onClick={() => setView('queue')}><div className="flex items-center gap-3"><div className="p-2 bg-amber-100 dark:bg-amber-500/15 rounded-lg"><Clock className="w-5 h-5 text-amber-600 dark:text-amber-400" /></div><div><div className="text-2xl font-bold">{myWaiting.length}</div><div className="text-sm text-ink-muted">En attente</div></div></div></div>
-        <div className="bg-surface rounded-xl p-4 shadow-sm border cursor-pointer hover:border-emerald-400" onClick={() => setView('my_consults')}><div className="flex items-center gap-3"><div className="p-2 bg-green-100 dark:bg-green-500/15 rounded-lg"><CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" /></div><div><div className="text-2xl font-bold">{myTodayConsults.length}</div><div className="text-sm text-ink-muted">Mes consultations (auj.)</div></div></div></div>
-        <div className="bg-surface rounded-xl p-4 shadow-sm border cursor-pointer hover:border-rose-400" onClick={() => setView('hospit_bloc')}><div className="flex items-center gap-3"><div className="p-2 bg-rose-100 dark:bg-rose-500/15 rounded-lg"><Building2 className="w-5 h-5 text-rose-600 dark:text-rose-400" /></div><div><div className="text-2xl font-bold">{hbActifsCount}</div><div className="text-sm text-ink-muted">Bloc & Hospit.</div></div></div></div>
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+        <div className="bg-surface rounded-xl p-2.5 sm:p-4 shadow-sm border cursor-pointer hover:border-amber-400" onClick={() => setView('queue')}>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="p-1.5 sm:p-2 bg-amber-100 dark:bg-amber-500/15 rounded-lg shrink-0">
+              <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600 dark:text-amber-400" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-lg sm:text-2xl font-bold truncate">{myWaiting.length}</div>
+              <div className="text-[11px] sm:text-sm text-ink-muted truncate">En attente</div>
+            </div>
+          </div>
+        </div>
+        <div className="bg-surface rounded-xl p-2.5 sm:p-4 shadow-sm border cursor-pointer hover:border-emerald-400" onClick={() => setView('my_consults')}>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="p-1.5 sm:p-2 bg-green-100 dark:bg-green-500/15 rounded-lg shrink-0">
+              <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 dark:text-green-400" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-lg sm:text-2xl font-bold truncate">{myTodayConsults.length}</div>
+              <div className="text-[11px] sm:text-sm text-ink-muted truncate">Consultations</div>
+            </div>
+          </div>
+        </div>
+        <div className="bg-surface rounded-xl p-2.5 sm:p-4 shadow-sm border cursor-pointer hover:border-rose-400" onClick={() => setView('hospit_bloc')}>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="p-1.5 sm:p-2 bg-rose-100 dark:bg-rose-500/15 rounded-lg shrink-0">
+              <Building2 className="w-4 h-4 sm:w-5 sm:h-5 text-rose-600 dark:text-rose-400" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-lg sm:text-2xl font-bold truncate">{hbActifsCount}</div>
+              <div className="text-[11px] sm:text-sm text-ink-muted truncate">Bloc/Hospit.</div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* MY CONSULTS */}
@@ -1669,177 +1769,327 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
             const reste = hbReste(record);
             const estSorti = !!record.dischargedAt;
             return (
-              <div key={record.id} className="border rounded-lg overflow-hidden border-line bg-surface shadow-sm">
-                <div className="p-3 flex justify-between items-start gap-2 bg-surface-muted">
+              <div
+                key={record.id}
+                onDoubleClick={() => {
+                  if (estSorti) return;
+                  setHbPrescritRecordId(record.id);
+                  setHbArtSearch(''); setHbArtIdx(0); setHbArtSelLineId(null); setHbArtIsNew(true);
+                  const disc = getSmartDiscountForRecord(record);
+                  setHbArtForm({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: disc, posology: '', dateSort: new Date().toISOString().split('T')[0] });
+                  setTimeout(() => hbArtRef.current?.focus(), 80);
+                }}
+                className={`border rounded-lg overflow-hidden border-line bg-surface shadow-xs transition-all cursor-pointer ${
+                  hbPrescritRecordId === record.id ? 'ring-2 ring-emerald-500 border-emerald-500' : 'hover:border-emerald-500/60'
+                }`}
+                title={estSorti ? 'Dossier clos (patient sorti)' : 'Double-cliquez n’importe où sur cette ligne pour ouvrir la prescription en modale'}
+              >
+                <div className="p-3 flex justify-between items-start gap-2 bg-surface-muted select-none">
                   <div>
                     <div className="font-bold text-sm flex items-center gap-2 flex-wrap">
-                      {record.patientName}
+                      <span className="cursor-pointer transition hover:text-emerald-600 dark:hover:text-emerald-400">
+                        {record.patientName}
+                      </span>
                       <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${record.type === 'bloc' ? 'bg-blue-100 dark:bg-cyan-500/15 text-blue-700 dark:text-cyan-400' : 'bg-rose-100 dark:bg-rose-500/15 text-rose-700 dark:text-rose-400'}`}>{record.type === 'bloc' ? '🏥 Bloc' : '🏨 Hospit.'}</span>
                       <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${record.clientType === 'societe' ? 'bg-blue-100 dark:bg-cyan-500/15 text-blue-700 dark:text-cyan-400' : 'bg-surface-hover text-ink-secondary'}`}>{record.clientType === 'societe' ? `🏢 ${record.company || 'Société'}${record.subCompany ? ` / ${record.subCompany}` : ''}` : '🏪 Comptoir'}</span>
                       {estSorti && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-surface-hover text-ink-secondary">🚪 Sorti le {new Date(record.dischargedAt!).toLocaleDateString('fr-FR')}</span>}
+                      <HbMedicationDeliveryBadge
+                        record={record}
+                        articles={state.articles || []}
+                        familles={state.familles || []}
+                        currentUserRole={state.currentUser?.role}
+                        isOpen={hbMedDrawerRecordId === record.id}
+                        onToggle={() => setHbMedDrawerRecordId(hbMedDrawerRecordId === record.id ? null : record.id)}
+                      />
                     </div>
                     <div className="text-xs text-ink-muted mt-0.5">Facture: <strong>{formatAr(totalFact)}</strong> | Payé: <span className="text-green-600 dark:text-green-400">{formatAr(totalPaid)}</span> | Reste: <span className={reste > 0 ? 'text-red-600 dark:text-red-400 font-bold' : 'text-ink-secondary'}>{formatAr(reste)}</span></div>
                   </div>
                   <button
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       const ouvert = hbPrescritRecordId === record.id;
                       setHbPrescritRecordId(ouvert ? null : record.id);
                       setHbArtSearch(''); setHbArtIdx(0); setHbArtSelLineId(null); setHbArtIsNew(true);
-                      setHbArtForm({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: new Date().toISOString().split('T')[0] });
+                      const disc = getSmartDiscountForRecord(record);
+                      setHbArtForm({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: disc, posology: '', dateSort: new Date().toISOString().split('T')[0] });
                       if (!ouvert) setTimeout(() => hbArtRef.current?.focus(), 80);
                     }}
                     disabled={estSorti}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer ${hbPrescritRecordId === record.id ? 'bg-slate-700 hover:bg-slate-800 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`}
                     title={estSorti
                       ? "Dossier clos (patient sorti) : la caisse doit d'abord le réadmettre pour y prescrire"
-                      : 'Prescrire des actes / articles sur ce dossier (liste partagée avec la caisse et la pharmacie de garde)'}
+                      : 'Prescrire des actes / articles sur ce dossier (ouvert en modale)'}
                   >
-                    {hbPrescritRecordId === record.id ? <><X className="w-3.5 h-3.5" /> Fermer la saisie</> : <><Plus className="w-3.5 h-3.5" /> Prescrire</>}
+                    {hbPrescritRecordId === record.id ? <><X className="w-3.5 h-3.5" /> Fermer</> : <><Plus className="w-3.5 h-3.5" /> Prescrire</>}
                   </button>
                 </div>
+                {hbMedDrawerRecordId === record.id && (
+                  <HbMedicationDeliveryDrawer
+                    record={record}
+                    state={state}
+                    setState={setState}
+                    onClose={() => setHbMedDrawerRecordId(null)}
+                  />
+                )}
 
-                {/* SAISIE SAGE + LISTE DES LIGNES — uniquement lorsque le médecin clique sur « Prescrire » */}
-                {hbPrescritRecordId === record.id && (
-                  <>
-                    <div className="border-t border-line bg-surface-muted">
-                      <div className="bg-surface-hover border-b border-line-strong p-2 m-2 mb-0 rounded shadow-inner">
-                        <div className="flex flex-wrap items-end gap-1.5">
-                          <div className="flex-1 min-w-[150px] relative">
-                            <label className="block text-[10px] font-bold text-ink-muted mb-0.5">Article / acte (tapez + ↑↓ + Entrée)</label>
-                            <input
-                              ref={hbArtRef}
-                              type="text"
-                              value={hbArtForm.articleName && !hbArtSearch ? hbArtForm.articleName : hbArtSearch}
-                              onChange={(e) => {
-                                setHbArtSearch(e.target.value);
-                                setHbArtIdx(0);
-                                if (hbArtForm.articleName && e.target.value !== hbArtForm.articleName) {
-                                  setHbArtForm(prev => ({ ...prev, articleName: '' }));
-                                }
-                              }}
-                              onKeyDown={hbArtKeyDown}
-                              className="w-full bg-surface border border-blue-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-accent focus:ring-1 focus:ring-accent/25 text-ink-strong"
-                              placeholder="🔍 Saisir un article, un médicament ou un acte de soin..."
-                            />
-                            {hbArtSearch.length >= 1 && hbArtFiltered.length > 0 && (
-                              <div className="absolute top-full left-0 right-0 bg-surface border border-line-strong rounded-b shadow-2xl z-40 max-h-44 overflow-y-auto">
-                                {hbArtFiltered.slice(0, 40).map((a, idx) => {
-                                  const av = articleAvailability(a);
-                                  const isOut = av.outOfStock;
-                                  const isLow = av.manages && !isOut && a.stockPharmacie <= a.minStockPharmacie && !a.alertDisabledPharmacie;
-                                  return (
-                                    <div key={a.id} onClick={() => hbArtSelectArticle(a.id)}
-                                      title={isOut ? 'Rupture de stock — non délivrable' : undefined}
-                                      className={`px-3 py-1.5 text-xs flex justify-between border-b border-line-soft ${isOut ? 'bg-red-50 dark:bg-red-500/8 text-red-700 dark:text-red-400 cursor-not-allowed' : `cursor-pointer ${idx === hbArtIdx ? 'bg-blue-500 text-white font-medium' : 'hover:bg-surface-muted text-ink-strong'}`}`}>
-                                      <span className={isOut ? 'line-through decoration-red-400/60' : ''}><span className="text-[9px] text-ink-faint mr-1">[{a.family}]</span>{a.name}</span>
-                                      <span className="flex items-center gap-2">
-                                        {isOut
-                                          ? <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-[9px] font-bold">🚨 RUPTURE</span>
-                                          : av.manages
-                                            ? <span className={`font-mono text-[10px] ${idx === hbArtIdx ? 'text-white/90' : isLow ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-ink-faint'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>
-                                            : <span className={`font-mono text-[10px] ${idx === hbArtIdx ? 'text-white/80' : 'text-ink-faint'}`} title="Famille non gérée en stock">stock: —</span>}
-                                        <span className={`font-mono ${isOut ? 'text-red-400' : idx === hbArtIdx ? 'text-white' : 'text-blue-600 dark:text-cyan-400 font-medium'}`}>{formatAr(getPrice(a, record.clientType || 'comptoir'))}</span>
-                                      </span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                          <div className="w-16">
-                            <label className="block text-[10px] font-bold text-ink-muted mb-0.5">Qté</label>
-                            <input id="hb-med-qty" type="number" min={1} value={hbArtForm.quantity}
-                              onChange={e => setHbArtForm(prev => ({ ...prev, quantity: parseFloat(e.target.value) || 1 }))}
-                              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
-                              className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-accent text-ink-strong" />
-                          </div>
-                          <div className="w-16">
-                            <label className="block text-[10px] font-bold text-ink-muted mb-0.5">Rem%</label>
-                            <input type="number" min={0} max={100} value={hbArtForm.discount}
-                              onChange={e => setHbArtForm(prev => ({ ...prev, discount: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) }))}
-                              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
-                              className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-accent text-ink-strong" />
-                          </div>
-                          <div className="w-24">
-                            <label className="block text-[10px] font-bold text-ink-muted mb-0.5">P.U.</label>
-                            <MoneyInput value={hbArtForm.unitPrice} onChange={n => setHbArtForm(prev => ({ ...prev, unitPrice: n }))} decimals={2}
-                              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
-                              ariaLabel="Prix unitaire" title="Prix unitaire — séparateur de milliers automatique"
-                              className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-accent text-ink-strong" />
-                          </div>
-                          <div className="w-28">
-                            <label className="block text-[10px] font-bold text-ink-muted mb-0.5">Montant</label>
-                            <input readOnly value={formatAr(hbLineAmt(hbArtForm))} className="w-full bg-surface-active border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono font-bold text-ink" />
-                          </div>
-                          <div className="w-36">
-                            <label className="block text-[10px] font-bold text-ink-muted mb-0.5" title="Conservée après validation : plusieurs actes le même jour">Date d&apos;acte / de sortie 📌</label>
-                            <input type="date" value={hbArtForm.dateSort || ''}
-                              onChange={e => setHbArtForm(prev => ({ ...prev, dateSort: e.target.value }))}
-                              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
-                              className="w-full bg-amber-50 dark:bg-amber-500/8 border border-amber-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-accent text-ink-strong" />
-                          </div>
-                        </div>
-                        <div className="flex justify-end gap-1.5 mt-2">
-                          <button onClick={hbArtNew} className="flex items-center gap-1 px-2.5 py-1 bg-surface hover:bg-surface-muted border border-line-strong rounded shadow-sm text-ink transition cursor-pointer text-xs font-medium">
-                            <Plus className="h-3.5 w-3.5 text-ink-muted" /> Nouveau
-                          </button>
-                          <button type="button"
-                            onClick={() => { if (hbArtSelLineId) hbArtDelete(hbArtSelLineId); }}
-                            disabled={!hbArtSelLineId}
-                            className="flex items-center gap-1 px-2.5 py-1 bg-surface hover:bg-surface-muted border border-line-strong rounded shadow-sm text-ink disabled:opacity-40 transition cursor-pointer text-xs font-medium">
-                            <Trash2 className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" /> Supprimer
-                          </button>
-                          <button onClick={hbArtSave} disabled={!hbArtForm.articleName}
-                            className="flex items-center gap-1 px-2.5 py-1 bg-sky-500 hover:bg-sky-600 text-white border border-sky-600 rounded shadow-sm font-semibold disabled:opacity-40 transition cursor-pointer text-xs">
-                            <Save className="h-3.5 w-3.5" /> Enregistrer
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-[11px]">
-                        <thead className="bg-surface-hover text-ink-secondary"><tr className="divide-x divide-line"><th className="p-1.5 text-left">Article</th><th className="p-1.5 text-center w-10">Qté</th><th className="p-1.5 text-center w-12">Rem%</th><th className="p-1.5 text-right w-24">P.U.</th><th className="p-1.5 text-right w-24">Montant</th><th className="p-1.5 text-center w-10"></th></tr></thead>
-                        <tbody className="divide-y font-mono">
-                          {record.lines.length === 0 ? <tr><td colSpan={6} className="p-2 text-center text-ink-faint font-sans">Aucune ligne — commencez la saisie ci-dessus pour en ajouter</td></tr> :
-                            record.lines.map(l => (
-                              <tr key={l.id}
-                                onClick={() => {
-                                  setHbArtSelLineId(l.id); setHbArtForm({ ...l }); setHbArtIsNew(false);
-                                }}
-                                className={`divide-x divide-line cursor-pointer ${hbArtSelLineId === l.id ? 'bg-blue-500 text-white' : 'hover:bg-surface-muted'}`}>
-                                <td className="p-1.5 font-sans">{l.articleName}</td>
-                                <td className="p-1.5 text-center">{l.quantity}</td>
-                                <td className="p-1.5 text-center text-amber-700 dark:text-amber-400 font-semibold">{l.discount ? `${l.discount}%` : '—'}</td>
-                                <td className="p-1.5 text-right">{formatNum(l.unitPrice)}</td>
-                                <td className="p-1.5 text-right font-bold">{formatNum(hbLineAmt(l))}</td>
-                                <td className="p-1.5 text-center">
-                                  <button onClick={(e) => { e.stopPropagation(); hbArtDelete(l.id); }}
-                                    className={`cursor-pointer ${hbArtSelLineId === l.id ? 'text-white hover:text-red-200' : 'text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-300'}`}
-                                    title="Retirer cette ligne du dossier">
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                        </tbody>
-                        {record.lines.length > 0 && (
-                          <tfoot className="bg-emerald-50 dark:bg-emerald-500/8 border-t-2 border-emerald-300 dark:border-emerald-500/40">
-                            <tr><td colSpan={4} className="p-1.5 text-right font-bold font-sans">TOTAL DOSSIER :</td><td colSpan={2} className="p-1.5 text-right font-mono font-bold text-emerald-800 dark:text-emerald-300">{formatAr(totalFact)}</td></tr>
-                          </tfoot>
-                        )}
-                      </table>
-                    </div>
-                    {record.payments.length > 0 && (
-                      <div className="px-3 py-2 border-t border-line text-[11px] text-ink-muted">
-                        <span className="font-semibold">Paiements :</span> {record.payments.map(p => `${formatAr(p.amount)} (${new Date(p.date).toLocaleDateString('fr-FR')})`).join(' · ')}
-                      </div>
-                    )}
-                  </>
+                {record.payments && record.payments.length > 0 && (
+                  <div className="px-3 py-2 border-t border-line text-[11px] text-ink-muted">
+                    <span className="font-semibold">Paiements :</span> {record.payments.map(p => `${formatAr(p.amount)} (${new Date(p.date).toLocaleDateString('fr-FR')})`).join(' · ')}
+                  </div>
                 )}
               </div>
             );
           })}
+
+          {/* MODALE OVERLAY DE PRESCRIPTION HOSPIT / BLOC */}
+          {hbPrescritRecordId && (() => {
+            const record = hbTous.find(r => r.id === hbPrescritRecordId);
+            if (!record) return null;
+            const totalFact = hbDraftLines.reduce((acc, l) => acc + hbLineAmt(l), 0);
+            const totalPaid = hbTotalPaye(record);
+            const reste = Math.max(0, totalFact - totalPaid);
+
+            return (
+              <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-4 animate-fade-in overflow-y-auto">
+                <div className="bg-surface rounded-2xl shadow-2xl border border-line w-full max-w-5xl flex flex-col max-h-[92vh] overflow-hidden my-auto">
+                  {/* Entête de la Modale */}
+                  <div className="p-3.5 bg-surface-muted border-b border-line flex items-center justify-between gap-3 shrink-0">
+                    <div>
+                      <div className="font-bold text-base flex items-center gap-2 flex-wrap text-ink-strong">
+                        <span>📋 Prescription Médicale : <strong className="text-emerald-700 dark:text-emerald-300">{record.patientName}</strong></span>
+                        <span className={`px-2 py-0.5 rounded text-xs font-bold ${record.type === 'bloc' ? 'bg-blue-100 dark:bg-cyan-500/15 text-blue-700 dark:text-cyan-400' : 'bg-rose-100 dark:bg-rose-500/15 text-rose-700 dark:text-rose-400'}`}>
+                          {record.type === 'bloc' ? '🏥 Bloc' : '🏨 Hospit.'}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded text-xs font-bold ${record.clientType === 'societe' ? 'bg-blue-100 dark:bg-cyan-500/15 text-blue-700 dark:text-cyan-400' : 'bg-surface-hover text-ink-secondary'}`}>
+                          {record.clientType === 'societe' ? `🏢 ${record.company || 'Société'}${record.subCompany ? ` / ${record.subCompany}` : ''}` : '🏪 Comptoir'}
+                        </span>
+                      </div>
+                      <div className="text-xs text-ink-muted mt-0.5 flex items-center gap-3">
+                        <span>Facture: <strong>{formatAr(totalFact)}</strong></span>
+                        <span>Payé: <strong className="text-green-600 dark:text-green-400">{formatAr(totalPaid)}</strong></span>
+                        <span>Reste: <strong className={reste > 0 ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-ink-secondary'}>{formatAr(reste)}</strong></span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setHbPrescritRecordId(null)}
+                      className="p-1.5 rounded-lg text-ink-muted hover:text-ink hover:bg-surface-hover cursor-pointer transition"
+                      title="Fermer sans enregistrer"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  {/* Corps de la Modale */}
+                  <div className="p-3 sm:p-4 overflow-y-auto space-y-3.5 flex-1">
+                    {/* SAISIE SAGE */}
+                    <div className="bg-surface-hover border border-line-strong p-3 rounded-xl shadow-inner">
+                      <div className="flex flex-wrap items-end gap-1.5">
+                        <div className="flex-1 min-w-[180px] relative">
+                          <label className="block text-[10px] font-bold text-ink-muted mb-0.5">Article / acte (tapez + ↑↓ + Entrée)</label>
+                          <input
+                            ref={hbArtRef}
+                            type="text"
+                            value={hbArtForm.articleName && !hbArtSearch ? hbArtForm.articleName : hbArtSearch}
+                            onChange={(e) => {
+                              setHbArtSearch(e.target.value);
+                              setHbArtIdx(0);
+                              if (hbArtForm.articleName && e.target.value !== hbArtForm.articleName) {
+                                setHbArtForm(prev => ({ ...prev, articleName: '' }));
+                              }
+                            }}
+                            onKeyDown={hbArtKeyDown}
+                            className="w-full bg-surface border border-blue-400 rounded px-1.5 py-0.5 text-xs font-mono outline-none focus:border-accent focus:ring-1 focus:ring-accent/25 text-ink-strong"
+                            placeholder="🔍 Saisir un article, un médicament ou un acte..."
+                          />
+                          {hbArtSearch.length >= 1 && hbArtFiltered.length > 0 && (
+                            <div className="absolute top-full left-0 right-0 bg-surface border border-line-strong rounded-b shadow-2xl z-50 max-h-48 overflow-y-auto">
+                              {hbArtFiltered.slice(0, 40).map((a, idx) => {
+                                const av = articleAvailability(a);
+                                const isOut = av.outOfStock;
+                                const isLow = av.manages && !isOut && a.stockPharmacie <= a.minStockPharmacie && !a.alertDisabledPharmacie;
+                                return (
+                                  <div key={a.id} onClick={() => hbArtSelectArticle(a.id)}
+                                    title={isOut ? 'Rupture de stock — non délivrable' : undefined}
+                                    className={`px-3 py-1.5 text-xs flex justify-between border-b border-line-soft ${isOut ? 'bg-red-50 dark:bg-red-500/8 text-red-700 dark:text-red-400 cursor-not-allowed' : `cursor-pointer ${idx === hbArtIdx ? 'bg-blue-500 text-white font-medium' : 'hover:bg-surface-muted text-ink-strong'}`}`}>
+                                    <span className={isOut ? 'line-through decoration-red-400/60' : ''}><span className="text-[9px] text-ink-faint mr-1">[{a.family}]</span>{a.name}</span>
+                                    <span className="flex items-center gap-2">
+                                      {isOut
+                                        ? <span className="px-1.5 py-0.5 bg-red-600 text-white rounded text-[9px] font-bold">🚨 RUPTURE</span>
+                                        : av.manages
+                                          ? <span className={`font-mono text-[10px] ${idx === hbArtIdx ? 'text-white/90' : isLow ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-ink-faint'}`}>Stock: {a.stockPharmacie}{isLow ? ' ⚠️' : ''}</span>
+                                          : <span className={`font-mono text-[10px] ${idx === hbArtIdx ? 'text-white/80' : 'text-ink-faint'}`} title="Famille non gérée en stock">stock: —</span>}
+                                      <span className={`font-mono ${isOut ? 'text-red-400' : idx === hbArtIdx ? 'text-white' : 'text-blue-600 dark:text-cyan-400 font-medium'}`}>{formatAr(getPrice(a, record.clientType || 'comptoir'))}</span>
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                        <div className="w-16">
+                          <label className="block text-[10px] font-bold text-ink-muted mb-0.5">Qté</label>
+                          <input id="hb-med-qty" type="number" min={1} value={hbArtForm.quantity}
+                            onChange={e => setHbArtForm(prev => ({ ...prev, quantity: parseFloat(e.target.value) || 1 }))}
+                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
+                            className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-accent text-ink-strong" />
+                        </div>
+                        <div className="flex-1 min-w-[150px]">
+                          <label className="block text-[10px] font-bold text-purple-700 dark:text-purple-300 mb-0.5">Posologie / Mode d&apos;emploi 💊</label>
+                          <input type="text" placeholder="ex: 1 cp 3x/j pendant 5j..." value={hbArtForm.posology || ''}
+                            onChange={e => setHbArtForm(prev => ({ ...prev, posology: e.target.value }))}
+                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
+                            className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs font-sans outline-none focus:border-accent text-ink-strong placeholder:text-ink-faint" />
+                        </div>
+                        <div className="w-16">
+                          <label className="block text-[10px] font-bold text-amber-700 dark:text-amber-400 mb-0.5" title="Remise intelligente ou dernière remise saisie">Rem% 🏷️</label>
+                          <input type="number" min={0} max={100} value={hbArtForm.discount}
+                            onChange={e => {
+                              const d = Math.max(0, Math.min(100, parseFloat(e.target.value) || 0));
+                              setHbArtForm(prev => ({ ...prev, discount: d }));
+                              setLastDiscount(d);
+                            }}
+                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
+                            className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-accent text-ink-strong font-bold" />
+                        </div>
+                        <div className="w-24">
+                          <label className="block text-[10px] font-bold text-ink-muted mb-0.5">P.U.</label>
+                          <MoneyInput value={hbArtForm.unitPrice} onChange={n => setHbArtForm(prev => ({ ...prev, unitPrice: n }))} decimals={2}
+                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
+                            ariaLabel="Prix unitaire" title="Prix unitaire — séparateur de milliers automatique"
+                            className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-accent text-ink-strong" />
+                        </div>
+                        <div className="w-28">
+                          <label className="block text-[10px] font-bold text-ink-muted mb-0.5">Montant</label>
+                          <input readOnly value={formatAr(hbLineAmt(hbArtForm))} className="w-full bg-surface-active border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono font-bold text-ink" />
+                        </div>
+                      </div>
+                      <div className="flex justify-end gap-1.5 mt-2">
+                        <button onClick={hbArtNew} className="flex items-center gap-1 px-2.5 py-1 bg-surface hover:bg-surface-muted border border-line-strong rounded shadow-sm text-ink transition cursor-pointer text-xs font-medium">
+                          <Plus className="h-3.5 w-3.5 text-ink-muted" /> Effacer
+                        </button>
+                        <button type="button"
+                          onClick={() => { if (hbArtSelLineId) hbArtDelete(hbArtSelLineId); }}
+                          disabled={!hbArtSelLineId}
+                          className="flex items-center gap-1 px-2.5 py-1 bg-surface hover:bg-surface-muted border border-line-strong rounded shadow-sm text-ink disabled:opacity-40 transition cursor-pointer text-xs font-medium">
+                          <Trash2 className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" /> Supprimer
+                        </button>
+                        <button onClick={hbArtSave} disabled={!hbArtForm.articleName}
+                          className="flex items-center gap-1 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded shadow-sm font-semibold disabled:opacity-40 transition cursor-pointer text-xs">
+                          <Plus className="h-3.5 w-3.5" /> Ajouter à la liste
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* TABLEAU DES PRESCRIPTIONS */}
+                    <div className="border border-line rounded-xl overflow-hidden bg-surface shadow-xs">
+                      <table className="w-full text-xs">
+                        <thead className="bg-surface-muted text-ink-muted border-b border-line text-[11px] font-bold uppercase">
+                          <tr className="divide-x divide-line">
+                            <th className="p-2 text-left w-24">Date acte 📌</th>
+                            <th className="p-2 text-left">Article / Acte</th>
+                            <th className="p-2 text-center w-14">Qté</th>
+                            <th className="p-2 text-center w-16">Rem%</th>
+                            <th className="p-2 text-right w-24">P.U.</th>
+                            <th className="p-2 text-right w-24">Montant</th>
+                            <th className="p-2 text-left w-36">Prescripteur 👨‍⚕️</th>
+                            <th className="p-2 text-center w-16">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-line">
+                          {hbDraftLines.length === 0 ? (
+                            <tr>
+                              <td colSpan={8} className="p-6 text-center text-ink-faint italic">
+                                Aucune ligne dans cette prescription — saisissez un article ou médicament ci-dessus.
+                              </td>
+                            </tr>
+                          ) : (
+                            hbDraftLines.map(l => (
+                              <tr key={l.id}
+                                onClick={() => {
+                                  setHbArtSelLineId(l.id); setHbArtForm({ ...l }); setHbArtIsNew(false);
+                                }}
+                                className={`divide-x divide-line cursor-pointer ${hbArtSelLineId === l.id ? 'bg-blue-500 text-white font-medium' : 'hover:bg-surface-muted'}`}>
+                                <td className="p-2 font-mono text-[11px] font-bold text-amber-700 dark:text-amber-300 whitespace-nowrap">
+                                  {l.dateSort ? new Date(l.dateSort).toLocaleDateString('fr-FR') : '—'}
+                                </td>
+                                <td className="p-2 font-sans">
+                                  <div className="flex items-center justify-between gap-1">
+                                    <span className="font-medium">{l.articleName}</span>
+                                    {l.delivered && (
+                                      <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-100 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-300 shrink-0">
+                                        🔒 Livré
+                                      </span>
+                                    )}
+                                  </div>
+                                  {l.posology && (
+                                    <div className="text-[10px] text-purple-700 dark:text-purple-300 font-semibold italic mt-0.5">
+                                      💊 {l.posology}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="p-2 text-center font-bold">{l.quantity}</td>
+                                <td className="p-2 text-center text-amber-700 dark:text-amber-400 font-semibold">{l.discount ? `${l.discount}%` : '—'}</td>
+                                <td className="p-2 text-right font-mono">{formatNum(l.unitPrice)}</td>
+                                <td className="p-2 text-right font-mono font-bold">{formatNum(hbLineAmt(l))}</td>
+                                <td className="p-2 text-left font-sans text-xs font-semibold text-emerald-800 dark:text-emerald-300 truncate max-w-[140px]" title={l.prescriberName || l.addedByName || (state.currentUser?.name ? `Dr. ${state.currentUser.name}` : 'Médecin')}>
+                                  {l.prescriberName || l.addedByName || (state.currentUser?.name ? `Dr. ${state.currentUser.name}` : 'Médecin')}
+                                </td>
+                                <td className="p-2 text-center">
+                                  {l.delivered ? (
+                                    <span title="🔒 Livré en stock pharmacie — annuler sa délivrance pour pouvoir supprimer" className="inline-block text-amber-500 cursor-not-allowed">
+                                      <Lock className="w-4 h-4" />
+                                    </span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); hbArtDelete(l.id); }}
+                                      className="p-1 text-rose-600 hover:text-rose-800 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded cursor-pointer transition"
+                                      title="Supprimer cette ligne"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                        {hbDraftLines.length > 0 && (
+                          <tfoot className="bg-emerald-50 dark:bg-emerald-500/8 border-t-2 border-emerald-300 dark:border-emerald-500/40">
+                            <tr><td colSpan={5} className="p-1.5 text-right font-bold font-sans">TOTAL DOSSIER :</td><td colSpan={3} className="p-1.5 text-right font-mono font-bold text-emerald-800 dark:text-emerald-300">{formatAr(totalFact)}</td></tr>
+                          </tfoot>
+                        )}
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Pied de Modale */}
+                  <div className="p-3 bg-surface-muted border-t border-line flex items-center justify-between gap-2 shrink-0">
+                    <span className="text-xs text-ink-muted font-medium">
+                      💡 {hbDraftLines.length} ligne(s) au total • Facture : <strong className="text-emerald-600 dark:text-emerald-400 font-bold">{formatAr(totalFact)}</strong>
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setHbPrescritRecordId(null)}
+                        className="px-3 py-1.5 bg-surface hover:bg-surface-hover border border-line rounded-lg text-xs font-semibold text-ink cursor-pointer transition"
+                      >
+                        Annuler / Fermer
+                      </button>
+                      <button
+                        type="button"
+                        onClick={commitHbPrescription}
+                        className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold cursor-pointer transition shadow-md flex items-center gap-1.5"
+                      >
+                        <Save className="w-4 h-4" /> Terminer & Enregistrer la prescription
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -2464,22 +2714,22 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
 
       {/* MODAL COMPLETION DOSSIER MEDICAL PATIENT (PAR LE MEDECIN) */}
       {showPatientEditModal && selectedPatient && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-surface rounded-2xl shadow-2xl border border-line w-full max-w-2xl overflow-hidden animate-in fade-in duration-150">
-            <div className="p-4 bg-gradient-to-r from-indigo-700 to-blue-600 text-white flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <Stethoscope className="w-5 h-5 text-indigo-200" />
-                <div>
-                  <h3 className="font-bold text-base">Compléter le Dossier Médical Patient</h3>
-                  <p className="text-xs text-indigo-100">{selectedPatient.lastName} {selectedPatient.firstName} ({selectedPatient.dossier})</p>
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50">
+          <div className="bg-surface rounded-xl sm:rounded-2xl shadow-2xl border border-line w-full max-w-2xl max-h-[92dvh] flex flex-col overflow-hidden animate-in fade-in duration-150">
+            <div className="p-3.5 sm:p-4 bg-gradient-to-r from-indigo-700 to-blue-600 text-white flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <Stethoscope className="w-5 h-5 text-indigo-200 shrink-0" />
+                <div className="min-w-0 truncate">
+                  <h3 className="font-bold text-sm sm:text-base truncate">Compléter le Dossier Médical</h3>
+                  <p className="text-xs text-indigo-100 truncate">{selectedPatient.lastName} {selectedPatient.firstName} ({selectedPatient.dossier})</p>
                 </div>
               </div>
-              <button onClick={() => setShowPatientEditModal(false)} className="p-1 hover:bg-white/20 rounded-lg text-white transition cursor-pointer">
+              <button onClick={() => setShowPatientEditModal(false)} className="p-1 hover:bg-white/20 rounded-lg text-white transition cursor-pointer shrink-0">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto text-sm">
+            <div className="p-3.5 sm:p-5 space-y-4 overflow-y-auto flex-1 text-sm">
               {/* Section Profil Médical */}
               <div className="bg-surface-muted rounded-xl p-3.5 border border-line space-y-3">
                 <h4 className="font-bold text-indigo-900 dark:text-indigo-300 flex items-center gap-1.5 text-xs uppercase tracking-wider">
@@ -2639,9 +2889,9 @@ export default function ModuleMedecin({ state, setState, onOpenMedicalRecord, on
 
       {/* MODAL DE CONFIRMATION DE RETRAIT DE LA FILE */}
       {patientToPurge && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl max-w-md w-full shadow-2xl border border-line-soft overflow-hidden">
-            <div className="p-5 border-b border-line-soft flex items-center justify-between bg-rose-50/50 dark:bg-rose-500/4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
+          <div className="bg-surface rounded-xl sm:rounded-2xl max-w-md w-full shadow-2xl border border-line-soft overflow-hidden">
+            <div className="p-4 sm:p-5 border-b border-line-soft flex items-center justify-between bg-rose-50/50 dark:bg-rose-500/4">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 bg-rose-100 dark:bg-rose-500/15 text-rose-600 dark:text-rose-400 rounded-xl">
                   <Trash2 className="w-5 h-5" />

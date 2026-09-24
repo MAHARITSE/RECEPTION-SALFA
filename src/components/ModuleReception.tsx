@@ -10,7 +10,8 @@ import { correspondRechercheMultiMots } from '../utils/recherche';
 import {
   Search, Plus, Edit, Trash2, UserX, Activity,
   X, Check, Ban, Users, LogIn, Hospital,
-  Stethoscope, MessageCircle, Info, FileWarning, AlertCircle
+  Stethoscope, MessageCircle, Info, FileWarning, AlertCircle,
+  LayoutGrid, List, Phone
 } from 'lucide-react';
 import { PhoneInput } from './PhoneInput';
 import { motion, AnimatePresence } from 'motion/react';
@@ -27,6 +28,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
   const [modal, setModal] = useState<ModalType>('none');
   const [currentTime, setCurrentTime] = useState(new Date());
   const [blacklistReason, setBlacklistReason] = useState('');
+  const [mobileView, setMobileView] = useState<'cards' | 'table'>('cards');
 
   // Edition société — toujours visible quand patient choisi (comme hospit/bloc)
   const [recEditClientType, setRecEditClientType] = useState<ClientType>('comptoir');
@@ -348,6 +350,30 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
     setModal('none'); setSelectedPatient(np);
   };
 
+  const openEditForPatient = (p: Patient) => {
+    setSelectedPatient(p);
+    setPatientTouched({});
+    setPatientSubmitted(false);
+    setPatientForm({
+      dossier: p.dossier,
+      lastName: p.lastName,
+      firstName: p.firstName,
+      dateOfBirth: p.dateOfBirth === 'N/A' ? '' : p.dateOfBirth,
+      gender: p.gender,
+      address: p.address,
+      contact: p.contact,
+      ssn: p.ssn,
+      matricule: p.matricule || '',
+      insureName: p.company || p.insureName || '',
+      clientType: p.clientType === 'externe' ? 'comptoir' : p.clientType,
+      company: p.company || '',
+      subCompany: p.subCompany || '',
+      famille: p.famille || '',
+      lienFamilial: p.lienFamilial || '',
+    });
+    setModal('edit');
+  };
+
   const handleEditPatient = () => {
     if (!selectedPatient) return;
     setPatientSubmitted(true);
@@ -538,54 +564,130 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
   return (
     <div className="flex flex-col min-h-screen w-full bg-canvas text-ink font-sans select-none">
       {/* En-tête principal */}
-      <header className="theme-header px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3 min-w-0 max-w-full">
-          <div className="theme-brand-mark mr-1"><Hospital className="w-5 h-5 -rotate-45" /></div>
+      <header className="theme-header px-3 sm:px-6 py-2.5 sm:py-4 flex items-center justify-between gap-2 sm:gap-4 flex-wrap sm:flex-nowrap">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <div className="theme-brand-mark !w-8 !h-8 sm:!w-9 sm:!h-9 mr-0.5 sm:mr-1 shrink-0">
+            <Hospital className="w-4 h-4 sm:w-5 sm:h-5 -rotate-45" />
+          </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg sm:text-xl font-bold tracking-wider uppercase font-mono text-ink-strong">RÉCEPTION <span className="text-accent">SALFA</span></h1>
-              <span className="hidden lg:inline-block rounded border border-accent-line bg-accent-soft text-accent-strong px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider">Réception &amp; Accueil</span>
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <h1 className="text-base sm:text-xl font-bold tracking-wider uppercase font-mono text-ink-strong truncate">
+                RÉCEPTION <span className="text-accent">SALFA</span>
+              </h1>
+              <span className="hidden lg:inline-block rounded border border-accent-line bg-accent-soft text-accent-strong px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider">
+                Réception &amp; Accueil
+              </span>
             </div>
-            <p className="text-ink-muted text-xs font-medium">Enregistrement des patients · File d'attente des consultations</p>
+            <p className="text-ink-muted text-[11px] sm:text-xs font-medium truncate">
+              Enregistrement des patients · File d'attente
+            </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto min-w-0">
-          <div className="flex-1 sm:flex-none min-w-0 text-right bg-surface-muted rounded-lg px-3 py-1.5 border border-line">
-            <div className="text-lg sm:text-xl font-mono font-bold tabular-nums leading-tight text-accent">{currentTime.toLocaleTimeString('fr-FR')}</div>
-            <div className="text-[11px] text-ink-muted capitalize truncate">{currentTime.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0 ml-auto">
+          <div className="hidden sm:block text-right bg-surface-muted rounded-lg px-3 py-1.5 border border-line">
+            <div className="text-sm sm:text-xl font-mono font-bold tabular-nums leading-tight text-accent">
+              {currentTime.toLocaleTimeString('fr-FR')}
+            </div>
+            <div className="text-[10px] sm:text-[11px] text-ink-muted capitalize truncate">
+              {currentTime.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}
+            </div>
           </div>
-          <button onClick={onOpenMessaging} className="flex items-center justify-center gap-2 p-2.5 border border-line bg-surface hover:bg-surface-hover text-ink-muted hover:text-accent rounded-lg transition-colors cursor-pointer" title="Messagerie interne">
-            <MessageCircle className="w-5 h-5" />
+          <button
+            onClick={onOpenMessaging}
+            className="flex items-center justify-center p-2 sm:p-2.5 border border-line bg-surface hover:bg-surface-hover text-ink-muted hover:text-accent rounded-lg transition-colors cursor-pointer"
+            title="Messagerie interne"
+          >
+            <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
-          <button onClick={onStaffLogin} className="theme-primary-button flex items-center gap-2 px-3 sm:px-4 py-2.5 rounded-lg transition-colors font-semibold text-sm cursor-pointer shrink-0">
-            <LogIn className="w-4 h-4" /> <span className="hidden sm:inline">Espace</span> Personnel
+          <button
+            onClick={onStaffLogin}
+            className="theme-primary-button flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 sm:py-2.5 rounded-lg transition-colors font-semibold text-xs sm:text-sm cursor-pointer shrink-0"
+          >
+            <LogIn className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> <span className="hidden sm:inline">Espace</span> Personnel
           </button>
         </div>
       </header>
 
       {/* Barre d'outils — recherche + actions */}
-      <section className="sticky top-0 z-20 border-b border-line bg-surface/95 px-4 sm:px-6 py-2.5 shadow-sm backdrop-blur">
-        <div className="flex flex-wrap items-center justify-between gap-2.5">
-          <div className="relative w-full max-w-md">
+      <section className="sticky top-0 z-20 border-b border-line bg-surface/95 px-3 sm:px-6 py-2 sm:py-2.5 shadow-sm backdrop-blur">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <div className="relative w-full sm:max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-faint" />
-            <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value.toUpperCase())} autoCapitalize="characters" aria-label="Rechercher un patient" className="w-full pl-9 pr-9 py-2 bg-field text-ink border border-line rounded-lg text-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/25" placeholder="Rechercher : nom, dossier, matricule…" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value.toUpperCase())}
+              autoCapitalize="characters"
+              aria-label="Rechercher un patient"
+              className="w-full pl-9 pr-9 py-2 bg-field text-ink border border-line rounded-lg text-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
+              placeholder="Rechercher : nom, dossier, matricule…"
+            />
             {searchQuery && (
-              <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink-secondary cursor-pointer" aria-label="Effacer la recherche"><X className="h-4 w-4" /></button>
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink-secondary cursor-pointer p-1"
+                aria-label="Effacer la recherche"
+              >
+                <X className="h-4 w-4" />
+              </button>
             )}
           </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            <button onClick={() => { setModal('add'); setPatientTouched({}); setPatientSubmitted(false); setPatientForm({ dossier: '', lastName: '', firstName: '', dateOfBirth: '', gender: 'F', address: '', contact: '', ssn: '', matricule: '', insureName: '', clientType: 'comptoir', company: '', subCompany: '', famille: '', lienFamilial: '' }); }} className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-sm transition cursor-pointer"><Plus className="h-4 w-4" /> Nouveau</button>
-            <button onClick={() => { if (!selectedPatient) return; setPatientTouched({}); setPatientSubmitted(false); setPatientForm({ dossier: selectedPatient.dossier, lastName: selectedPatient.lastName, firstName: selectedPatient.firstName, dateOfBirth: selectedPatient.dateOfBirth === 'N/A' ? '' : selectedPatient.dateOfBirth, gender: selectedPatient.gender, address: selectedPatient.address, contact: selectedPatient.contact, ssn: selectedPatient.ssn, matricule: selectedPatient.matricule || '', insureName: selectedPatient.company || selectedPatient.insureName || '', clientType: selectedPatient.clientType === 'externe' ? 'comptoir' : selectedPatient.clientType, company: selectedPatient.company || '', subCompany: selectedPatient.subCompany || '', famille: selectedPatient.famille || '', lienFamilial: selectedPatient.lienFamilial || '' }); setModal('edit'); }} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Edit className="h-4 w-4" /> Modifier</button>
-            <button onClick={handleDeletePatient} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Trash2 className="h-4 w-4" /> Supprimer</button>
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 touch-pan-x w-full sm:w-auto shrink-0 scrollbar-none">
+            <button
+              onClick={() => {
+                setModal('add');
+                setPatientTouched({});
+                setPatientSubmitted(false);
+                setPatientForm({
+                  dossier: '', lastName: '', firstName: '', dateOfBirth: '', gender: 'F',
+                  address: '', contact: '', ssn: '', matricule: '', insureName: '',
+                  clientType: 'comptoir', company: '', subCompany: '', famille: '', lienFamilial: ''
+                });
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-sm transition cursor-pointer shrink-0"
+            >
+              <Plus className="h-4 w-4" /> Nouveau
+            </button>
+            <button
+              onClick={() => selectedPatient && openEditForPatient(selectedPatient)}
+              disabled={!selectedPatient}
+              className="flex items-center gap-1.5 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0"
+            >
+              <Edit className="h-4 w-4" /> Modifier
+            </button>
+            <button
+              onClick={handleDeletePatient}
+              disabled={!selectedPatient}
+              className="flex items-center gap-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0"
+            >
+              <Trash2 className="h-4 w-4" /> Supprimer
+            </button>
             <div className="mx-0.5 hidden h-6 w-px bg-line-strong sm:block" />
-            <button onClick={() => selectedPatient && setModal('patientInfo')} disabled={!selectedPatient} className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"><Info className="h-4 w-4" /> Info</button>
-            <button onClick={handleBlacklistClick} title="Afficher les patients bloqués" className="flex items-center gap-1.5 px-3 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg text-xs font-bold shadow-sm transition cursor-pointer"><UserX className="h-4 w-4" /> Bloqués{blacklistedPatients.length > 0 && <span className="ml-0.5 rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] leading-none">{blacklistedPatients.length}</span>}</button>
+            <button
+              onClick={() => selectedPatient && setModal('patientInfo')}
+              disabled={!selectedPatient}
+              className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0"
+            >
+              <Info className="h-4 w-4" /> Info
+            </button>
+            <button
+              onClick={handleBlacklistClick}
+              title="Afficher les patients bloqués"
+              className="flex items-center gap-1.5 px-3 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg text-xs font-bold shadow-sm transition cursor-pointer shrink-0"
+            >
+              <UserX className="h-4 w-4" /> Bloqués
+              {blacklistedPatients.length > 0 && (
+                <span className="ml-0.5 rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] leading-none">
+                  {blacklistedPatients.length}
+                </span>
+              )}
+            </button>
           </div>
         </div>
       </section>
 
-      <main className="flex-1 px-4 sm:px-6 pt-4 pb-8">
+      <main className="flex-1 px-2.5 sm:px-6 pt-3 sm:pt-4 pb-8">
         {unblacklistToast && (
           <div className="fixed inset-0 z-[9999] pointer-events-none flex items-center justify-center p-4">
             <div className="pointer-events-auto max-w-md w-full p-4 sm:p-5 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 text-white rounded-2xl shadow-2xl border border-emerald-300/40 dark:border-emerald-500/16 flex items-center justify-between gap-4 animate-in fade-in zoom-in-95">
@@ -602,12 +704,182 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
           </div>
         )}
         <div className="bg-surface border border-line rounded-2xl shadow-sm overflow-hidden flex flex-col">
-          <div className="border-b border-line px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 bg-surface-muted">
-            <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">📋 Patients — <span className="text-ink">{filteredPatients.length}</span> fiche(s)</span>
-            <span className="text-[11px] text-amber-700 dark:text-amber-400 font-semibold bg-amber-100 dark:bg-amber-500/15 px-2.5 py-1 rounded-full">💡 Double-clic sur une ligne → saisie des paramètres</span>
+          <div className="border-b border-line px-3 sm:px-4 py-2 sm:py-2.5 flex flex-wrap items-center justify-between gap-2 bg-surface-muted">
+            <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+              📋 Patients — <span className="text-ink">{filteredPatients.length}</span> fiche(s)
+            </span>
+            <div className="flex items-center gap-2">
+              {/* Commutateur de vue Mobile : Cartes vs Tableau */}
+              <div className="md:hidden flex items-center bg-surface border border-line rounded-lg p-0.5 text-xs shadow-2xs">
+                <button
+                  type="button"
+                  onClick={() => setMobileView('cards')}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded font-medium transition cursor-pointer ${mobileView === 'cards' ? 'bg-accent text-white shadow-xs' : 'text-ink-muted hover:text-ink'}`}
+                  title="Vue Cartes (recommandée sur mobile)"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" /> Cartes
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobileView('table')}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded font-medium transition cursor-pointer ${mobileView === 'table' ? 'bg-accent text-white shadow-xs' : 'text-ink-muted hover:text-ink'}`}
+                  title="Vue Tableau complète"
+                >
+                  <List className="w-3.5 h-3.5" /> Tableau
+                </button>
+              </div>
+              <span className="hidden sm:inline text-[11px] text-amber-700 dark:text-amber-400 font-semibold bg-amber-100 dark:bg-amber-500/15 px-2.5 py-1 rounded-full">
+                💡 Double-clic sur une ligne → saisie des paramètres
+              </span>
+            </div>
           </div>
 
-          <div className="overflow-auto flex-1">
+          {/* VUE CARTES MOBILE (ergonomie tactile sur téléphone) */}
+          <div className={`p-2.5 sm:p-4 space-y-2.5 ${mobileView === 'table' ? 'hidden' : 'block md:hidden'} overflow-y-auto max-h-[calc(100dvh-260px)]`}>
+            {pagePatients.length === 0 ? (
+              <div className="p-8 text-center text-ink-faint">
+                <Users className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                <p className="font-medium text-xs">Aucun patient trouvé</p>
+              </div>
+            ) : (
+              pagePatients.map((patient, index) => {
+                const isSel = selectedPatient?.id === patient.id;
+                const hv = patient.vitalSigns && (patient.vitalSigns.temperature || patient.vitalSigns.weight);
+                const lastVisit = resolveLastVisit(patient);
+                return (
+                  <div
+                    key={patient.id}
+                    onClick={() => setSelectedPatient(patient)}
+                    className={`rounded-xl border p-3 transition-all cursor-pointer select-none ${
+                      patient.blacklisted
+                        ? isSel
+                          ? 'bg-red-100 dark:bg-red-500/20 border-red-400'
+                          : 'bg-red-50/60 dark:bg-red-500/10 border-red-200 dark:border-red-500/25'
+                        : isSel
+                          ? 'bg-accent-soft/40 border-accent shadow-xs'
+                          : 'bg-surface hover:bg-surface-hover border-line'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-mono font-bold text-xs sm:text-sm text-blue-700 dark:text-cyan-400 bg-blue-50 dark:bg-cyan-500/10 px-2 py-0.5 rounded border border-blue-200 dark:border-cyan-500/25">
+                          {patient.dossier}
+                        </span>
+                        {patient.matricule && (
+                          <span className="text-[11px] font-mono text-ink-muted bg-surface-muted px-1.5 py-0.5 rounded">
+                            {patient.matricule}
+                          </span>
+                        )}
+                        <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full font-bold text-[10px] ${patient.gender === 'F' ? 'bg-pink-100 dark:bg-pink-500/15 text-pink-700 dark:text-pink-400' : 'bg-blue-100 dark:bg-cyan-500/15 text-blue-700 dark:text-cyan-400'}`}>
+                          {patient.gender}
+                        </span>
+                        {patient.blacklisted && (
+                          <span className="rounded bg-red-600 px-1.5 py-0.5 text-[9px] font-bold text-white uppercase">
+                            Bloqué
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-ink-faint font-mono">
+                        #{(safePage - 1) * pageSize + index + 1}
+                      </span>
+                    </div>
+
+                    <div className="font-bold text-sm text-ink-strong uppercase flex items-center justify-between gap-2">
+                      <span className="truncate">{patient.lastName} {patient.firstName}</span>
+                      {hv && (
+                        <span title="Paramètres vitaux saisis" className="shrink-0 flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-300 dark:border-emerald-500/30">
+                          <Activity className="w-3 h-3" /> Paramètres
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-x-2 gap-y-1 mt-2 text-[11px] text-ink-secondary">
+                      <div className="flex items-center gap-1 truncate">
+                        <span className="text-ink-faint">Âge :</span>
+                        <span className="font-semibold text-ink">{patient.age === 'N/A' ? '—' : patient.age}</span>
+                        {patient.dateOfBirth && patient.dateOfBirth !== 'N/A' && (
+                          <span className="text-[10px] text-ink-faint">({new Date(patient.dateOfBirth).toLocaleDateString('fr-FR')})</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 truncate">
+                        <span className="text-ink-faint">Visite :</span>
+                        <span className="font-mono text-ink">{formatLastVisit(lastVisit)}</span>
+                      </div>
+                      {patient.contact && (
+                        <div className="col-span-2 flex items-center gap-1">
+                          <span className="text-ink-faint">Tél :</span>
+                          <a
+                            href={`tel:${patient.contact}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="font-mono font-semibold text-accent hover:underline flex items-center gap-1"
+                          >
+                            <Phone className="w-3 h-3" /> {patient.contact}
+                          </a>
+                        </div>
+                      )}
+                      {(patient.company || patient.insureName) && (
+                        <div className="col-span-2 flex items-center gap-1 truncate">
+                          <span className="text-ink-faint">Société :</span>
+                          <span className="font-medium text-ink truncate">{patient.company || patient.insureName}</span>
+                          {patient.subCompany && <span className="text-[10px] text-ink-faint truncate">({patient.subCompany})</span>}
+                        </div>
+                      )}
+                      {patient.address && (
+                        <div className="col-span-2 text-[10px] text-ink-faint truncate">
+                          📍 {patient.address}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Actions tactiles directes sur la carte */}
+                    <div className="flex items-center gap-1.5 mt-3 pt-2.5 border-t border-line/60">
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); openVitalsForPatient(patient); }}
+                        className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-bold transition shadow-2xs cursor-pointer ${
+                          hv
+                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                            : 'bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-500/30'
+                        }`}
+                        title="Saisir ou modifier les paramètres vitaux"
+                      >
+                        <Activity className="w-3.5 h-3.5" />
+                        <span>Paramètres</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); openEditForPatient(patient); }}
+                        className="flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-lg text-xs font-semibold bg-amber-50 dark:bg-amber-500/10 hover:bg-amber-100 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-500/30 cursor-pointer"
+                        title="Modifier la fiche patient"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                        <span className="hidden xs:inline">Modifier</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setSelectedPatient(patient); setModal('patientInfo'); }}
+                        className="p-1.5 rounded-lg bg-surface-active hover:bg-line-strong text-ink-secondary cursor-pointer"
+                        title="Informations détaillées"
+                      >
+                        <Info className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleBlacklistToggle(patient); }}
+                        className={`p-1.5 rounded-lg text-xs font-bold cursor-pointer ${patient.blacklisted ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-surface-active hover:bg-red-100 text-ink-muted'}`}
+                        title={patient.blacklisted ? 'Rétablir dans la liste normale' : 'Bloquer le patient'}
+                      >
+                        <UserX className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* TABLEAU DESKTOP / TABLETTE (ou forcé en mode tableau) */}
+          <div className={`overflow-auto flex-1 ${mobileView === 'table' ? 'block' : 'hidden md:block'}`}>
             <table className="w-full text-left border-collapse text-xs">
               <thead className="bg-surface-hover text-ink-muted sticky top-0 z-10">
                 <tr><th className="p-2.5 border-r border-line w-10 text-center text-xs uppercase tracking-wide">#</th><th className="p-2.5 border-r border-line w-8 text-center text-xs uppercase" title="Liste noire">BL</th><th className="p-2.5 border-r border-line w-8 text-center text-xs uppercase" title="Paramètres">P</th><th className="p-2.5 border-r border-line w-20 text-left">Dossier</th><th className="p-2.5 border-r border-line w-20 text-left">Matricule</th><th className="p-2.5 border-r border-line min-w-[200px] text-left">Nom et Prénom</th><th className="p-2.5 border-r border-line w-24 text-left">Date naiss.</th><th className="p-2.5 border-r border-line w-16 text-left">Âge</th><th className="p-2.5 border-r border-line w-12 text-center">Sexe</th><th className="p-2.5 border-r border-line w-28 text-left">Téléphone</th><th className="p-2.5 border-r border-line min-w-[120px] text-left">Adresse</th><th className="p-2.5 border-r border-line w-32 text-left">Dernière visite</th><th className="p-2.5 min-w-[120px] text-left">Société</th></tr>
@@ -639,9 +911,8 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                       <td className="p-2 border-r border-line text-center">
                         <button
                           onClick={(e) => { e.stopPropagation(); openVitalsForPatient(patient); }}
-                          className={`px-1 py-0.5 rounded text-[9px] ${patient.vitalSigns && (patient.vitalSigns.temperature || patient.vitalSigns.weight) ? 'bg-emerald-500 text-white' : 'bg-surface-active text-ink-secondary hover:bg-emerald-100 dark:hover:bg-emerald-500/15'}`}
+                          className={`px-1 py-0.5 rounded text-[9px] cursor-pointer ${patient.vitalSigns && (patient.vitalSigns.temperature || patient.vitalSigns.weight) ? 'bg-emerald-500 text-white' : 'bg-surface-active text-ink-secondary hover:bg-emerald-100 dark:hover:bg-emerald-500/15'}`}
                           title="Paramètres (modifiable 24h)"
-
                         >
                           P
                         </button>
@@ -665,16 +936,18 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
             </table>
           </div>
 
-          {/* Pagination : jamais plus de `pageSize` lignes DOM à la fois */}
-          <div className="border-t border-line px-4 py-2 flex flex-wrap items-center justify-between gap-2 bg-surface-muted text-xs text-ink-muted">
-            <span>Affichage <strong className="text-ink tabular-nums">{pageFrom}–{pageTo}</strong> sur <strong className="text-ink tabular-nums">{filteredPatients.length}</strong> dossier(s)</span>
-            <div className="flex items-center gap-2">
-              <label className="flex items-center gap-1.5">
-                Par page :
+          {/* Pagination responsive sur téléphone et bureau */}
+          <div className="border-t border-line px-3 sm:px-4 py-2 sm:py-2.5 flex flex-col sm:flex-row items-center justify-between gap-2 bg-surface-muted text-xs text-ink-muted">
+            <span className="text-[11px] sm:text-xs">
+              Affichage <strong className="text-ink tabular-nums">{pageFrom}–{pageTo}</strong> sur <strong className="text-ink tabular-nums">{filteredPatients.length}</strong>
+            </span>
+            <div className="flex items-center gap-1 sm:gap-2 flex-wrap justify-center">
+              <label className="flex items-center gap-1 text-[11px] sm:text-xs mr-1">
+                Lignes :
                 <select
                   value={pageSize}
                   onChange={(e) => setPageSize(Number(e.target.value))}
-                  className="bg-field border border-line rounded px-1.5 py-1 text-ink outline-none cursor-pointer"
+                  className="bg-field border border-line rounded px-1.5 py-0.5 text-ink outline-none cursor-pointer"
                 >
                   <option value={25}>25</option>
                   <option value={50}>50</option>
@@ -685,24 +958,24 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                 onClick={() => setPage(1)}
                 disabled={safePage <= 1}
                 title="Première page"
-                className="px-2 py-1 rounded border border-line bg-surface hover:bg-surface-hover disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+                className="p-1 sm:px-2 sm:py-1 rounded border border-line bg-surface hover:bg-surface-hover disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
               >⏮</button>
               <button
                 onClick={() => setPage(safePage - 1)}
                 disabled={safePage <= 1}
-                className="px-2.5 py-1 rounded border border-line bg-surface hover:bg-surface-hover disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
-              >← Précédent</button>
-              <span className="tabular-nums font-semibold text-ink">Page {safePage} / {pageCount}</span>
+                className="px-2 py-1 rounded border border-line bg-surface hover:bg-surface-hover disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+              >←</button>
+              <span className="tabular-nums font-semibold text-ink text-xs px-1">Page {safePage} / {pageCount}</span>
               <button
                 onClick={() => setPage(safePage + 1)}
                 disabled={safePage >= pageCount}
-                className="px-2.5 py-1 rounded border border-line bg-surface hover:bg-surface-hover disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
-              >Suivant →</button>
+                className="px-2 py-1 rounded border border-line bg-surface hover:bg-surface-hover disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+              >→</button>
               <button
                 onClick={() => setPage(pageCount)}
                 disabled={safePage >= pageCount}
                 title="Dernière page"
-                className="px-2 py-1 rounded border border-line bg-surface hover:bg-surface-hover disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+                className="p-1 sm:px-2 sm:py-1 rounded border border-line bg-surface hover:bg-surface-hover disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
               >⏭</button>
             </div>
           </div>
@@ -722,19 +995,24 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
 
       {/* SAISIE PATIENT — fenêtre modale centrée */}
       {(modal === 'add' || modal === 'edit') && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4">
-          <div className="w-full max-w-xl max-h-[calc(100vh-2rem)] overflow-y-auto bg-surface rounded border-2 border-line-control shadow-2xl">
-            <div className="theme-header px-4 py-3 flex justify-between items-center"><span className="text-ink-strong text-sm font-bold flex items-center gap-2"><Plus className="w-4 h-4" />{modal === 'add' ? 'NOUVEAU PATIENT' : 'MODIFIER PATIENT'}</span><button onClick={() => setModal('none')} className="text-ink-muted hover:text-accent hover:bg-surface-hover rounded p-0.5 px-2 transition cursor-pointer text-sm">✕</button></div>
-            <div className="p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-2 sm:p-4">
+          <div className="w-full max-w-xl max-h-[92dvh] flex flex-col bg-surface rounded-2xl border border-line-strong shadow-2xl overflow-hidden">
+            <div className="theme-header px-4 py-3 flex justify-between items-center shrink-0">
+              <span className="text-ink-strong text-sm font-bold flex items-center gap-2">
+                <Plus className="w-4 h-4" />{modal === 'add' ? 'NOUVEAU PATIENT' : 'MODIFIER PATIENT'}
+              </span>
+              <button onClick={() => setModal('none')} className="text-ink-muted hover:text-accent hover:bg-surface-hover rounded p-1 px-2.5 transition cursor-pointer text-sm font-semibold">✕</button>
+            </div>
+            <div className="p-3.5 sm:p-5 overflow-y-auto flex-1">
               {patientSubmitted && Object.keys(patientErrors).length > 0 && (
                 <div className="mb-4 p-2.5 bg-rose-50 dark:bg-rose-500/8 border border-rose-300 dark:border-rose-500/40 rounded text-xs text-rose-700 dark:text-rose-400 flex items-center gap-2 font-medium">
                   <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 dark:text-rose-400" />
                   <span>Veuillez corriger les erreurs de saisie ci-dessous.</span>
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs items-start">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 text-xs items-start">
                 {/* Sexe — pleine largeur */}
-                <div className="col-span-2 flex items-center gap-3">
+                <div className="sm:col-span-2 flex items-center gap-3">
                   <label className="font-bold text-ink h-4 leading-4 shrink-0">Sexe</label>
                   <div className="flex h-9 border border-line-control rounded overflow-hidden">
                     <button type="button" onClick={() => setPatientForm({ ...patientForm, gender: 'M' })} className={`px-5 font-bold transition cursor-pointer ${patientForm.gender === 'M' ? 'bg-blue-500 text-white' : 'bg-surface text-ink hover:bg-surface-hover'}`}>M</button>
@@ -903,9 +1181,9 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                   </div>
                 )}
               </div>
-              <div className="flex items-center justify-center gap-3 mt-6 pt-4 border-t border-line-strong">
-                <button onClick={modal === 'add' ? handleAddPatient : handleEditPatient} className="flex items-center gap-2 px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-bold shadow transition cursor-pointer"><Check className="w-4 h-4" /> VALIDER</button>
-                <button onClick={() => setModal('none')} className="flex items-center gap-2 px-6 py-2 bg-slate-500 hover:bg-slate-600 text-white rounded font-bold shadow transition cursor-pointer"><Ban className="w-4 h-4" /> ANNULER</button>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-3 mt-6 pt-4 border-t border-line-strong">
+                <button onClick={modal === 'add' ? handleAddPatient : handleEditPatient} className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold shadow transition cursor-pointer text-xs sm:text-sm"><Check className="w-4 h-4" /> VALIDER</button>
+                <button onClick={() => setModal('none')} className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-slate-500 hover:bg-slate-600 text-white rounded-lg font-bold shadow transition cursor-pointer text-xs sm:text-sm"><Ban className="w-4 h-4" /> ANNULER</button>
               </div>
             </div>
           </div>
@@ -1047,17 +1325,17 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
 
       {/* SAISIE PARAMÈTRES — fenêtre modale centrée */}
       {modal === 'vitals' && selectedPatient && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4">
-          <div className="w-full max-w-lg max-h-[calc(100vh-2rem)] overflow-y-auto bg-surface rounded border-2 border-line-control shadow-2xl">
-            <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 px-3 py-1.5 flex justify-between items-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-2 sm:p-4">
+          <div className="w-full max-w-lg max-h-[92dvh] flex flex-col bg-surface rounded-2xl border border-line-strong shadow-2xl overflow-hidden">
+            <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 px-3.5 py-2.5 flex justify-between items-center shrink-0">
               <span className="text-white text-sm font-bold flex items-center gap-2"><Activity className="w-4 h-4" />SAISIE PARAMÈTRES</span>
-              <button onClick={() => setModal('none')} className="text-ink-muted hover:text-accent hover:bg-surface-hover rounded p-0.5 px-2 transition cursor-pointer text-sm">✕</button>
+              <button onClick={() => setModal('none')} className="text-white/80 hover:text-white hover:bg-white/10 rounded p-1 px-2.5 transition cursor-pointer text-sm font-semibold">✕</button>
             </div>
-            <div className="bg-emerald-50 dark:bg-emerald-500/8 border-b border-emerald-200 dark:border-emerald-500/25 px-4 py-2 text-center">
-              <div className="text-lg font-bold text-emerald-800 dark:text-emerald-300 uppercase">{selectedPatient.lastName} {selectedPatient.firstName}</div>
+            <div className="bg-emerald-50 dark:bg-emerald-500/8 border-b border-emerald-200 dark:border-emerald-500/25 px-4 py-2 text-center shrink-0">
+              <div className="text-base sm:text-lg font-bold text-emerald-800 dark:text-emerald-300 uppercase truncate">{selectedPatient.lastName} {selectedPatient.firstName}</div>
               <div className="text-xs text-emerald-600 dark:text-emerald-400">Dossier: {selectedPatient.dossier} | {selectedPatient.gender === 'M' ? 'Homme' : 'Femme'} | {selectedPatient.age}</div>
             </div>
-            <div className="p-4">
+            <div className="p-3 sm:p-4 overflow-y-auto flex-1">
               {vitalsReadOnly && <div className="mb-3 rounded-lg border border-amber-200 dark:border-amber-500/25 bg-amber-50 dark:bg-amber-500/8 p-2 text-xs text-amber-800 dark:text-amber-300">Lecture seule : le délai de modification de 24 heures est dépassé.</div>}
               {vitalsSubmitted && Object.keys(vitalsErrors).length > 0 && (
                 <div className="mb-3 p-2 bg-rose-50 dark:bg-rose-500/8 border border-rose-300 dark:border-rose-500/40 rounded text-xs text-rose-700 dark:text-rose-400 flex items-center gap-2 font-medium">
@@ -1065,7 +1343,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                   <span>Certaines constantes comparent des valeurs hors limites ou incohérentes.</span>
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-xs mb-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-xs mb-4">
                 {[ 
                   { label: '🌡️ Température (°C)', key: 'temperature' as const, step: '0.1' },
                   { label: '💨 SpO2 (%)', key: 'oxygenSaturation' as const, step: '1' },
@@ -1110,7 +1388,7 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
 
               <div className="bg-amber-50 dark:bg-amber-500/8 border border-amber-200 dark:border-amber-500/25 rounded-lg p-3 mb-4">
                 <h4 className="font-bold text-amber-800 dark:text-amber-300 text-xs mb-3">🏢 TYPE CLIENT</h4>
-                <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                   <div><label className="block font-bold text-ink mb-1">Type</label>
                     <select value={vitalsClientType} onChange={(e) => setVitalsClientType(e.target.value as ClientType)} className="w-full bg-surface border border-amber-400 rounded px-2 py-1.5 focus:outline-none focus:border-amber-500 cursor-pointer">
                       <option value="comptoir">Client Comptoir</option><option value="societe">Client Société</option>
@@ -1135,9 +1413,9 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
                 <p className="text-[10px] text-ink-muted mt-2 italic">Remise saisie par le médecin</p>
               </div>
 
-              <div className="flex items-center justify-center gap-3 mt-5">
-                <button onClick={handleSaveVitalsAndSend} disabled={vitalsReadOnly} className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-bold shadow-lg transition cursor-pointer"><Stethoscope className="w-4 h-4" /> VALIDER & ENVOYER AU MÉDECIN</button>
-                <button onClick={() => setModal('none')} className="flex items-center gap-2 px-6 py-2.5 bg-slate-500 hover:bg-slate-600 text-white rounded font-bold shadow transition cursor-pointer"><Ban className="w-4 h-4" /> ANNULER</button>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-3 mt-5 pt-3 border-t border-line">
+                <button onClick={handleSaveVitalsAndSend} disabled={vitalsReadOnly} className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold shadow-lg transition cursor-pointer text-xs sm:text-sm"><Stethoscope className="w-4 h-4" /> VALIDER & ENVOYER AU MÉDECIN</button>
+                <button onClick={() => setModal('none')} className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-slate-500 hover:bg-slate-600 text-white rounded-lg font-bold shadow transition cursor-pointer text-xs sm:text-sm"><Ban className="w-4 h-4" /> ANNULER</button>
               </div>
             </div>
           </div>
@@ -1149,13 +1427,13 @@ export default function ModuleReception({ state, setState, onStaffLogin, onOpenM
 
 function ModalShell({ title, icon, onClose, children, wide = false }: { title: string; icon: React.ReactNode; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" role="dialog" aria-modal="true" aria-label={title}>
-      <div className={`${wide ? 'max-w-4xl' : 'max-w-lg'} max-h-[calc(100vh-2rem)] w-full overflow-y-auto rounded-2xl border border-line-strong bg-surface shadow-2xl`}>
-        <div className="flex items-center justify-between bg-gradient-to-r from-slate-800 to-slate-700 px-5 py-4 text-white">
-          <div className="flex items-center gap-2 font-bold">{icon}{title}</div>
-          <button onClick={onClose} className="rounded p-1 px-2 hover:bg-white/15 text-sm">✕ Fermer</button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-2 sm:p-4" role="dialog" aria-modal="true" aria-label={title}>
+      <div className={`${wide ? 'max-w-4xl' : 'max-w-lg'} max-h-[92dvh] w-full flex flex-col rounded-2xl border border-line-strong bg-surface shadow-2xl overflow-hidden`}>
+        <div className="flex items-center justify-between bg-gradient-to-r from-slate-800 to-slate-700 px-4 sm:px-5 py-3 sm:py-4 text-white shrink-0">
+          <div className="flex items-center gap-2 font-bold text-sm sm:text-base truncate">{icon}<span className="truncate">{title}</span></div>
+          <button onClick={onClose} className="rounded p-1 px-2.5 hover:bg-white/15 text-xs sm:text-sm font-semibold shrink-0 cursor-pointer">✕ Fermer</button>
         </div>
-        <div className="p-5">{children}</div>
+        <div className="p-3.5 sm:p-5 overflow-y-auto flex-1">{children}</div>
       </div>
     </div>
   );

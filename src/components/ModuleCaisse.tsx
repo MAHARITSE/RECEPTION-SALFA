@@ -5,7 +5,7 @@
  */
 import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription, Article, Patient } from '../types';
+import type { Invoice, InvoiceItem, ClientType, LabRequest, EchoRequest, User, CashClosing, HbLine, HbRecord, Consultation, Prescription, Article, Patient, StockMovement, PharmaDeliveryItem } from '../types';
 import type { AppState, FactureNumberAllocation, FactureNumberSpec } from '../store';
 import type { PieceFileCaisse } from '../utils/caisseFileAttente';
 import type { Societe } from '../modules/assurance/types';
@@ -15,10 +15,10 @@ import {
   familyManagesStock, isLabFamily, isEchoFamily, isConsultFamily, allocateFactureNumber, allocateFactureNumberAsync, allocateFactureNumbersAsync, applySocieteUpsert, collectExistingFactureNumbers, companyIsBlocked, companyOptions, sousSocietesConnues,
   invoiceNatureRemise,
 } from '../store';
-import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText, RefreshCw } from 'lucide-react';
+import { CreditCard, ShoppingCart, Trash2, Lock, Printer, Building2, Heart, Save, UserPlus, Edit2, Plus, MessageCircle, Send, FileText, RefreshCw, Calendar, Coins } from 'lucide-react';
 import { SearchableSelect, optionsFromValues } from './SearchableSelect';
 import { SuggestionInput, classerSuggestions, motsIdentite } from './SuggestionInput';
-import { printPaymentTicket as openThermalTicket, printClosingTicket, printExamRequestTicket, printHbPaymentTicket, printPharmaDeliveryClosingTicket } from '../utils/printTicket';
+import { printPaymentTicket as openThermalTicket, printClosingTicket, printExamRequestTicket, printLabRequestTicket, printEchoRequestTicket, printHbPaymentTicket, printPharmaDeliveryClosingTicket } from '../utils/printTicket';
 import { hbLineAmt, hbReste } from '../utils/hbDossier';
 import {
   baseCommuneCaisse, brutLigneDepuisItem, copayMetadata, estPieceTicketModerateur, repartirItemsCaisse, repartirLotCaisse, societeEtPersonneParmi, quotePartSiTicketModerateur,
@@ -40,6 +40,8 @@ import AlerteArticleIndisponible from './AlerteArticleIndisponible';
 import { PhoneInput } from './PhoneInput';
 import type { ArticleAlertInfo } from './AlerteArticleIndisponible';
 import { Select } from './Select';
+import { HbServiceNotificationBadge, HbMedicationDeliveryBadge, HbMedicationDeliveryDrawer } from './HbDeliveryComponents';
+import { toggleHbLineDelivery, deliverAllHbRecordMedications, isHbLineMedication, getHbMedicationStats } from '../utils/hbDeliveryTracking';
 
 /**
  * Clef interne d'une pièce « médicaments » du lot de caisse.
@@ -73,7 +75,7 @@ interface Props {
 type Tab = 'payment' | 'hospit' | 'bloc' | 'closing';
 type HbModal = 'none' | 'add_patient' | 'add_article' | 'edit_client' | 'discharge';
 
-type ReceiptKind = 'all' | 'payment' | 'exams';
+type ReceiptKind = 'all' | 'payment' | 'exams' | 'lab' | 'echo';
 interface ReceiptSnapshot {
   invoice: Invoice;
   patient?: Patient;
@@ -180,13 +182,18 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         ...(invoice.remiseNonEncaise ? { remise: invoice.remiseNonEncaise } : {}),
       });
     }
-    // BON D'EXAMENS : UNE PRESCRIPTION = UN BON, un seul bloc (analyses ET
-    // échographies réunies, sans découpage par famille), portant le numéro de la
-    // facture de cette prescription.
-    if ((kind === 'all' || kind === 'exams') && (exams.labLines.length || exams.echoLines.length)) {
-      printExamRequestTicket(
+    // BONS D'EXAMENS SÉPARÉS : BON D'ANALYSE (LABORATOIRE) ET BON D'ÉCHOGRAPHIE
+    if ((kind === 'all' || kind === 'exams' || kind === 'lab') && exams.labLines.length > 0) {
+      printLabRequestTicket(
         effectiveTicketSettings, ticketPatient, prescriber, date,
-        [...exams.labLines, ...exams.echoLines],
+        exams.labLines,
+        invoice.numeroFacture,
+      );
+    }
+    if ((kind === 'all' || kind === 'exams' || kind === 'echo') && exams.echoLines.length > 0) {
+      printEchoRequestTicket(
+        effectiveTicketSettings, ticketPatient, prescriber, date,
+        exams.echoLines,
         invoice.numeroFacture,
       );
     }
@@ -196,25 +203,38 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   /**
    * Duplicatas d'un encaissement : UN DOCUMENT PAR PIÈCE — les prescriptions en
    * attente ne sont JAMAIS fusionnées (même au nom de la même personne), chacune
-   * garde son numéro ; les bons d'examen restent portés une seule fois pour le lot.
+   * garde son numéro ; les bons d'examen labo et échographie sont imprimés séparément.
    */
   const receiptButtons = (getReceipts: () => ReceiptSnapshot[], hasLab: boolean, hasEcho: boolean) => (
     <div className="flex flex-wrap gap-1.5">
-      {([['payment', 'Reçu', true], ['exams', "Bon d'examens", hasLab || hasEcho]] as const)
-        .filter(([, , visible]) => visible)
-        .map(([kind, label]) => (
-          <button key={kind} type="button" onClick={() => {
-            const receipts = getReceipts();
-            if (kind === 'payment') { receipts.forEach(r => printReceipts(r, 'payment')); return; }
-            // BON D'EXAMENS : UN par prescription (analyses et échographies dans un
-            // seul bloc, avec le numéro de la facture) — jamais découpé par famille.
-            receipts.forEach(r => printReceipts(r, 'exams'));
-          }}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-surface border border-line-strong rounded-lg text-xs font-semibold text-ink hover:bg-surface-hover hover:text-accent cursor-pointer"
-            title={`Réimprimer : ${label.toLowerCase()} (sans nouveau paiement)`}>
-            <Printer className="w-3.5 h-3.5" /> {label}
-          </button>
-        ))}
+      <button key="payment" type="button" onClick={() => {
+        const receipts = getReceipts();
+        receipts.forEach(r => printReceipts(r, 'payment'));
+      }}
+        className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-surface border border-line-strong rounded-lg text-xs font-semibold text-ink hover:bg-surface-hover hover:text-accent cursor-pointer"
+        title="Réimprimer : reçu de paiement">
+        <Printer className="w-3.5 h-3.5" /> Reçu
+      </button>
+      {hasLab && (
+        <button key="lab" type="button" onClick={() => {
+          const receipts = getReceipts();
+          receipts.forEach(r => printReceipts(r, 'lab'));
+        }}
+          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-surface border border-line-strong rounded-lg text-xs font-semibold text-ink hover:bg-surface-hover hover:text-accent cursor-pointer"
+          title="Réimprimer : bon d'analyses laboratoire (sans nouveau paiement)">
+          <Printer className="w-3.5 h-3.5" /> Bon Labo
+        </button>
+      )}
+      {hasEcho && (
+        <button key="echo" type="button" onClick={() => {
+          const receipts = getReceipts();
+          receipts.forEach(r => printReceipts(r, 'echo'));
+        }}
+          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-surface border border-line-strong rounded-lg text-xs font-semibold text-ink hover:bg-surface-hover hover:text-accent cursor-pointer"
+          title="Réimprimer : bon d'échographie (sans nouveau paiement)">
+          <Printer className="w-3.5 h-3.5" /> Bon Échographie
+        </button>
+      )}
     </div>
   );
 
@@ -273,6 +293,8 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   const [hbPayAmounts, setHbPayAmounts] = useState<Record<string, number>>({});
   // 💡 Historique des paiements (affiché via un bouton dédié)
   const [hbHistoryId, setHbHistoryId] = useState<string | null>(null);
+  // 💡 Tiroir de livraison des médicaments (suivi stock)
+  const [hbMedDrawerRecordId, setHbMedDrawerRecordId] = useState<string | null>(null);
   const [hbModal, setHbModal] = useState<HbModal>('none');
   // Sorties : seules les personnes encore hospitalisées / au bloc sont listées par défaut.
   const [hbShowDischarged, setHbShowDischarged] = useState(false);
@@ -308,7 +330,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
   // HB Modal: article add
   const [hbArtSearch, setHbArtSearch] = useState('');
   const [hbArtIdx, setHbArtIdx] = useState(0);
-  const [hbArtForm, setHbArtForm] = useState<HbLine>({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: new Date().toISOString().split('T')[0] });
+  const [hbArtForm, setHbArtForm] = useState<HbLine>({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, posology: '', dateSort: new Date().toISOString().split('T')[0] });
   const hbArtRef = useRef<HTMLInputElement>(null);
   const [hbSelLineId, setHbSelLineId] = useState<string | null>(null);
   const [hbIsNew, setHbIsNew] = useState(true);
@@ -642,15 +664,29 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     });
 
   const fileAttente = useMemo(() => {
-    type Entree = { patient: Patient; piece: ReturnType<typeof pendingPiecesOf>[number] | null; date?: string | number };
-    const entrees: Entree[] = pendingPatients.flatMap((p): Entree[] => {
-      const pieces = pendingPiecesOf(state, p, getConsults(p.id));
-      if (!pieces.length) return [{ patient: p, piece: null, date: p.lastVisitAt || p.registeredAt }];
-      return pieces.map((piece): Entree => ({ patient: p, piece, date: piece.date }));
+    return pendingPatients.map((p) => {
+      const consults = getConsults(p.id);
+      const pieces = pendingPiecesOf(state, p, consults);
+      const estSociete = p.clientType === 'societe';
+      const montant = estSociete
+        ? (pieces.length > 0
+            ? pieces.reduce((s, pc) => s + brutPiece(pc.items), 0)
+            : getPendingAmount(p))
+        : (pieces.length > 0
+            ? roundTo2(pieces.reduce((s, pc) => s + pc.items.reduce((ss, it) => ss + (Number(it.amount) || 0), 0), 0))
+            : getPendingAmount(p));
+      const copay = getCopayAmount(p);
+      const dateVal = consults[0]?.date || (pieces[0]?.date) || p.lastVisitAt || p.registeredAt;
+      return {
+        patient: p,
+        pieces,
+        montant,
+        copay,
+        date: dateVal,
+      };
     });
-    return entrees.sort((a, b) => (Date.parse(String(b.date || '')) || 0) - (Date.parse(String(a.date || '')) || 0));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingPatients, state.consultations, state.invoices]);
+  }, [pendingPatients, state.consultations, state.invoices, baseCommune]);
 
   const selConsult = state.consultations.find(c => c.id === selConsultId);
   const selPatient = state.patients.find(p => p.id === (selPatientId || selConsult?.patientId)) || null;
@@ -1774,7 +1810,7 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     // La date d'acte / de sortie n'est JAMAIS effacée par "Nouveau" ni par la validation :
     // une personne peut faire sortir plusieurs médicaments le même jour.
     // (Elle est réinitialisée uniquement à l'ouverture du panneau de saisie.)
-    setHbArtForm(prev => ({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, dateSort: prev.dateSort || new Date().toISOString().split('T')[0] }));
+    setHbArtForm(prev => ({ id: '', articleName: '', quantity: 1, unitPrice: 0, discount: 0, posology: '', dateSort: prev.dateSort || new Date().toISOString().split('T')[0] }));
     setHbSelLineId(null);
     setHbIsNew(true);
     setHbArtSearch('');
@@ -1923,6 +1959,11 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
     const rec = hbRecords.find(r => r.id === hbSelRecordId);
     if (!rec) return;
 
+    if (!hbIsNew && hbArtForm.delivered) {
+      alert("🔒 Cet article est verrouillé car il a déjà été LIVRÉ en stock pharmacie.\n\nPour modifier sa quantité ou son prix, annulez d'abord sa délivrance (décocher) dans le suivi des médicaments.");
+      return;
+    }
+
     // Contrôle stock pharmacie à la validation de la ligne (sauf famille non gérée en stock)
     const art = state.articles.find(a => a.name === hbArtForm.articleName);
     if (art && managesStock(art) && art.stockPharmacie <= 0) { alert(`🚨 RUPTURE DE STOCK : « ${art.name} » (stock pharmacie = 0).\n\nVente impossible.`); return; }
@@ -1952,17 +1993,88 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       return;
     }
 
+    const isPharma = state.currentUser?.role === 'pharmacy';
+    const isMed = art && (art.family === 'MEDIC' || art.category === 'pharmacy' || managesStock(art));
+    const autoDelivered = isPharma && isMed;
+
     const lineToSave: HbLine = {
       ...hbArtForm,
+      addedByService: hbArtForm.addedByService || (isPharma ? 'Pharmacie' : 'Caisse'),
+      addedByName: hbArtForm.addedByName || state.currentUser?.name || (isPharma ? 'Pharmacie' : 'Caisse'),
+      addedAt: hbArtForm.addedAt || new Date().toISOString(),
+      delivered: autoDelivered ? true : (hbArtForm.delivered ?? false),
+      deliveredAt: autoDelivered ? new Date().toISOString() : hbArtForm.deliveredAt,
+      deliveredBy: autoDelivered ? (state.currentUser?.name || 'Pharmacie') : hbArtForm.deliveredBy,
+      deliveredByUserId: autoDelivered ? (state.currentUser?.id || 'SYS') : hbArtForm.deliveredByUserId,
       // La date correspond à la date d'acte / de sortie de marchandise.
       // Elle est saisie dans le formulaire et doit être conservée lors de l'enregistrement.
       dateSort: hbArtForm.dateSort || new Date().toISOString().split('T')[0]
     };
 
-    if (hbIsNew || !rec.lines.some(l => l.id === hbArtForm.id)) {
-      updateHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, lines: [...r.lines, { ...lineToSave, id: uuidv4() }] } : r));
+    if (autoDelivered && art && managesStock(art)) {
+      const qty = hbArtForm.quantity || 1;
+      const now = new Date().toISOString();
+      const userName = state.currentUser?.name || 'Pharmacie';
+      const userId = state.currentUser?.id || 'SYS';
+
+      setState(prev => {
+        const nextArticles = prev.articles.map(a => a.id === art.id ? { ...a, stockPharmacie: Math.max(0, a.stockPharmacie - qty) } : a);
+        const nextMovements: StockMovement[] = [
+          ...(prev.stockMovements || []),
+          {
+            id: uuidv4(),
+            type: 'exit',
+            articleId: art.id,
+            articleName: art.name,
+            quantity: qty,
+            fromLocation: 'pharmacie',
+            toLocation: rec.type === 'hospit' ? 'hospitalisation' : 'bloc',
+            reason: `Saisie directe pharmacie ${rec.type === 'hospit' ? 'hospit' : 'bloc'} — ${rec.patientName}`,
+            ref: rec.numeroFacture || rec.id,
+            date: now,
+            userId,
+            userName,
+          }
+        ];
+        const nextPharmaDeliveries: PharmaDeliveryItem[] = [
+          ...(prev.pharmaDeliveryItems || []),
+          {
+            id: uuidv4(),
+            consultationId: rec.id,
+            patientId: rec.patientId,
+            patientName: rec.patientName,
+            doctorName: userName,
+            articleId: art.id,
+            articleName: art.name,
+            quantity: qty,
+            unitPrice: hbArtForm.unitPrice || 0,
+            deliveredAt: now,
+            deliveredByUserId: userId,
+            deliveredByName: userName,
+            isExternal: false,
+          }
+        ];
+        const nextHbRecords = (prev.hbRecords || []).map(r => r.id === hbSelRecordId ? {
+          ...r,
+          lines: hbIsNew || !r.lines.some(l => l.id === hbArtForm.id)
+            ? [...r.lines, { ...lineToSave, id: uuidv4() }]
+            : r.lines.map(l => l.id === hbArtForm.id ? lineToSave : l)
+        } : r);
+
+        return {
+          ...prev,
+          articles: nextArticles,
+          stockMovements: nextMovements,
+          pharmaDeliveryItems: nextPharmaDeliveries,
+          hbRecords: nextHbRecords,
+        };
+      });
     } else {
-      updateHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, lines: r.lines.map(l => l.id === hbArtForm.id ? lineToSave : l) } : r));
+      if (hbIsNew || !rec.lines.some(l => l.id === hbArtForm.id)) {
+        updateHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, lines: [...r.lines, { ...lineToSave, id: uuidv4() }] } : r));
+      } else {
+        updateHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, lines: r.lines.map(l => l.id === hbArtForm.id ? lineToSave : l) } : r));
+      }
     }
     // Après validation : la zone date n'est PAS effacée (hbArtNew conserve la date saisie)
     hbArtNew();
@@ -2375,18 +2487,29 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       <div className="bg-surface rounded-xl shadow-sm border overflow-hidden">
         <div className="flex items-center justify-between border-b overflow-x-auto bg-surface-muted/50 px-2">
           <div className="flex overflow-x-auto">
-            {([['payment','📋 Facturation',pendingPatients.length],['hospit','🏨 Hospit.',hbRecords.filter(h=>h.type==='hospit' && !h.dischargedAt).length],['bloc','🏥 Bloc',hbRecords.filter(h=>h.type==='bloc' && !h.dischargedAt).length],['closing','🔒 Clôture',0]] as [Tab,string,number][]).map(([k,l,c]) => (
-              <button key={k} onClick={() => switchTab(k)} className={`flex items-center gap-1 px-4 py-3 text-xs font-medium border-b-2 cursor-pointer whitespace-nowrap ${tab===k?'border-amber-500 text-amber-600 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-500/4':'border-transparent text-ink-muted hover:text-ink-strong'}`}>{l}{c > 0 ? ` (${c})` : ''}</button>
-            ))}
+            {([['payment','📋 Facturation',pendingPatients.length],['hospit','🏨 Hospit.',hbRecords.filter(h=>h.type==='hospit' && !h.dischargedAt).length],['bloc','🏥 Bloc',hbRecords.filter(h=>h.type==='bloc' && !h.dischargedAt).length],['closing','🔒 Clôture',0]] as [Tab,string,number][]).map(([k,l,c]) => {
+              const hasPendingMeds = state.currentUser?.role === 'pharmacy' && (k === 'hospit' || k === 'bloc') && hbRecords.some(h => h.type === k && !h.dischargedAt && getHbMedicationStats(h.lines, state.articles, state.familles).pendingQty > 0);
+              return (
+                <button key={k} onClick={() => switchTab(k)} className={`relative flex items-center gap-1.5 px-4 py-3 text-xs font-medium border-b-2 cursor-pointer whitespace-nowrap ${tab===k?'border-amber-500 text-amber-600 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-500/4':'border-transparent text-ink-muted hover:text-ink-strong'}`}>
+                  <span>{l}{c > 0 ? ` (${c})` : ''}</span>
+                  {hasPendingMeds && (
+                    <span className="relative flex h-2.5 w-2.5 ml-0.5" title="Sorties de médicaments à délivrer en attente">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-500 opacity-80" />
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-600" />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
           <div className="pr-2">
             <button
               onClick={() => { setTempPrinterSettings(printerSettings); setPrinterModalOpen(true); }}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-surface border border-line-strong hover:bg-surface-muted rounded-lg text-xs font-semibold text-ink cursor-pointer shadow-xs transition"
-              title="Configurer l'imprimante et le format de ticket pour ce caissier"
+              title={`Configurer l'imprimante : ${printerSettings.printerName} (${printerSettings.paperWidth}mm)`}
             >
               <Printer className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-              <span>Imprimante : {printerSettings.printerName} ({printerSettings.paperWidth}mm)</span>
+              <span>{printerSettings.paperWidth}mm</span>
             </button>
           </div>
         </div>
@@ -2397,91 +2520,168 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
           {tab === 'payment' && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
 
-              {/* FILE D'ATTENTE DE PAIEMENT — le clic ouvre la facture en popup modale */}
-              <div className="border rounded-lg overflow-hidden bg-surface">
-                <div className="bg-amber-50 dark:bg-amber-500/8 border-b border-amber-200 dark:border-amber-500/25 px-3 py-2 flex items-center justify-between gap-2">
-                  <span className="font-bold text-xs text-amber-800 dark:text-amber-300 flex items-center gap-1.5"><CreditCard className="w-4 h-4" /> File d'attente de paiement</span>
-                  <span className="flex items-center gap-1.5">
+              {/* FILE D'ATTENTE DE PAIEMENT — Un dossier par patient */}
+              <div className="border border-line rounded-xl overflow-hidden bg-surface shadow-xs flex flex-col">
+                <div className="bg-amber-50/80 dark:bg-amber-500/10 border-b border-amber-200/70 dark:border-amber-500/25 px-3.5 py-2.5 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                      <CreditCard className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-xs text-amber-900 dark:text-amber-200 block">File d&apos;attente de paiement</span>
+                      <span className="text-[10px] text-amber-700/80 dark:text-amber-400/80">
+                        {fileAttente.length} dossier{fileAttente.length > 1 ? 's' : ''} en attente
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
                     <button
+                      type="button"
                       onClick={() => onRefreshQueue?.()}
                       title="Rechercher les nouvelles consultations validées par les médecins"
-                      className="p-1 rounded-lg text-amber-700 dark:text-amber-400 hover:bg-amber-200/70 dark:hover:bg-amber-500/18 cursor-pointer transition"
-                    ><RefreshCw className="w-3.5 h-3.5" /></button>
-                    <span className="px-2 py-0.5 rounded-full bg-amber-600 text-white text-[10px] font-bold" title={`${fileAttente.length} prescription(s) en attente`}>{fileAttente.length}</span>
-                  </span>
+                      className="p-1.5 rounded-lg text-amber-700 dark:text-amber-400 hover:bg-amber-200/70 dark:hover:bg-amber-500/20 cursor-pointer transition"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="px-2 py-0.5 rounded-full bg-amber-600 text-white text-[10px] font-bold shadow-xs">
+                      {fileAttente.length}
+                    </span>
+                  </div>
                 </div>
-                <div className="divide-y max-h-[500px] overflow-y-auto">
-                  {fileAttente.length === 0 ? <div className="p-6 text-center text-ink-faint text-sm">Aucune facture</div>
-                    : fileAttente.map(({ patient: p, piece, date }) => {
+
+                <div className="p-2 space-y-2 max-h-[560px] overflow-y-auto divide-y-0">
+                  {fileAttente.length === 0 ? (
+                    <div className="py-12 px-4 text-center">
+                      <CreditCard className="w-8 h-8 text-ink-faint mx-auto mb-2 opacity-40" />
+                      <p className="text-ink-muted text-sm font-medium">Aucune facture en attente</p>
+                      <p className="text-ink-faint text-xs mt-0.5">Les consultations validées apparaîtront ici</p>
+                    </div>
+                  ) : (
+                    fileAttente.map(({ patient: p, pieces, montant, copay, date }) => {
                       const estSociete = p.clientType === 'societe';
-                      // Ticket modérateur de CETTE prescription seulement
-                      const copayFile = piece ? getCopayAmount(p, piece.items) : getCopayAmount(p);
                       const dateLigne = date ? new Date(date).toLocaleDateString('fr-FR') : undefined;
-                      // MONTANT DE CETTE PRESCRIPTION SEULE :
-                      const montant = piece
-                        ? (estSociete ? brutPiece(piece.items) : roundTo2(piece.items.reduce((ss, it) => ss + (Number(it.amount) || 0), 0)))
-                        : getPendingAmount(p);
-                      const lib = piece ? libellePiece(piece) : '';
-                      const estSelectionnee = selPatientId === p.id && paymentModalOpen && (!piece || (selPieceKeys ? selPieceKeys.includes(piece.key) : true));
+                      const estSelectionnee = selPatientId === p.id && paymentModalOpen;
+                      const nbActes = pieces?.length || 0;
+
                       return (
                         <div
-                          key={piece ? `${p.id}-${piece.key}` : `${p.id}-passage`}
-                          className={`p-3 cursor-pointer hover:bg-amber-50/60 dark:hover:bg-amber-500/5 transition ${estSelectionnee ? 'bg-amber-50 dark:bg-amber-500/8 border-l-4 border-amber-500' : ''}`}
-                          onClick={() => openPaymentModal(p.id, piece?.key)}
-                          title={piece ? `Facturer cette prescription : ${lib} (${formatAr(montant)})` : 'Ouvrir la facture'}
+                          key={p.id}
+                          onClick={() => openPaymentModal(p.id)}
+                          className={`group relative p-3 rounded-xl border transition-all cursor-pointer ${
+                            estSelectionnee
+                              ? 'bg-amber-50/80 dark:bg-amber-500/12 border-amber-400 dark:border-amber-500 shadow-sm ring-1 ring-amber-400/50'
+                              : 'bg-surface hover:bg-amber-50/40 dark:hover:bg-amber-500/5 border-line hover:border-amber-300 dark:hover:border-amber-500/40 shadow-xs'
+                          }`}
+                          title={`Ouvrir le dossier d'encaissement de ${p.lastName} ${p.firstName}`}
                         >
-                          <div className="flex justify-between items-start gap-2">
-                            <div className="min-w-0">
-                              <div className="font-medium text-sm truncate">
-                                {p.lastName} {p.firstName}
-                                {dateLigne ? <span className="text-xs text-ink-muted font-normal"> {dateLigne}</span> : null}
+                          {/* Ligne 1 : Nom du patient + Montant */}
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-semibold text-sm text-ink-strong truncate tracking-tight">
+                                  {p.lastName} {p.firstName}
+                                </span>
+                                {p.dossier && (
+                                  <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-surface-muted text-ink-muted border border-line-soft">
+                                    #{p.dossier}
+                                  </span>
+                                )}
                               </div>
-                            </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <div className={`font-mono font-bold text-sm ${estSociete ? 'text-blue-700 dark:text-cyan-400' : 'text-amber-700 dark:text-amber-400'}`}>{formatAr(montant)}</div>
-                              {piece && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); openPaymentModal(p.id, piece.key); }}
-                                  className="px-2 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold cursor-pointer shrink-0 transition shadow-xs"
-                                  title="Facturer cette prescription"
-                                >Facturer</button>
+                              {dateLigne && (
+                                <div className="text-[11px] text-ink-muted flex items-center gap-1 mt-0.5">
+                                  <Calendar className="w-3 h-3 text-ink-faint shrink-0" />
+                                  <span>{dateLigne}</span>
+                                </div>
                               )}
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (piece) {
-                                    removePendingPiece(p, piece);
-                                  } else {
-                                    removePendingPatient(p.id);
-                                  }
-                                }}
-                                className="p-1 rounded-lg text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-500/15 hover:text-rose-700 dark:hover:text-rose-400 cursor-pointer transition shrink-0"
-                                title="Retirer cette prescription de la file caisse"
-                              ><Trash2 className="w-4 h-4" /></button>
+                            </div>
+
+                            {/* Montant total en attente */}
+                            <div className="text-right shrink-0">
+                              <div className={`font-mono font-bold text-sm sm:text-base leading-tight ${
+                                estSociete ? 'text-blue-700 dark:text-cyan-400' : 'text-amber-700 dark:text-amber-400'
+                              }`}>
+                                {formatAr(montant)}
+                              </div>
+                              {estSociete && (
+                                <span className="text-[9px] text-ink-faint uppercase font-semibold tracking-wider">
+                                  Prise en charge
+                                </span>
+                              )}
                             </div>
                           </div>
-                          <div className="flex gap-1 mt-1 flex-wrap">
+
+                          {/* Ligne 2 : Badges contexte & société */}
+                          <div className="flex items-center gap-1.5 flex-wrap mt-2">
                             {estSociete && (
-                              <span className="px-1 py-0.5 bg-blue-100 dark:bg-cyan-500/15 text-blue-700 dark:text-cyan-400 text-[10px] rounded font-semibold" title={copayFile > 0 ? "Le NET est porté au crédit de la société ; la quote-part de l'assuré se règle en espèces" : "Pas d'espèces : la facture est portée au crédit de la société"}>
-                                🏢 Crédit Société{p.company ? ` : ${p.company}` : ''}{p.subCompany ? ` / ${p.subCompany}` : ''}
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 dark:bg-cyan-500/10 border border-blue-200/80 dark:border-cyan-500/25 text-blue-700 dark:text-cyan-300 text-[10px] rounded-md font-semibold"
+                                title={copay > 0 ? "Le NET est porté au crédit de la société ; la quote-part de l'assuré se règle en espèces" : "Porté au crédit de la société conventionnée"}
+                              >
+                                <Building2 className="w-3 h-3 shrink-0" />
+                                <span className="truncate max-w-[170px]">{p.company || 'Société'}{p.subCompany ? ` / ${p.subCompany}` : ''}</span>
                               </span>
                             )}
-                            {copayFile > 0 && (
-                              <span className="px-1 py-0.5 bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-400 text-[10px] rounded font-bold"
-                                title="Ticket modérateur : quote-part de l'assuré à encaisser en espèces pour cette prescription (un ticket lui est remis)">
-                                💰 Ticket mod. {formatAr(copayFile)}
+
+                            {copay > 0 && (
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 dark:bg-amber-500/15 border border-amber-300/70 dark:border-amber-500/30 text-amber-900 dark:text-amber-200 text-[10px] rounded-md font-bold"
+                                title="Ticket modérateur : quote-part restant à charge de l'assuré à encaisser en espèces"
+                              >
+                                <Coins className="w-3 h-3 shrink-0 text-amber-600 dark:text-amber-400" />
+                                <span>Ticket mod. {formatAr(copay)}</span>
                               </span>
                             )}
+
+                            {!estSociete && (
+                              <span className="inline-flex items-center px-2 py-0.5 bg-surface-muted text-ink-muted border border-line-soft text-[10px] rounded-md font-medium">
+                                Comptoir
+                              </span>
+                            )}
+
+                            {nbActes > 1 && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-ink-muted text-[10px] rounded-md font-medium">
+                                <FileText className="w-3 h-3 text-ink-faint shrink-0" />
+                                {nbActes} prestations
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Ligne 3 : Boutons d'action */}
+                          <div className="flex items-center justify-between gap-2 pt-2 border-t border-line-soft mt-2.5">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openPaymentModal(p.id);
+                              }}
+                              className="flex-1 py-1.5 px-3 rounded-lg bg-amber-600 hover:bg-amber-700 active:scale-[0.98] text-white text-xs font-semibold cursor-pointer transition shadow-xs flex items-center justify-center gap-1.5"
+                              title={`Facturer le dossier de ${p.lastName} ${p.firstName}`}
+                            >
+                              <CreditCard className="w-3.5 h-3.5" />
+                              <span>Facturer</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removePendingPatient(p.id);
+                              }}
+                              className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-500/15 hover:text-rose-700 dark:hover:text-rose-400 cursor-pointer transition shrink-0"
+                              title="Retirer ce patient de la file caisse"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
                         </div>
                       );
-                    })}
+                    })
+                  )}
                 </div>
+
                 {fileAttente.length > 0 && (
-                  <div className="px-3 py-1.5 bg-surface-muted border-t text-[10px] text-ink-muted text-center">
-                    👆 File traitée par prescription individuelle — un clic sur une ligne ou sur « Facturer » ouvre la prescription à encaisser. L&apos;icône corbeille retire la prescription de la file.
+                  <div className="px-3 py-2 bg-surface-muted border-t border-line text-[11px] text-ink-muted text-center flex items-center justify-center gap-1.5">
+                    <span>👆 Cliquez sur un patient ou sur « Facturer » pour ouvrir et encaisser son dossier.</span>
                   </div>
                 )}
               </div>
@@ -2585,9 +2785,17 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                     <div key={record.id} className="border rounded-lg overflow-hidden border-line">
                       <div className="p-3 flex justify-between items-center bg-surface-muted">
                         <div>
-                          <div className="font-bold text-sm flex items-center gap-2">{record.patientName}
+                          <div className="font-bold text-sm flex items-center gap-2 flex-wrap">{record.patientName}
                             <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${record.clientType === 'societe' ? 'bg-blue-100 dark:bg-cyan-500/15 text-blue-700 dark:text-cyan-400' : 'bg-surface-hover text-ink-secondary'}`}>{record.clientType === 'societe' ? `🏢 ${record.company}${record.subCompany ? ` / ${record.subCompany}` : ''}` : '🏪 Comptoir'}</span>
                             <button onClick={() => { setHbSelRecordId(record.id); setHbEditClientType(record.clientType); setHbEditCompany(record.company || ''); setHbEditSubCompany(record.subCompany || ''); setHbEditNewCompany(''); setHbModal('edit_client'); }} className="text-blue-500 cursor-pointer" title="Modifier société"><Edit2 className="w-3 h-3" /></button>
+                            <HbMedicationDeliveryBadge
+                              record={record}
+                              articles={state.articles || []}
+                              familles={state.familles || []}
+                              currentUserRole={state.currentUser?.role}
+                              isOpen={hbMedDrawerRecordId === record.id}
+                              onToggle={() => setHbMedDrawerRecordId(hbMedDrawerRecordId === record.id ? null : record.id)}
+                            />
                           </div>
                           <div className="text-xs text-ink-muted mt-0.5">Facture: <strong>{formatAr(totalFact)}</strong> | Payé: <span className="text-green-600 dark:text-green-400">{formatAr(totalPaid)}</span> | Reste: <span className="text-red-600 dark:text-red-400 font-bold">{formatAr(reste)}</span></div>
                         </div>
@@ -2611,6 +2819,14 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                           )}
                         </div>
                       </div>
+                      {hbMedDrawerRecordId === record.id && (
+                        <HbMedicationDeliveryDrawer
+                          record={record}
+                          state={state}
+                          setState={setState}
+                          onClose={() => setHbMedDrawerRecordId(null)}
+                        />
+                      )}
                     </div>
                   );
                 })}
@@ -2737,10 +2953,10 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
       {/* === AJOUTER PATIENT — fenêtre modale centrée === */}
       {hbModal === 'add_patient' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" onClick={() => setHbModal('none')}>
-          <div className="w-full max-w-2xl max-h-[calc(100vh-2rem)] overflow-y-auto bg-surface rounded-xl shadow-2xl border border-line-strong" onClick={(e) => e.stopPropagation()}>
-          <div className={`px-4 py-3 flex justify-between items-center text-white sticky top-0 z-10 ${tab === 'hospit' ? 'bg-rose-600' : 'bg-blue-600'}`}><span className="font-bold"><UserPlus className="w-5 h-5 inline" /> Ajouter Patient — {tab === 'hospit' ? 'Hospitalisation' : 'Bloc'}</span><button onClick={() => setHbModal('none')} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button></div>
-          <div className="p-4 space-y-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-2 sm:p-4" onClick={() => setHbModal('none')}>
+          <div className="w-full max-w-2xl max-h-[92dvh] flex flex-col overflow-hidden bg-surface rounded-xl sm:rounded-2xl shadow-2xl border border-line-strong" onClick={(e) => e.stopPropagation()}>
+          <div className={`px-4 py-3 flex justify-between items-center text-white shrink-0 ${tab === 'hospit' ? 'bg-rose-600' : 'bg-blue-600'}`}><span className="font-bold flex items-center gap-1.5"><UserPlus className="w-5 h-5 inline" /> Ajouter Patient — {tab === 'hospit' ? 'Hospitalisation' : 'Bloc'}</span><button onClick={() => setHbModal('none')} className="hover:bg-white/20 rounded p-1 px-2.5 cursor-pointer text-sm font-semibold">✕ Fermer</button></div>
+          <div className="p-3 sm:p-4 space-y-3 overflow-y-auto flex-1">
             {/* Search existing */}
             <div><label className="block text-sm font-medium mb-1">Rechercher patient existant</label>
               <input type="text" value={hbPatSearch} onChange={e => { setHbPatSearch(e.target.value); setHbPatIdx(0); }} onKeyDown={suggestionNavKeyDown({ open: hbPatFiltered.length > 0, count: hbPatFiltered.length, index: hbPatIdx, onIndex: setHbPatIdx, onPick: (i) => { if (hbPatFiltered[i]) hbSelectPatient(hbPatFiltered[i].id); }, onEscape: () => setHbPatSearch('') })} className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-accent/25" placeholder="🔍 Nom, prénom ou dossier... (↑↓ Entrée)" autoFocus />
@@ -2797,13 +3013,13 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         const rec = hbRecords.find(r => r.id === hbSelRecordId);
         const recTotal = rec ? rec.lines.reduce((s, l) => s + hbLineAmt(l), 0) : 0;
         return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" onClick={() => { if (rec && blockIfUnsavedDraftLine(hbArtForm, rec.lines, { entityLabel: 'l\'article' })) return; setHbModal('none'); }}>
-          <div className="w-full max-w-5xl max-h-[calc(100vh-2rem)] overflow-y-auto bg-surface rounded-xl shadow-2xl border border-line-strong" onClick={(e) => e.stopPropagation()}>
-            <div className="bg-emerald-600 px-4 py-3 flex justify-between items-center text-white sticky top-0 z-10">
-              <span className="font-bold flex items-center gap-1">💊 Prescription (Saisie Sage) — {rec?.patientName} ({rec?.type === 'hospit' ? 'Hospitalisation' : 'Bloc'})</span>
-              <button onClick={() => { if (rec && blockIfUnsavedDraftLine(hbArtForm, rec.lines, { entityLabel: 'l\'article' })) return; setHbModal('none'); }} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-2 sm:p-4" onClick={() => { if (rec && blockIfUnsavedDraftLine(hbArtForm, rec.lines, { entityLabel: 'l\'article' })) return; setHbModal('none'); }}>
+          <div className="w-full max-w-5xl max-h-[92dvh] flex flex-col overflow-hidden bg-surface rounded-xl sm:rounded-2xl shadow-2xl border border-line-strong" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-emerald-600 px-4 py-3 flex justify-between items-center text-white shrink-0">
+              <span className="font-bold flex items-center gap-1.5 truncate"><span className="truncate">💊 Prescription — {rec?.patientName} ({rec?.type === 'hospit' ? 'Hospitalisation' : 'Bloc'})</span></span>
+              <button onClick={() => { if (rec && blockIfUnsavedDraftLine(hbArtForm, rec.lines, { entityLabel: 'l\'article' })) return; setHbModal('none'); }} className="hover:bg-white/20 rounded p-1 px-2.5 cursor-pointer text-sm font-semibold shrink-0">✕ Fermer</button>
             </div>
-            <div className="p-4 space-y-3">
+            <div className="p-3 sm:p-4 space-y-3 overflow-y-auto flex-1">
               <div className="rounded-lg border border-indigo-200 dark:border-indigo-500/25 bg-indigo-50 dark:bg-indigo-500/8 p-3 space-y-2">
                 <div className="text-xs font-bold text-indigo-900 dark:text-indigo-300">🏢 Changement de société</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
@@ -2897,6 +3113,17 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                         className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs text-right font-mono outline-none focus:border-accent text-ink-strong"
                       />
                     </div>
+                    <div className="flex-1 min-w-[150px]">
+                      <label className="block text-[10px] font-bold text-purple-700 dark:text-purple-300 mb-0.5">Posologie / Mode d&apos;emploi 💊</label>
+                      <input
+                        type="text"
+                        placeholder="ex: 1 cp 3x/j pendant 5j..."
+                        value={hbArtForm.posology || ''}
+                        onChange={e => setHbArtForm(prev => ({ ...prev, posology: e.target.value }))}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); hbArtSave(); } }}
+                        className="w-full bg-surface border border-line-strong rounded px-1.5 py-0.5 text-xs font-sans outline-none focus:border-accent text-ink-strong placeholder:text-ink-faint"
+                      />
+                    </div>
                     <div className="w-16">
                       <label className="block text-[10px] font-bold text-ink-muted mb-0.5">Rem%</label>
                       <input
@@ -2988,22 +3215,42 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                             setHbArtForm({ ...l });
                             setHbIsNew(false);
                           }} className={`cursor-pointer divide-x divide-line transition-colors ${isSel ? 'bg-blue-500 text-white font-medium' : 'hover:bg-surface-muted text-ink-strong'}`}>
-                            <td className="p-1 font-sans">{l.articleName}</td>
+                            <td className="p-1 font-sans">
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="font-medium">{l.articleName}</span>
+                                {l.delivered && (
+                                  <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-100 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-300 shrink-0">
+                                    🔒 Livré
+                                  </span>
+                                )}
+                              </div>
+                              {l.posology && (
+                                <div className="text-[10px] text-purple-700 dark:text-purple-300 font-semibold italic mt-0.5">
+                                  💊 {l.posology}
+                                </div>
+                              )}
+                            </td>
                             <td className="p-1 text-right">{l.quantity}</td>
                             <td className="p-1 text-center">{l.discount ? `${l.discount}%` : '—'}</td>
                             <td className="p-1 text-right">{formatNum(l.unitPrice)}</td>
                             <td className="p-1 text-right font-bold">{formatNum(hbLineAmt(l))}</td>
                             <td className="p-1 font-sans text-ink-muted">{l.dateSort || '—'}</td>
                             <td className="p-1 text-center">
-                              <button onClick={(e) => {
-                                e.stopPropagation();
-                                updateHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, lines: r.lines.filter(x => x.id !== l.id) } : r));
-                                if (hbSelLineId === l.id) {
-                                  hbArtNew();
-                                }
-                              }} className={`cursor-pointer ${isSel ? 'text-white hover:text-red-200' : 'text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-300'}`}>
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                              {l.delivered ? (
+                                <span title="🔒 Livré en stock pharmacie — annuler sa délivrance pour pouvoir supprimer" className="inline-block text-amber-500 cursor-not-allowed">
+                                  <Lock className="w-3.5 h-3.5" />
+                                </span>
+                              ) : (
+                                <button onClick={(e) => {
+                                  e.stopPropagation();
+                                  updateHbRecords(hbRecords.map(r => r.id === hbSelRecordId ? { ...r, lines: r.lines.filter(x => x.id !== l.id) } : r));
+                                  if (hbSelLineId === l.id) {
+                                    hbArtNew();
+                                  }
+                                }} className={`cursor-pointer ${isSel ? 'text-white hover:text-red-200' : 'text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-300'}`}>
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                             </td>
                           </tr>
                         );
@@ -3033,13 +3280,13 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
       {/* Edit Client Type — fenêtre modale centrée */}
       {hbModal === 'edit_client' && hbSelRecordId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" onClick={() => setHbModal('none')}>
-          <div className="w-full max-w-md bg-surface rounded-xl shadow-2xl border border-line-strong overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="bg-blue-600 px-4 py-3 flex justify-between items-center text-white"><span className="font-bold"><Edit2 className="w-5 h-5 inline" /> Modifier Type Client</span><button onClick={() => setHbModal('none')} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button></div>
-            <div className="p-4 space-y-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-2 sm:p-4" onClick={() => setHbModal('none')}>
+          <div className="w-full max-w-md bg-surface rounded-xl sm:rounded-2xl shadow-2xl border border-line-strong overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-blue-600 px-4 py-3 flex justify-between items-center text-white"><span className="font-bold flex items-center gap-1.5"><Edit2 className="w-4 h-4 inline" /> Modifier Type Client</span><button onClick={() => setHbModal('none')} className="hover:bg-white/20 rounded p-1 px-2.5 cursor-pointer text-sm font-semibold">✕ Fermer</button></div>
+            <div className="p-3.5 sm:p-4 space-y-3">
               <div><label className="block text-sm font-medium mb-1">Type</label><select value={hbEditClientType} onChange={e => setHbEditClientType(e.target.value as ClientType)} className="w-full px-3 py-2 border rounded-lg outline-none cursor-pointer"><option value="comptoir">Client Comptoir</option><option value="societe">Client Société</option></select></div>
               {hbEditClientType === 'societe' && <div><label className="block text-sm font-medium mb-1">Société</label><SearchableSelect value={hbEditCompany} onChange={setHbEditCompany} options={companyOptions(state.companies)} placeholder="— Taper pour filtrer puis choisir —" ariaLabel="Société" inputClassName="w-full px-3 py-2 border rounded-lg outline-none bg-surface" /></div>}
-              <button onClick={hbSaveClientType} className="w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer">Enregistrer</button>
+              <button onClick={hbSaveClientType} className="w-full py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold cursor-pointer text-sm">Enregistrer</button>
             </div>
           </div>
         </div>
@@ -3056,10 +3303,10 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
         const exigeJustificatif = record.clientType !== 'societe' && reste > 0;
         const peutValider = !exigeJustificatif || (hbDischargeMotif.trim() !== '' && hbDischargeDonneur.trim() !== '');
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" onClick={() => setHbModal('none')}>
-            <div className="w-full max-w-md bg-surface rounded-xl shadow-2xl border border-line-strong overflow-hidden" onClick={(e) => e.stopPropagation()}>
-              <div className="bg-teal-600 px-4 py-3 flex justify-between items-center text-white"><span className="font-bold">🚪 Sortie — {record.type === 'hospit' ? 'Hospitalisation' : 'Bloc Opératoire'}</span><button onClick={() => setHbModal('none')} className="hover:bg-white/20 rounded p-1 px-2 cursor-pointer text-sm">✕ Fermer</button></div>
-              <div className="p-4 space-y-3">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-2 sm:p-4" onClick={() => setHbModal('none')}>
+            <div className="w-full max-w-md max-h-[92dvh] overflow-y-auto bg-surface rounded-xl sm:rounded-2xl shadow-2xl border border-line-strong" onClick={(e) => e.stopPropagation()}>
+              <div className="bg-teal-600 px-4 py-3 flex justify-between items-center text-white sticky top-0 z-10"><span className="font-bold flex items-center gap-1.5 truncate">🚪 Sortie — {record.type === 'hospit' ? 'Hospitalisation' : 'Bloc Opératoire'}</span><button onClick={() => setHbModal('none')} className="hover:bg-white/20 rounded p-1 px-2.5 cursor-pointer text-sm font-semibold shrink-0">✕ Fermer</button></div>
+              <div className="p-3.5 sm:p-4 space-y-3">
                 <div className="text-sm"><strong>{record.patientName}</strong>{record.numeroFacture && <span className="ml-2 font-mono text-xs text-ink-faint">{record.numeroFacture}</span>}</div>
                 <div className="p-3 rounded-lg bg-surface-muted border border-line text-sm flex justify-between gap-2 flex-wrap">
                   <span>Facture : <strong>{formatAr(totalFact)}</strong></span>
@@ -3080,8 +3327,8 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
                   </div>
                 )}
                 <div className="flex gap-2">
-                  <button onClick={() => setHbModal('none')} className="flex-1 py-2 border border-line rounded-lg hover:bg-surface-muted cursor-pointer">Annuler</button>
-                  <button onClick={confirmDischarge} disabled={!peutValider} className="flex-1 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg cursor-pointer disabled:opacity-40 font-semibold">Confirmer la sortie</button>
+                  <button onClick={() => setHbModal('none')} className="flex-1 py-2.5 border border-line rounded-lg hover:bg-surface-muted cursor-pointer text-sm">Annuler</button>
+                  <button onClick={confirmDischarge} disabled={!peutValider} className="flex-1 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg cursor-pointer disabled:opacity-40 font-semibold text-sm">Confirmer la sortie</button>
                 </div>
               </div>
             </div>
@@ -3091,13 +3338,13 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
       {/* Modal Message Rectification Prescription */}
       {rectificationModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-lg bg-surface rounded-xl shadow-2xl border border-line-strong overflow-hidden flex flex-col">
-            <div className="bg-indigo-600 px-4 py-3 flex justify-between items-center text-white">
-              <span className="font-bold text-sm flex items-center gap-2">
-                <MessageCircle className="w-4 h-4" /> Message de rectification — {rectificationModal.doctorName}
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-2 sm:p-4">
+          <div className="w-full max-w-lg max-h-[92dvh] bg-surface rounded-xl sm:rounded-2xl shadow-2xl border border-line-strong overflow-hidden flex flex-col">
+            <div className="bg-indigo-600 px-4 py-3 flex justify-between items-center text-white shrink-0">
+              <span className="font-bold text-sm flex items-center gap-2 truncate">
+                <MessageCircle className="w-4 h-4 shrink-0" /> <span className="truncate">Message de rectification — {rectificationModal.doctorName}</span>
               </span>
-              <button onClick={() => setRectificationModal(null)} className="hover:bg-white/20 rounded p-1 cursor-pointer text-sm">✕</button>
+              <button onClick={() => setRectificationModal(null)} className="hover:bg-white/20 rounded p-1 px-2.5 cursor-pointer text-sm font-semibold shrink-0">✕</button>
             </div>
             <div className="p-4 space-y-3">
               <div className="p-3 bg-indigo-50 dark:bg-indigo-500/8 border border-indigo-100 dark:border-indigo-500/25 rounded-lg text-xs text-indigo-900 dark:text-indigo-300 leading-relaxed">
@@ -3214,17 +3461,17 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
 
       {/* MODALE — Facture du patient sélectionné dans la file d'attente de paiement */}
       {paymentModalOpen && selPatient && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={closePaymentModal}>
-          <div className="w-full max-w-3xl bg-surface rounded-xl shadow-2xl border border-line-strong overflow-hidden flex flex-col max-h-[92vh]" onClick={e => e.stopPropagation()}>
-            <div className="bg-amber-600 px-4 py-3 flex justify-between items-center text-white shrink-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-bold text-sm flex items-center gap-2">
-                  <CreditCard className="w-4 h-4" /> Facturation — {selPatient.lastName} {selPatient.firstName}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4" onClick={closePaymentModal}>
+          <div className="w-full max-w-3xl bg-surface rounded-xl sm:rounded-2xl shadow-2xl border border-line-strong overflow-hidden flex flex-col max-h-[94dvh]" onClick={e => e.stopPropagation()}>
+            <div className="bg-amber-600 px-3.5 sm:px-4 py-3 flex justify-between items-center text-white shrink-0">
+              <div className="flex items-center gap-2 flex-wrap min-w-0">
+                <span className="font-bold text-sm flex items-center gap-2 truncate">
+                  <CreditCard className="w-4 h-4 shrink-0" /> <span className="truncate">Facturation — {selPatient.lastName} {selPatient.firstName}</span>
                 </span>
               </div>
-              <button onClick={closePaymentModal} className="hover:bg-white/20 rounded p-1 cursor-pointer text-sm" title="Fermer">✕</button>
+              <button onClick={closePaymentModal} className="hover:bg-white/20 rounded p-1 px-2.5 cursor-pointer text-sm font-semibold shrink-0" title="Fermer">✕</button>
             </div>
-            <div className="p-4 overflow-y-auto">
+            <div className="p-3 sm:p-4 overflow-y-auto flex-1">
               <div className="p-4 bg-amber-50 dark:bg-amber-500/8 border border-amber-200 dark:border-amber-500/25 rounded-xl mb-3 space-y-3">
                 <div className="flex justify-between items-start">
                   <div>
@@ -3744,20 +3991,20 @@ export default function ModuleCaisse({ state, setState, onOpenMessagingWithRecip
       />
 
       {printerModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl shadow-xl max-w-md w-full overflow-hidden border border-line animate-in fade-in zoom-in-95 duration-150">
-            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
-              <div className="flex items-center gap-2 font-bold text-sm">
-                <Printer className="w-5 h-5 text-amber-400" /> Configuration Imprimante & Reçus
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
+          <div className="bg-surface rounded-xl sm:rounded-2xl shadow-xl max-w-md w-full max-h-[92dvh] overflow-y-auto border border-line animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-slate-900 text-white px-4 sm:px-5 py-3 sm:py-4 flex items-center justify-between sticky top-0 z-10">
+              <div className="flex items-center gap-2 font-bold text-sm truncate">
+                <Printer className="w-5 h-5 text-amber-400 shrink-0" /> <span className="truncate">Configuration Imprimante & Reçus</span>
               </div>
               <button
                 onClick={() => setPrinterModalOpen(false)}
-                className="text-ink-faint hover:text-white p-1 rounded-lg cursor-pointer"
+                className="text-ink-faint hover:text-white p-1 px-2 rounded-lg cursor-pointer shrink-0 text-sm font-semibold"
               >
                 ✕
               </button>
             </div>
-            <div className="p-5 space-y-4 text-xs">
+            <div className="p-4 sm:p-5 space-y-4 text-xs">
               <p className="text-ink-muted leading-relaxed">
                 Chaque caissier peut configurer sa propre imprimante et son format de ticket thermique (le réglage est mémorisé sur ce poste / navigateur pour votre compte).
               </p>
