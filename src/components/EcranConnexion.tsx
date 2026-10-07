@@ -7,7 +7,7 @@ import {
   Stethoscope, CreditCard, Pill,
   FlaskConical, Building2, Hospital, ArrowLeft,
   Lock, User as UserIcon, AlertCircle, ClipboardList,
-  Eye, EyeOff,
+  Eye, EyeOff, Key,
 } from 'lucide-react';
 
 interface EcranConnexionProps {
@@ -40,6 +40,36 @@ const roleLabels: Record<string, string> = {
   billing: 'Responsable Facturation',
   admin: 'Administrateur',
 };
+
+/** Mots de passe de test standard par identifiant ou par rôle (facilitent le test en cours de création). */
+const KNOWN_DEFAULT_PASSWORDS: Record<string, string> = {
+  'USR-ADMIN': 'admin123',
+  'USR-REC': 'rec123',
+  'USR-DOC': 'doc123',
+  'USR-DOC2': 'doc123',
+  'USR-CASH': 'caisse123',
+  'USR-CASH2': 'caisse123',
+  'USR-PHA': 'pharma123',
+  'USR-PHA2': 'pharma123',
+  'USR-LAB': 'labo123',
+  'USR-MAG': 'mag123',
+  'USR-BIL': 'fact123',
+  admin: 'admin123',
+  doctor: 'doc123',
+  cashier: 'caisse123',
+  pharmacy: 'pharma123',
+  laboratory: 'labo123',
+  magasinier: 'mag123',
+  billing: 'fact123',
+  receptionist: 'rec123',
+};
+
+function getDisplayPassword(user: User): string {
+  if (user.password && !isHashedPassword(user.password)) {
+    return user.password;
+  }
+  return KNOWN_DEFAULT_PASSWORDS[user.id] || KNOWN_DEFAULT_PASSWORDS[user.role] || 'admin123';
+}
 
 export default function EcranConnexion({ users, onLogin, onBack, onPasswordUpgraded }: EcranConnexionProps) {
   const [selectedUserId, setSelectedUserId] = useState<string>('');
@@ -119,25 +149,32 @@ export default function EcranConnexion({ users, onLogin, onBack, onPasswordUpgra
     }
   };
 
+  const handleQuickSelect = (user: User) => {
+    setSelectedUserId(user.id);
+    const pwd = getDisplayPassword(user);
+    setPassword(pwd);
+    setError('');
+  };
+
   return (
     <div className="theme-login min-h-screen text-ink flex items-center justify-center px-4 pt-8 pb-24">
-      <div className="max-w-md w-full">
+      <div className="max-w-lg w-full">
         {!IS_WAMP_BUILD && (
           <button
             type="button"
             onClick={onBack}
-            className="mb-8 flex items-center gap-2 text-ink-muted hover:text-accent transition-colors cursor-pointer"
+            className="mb-6 flex items-center gap-2 text-ink-muted hover:text-accent transition-colors cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" />
             Retour à la réception
           </button>
         )}
 
-        <div className="text-center mb-8">
-          <div className="theme-brand-mark mb-6">
+        <div className="text-center mb-6">
+          <div className="theme-brand-mark mb-4 inline-flex">
             <Hospital className="w-5 h-5 -rotate-45" />
           </div>
-          <h1 className="text-2xl font-bold font-mono uppercase tracking-wider text-ink-strong mb-2">
+          <h1 className="text-2xl font-bold font-mono uppercase tracking-wider text-ink-strong mb-1">
             RÉCEPTION <span className="text-accent">SALFA</span>
           </h1>
           <p className="text-ink-muted text-sm">Connexion Personnel Médical</p>
@@ -167,11 +204,14 @@ export default function EcranConnexion({ users, onLogin, onBack, onPasswordUpgra
               className="w-full px-3 py-3 bg-field border border-line rounded-lg text-ink text-sm focus:ring-2 focus:ring-accent/25 focus:border-accent outline-none disabled:opacity-60"
             >
               <option value="">{loadingUsers ? 'Chargement des comptes…' : '-- Sélectionner --'}</option>
-              {staffUsers.map((user) => (
-                <option key={user.id} value={user.id}>
-                  {user.id} — {user.name} ({roleLabels[user.role] || user.role})
-                </option>
-              ))}
+              {staffUsers.map((user) => {
+                const pwd = getDisplayPassword(user);
+                return (
+                  <option key={user.id} value={user.id}>
+                    {user.id} — {user.name} ({roleLabels[user.role] || user.role}) [mdp: {pwd}]
+                  </option>
+                );
+              })}
             </select>
             {usersError && (
               <p className="mt-2 text-xs text-red-700 dark:text-red-400">⚠️ {usersError} Vérifiez WAMP (icône verte) puis rechargez la page.</p>
@@ -179,22 +219,40 @@ export default function EcranConnexion({ users, onLogin, onBack, onPasswordUpgra
           </div>
 
           <div className="mb-5">
-            <label htmlFor="staff-auth-code" className="block text-sm font-medium text-ink mb-2">
-              <Lock className="w-4 h-4 inline mr-2 text-accent" />
-              Mot de passe
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label htmlFor="staff-auth-code" className="text-sm font-medium text-ink">
+                <Lock className="w-4 h-4 inline mr-2 text-accent" />
+                Mot de passe
+              </label>
+              {selectedUser && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const pwd = getDisplayPassword(selectedUser);
+                    setPassword(pwd);
+                    setError('');
+                  }}
+                  className="text-xs font-mono font-semibold text-accent hover:text-accent-strong bg-accent-soft px-2 py-0.5 rounded border border-accent-line transition-colors cursor-pointer flex items-center gap-1.5"
+                  title="Cliquer pour renseigner automatiquement ce mot de passe"
+                >
+                  <Key className="w-3 h-3" />
+                  <span>mdp : <strong>{getDisplayPassword(selectedUser)}</strong></span>
+                  <span className="text-[10px] opacity-75 font-sans underline">↳ Remplir</span>
+                </button>
+              )}
+            </div>
             <div className="relative">
               <input
                 id="staff-auth-code"
                 name="staff_auth_code"
-                type="text"
+                type={showPassword ? 'text' : 'password'}
                 {...passwordInputOptOut}
                 value={password}
                 disabled={busy}
                 onChange={(e) => { setPassword(e.target.value); setError(''); }}
                 aria-invalid={!!error}
                 aria-describedby={error ? 'login-error' : undefined}
-                className={`w-full pl-4 pr-11 py-3 bg-field border border-line rounded-lg text-ink focus:ring-2 focus:ring-accent/25 focus:border-accent outline-none disabled:opacity-60 font-mono ${showPassword ? '' : 'input-text-security-disc'}`}
+                className="w-full pl-4 pr-11 py-3 bg-field border border-line rounded-lg text-ink focus:ring-2 focus:ring-accent/25 focus:border-accent outline-none disabled:opacity-60 font-mono"
                 placeholder="••••••••"
               />
               <button
@@ -207,6 +265,27 @@ export default function EcranConnexion({ users, onLogin, onBack, onPasswordUpgra
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
+
+            {selectedUser && (
+              <div className="mt-2 text-xs flex items-center justify-between px-3 py-2 rounded-lg bg-surface-muted border border-line text-ink-muted">
+                <span className="truncate">
+                  Mot de passe pour <strong className="text-ink-strong">{selectedUser.name}</strong> :{' '}
+                  <code className="font-mono font-bold text-accent px-1.5 py-0.5 bg-accent-soft rounded border border-accent-line">
+                    {getDisplayPassword(selectedUser)}
+                  </code>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPassword(getDisplayPassword(selectedUser));
+                    setError('');
+                  }}
+                  className="text-accent hover:underline font-semibold text-[11px] cursor-pointer shrink-0 ml-2"
+                >
+                  Insérer
+                </button>
+              </div>
+            )}
           </div>
 
           {error && (
@@ -225,6 +304,57 @@ export default function EcranConnexion({ users, onLogin, onBack, onPasswordUpgra
             {(selectedUser && roleIcons[selectedUser.role]) || null}
             {busy ? 'Connexion…' : 'Se connecter'}
           </button>
+        </div>
+
+        {/* Aide au développement : affichage complet des comptes et mots de passe */}
+        <div className="mt-6 bg-surface rounded-2xl border border-line p-5 shadow-lg shadow-black/5">
+          <div className="flex items-center justify-between mb-3 pb-2 border-b border-line">
+            <div className="flex items-center gap-2 text-sm font-semibold text-ink-strong">
+              <span className="text-base">💡</span>
+              <span>Comptes et mots de passe de test</span>
+            </div>
+            <span className="text-[11px] px-2 py-0.5 bg-accent-soft text-accent font-medium rounded-full border border-accent-line">
+              Aide création
+            </span>
+          </div>
+
+          <p className="text-xs text-ink-muted mb-3">
+            Cliquez sur un compte ci-dessous pour le sélectionner et préremplir son mot de passe directement :
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
+            {staffUsers.map((u) => {
+              const pwd = getDisplayPassword(u);
+              const isSelected = u.id === selectedUserId;
+              return (
+                <button
+                  key={u.id}
+                  type="button"
+                  onClick={() => handleQuickSelect(u)}
+                  className={`text-left p-2.5 rounded-xl border text-xs transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                    isSelected
+                      ? 'border-accent bg-accent-soft shadow-sm ring-1 ring-accent'
+                      : 'border-line hover:border-line-control hover:bg-surface-hover'
+                  }`}
+                  title={`Cliquer pour vous connecter en tant que ${u.name} (mdp: ${pwd})`}
+                >
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="font-semibold text-ink-strong truncate flex items-center gap-1.5">
+                      <span className="text-accent">{roleIcons[u.role] || null}</span>
+                      {roleLabels[u.role] || u.role}
+                    </span>
+                    <span className="font-mono text-[11px] font-bold px-1.5 py-0.5 bg-surface text-accent rounded border border-line shrink-0">
+                      {pwd}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-ink-muted">
+                    <span className="truncate">{u.name}</span>
+                    <span className="font-mono text-[10px] shrink-0 opacity-70">{u.id}</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <p className="text-center text-ink-faint text-xs mt-6">
